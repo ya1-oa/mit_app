@@ -1,0 +1,84 @@
+{% extends "account/base.html" %}
+{% load static %}
+{% block content %}
+    <main>
+  
+      <h1>All Phase Consulting Back Office</h1>
+  
+      <div class="flex-grid">
+        <div>
+          <h2>Clients</h2>
+
+          <div class="scroll-cards">
+            {% for client in allClients %}
+            
+            <div class="card">
+              <div class="mails">
+                <span class="person border3">H</span>
+                <div class="mail-names">
+                    {{ client.pOwner }}
+                </div>
+              
+              </div>
+              <div class="mail-info">
+                {{ client.causeOfLoss }}
+                {{ client.dateOfLoss }}
+              </div>
+              <div>
+              </div>
+              <div class="bottom-info">
+                <div class="check1">
+                  <label class="checkbox">
+            <input type="checkbox"/>
+            </label>
+                  <div class="star">
+                    <img src="https://i.ibb.co/SN5SJ8x/star.png" />
+                  </div>
+                  <div class="star">
+                    <img src="https://i.ibb.co/FW9tsHK/attachment.png" />
+                  </div>
+    
+                </div>
+                <div class="date">8:30 AM</div>
+              </div>
+            </div>
+            {% endfor %}
+          
+        </div>
+        <div>
+          <h2>Font Awesome</h2>
+          <ul>
+            <li>no images</li>
+            <li>no extra retina sprites</li>
+          </ul>
+        </div>
+        <div>
+          <h2>SCSS</h2>
+          <ul>
+            <li>no headache :)</li>
+          </ul>
+        </div>
+      </div>
+  
+      <div class="flex-grid">
+        <div>
+          <h2>Recent Documents</h2>
+          Some Content
+        </div>
+        <div>
+          <h2>Recent Client Changes</h2>
+          Some Content
+        </div>
+      </div>
+  
+      <div class="flex-grid">
+        <div>
+          <h2>Emails Sent</h2>
+          Some Content
+        </div>
+      </div>
+  
+    </main>
+  
+
+  {% endblock %}

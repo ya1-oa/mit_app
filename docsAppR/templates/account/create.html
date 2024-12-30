@@ -1,0 +1,28 @@
+{% extends "account/base.html" %}
+<!-- Create Input for Templates -->
+ {% load static %}
+ {% block content %}
+
+
+ <main>
+  
+  <h1>All Phase Consulting Back Office</h1>
+
+  <div class="flex-grid">
+    <div>
+      <h2>Clean CSS Code</h2>
+      <form method="post">
+        {% csrf_token %}
+        <table>
+          {{ form.as_table }}
+        </table>
+        <button type="submit">Submit</button>
+      </form>
+    </div>
+
+</main>
+
+      
+      
+
+{% endblock %}

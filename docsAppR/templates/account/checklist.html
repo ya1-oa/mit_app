@@ -1,0 +1,43 @@
+{% extends "account/base.html" %}
+{% load static %}
+{% block content %}
+<main>
+    <h1>All Phase Consulting Back Office</h1>
+    <div class="flex-grid">
+        <div>
+            <div class="dropdown">
+                <button class="dropdown-btn">Room</button>
+                <div class="dropdown-content">
+                    <a href="#">Room 1</a>
+                    <a href="#">Room 2</a>
+                    <a href="#">Room 3</a>
+                    <a href="#">Room 4</a>
+                    <a href="#">Room 5</a>
+                </div>
+                {% for i in abbrList %}
+                <div class="dropdown">
+                </div>
+                <div>
+                    <h2>{{ i }}</h2>
+                    <button class="dropdown-btn">Options</button>
+                <div class="dropdown-content">
+                    <a href="#">Option 1</a>
+                    <a href="#">Option 2</a>
+                    <a href="#">Option 3</a>
+                    <a href="#">N/A</a>
+                    <a href="#">TBD</a>
+                </div>
+                </div>
+                
+                {% endfor %}
+            </div>
+     
+         
+        </div>
+        
+        
+        
+    </div>
+
+</main>
+{% endblock %}

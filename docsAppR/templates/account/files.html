@@ -1,0 +1,18 @@
+{% extends "account/base.html" %}
+                                                                        
+{% load static %}
+{% block content %}
+    <body>
+        <div class="card mx-auto p-2">
+            <div class="card-body">
+                <nav id="breadcrumb">
+                    <ol id="ordered-list" class="breadcrumb bg-light">
+                        <li class="breadcrumb-item"><a href="#">Home</a></li>
+                    </ol>
+                </nav>
+            </div>
+        </div>
+    </body>
+    {{ file_list|json_script:"file-list" }}
+    <script src="{% static 'home.js' %}"></script>
+{% endblock %}

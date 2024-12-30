@@ -1,0 +1,56 @@
+{% load static %}
+<html>
+<head>
+    <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
+    <!-- Required meta tags -->
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <link rel="stylesheet" type="text/css" href='{% static "base.css" %}'>
+</head>
+<body>
+  <div class="wrapper">
+    <nav>
+      <header>
+        {% if user.is_authenticated %}
+        <span></span>
+        {{ user.email | truncatechars:9 }}
+        <a></a>
+        {% else %}
+        <p>Guest</p>
+        {% endif %}
+      </header>
+  
+      <ul>
+        <li><span>Navigation</span></li>
+        <li><a href="/dashboard" class="active">Dashboard</a></li>
+        <li><a href="">Statistics</a></li>
+        <li><a href="/create">Claims</a></li>
+        <li><a href="/checklist">Checklists</a></li>
+        <li><a href="/createpdfs">Documents</a></li>
+        <li><a>Emails</a></li>
+        <li><a>FAQ</a></li>
+        <li><span>Other</span></li>
+        <li><a>Search</a></li>
+        <li><a>Settings</a></li>
+        <li><a href="/logout">Logout</a></li>
+      </ul>
+    </nav>
+  
+
+    {% block content%}
+    
+	  {% block messages %}
+    {% endblock %}
+    
+    {% endblock %}
+    
+    {% block content_extra %}
+    {% endblock %}
+    
+    {% block extra_body %}
+    {% endblock %}
+  </div>
+
+</body>
+</html>

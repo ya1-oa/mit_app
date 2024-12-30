@@ -1,0 +1,44 @@
+{% extends "account/base.html" %}
+{% load static %}
+{% block content %}
+<main>
+    <h1>All Phase Consulting Back Office</h1>
+
+    <div class="flex-grid">
+      <div>
+        <h2>Clients</h2>
+
+        <div class="scroll-cards">
+          {% for client in clients %}
+          
+          <div class="card">
+            <div class="mails">
+              <span class="person border3">H</span>
+              <div class="mail-names">
+                  {{ client.pOwner }}
+                  {{ client.pAddress }}
+                  {{ client.cEmail }}
+                  {{ client.cPhone }}
+              </div>
+            
+            </div>
+            <div class="mail-info">
+              {{ client.causeOfLoss }}
+              {{ client.dateOfLoss }}
+            </div>
+            <div>
+            </div>
+            <div class="bottom-info">
+              <div class="check1">
+            <div class="date">8:30 AM</div>
+            </div>
+            <form method="GET" action="{% url 'generate_invoice_pdf' client.id %}">
+                <button type="submit">Generate Document for {{ client.pOwner }}</button>
+            </form>
+        </div>    
+    </div>
+    {% endfor %}
+</main>
+
+
+{% endblock %}
