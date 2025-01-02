@@ -37,7 +37,7 @@ DEVELOPMENT_MODE = True
 
 INSTALLED_APPS = [
     'docsAppR',
-    'django.contrib.sites',
+    #'django.contrib.sites',
     'allauth',
     'allauth.account',
     'allauth.socialaccount',
