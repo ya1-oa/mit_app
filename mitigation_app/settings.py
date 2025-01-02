@@ -137,20 +137,16 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Django Allauth settings
 SITE_ID = 1  # Required for allauth
 LOGIN_REDIRECT_URL = '/'  # Where to redirect after successful login
-LOGOUT_REDIRECT_URL = '/'  # Where to redirect after logout
-ACCOUNT_AUTHENTICATION_METHOD = 'email'  # Use email instead of username for authentication
 ACCOUNT_EMAIL_REQUIRED = True  # Make email required field
-ACCOUNT_USERNAME_REQUIRED = False  # Make username optional
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory'  # Options: 'mandatory', 'optional', 'none'
-ACCOUNT_LOGIN_ATTEMPTS_LIMIT = 5  # Limit failed login attempts
-ACCOUNT_LOGIN_ATTEMPTS_TIMEOUT = 300  # Timeout for login attempts (in seconds)
 
-# Email settings (configure these according to your email provider)
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = os.getenv('EMAIL_HOST', '')
-EMAIL_PORT = int(os.getenv('EMAIL_PORT', 587))
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER', '')
-EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD', '')
-DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', '')
+AUTH_PASSWORD_VALIDATORS = [{'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'}, {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'}, {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'}, {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'}]
+LANGUAGE_CODE = 'en-us'
+TIME_ZONE = 'UTC'
+USE_I18N = True
+USE_TZ = True
+STATIC_URL = 'static/'
+STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+EMAIL_BACKEND = 'django.core.mail.backends.filebased.EmailBackend'
+EMAIL_FILE_PATH = BASE_DIR / 'emails'
 AUTH_USER_MODEL = 'docsAppR.CustomUser'
