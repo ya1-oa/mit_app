@@ -87,7 +87,7 @@ def create(request):
 def checklist(request):
     allClients = Client.objects.all()
     abbrList = ["CLG", "LIT", "HVC", "MISC", "WAL", "ELE", "FLR", "BB", "MISC","DOR", "OPEN", "WDW", "WDT"]
-    context = { 'clients' : allClients, : 'abbrList' : abbrList }
+    context = { 'clients' : allClients, 'abbrList' : abbrList }
 
     return render(request, 'account/checklist.html', context)
 
