@@ -9,6 +9,7 @@ import os
 from django.core import serializers
 import json
 from docsAppR.models import Client
+from docsAppR.models import Claims
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from xhtml2pdf import pisa  # For xhtml2pdf
@@ -84,8 +85,9 @@ def create(request):
 
 @login_required
 def checklist(request):
+    allClients = Client.objects.all()
     abbrList = ["CLG", "LIT", "HVC", "MISC", "WAL", "ELE", "FLR", "BB", "MISC","DOR", "OPEN", "WDW", "WDT"]
-    context = { 'abbrList' : abbrList }
+    context = { 'clients' : allClients, : 'abbrList' : abbrList }
 
     return render(request, 'account/checklist.html', context)
 

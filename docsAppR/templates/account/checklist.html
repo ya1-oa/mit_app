@@ -2,11 +2,26 @@
 {% load static %}
 {% block content %}
 <main>
+
     <h1>All Phase Consulting Back Office</h1>
-    <div class="flex-grid">
-        <div>
-            <div class="dropdown">
-                <button class="dropdown-btn">Room</button>
+        <!--- Choose a claim under a drop down 
+        once claim is selected, show the rooms in that claim as rows
+        for each room it has a row, with set inputs, each input can have a user typed value
+        or a value from a drop down
+        
+        -->
+    <div class="dropdown">
+        <button class="dropdown-btn">Room</button>
+        <div class="dropdown-content">
+            {% for client in clients %}
+                <a href="#">{{ client.pOwner }}</a>
+            {% end for %}
+        </div>
+    </div>
+
+    <div>
+        <div class="dropdown">
+            <button class="dropdown-btn">Room</button>
                 <div class="dropdown-content">
                     <a href="#">Room 1</a>
                     <a href="#">Room 2</a>
@@ -27,17 +42,9 @@
                     <a href="#">N/A</a>
                     <a href="#">TBD</a>
                 </div>
-                </div>
                 
                 {% endfor %}
             </div>
-     
-         
-        </div>
-        
-        
-        
-    </div>
 
 </main>
 {% endblock %}
