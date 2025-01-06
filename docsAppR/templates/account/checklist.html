@@ -13,7 +13,7 @@
     <div class="dropdown">
         <button class="dropdown-btn">Room</button>
         <div class="dropdown-content">
-            {% for client in clients %}
+            {% for client in allClients %}
                 <a href="#">{{ client.pOwner }}</a>
             {% end for %}
         </div>
