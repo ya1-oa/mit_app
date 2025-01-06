@@ -9,7 +9,6 @@ import os
 from django.core import serializers
 import json
 from docsAppR.models import Client
-from docsAppR.models import Claims
 from django.http import HttpResponse
 from django.template.loader import render_to_string
 from xhtml2pdf import pisa  # For xhtml2pdf
