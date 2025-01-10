@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <title>Interior Inspection Work Scope</title>
+    <style>
+        @page { margin: 0.5in; }
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 10px;
+            line-height: 1.2;
+        }
+        .page {
+            page-break-after: always;
+            padding: 20px;
+        }
+        .header {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 10px;
+            margin-bottom: 15px;
+            font-weight: bold;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        th, td {
+            border: 1px solid black;
+            padding: 4px;
+            text-align: center;
+            height: 20px;
+        }
+        .activity-row {
+            height: 40px;
+        }
+        .empty-row {
+            height: 20px;
+            border: none;
+        }
+        .scope-codes {
+            font-size: 8px;
+            margin-top: 30px;
+        }
+        .scope-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+        }
+        .definitions {
+            margin-top: 20px;
+            font-size: 8px;
+        }
+    </style>
+</head>
+<body>
+    <!-- Page 1 -->
+    <div class="page">
+        <div class="header">
+            <span>Interior Inspect Work SCOPE V2</span>
+            <span>{{ client.name }}</span>
+            <span>{{ client.address }}</span>
+            <span>{{ client.city }} {{ client.zip }}</span>
+            <span>{{ client.cause }}</span>
+            <span>{{ client.insurance }}</span>
+            <span>{{ client.phone }}</span>
+        </div>
+        
+        <table>
+            <tr>
+                <th>Room #</th>
+                <th>Room Name</th>
+                <th>CLG</th>
+                <th>LIT</th>
+                <th>HVC</th>
+                <th>MISC</th>
+                <th>WALL</th>
+                <th>ELE</th>
+                <th>HVC</th>
+                <th>MISC</th>
+                <th>FLR</th>
+                <th>BB</th>
+                <th>MISC</th>
+                <th>DOR</th>
+                <th>OPEN</th>
+                <th>MISC</th>
+                <th>WINDOW</th>
+                <th>WDT</th>
+                <th>MISC</th>
+            </tr>
+            {% for i in range(1, 11) %}
+            <tr>
+                <td>{{ i }}</td>
+                <td>{{ rooms[i-1].name if rooms[i-1] else '' }}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr class="activity-row">
+                <td colspan="19">ACTIVITY:</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- Page 2 -->
+    <div class="page">
+        <div class="header">
+            <span>Interior Inspect Work SCOPE V2</span>
+            <span>{{ client.name }}</span>
+            <span>{{ client.address }}</span>
+            <span>{{ client.city }} {{ client.zip }}</span>
+            <span>{{ client.cause }}</span>
+            <span>{{ client.insurance }}</span>
+            <span>{{ client.phone }}</span>
+        </div>
+        
+        <table>
+            {% for i in range(11, 20) %}
+            <tr>
+                <td>{{ i }}</td>
+                <td>{{ rooms[i-1].name if rooms[i-1] else '' }}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr class="activity-row">
+                <td colspan="19">ACTIVITY:</td>
+            </tr>
+            {% endfor %}
+        </table>
+    </div>
+
+    <!-- Page 3 with Scope Codes -->
+    <div class="page">
+        <div class="header">
+            <span>Interior Inspect Work SCOPE V2</span>
+            <span>{{ client.name }}</span>
+            <span>{{ client.address }}</span>
+            <span>{{ client.city }} {{ client.zip }}</span>
+            <span>{{ client.cause }}</span>
+            <span>{{ client.insurance }}</span>
+            <span>{{ client.phone }}</span>
+        </div>
+
+        <table>
+            {% for i in range(20, 30) %}
+            <tr>
+                <td>{{ i }}</td>
+                <td>{{ rooms[i-1].name if rooms[i-1] else '0' }}</td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr class="activity-row">
+                <td colspan="19">ACTIVITY:</td>
+            </tr>
+            {% endfor %}
+        </table>
+
+        <div class="scope-codes">
+            <h3>SCOPE CODES XACTIMATE</h3>
+            <div class="scope-grid">
+                <table>
+                    <tr><th colspan="2">BUILDING MATERIALS</th></tr>
+                    <tr><td>CLG TILES</td><td>ACT</td></tr>
+                    <tr><td>DRYWALL</td><td>DRY</td></tr>
+                    <tr><td>PLASTER</td><td>PLA</td></tr>
+                    <tr><td>TONGUE&GROOVE</td><td>T&G</td></tr>
+                    <tr><td>PANELING</td><td>PNL</td></tr>
+                    <tr><td>WALLPAPER</td><td>WPR</td></tr>
+                    <tr><td>CONCRETE</td><td>CNC</td></tr>
+                </table>
+
+                <div class="definitions">
+                    <h4>HEADINGS</h4>
+                    <p>CLG = CEILING</p>
+                    <p>LIT = LIGHTS</p>
+                    <p>HVC = HEAT REGISTER</p>
+                    <p>ELE = ELECTRICAL</p>
+                    <p>FLR = FLOOR</p>
+                    <p>BB = BASEBOARD</p>
+                    <p>DOR = DOOR</p>
+                    <p>OPEN = OPENING</p>
+                    <p>WDW = WINDOW</p>
+                </div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

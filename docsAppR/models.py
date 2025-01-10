@@ -2,6 +2,7 @@ from django.db import models
 from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
 from django.forms import ModelForm
+import os
 
 class CustomUserManager(BaseUserManager):
     def _create_user(self, email, password, **extra_fields):
@@ -234,7 +235,33 @@ class Client(models.Model):
 class File(models.Model):
     filename = models.CharField(max_length=255)
     size = models.IntegerField()
-    file = models.FileField(upload_to="templates")
+    file = models.FileField(upload_to="documents/%Y/%m/%d/")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return self.filename
+    
+    def delete(self, *args, **kwargs):
+        # Delete the file from storage when model is deleted
+        if self.file:
+            if os.path.isfile(self.file.path):
+                os.remove(self.file.path)
+        super().delete(*args, **kwargs)
+    
+    def get_file_extension(self):
+        return os.path.splitext(self.filename)[1]
+    
+    def get_file_size_display(self):
+        """Returns human-readable file size"""
+        size = self.size
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024.0:
+                return f"{size:.1f} {unit}"
+            size /= 1024.0
+        return f"{size:.1f} TB"
 
 #class ExactimatePrices():
 #    id =

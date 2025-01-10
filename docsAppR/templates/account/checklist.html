@@ -2,49 +2,127 @@
 {% load static %}
 {% block content %}
 <main>
+    <div class="min-h-screen bg-gray-50 p-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="flex items-center gap-3 mb-8">
+                <h1 class="text-2xl font-bold text-gray-800">Room Inspector</h1>
+            </div>
+            <!-- Inspection Form -->
+             <form method="get" class="bg-white rounded-lg shadow-lg p-6">
+                    <div class="mb-6">
+                        <label for="claim-select" class="block text-sm font-medium text-gray-700 mb-2">
+                            Select Claim
+                        </label>
+                        <select
+                            id="claim-select"
+                            name="claim"
+                            class="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                            onchange="this.form.submit()"
+                        >
+                            <option value="">Select a claim...</option>
+                            {% for claim in claims %}
+                                <option value="{{ claim.pOwner }}" {% if selected_claim_id == claim.pOwner|stringformat:"s" %}selected{% endif %}>
+                                    {{ claim.pOwner }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                </form>
+            <form method="post" class="bg-white rounded-lg shadow-lg p-6">
+                {% csrf_token %}
 
-    <h1>All Phase Consulting Back Office</h1>
-        <!--- Choose a claim under a drop down 
-        once claim is selected, show the rooms in that claim as rows
-        for each room it has a row, with set inputs, each input can have a user typed value
-        or a value from a drop down
+                <!-- Claim Selection Form -->
+                
+                    
+                    <div class="mb-8">
+                        <label for="room-select" class="block text-sm font-medium text-gray-700 mb-2">
+                            Select Room
+                        </label>
+                        <select
+                            id="room-select"
+                            name="room"
+                            class="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                            <option value="">{% if rooms %}Select a room...{% else %}Select a claim first...{% endif %}</option>
+                            {% for room in rooms %}
+                                <option value="{{ room.id }}">{{ room.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <!-- Dropdowns Grid -->
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {% for label in labels %}
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700">
+                            {{ label|cut:"-1"|cut:"-2" }}
+                        </label>
+                        <div class="relative">
+                            <input
+                                type="text"
+                                list="{{ label|lower }}-options"
+                                name="{{ label|lower }}"
+                                class="w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Select or type..."
+                            >
+                            <datalist id="{{ label|lower }}-options">
+                                <option value="Option 1">
+                                <option value="Option 2">
+                                <option value="Option 3">
+                                <option value="TBD">
+                                <option value="NA">
+                            </datalist>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                        <!-- Hidden claim field -->
+                        <input type="hidden" name="claim" value="{{ selected_claim_id }}">
+                        <!-- Room Selection -->
         
-        -->
-    <div class="dropdown">
-        <button class="dropdown-btn">Room</button>
-        <div class="dropdown-content">
-            {% for client in allClients %}
-                <a href="#">{{ client.pOwner }}</a>
-            {% end for %}
+                        <!-- Submit Button -->
+                        <div class="mt-8">
+                            <button 
+                                type="submit"
+                                class="w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                            >
+                                Submit Room Inspection
+                            </button>
+                        </div>
+                </form>
+
+
+                    </button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <div>
-        <div class="dropdown">
-            <button class="dropdown-btn">Room</button>
-                <div class="dropdown-content">
-                    <a href="#">Room 1</a>
-                    <a href="#">Room 2</a>
-                    <a href="#">Room 3</a>
-                    <a href="#">Room 4</a>
-                    <a href="#">Room 5</a>
-                </div>
-                {% for i in abbrList %}
-                <div class="dropdown">
-                </div>
-                <div>
-                    <h2>{{ i }}</h2>
-                    <button class="dropdown-btn">Options</button>
-                <div class="dropdown-content">
-                    <a href="#">Option 1</a>
-                    <a href="#">Option 2</a>
-                    <a href="#">Option 3</a>
-                    <a href="#">N/A</a>
-                    <a href="#">TBD</a>
-                </div>
-                
-                {% endfor %}
-            </div>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    document.querySelector('form').addEventListener('submit', function(e) {
+        // Show loading indicator
+        const submitButton = this.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        submitButton.innerHTML = 'Generating PDF...';
+        
+        // You could also add a spinner or progress bar here
+        const loadingDiv = document.createElement('div');
+        loadingDiv.className = 'loading-indicator';
+        loadingDiv.innerHTML = 'Converting file, please wait...';
+        submitButton.parentNode.insertBefore(loadingDiv, submitButton.nextSibling);
+    });
+    </script>
 
-</main>
+    <style>
+    .loading-indicator {
+        margin-top: 10px;
+        padding: 10px;
+        background: #fff3cd;
+        border: 1px solid #ffeeba;
+        border-radius: 4px;
+        text-align: center;
+    }
+    </style>
+</main> 
 {% endblock %}

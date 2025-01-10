@@ -7,9 +7,11 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <style>
-      @import "compass/css3";
+
+@import "compass/css3";
 @import url('https://fonts.googleapis.com/css?family=Open+Sans');
 @import url('https://netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css');
+
 *, *:before, *:after {
 	 margin: 0;
 	 padding: 0;
@@ -134,7 +136,7 @@ main h1 {
     	 line-height: 76px;
     	 font-size: 24px;
     	 font-weight: 400;
-    	 background: #ddd;
+    	 background: #f9fafb;
     }
 .flex-grid {
 	 display: flex;
@@ -313,7 +315,8 @@ button {
 /* Styling the individual dropdown containers */
 .dropdown {
     position: relative;
-    display: inline-block;
+    display: flex;
+    flex-direction: row;
     width: 150px; /* Set a fixed width for each dropdown */
     margin-bottom: 20px;
 }
@@ -384,7 +387,72 @@ button {
     padding: 10px 0;
     font-weight: bold;
 }
-    </style>>
+
+@media screen and (max-width: 768px) {
+  .wrapper {
+    position: relative;
+  }
+
+  nav {
+    position: fixed;
+    left: -200px;
+    height: 100%;
+    transition: 0.3s;
+    z-index: 1000;
+  }
+
+  nav.active {
+    left: 0;
+  }
+  main {
+    background: white;
+  }
+  main h1 {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding-right: 15px;
+    min-height: 80px;
+    white-space: nowrap;
+    overflow: visible;
+    background: #f9fafb;
+  }
+
+  .menu-toggle {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    background: #333;
+    border: none;
+    border-radius: 5px;
+    cursor: pointer;
+    padding: 8px;
+  }
+
+  .menu-toggle span {
+    display: block;
+    width: 24px;
+    height: 3px;
+    margin: 5px 0;
+    background: white;
+    transition: 0.3s;
+  }
+
+  main {
+    margin-left: 0;
+    width: 100%;
+  }
+
+  .flex-grid {
+    flex-direction: column;
+  }
+
+  .flex-grid > div {
+    margin-right: 0;
+    margin-bottom: 15px;
+  }
+}
+    </style>
     
 </head>
 <body>
@@ -407,7 +475,7 @@ button {
         <li><a href="/create">Claims</a></li>
         <li><a href="/checklist">Checklists</a></li>
         <li><a href="/createpdfs">Documents</a></li>
-        <li><a>Emails</a></li>
+        <li><a href="/emails">Emails</a></li>
         <li><a>FAQ</a></li>
         <li><span>Other</span></li>
         <li><a>Search</a></li>
@@ -415,8 +483,27 @@ button {
         <li><a href="/logout">Logout</a></li>
       </ul>
     </nav>
-  
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+    const menuToggle = document.createElement('button');
+    menuToggle.setAttribute('type', 'button');
+    menuToggle.classList.add('menu-toggle');
+    menuToggle.innerHTML = '<span></span><span></span><span></span>';
+    document.querySelector('main h1').prepend(menuToggle);
 
+    // Toggle menu on button click
+    menuToggle.addEventListener('click', toggleMenu);
+
+    // Toggle menu on navbar link click
+    const navbarLink = document.querySelector('nav header a');
+    navbarLink.addEventListener('click', toggleMenu);
+    });
+    
+    function toggleMenu(e) {
+        e.preventDefault();
+        document.querySelector('nav').classList.toggle('active');
+    }
+    </script>
     {% block content%}
     
 	  {% block messages %}

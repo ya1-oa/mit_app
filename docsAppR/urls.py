@@ -8,5 +8,6 @@ urlpatterns = [
     path('dashboard/', views.dashboard, name="dashboard"),
     path('createpdfs/', views.client_list, name="client_list"),
     path("generate_invoice_pdf/<int:client_id>/", views.generate_invoice_pdf, name="generate_invoice_pdf"),
-    path('logout/', views.logout_view, name='logout')
+    path('logout/', views.logout_view, name='logout'),
+    path('emails/', views.emails, name='emails'),
 ]
