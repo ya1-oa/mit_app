@@ -231,10 +231,15 @@ def generate_invoice_pdf(request, client_id):
         
         # Select the ScopeCHLST sheet
         ws = wb['ScopeCHLST']
-        
+
+        keep_sheets = ['ScopeCHLST']
+        for sheet in keep_sheets:
+            if sheet not in keep_sheets:
+                del wb[sheet]
+       
         # Map the inspection data to Excel cells
         #cell_mappings = SCOPE_FORM_MAPPINGS['client_info']
-        checklist_mappings = SCOPE_FORM_MAPPINGS['checklist']
+        #checklist_mappings = SCOPE_FORM_MAPPINGS['checklist']
         
         # Client information
         #ws[cell_mappings['client_name']] = client.pOwner
@@ -245,20 +250,21 @@ def generate_invoice_pdf(request, client_id):
         
         # Map inspection checklist data
         checklist_mappings = {
-            'CLG': 'C3',  # Ceiling
-            'LIT': 'C4',  # Lighting
-            'HVC': 'C5',  # HVAC
-            'WAL': 'C6',  # Walls
-            'ELE': 'C7',  # Electrical
-            'FLR': 'C8',  # Floor
-            'BB': 'C9',   # Baseboards
-            'DOR': 'C10',  # Doors
-            'WDW': 'C11',  # Windows
-            'WDT': 'C12',  # Water Damage
+            'clg': 'C3',  # Ceiling
+            'lit': 'D3',  # Lighting
+            'hvc': 'E3',  # HVAC
+            'wal': 'F3',  # Walls
+            'ele': 'G3',  # Electrical
+            'flr': 'H3',  # Floor
+            'bb': 'I3',   # Baseboards
+            'dor': 'J3',  # Doors
+            'wdw': 'K3',  # Windows
+            'wdt': 'L3',  # Water Damage
         }
         
         # Fill in inspection data
         inspection = inspection_data.get('inspection', {})
+        print('inspection', inspection)
         for key, cell in checklist_mappings.items():
             if key in inspection:
                 ws[cell] = inspection[key]
