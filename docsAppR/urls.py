@@ -10,4 +10,5 @@ urlpatterns = [
     path("generate_invoice_pdf/<int:client_id>/", views.generate_invoice_pdf, name="generate_invoice_pdf"),
     path('logout/', views.logout_view, name='logout'),
     path('emails/', views.emails, name='emails'),
+    path('labels/', views.labels, name='labels')
 ]
