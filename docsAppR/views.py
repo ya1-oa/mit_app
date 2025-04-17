@@ -84,6 +84,11 @@ def logout_view(request):
     return redirect('')
 
 @login_required
+def get_dimensions(request):
+    return render(request, 'account/encircle.html')
+
+
+@login_required
 def create(request):
     client = Client.objects.all()
 
@@ -893,3 +898,5 @@ def emails(request):
     }
     
     return render(request, 'account/emails.html', context)
+
+

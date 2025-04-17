@@ -1,0 +1,53 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block content %}
+<main>
+    <h1>Encircle Room Dimensions API</h1>
+    
+    <div class="flex-grid">
+        <div>
+            <h2>Get Room Dimensions</h2>
+            <div style="margin-bottom: 20px;">
+                <label for="claim-id" style="display: block; margin-bottom: 8px; font-weight: bold;">Enter Claim ID:</label>
+                <input type="text" id="claim-id" style="padding: 10px; width: 100%; border: 1px solid #ddd; border-radius: 4px;">
+                <button id="fetch-btn" style="margin-top: 15px;">Fetch Dimensions</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="flex-grid">
+        <div>
+            <h2>API Response</h2>
+            <pre id="api-response" style="background: #f5f5f5; padding: 15px; border-radius: 4px; max-height: 500px; overflow: auto;">No data fetched yet. Enter a claim ID and click "Fetch Dimensions".</pre>
+        </div>
+    </div>
+</main>
+
+<script>
+document.getElementById('fetch-btn').addEventListener('click', function() {
+    const claimId = document.getElementById('claim-id').value.trim();
+    if (!claimId) {
+        alert('Please enter a claim ID');
+        return;
+    }
+    
+    const responseElement = document.getElementById('api-response');
+    responseElement.textContent = 'Fetching data...';
+    
+    fetch(`/get_dimensions?claim_id=${claimId}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            responseElement.textContent = JSON.stringify(data, null, 2);
+        })
+        .catch(error => {
+            responseElement.textContent = `Error: ${error.message}`;
+        });
+});
+</script>
+{% endblock %}
