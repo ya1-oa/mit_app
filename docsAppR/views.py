@@ -253,58 +253,6 @@ def labels(request):
     
     return render(request, 'account/labels.html', context)
 
-logger = logging.getLogger(__name__)
-
-import os
-import json
-import tempfile
-import platform
-import logging
-import math
-import re
-from pathlib import Path
-from django.http import HttpResponse, JsonResponse
-from django.conf import settings
-from django.shortcuts import get_object_or_404
-from django.core.files.base import ContentFile
-from openpyxl import load_workbook
-
-# Assuming this is defined elsewhere in your project
-from .models import Client, File
-
-logger = logging.getLogger(__name__)
-
-import os
-import re
-import math
-import tempfile
-import platform
-import logging
-from pathlib import Path
-from django.http import JsonResponse
-from django.core.files.base import ContentFile
-from django.shortcuts import get_object_or_404
-
-# Import Spire.XLS (you'll need to install this)
-try:
-    from spire.xls import *
-    from spire.xls.common import *
-except ImportError:
-    raise ImportError("Spire.XLS is required. Install with: pip install spire-xls")
-
-logger = logging.getLogger(__name__)
-import os
-import re
-import math
-import tempfile
-import logging
-import platform
-from django.http import JsonResponse
-from django.core.files.base import ContentFile
-from django.shortcuts import get_object_or_404
-
-# Set up logging
-logger = logging.getLogger(__name__)
 
 def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, num_labels):
     """
