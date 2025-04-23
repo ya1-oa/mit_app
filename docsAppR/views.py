@@ -361,21 +361,6 @@ def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, num_labels
                 # Activate the sheet
                 target_sheet.Activate()
                 
-                # Calculate the range based on number of labels
-                #rows_needed = math.ceil(num_labels / 2)  # Assuming 2 labels per row
-                
-                # Set print area if needed to limit output
-                #if num_labels > 0:
-                    # Determine rows to include (adjust based on your template)
-                #    header_rows = 1  # Adjust based on template header size
-                #    last_row = header_rows + num_labels
-                #    target_sheet.PageSetup.PrintArea = f"$A$1:$Z${last_row}"
-                
-                # Configure page setup
-                #target_sheet.PageSetup.Zoom = False
-                #target_sheet.PageSetup.FitToPagesWide = 1
-                #target_sheet.PageSetup.FitToPagesTall = num_pages
-                
                 # Save as PDF using sheet-specific export
                 workbook.ActiveSheet.ExportAsFixedFormat(
                     Type=0,  # 0 = PDF
@@ -410,59 +395,105 @@ def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, num_labels
                 pythoncom.CoUninitialize()
                 
         elif system == "Linux":
-            # Linux implementation using LibreOffice headless mode
-            import subprocess
+            # Linux implementation using LibreOffice and unoconv
+            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
+            
+            # First, mark the specific sheet for printing
+            try:
+                # Using openpyxl to set the active sheet
+                from openpyxl import load_workbook
+                wb = load_workbook(excel_path)
                 
-            # Create a soffice command to convert Excel to PDF
-            cmd = [
-                'soffice',
-                '--headless',
-                '--convert-to', 'pdf',
-                '--outdir', os.path.dirname(pdf_path)
-            ]
-            
-            # Try to select specific sheet
-            sheet_param = f"--print-ranges={sheet_name}.A1:Z{num_labels + 1}"
-            cmd.append(sheet_param)
-            cmd.append(excel_path)
-            
-            # Execute the command
-            process = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-            stdout, stderr = process.communicate()
-            
-            if process.returncode != 0:
-                logger.error(f"Error converting with LibreOffice: {stderr.decode()}")
-                raise Exception(f"LibreOffice conversion failed: {stderr.decode()}")
-            
-            # Rename the output file to the desired name
-            # LibreOffice will create a file with the same name but .pdf extension
-            libreoffice_pdf = os.path.splitext(excel_path)[0] + '.pdf'
-            if os.path.exists(libreoffice_pdf) and libreoffice_pdf != pdf_path:
-                os.rename(libreoffice_pdf, pdf_path)
-            
-            # For page range limitation, use PyPDF2 to extract pages
-            if num_pages > 0:
+                # Check if the sheet exists
+                if sheet_name not in wb.sheetnames:
+                    logger.error(f"Sheet {sheet_name} not found")
+                    raise ValueError(f"Sheet {sheet_name} not found")
+                
+                # Make the target sheet active
+                wb.active = wb[sheet_name]
+                
+                # Save temporary workbook with desired sheet active
+                temp_excel_path = f"{excel_path}.tmp"
+                wb.save(temp_excel_path)
+                
+                # Convert Excel to PDF using unoconv or LibreOffice
                 try:
-                    import PyPDF2
+                    # Try using unoconv first (more reliable for sheet-specific conversion)
+                    import subprocess
                     
-                    # Open the PDF
-                    with open(pdf_path, 'rb') as file:
-                        pdf_reader = PyPDF2.PdfReader(file)
-                        pdf_writer = PyPDF2.PdfWriter()
+                    # Check if unoconv is installed
+                    try:
+                        subprocess.run(['which', 'unoconv'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         
-                        # Add only the required pages
-                        for page_num in range(min(num_pages, len(pdf_reader.pages))):
-                            pdf_writer.add_page(pdf_reader.pages[page_num])
+                        # Use unoconv for the conversion
+                        subprocess.run([
+                            'unoconv',
+                            '-f', 'pdf',
+                            '-o', pdf_path,
+                            temp_excel_path
+                        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                         
-                        # Save the new PDF
-                        with open(pdf_path + '.tmp', 'wb') as output_file:
-                            pdf_writer.write(output_file)
+                    except (subprocess.SubprocessError, FileNotFoundError):
+                        # If unoconv not available, fall back to LibreOffice
+                        logger.info("Unoconv not found, using LibreOffice directly")
+                        
+                        # Get the directory of the output file
+                        output_dir = os.path.dirname(pdf_path)
+                        output_filename = os.path.basename(pdf_path)
+                        
+                        # Convert using LibreOffice
+                        subprocess.run([
+                            'libreoffice',
+                            '--headless',
+                            '--convert-to', 'pdf',
+                            '--outdir', output_dir,
+                            temp_excel_path
+                        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        
+                        # LibreOffice will create a file with the same name but .pdf extension
+                        lo_output_pdf = os.path.splitext(temp_excel_path)[0] + '.pdf'
+                        lo_output_pdf = os.path.join(output_dir, os.path.basename(lo_output_pdf))
+                        
+                        # Rename to desired output name if necessary
+                        if os.path.exists(lo_output_pdf) and lo_output_pdf != pdf_path:
+                            os.rename(lo_output_pdf, pdf_path)
                     
-                    # Replace the original with the trimmed version
-                    os.replace(pdf_path + '.tmp', pdf_path)
-                    
-                except ImportError:
-                    logger.warning("PyPDF2 not installed. Cannot limit pages in PDF.")
+                    # For page range limitation, use PyPDF2 to extract pages
+                    if num_pages > 0 and os.path.exists(pdf_path):
+                        try:
+                            import PyPDF2
+                            
+                            # Open the PDF
+                            with open(pdf_path, 'rb') as file:
+                                pdf_reader = PyPDF2.PdfReader(file)
+                                pdf_writer = PyPDF2.PdfWriter()
+                                
+                                # Add only the required pages
+                                for page_num in range(min(num_pages, len(pdf_reader.pages))):
+                                    pdf_writer.add_page(pdf_reader.pages[page_num])
+                                
+                                # Save the new PDF
+                                with open(pdf_path + '.tmp', 'wb') as output_file:
+                                    pdf_writer.write(output_file)
+                            
+                            # Replace the original with the trimmed version
+                            os.replace(pdf_path + '.tmp', pdf_path)
+                            
+                        except ImportError:
+                            logger.warning("PyPDF2 not installed. Cannot limit pages in PDF.")
+                
+                except Exception as e:
+                    logger.error(f"Error converting with LibreOffice/unoconv: {str(e)}")
+                    raise Exception(f"Conversion failed: {str(e)}")
+                
+                finally:
+                    # Clean up temporary file
+                    if os.path.exists(temp_excel_path):
+                        os.remove(temp_excel_path)
+                
+            except Exception as e:
+                logger.error(f"Error preparing Excel file for conversion: {str(e)}")
+                raise
         
         else:
             logger.error(f"Unsupported operating system: {system}")
@@ -471,6 +502,7 @@ def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, num_labels
     except Exception as e:
         logger.error(f"Error converting Excel to PDF: {str(e)}")
         raise
+
 
 def get_room_index_from_name(room_name):
     """
@@ -490,6 +522,23 @@ def create_excel_from_template(template_path, output_path, sheet_name, room_inde
     """
     system = platform.system()
     
+    # Clean up filename - remove problematic characters
+    dir_name = os.path.dirname(output_path)
+    base_name = os.path.basename(output_path)
+    
+    # Remove extension first
+    base_name_no_ext, ext = os.path.splitext(base_name)
+    
+    # Replace all non-alphanumeric characters (except underscores and dots)
+    safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', base_name_no_ext)
+    
+    # Add timestamp and restore extension
+    safe_name = f"{safe_name}_{int(time.time())}{ext}"
+    safe_path = os.path.join(dir_name, safe_name)
+    
+    # Create directory if it doesn't exist
+    os.makedirs(dir_name, exist_ok=True)
+    
     if system == "Windows":
         # Windows implementation using win32com
         import win32com.client
@@ -500,22 +549,6 @@ def create_excel_from_template(template_path, output_path, sheet_name, room_inde
         excel = None
         
         try:
-            # Clean up filename - remove problematic characters
-            dir_name = os.path.dirname(output_path)
-            base_name = os.path.basename(output_path)
-            
-            # Remove extension first
-            base_name_no_ext, ext = os.path.splitext(base_name)
-            
-            # Replace all non-alphanumeric characters (except underscores and dots)
-            safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', base_name_no_ext)
-
-               # Add timestamp and restore extension
-            safe_name = f"{safe_name}_{int(time.time())}{ext}"
-            safe_path = os.path.join(dir_name, safe_name)
-
-            os.makedirs(dir_name, exist_ok=True)
-
             # Create Excel application object
             excel = win32com.client.Dispatch("Excel.Application")
             excel.Visible = False
@@ -537,9 +570,10 @@ def create_excel_from_template(template_path, output_path, sheet_name, room_inde
                 return False
             
             # Save to the output path
-            if ext == "xlsm":
-                workbook.SaveAs(safe_path, FileFormat=51)
-            workbook.SaveAs(safe_path)
+            if ext.lower() == ".xlsm":
+                workbook.SaveAs(safe_path, FileFormat=51)  # xlOpenXMLWorkbookMacroEnabled
+            else:
+                workbook.SaveAs(safe_path)
             workbook.Close(True)
             
             # If we saved to a different path than requested, copy the file
@@ -569,18 +603,51 @@ def create_excel_from_template(template_path, output_path, sheet_name, room_inde
             pythoncom.CoUninitialize()
     
     elif system == "Linux":
-        # Linux implementation - copy the template
-        import shutil
+        # Linux implementation with openpyxl and xlrd/xlwt or LibreOffice
         try:
-            shutil.copy2(template_path, output_path)
-            return True
+            # First attempt: use openpyxl for Excel files
+            import shutil
+            from openpyxl import load_workbook
+            
+            # First check if it's a macro-enabled file (.xlsm)
+            if template_path.lower().endswith('.xlsm'):
+                # For macro-enabled files, we need to preserve macros
+                # Copy the file and then use LibreOffice to manipulate it if needed
+                shutil.copy2(template_path, output_path)
+                
+                # If we need to make changes to specific sheets, we can use the LibreOffice API
+                # through Python-UNO bridge, but that's complex.
+                # For now, we'll just copy the file as is
+                return True
+            else:
+                # For regular Excel files, use openpyxl
+                wb = load_workbook(template_path, keep_vba=True)
+                
+                # Check if the specified sheet exists
+                if sheet_name in wb.sheetnames:
+                    # Activate the sheet
+                    wb.active = wb[sheet_name]
+                
+                # Save the workbook
+                wb.save(output_path)
+                return True
+                
         except Exception as e:
-            logger.error(f"Error copying template on Linux: {str(e)}")
-            return False
+            logger.error(f"Error with openpyxl on Linux: {str(e)}")
+            
+            # Second attempt: use shutil (simple file copy)
+            try:
+                import shutil
+                shutil.copy2(template_path, output_path)
+                return True
+            except Exception as e2:
+                logger.error(f"Error copying file on Linux: {str(e2)}")
+                return False
     
     else:
         logger.error(f"Unsupported operating system: {system}")
         return False
+
 
 def generate_room_labels_pdf(request):
     """Generate room labels PDF based on user input"""
@@ -738,26 +805,46 @@ def convert_excel_to_pdf(excel_path, pdf_path):
             logger.error(f"Error converting with Excel: {str(e)}")
             raise
     else:
-        # For Linux/Mac using LibreOffice
-        import subprocess
+        # For Linux using LibreOffice
         try:
-            # First convert to PDF with all sheets
-            temp_pdf = pdf_path.replace('.pdf', '_temp.pdf')
-            subprocess.run([
-                'libreoffice', '--headless', '--convert-to', 'pdf',
-                '--outdir', str(Path(pdf_path).parent),
-                excel_path
-            ], check=True)
+            import subprocess
             
-            # Then use pdftk to extract just the first page (ScopeCHLST sheet)
-            subprocess.run([
-                'pdftk', temp_pdf,
-                'cat', '1',  # Extract only first page
-                'output', pdf_path
-            ], check=True)
+            # Get the directory of the output file
+            output_dir = os.path.dirname(pdf_path)
             
-            # Clean up temporary file
-            os.remove(temp_pdf)
+            # Ensure the directory exists
+            os.makedirs(output_dir, exist_ok=True)
+            
+            # First try unoconv if available
+            try:
+                subprocess.run(['which', 'unoconv'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                # Use unoconv for direct conversion
+                subprocess.run([
+                    'unoconv',
+                    '-f', 'pdf',
+                    '-o', pdf_path,
+                    excel_path
+                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+            except (subprocess.SubprocessError, FileNotFoundError):
+                # Fall back to LibreOffice if unoconv not available
+                subprocess.run([
+                    'libreoffice',
+                    '--headless',
+                    '--convert-to', 'pdf',
+                    '--outdir', output_dir,
+                    excel_path
+                ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                
+                # LibreOffice will create a file with the same name but .pdf extension
+                libreoffice_output = os.path.splitext(os.path.basename(excel_path))[0] + '.pdf'
+                libreoffice_output_path = os.path.join(output_dir, libreoffice_output)
+                
+                # Rename to desired output name if necessary
+                if os.path.exists(libreoffice_output_path) and libreoffice_output_path != pdf_path:
+                    os.rename(libreoffice_output_path, pdf_path)
+                
         except Exception as e:
             logger.error(f"Error converting with LibreOffice: {str(e)}")
             raise
