@@ -11,5 +11,6 @@ urlpatterns = [
     path('logout/', views.logout_view, name='logout'),
     path('emails/', views.emails, name='emails'),
     path('labels/', views.labels, name='labels'),
-    path('encircle/', views.get_dimensions, name='get_dimensions')
+    path('encircle/', views.get_dimensions, name='get_dimensions'),
+    path('fetch_dimensions_API/<int:claim_id>/', views.fetch_dimensions_API, name='fetch_dimensions_API')
 ]

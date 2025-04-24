@@ -10,6 +10,7 @@ from django.core import serializers
 import json
 from docsAppR.models import Client
 from django.http import HttpResponse
+from django.http import JsonResponse
 from django.template.loader import render_to_string
 #from xhtml2pdf import pisa  # For xhtml2pdf
 # from weasyprint import HTML  # Uncomment if using WeasyPrint
@@ -85,8 +86,127 @@ def logout_view(request):
 
 @login_required
 def get_dimensions(request):
+    
     return render(request, 'account/encircle.html')
 
+def fetch_dimensions_API(request, claim_id):
+    import requests
+
+    try: 
+        api_key = "367382d2-0b2d-4b01-9d06-8f18fd492f5e"
+
+        url = f"https://api.encircleapp.com/v2/property_claims/{claim_id}/floor_plan_dimensions"
+    
+        headers = {"Authorization" : f"Bearer {api_key}"}
+
+        response = requests.get(url, headers=headers)
+
+        #print(response.json())
+        raw_data = response.json()
+        processed_data = process_floor_data(raw_data)
+        
+        return JsonResponse(processed_data)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+def fetch_from_encircle_api(claim_id):
+
+    return response.json()
+
+def process_floor_data(raw_data):
+    
+    result = {
+        'floors': [],
+        'summary': {
+            'totalFloors': 0,
+            'totalRooms': 0,
+            'roomsByType': {}
+        }
+    }
+    
+    # Check if we have valid data
+    if not raw_data or 'list' not in raw_data or not raw_data['list']:
+        return result
+    
+    floor_names = ['Basement', 'Main Floor', 'Second Floor', 'Third Floor', 'Attic']
+    floor_count = 0
+    room_count = 0
+    room_types = {}
+    
+    # Process each floor group
+    for floor_group in raw_data['list']:
+        if 'floors' not in floor_group:
+            continue
+        
+        # Process each floor in the group
+        for i, floor in enumerate(floor_group['floors']):
+            if 'features' not in floor:
+                continue
+                
+            floor_name = floor_names[floor_count] if floor_count < len(floor_names) else f"Floor {floor_count + 1}"
+            floor_data = {
+                'id': floor_count,
+                'name': floor_name,
+                'rooms': [],
+                'totalRooms': 0
+            }
+            
+            # Process rooms (features)
+            for feature in floor['features']:
+                if feature['type'] == 'Feature' and 'properties' in feature and 'geometry' in feature:
+                    room_name = feature['properties'].get('name', 'Unnamed Room')
+                    
+                    # Update room type counts for summary
+                    if room_name in room_types:
+                        room_types[room_name] += 1
+                    else:
+                        room_types[room_name] = 1
+                    
+                    # Calculate room area (approximate)
+                    area = calculate_polygon_area(feature['geometry']['coordinates'][0]) if feature['geometry']['type'] == 'Polygon' else 0
+                    
+                    room = {
+                        'id': room_count,
+                        'name': room_name,
+                        'ceilingHeight': feature['properties'].get('ceiling_height', 0),
+                        'area': round(area, 2),  # Area in square units
+                        'coordinates': feature['geometry']['coordinates'][0] if feature['geometry']['type'] == 'Polygon' else []
+                    }
+                    
+                    floor_data['rooms'].append(room)
+                    room_count += 1
+            
+            floor_data['totalRooms'] = len(floor_data['rooms'])
+            result['floors'].append(floor_data)
+            floor_count += 1
+    
+    # Update summary information
+    result['summary']['totalFloors'] = floor_count
+    result['summary']['totalRooms'] = room_count
+    result['summary']['roomsByType'] = room_types
+    
+    return result
+
+def calculate_polygon_area(coordinates):
+    """
+    Calculate the area of a polygon using the Shoelace formula
+    
+    Args:
+        coordinates: List of [x, y] coordinate pairs forming a polygon
+        
+    Returns:
+        float: Area of the polygon
+    """
+    n = len(coordinates)
+    area = 0.0
+    
+    for i in range(n):
+        j = (i + 1) % n
+        area += coordinates[i][0] * coordinates[j][1]
+        area -= coordinates[j][0] * coordinates[i][1]
+    
+    area = abs(area) / 2.0
+    return area
 
 @login_required
 def create(request):

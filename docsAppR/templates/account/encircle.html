@@ -1,8 +1,193 @@
 {% extends "account/base.html" %}
 {% load static %}
 
+
+{% block extra_css %}
+<style>
+    .container {
+        max-width: 1200px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .form-container {
+        margin-bottom: 30px;
+        padding: 20px;
+        background-color: #f5f5f5;
+        border-radius: 5px;
+    }
+    
+    .form-group {
+        margin-bottom: 15px;
+    }
+    
+    label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+    }
+    
+    input[type="text"] {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+    }
+    
+    button {
+        padding: 10px 15px;
+        background-color: #4CAF50;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+    }
+    
+    button:hover {
+        background-color: #45a049;
+    }
+    
+    .alert {
+        padding: 15px;
+        margin-bottom: 20px;
+        border: 1px solid transparent;
+        border-radius: 4px;
+        display: none;
+    }
+    
+    .alert-info {
+        background-color: #d9edf7;
+        border-color: #bce8f1;
+        color: #31708f;
+    }
+    
+    .alert-error {
+        background-color: #f2dede;
+        border-color: #ebccd1;
+        color: #a94442;
+    }
+    
+    .loading {
+        text-align: center;
+        padding: 20px;
+        font-style: italic;
+        color: #666;
+    }
+    
+    .no-data {
+        text-align: center;
+        padding: 20px;
+        color: #666;
+    }
+    
+    .floor-plan-container {
+        display: grid;
+        grid-template-columns: 1fr 3fr;
+        grid-template-rows: auto auto;
+        gap: 20px;
+    }
+    
+    .summary-panel {
+        grid-column: 1 / 3;
+        grid-row: 1;
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .floor-navigator {
+        grid-column: 1;
+        grid-row: 2;
+        background-color: #f9f9f9;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .floor-display {
+        grid-column: 2;
+        grid-row: 2;
+        background-color: #ffffff;
+        padding: 15px;
+        border-radius: 5px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    
+    .floor-buttons {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        margin-top: 10px;
+    }
+    
+    .floor-btn {
+        background-color: #e7e7e7;
+        color: black;
+        padding: 8px 12px;
+        text-align: center;
+    }
+    
+    .floor-btn.active {
+        background-color: #4CAF50;
+        color: white;
+    }
+    
+    .floor-visualization {
+        margin-top: 20px;
+        text-align: center;
+        background-color: #f9f9f9;
+        padding: 10px;
+        border-radius: 5px;
+    }
+    
+    .room-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    
+    .room-table th, .room-table td {
+        border: 1px solid #ddd;
+        padding: 8px;
+        text-align: left;
+    }
+    
+    .room-table th {
+        background-color: #f2f2f2;
+    }
+    
+    .room-row {
+        cursor: pointer;
+    }
+    
+    .room-row:hover {
+        background-color: #f5f5f5;
+    }
+    
+    .room-row.active {
+        background-color: #e0e0ff;
+    }
+    
+    .stat-item {
+        margin-bottom: 5px;
+    }
+    
+    .stat-label {
+        font-weight: bold;
+        margin-right: 10px;
+    }
+    
+    .room-types ul {
+        padding-left: 20px;
+        columns: 2;
+    }
+</style>
+{% endblock %}
+
 {% block content %}
 <main>
+    <div class="container">
     <h1>Encircle Room Dimensions API</h1>
     
     <div class="flex-grid">
@@ -22,32 +207,264 @@
             <pre id="api-response" style="background: #f5f5f5; padding: 15px; border-radius: 4px; max-height: 500px; overflow: auto;">No data fetched yet. Enter a claim ID and click "Fetch Dimensions".</pre>
         </div>
     </div>
+</div>
 </main>
 
 <script>
-document.getElementById('fetch-btn').addEventListener('click', function() {
-    const claimId = document.getElementById('claim-id').value.trim();
-    if (!claimId) {
-        alert('Please enter a claim ID');
+function initFloorPlanDisplay() {
+    document.getElementById('fetch-btn').addEventListener('click', function() {
+        const claimId = document.getElementById('claim-id').value.trim();
+        if (!claimId) {
+            showAlert('Please enter a claim ID', 'error');
+            return;
+        }
+        
+        const responseElement = document.getElementById('api-response');
+        responseElement.innerHTML = '<div class="loading">Fetching data...</div>';
+        
+        fetch(`/fetch_dimensions_API/${claimId}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.error) {
+                    showAlert(data.error, 'error');
+                    responseElement.innerHTML = '';
+                    return;
+                }
+                console.log(data);
+                // Display formatted data
+                displayFloorPlanData(data, responseElement);
+            })
+            .catch(error => {
+                showAlert(`Error: ${error.message}`, 'error');
+                responseElement.innerHTML = '';
+            });
+    });
+}
+
+// Show alert message
+function showAlert(message, type = 'info') {
+    const alertElement = document.getElementById('alert-message') || createAlertElement();
+    alertElement.textContent = message;
+    alertElement.className = `alert alert-${type}`;
+    alertElement.style.display = 'block';
+    
+    // Hide after 5 seconds
+    setTimeout(() => {
+        alertElement.style.display = 'none';
+    }, 5000);
+}
+
+// Create alert element if it doesn't exist
+function createAlertElement() {
+    const alertElement = document.createElement('div');
+    alertElement.id = 'alert-message';
+    alertElement.className = 'alert';
+    document.querySelector('.container').prepend(alertElement);
+    return alertElement;
+}
+
+// Display floor plan data
+function displayFloorPlanData(data, containerElement) {
+    if (!data.floors || data.floors.length === 0) {
+        containerElement.innerHTML = '<div class="no-data">No floor plan data available</div>';
         return;
     }
     
-    const responseElement = document.getElementById('api-response');
-    responseElement.textContent = 'Fetching data...';
+    // Create container for the floor plan display
+    containerElement.innerHTML = `
+        <div class="floor-plan-container">
+            <div class="summary-panel">
+                <h3>Property Summary</h3>
+                <div class="summary-stats">
+                    <div class="stat-item">
+                        <span class="stat-label">Total Floors:</span>
+                        <span class="stat-value">${data.summary.totalFloors}</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-label">Total Rooms:</span>
+                        <span class="stat-value">${data.summary.totalRooms}</span>
+                    </div>
+                </div>
+                <div class="room-types">
+                    <h4>Room Types:</h4>
+                    <ul>
+                        ${Object.entries(data.summary.roomsByType)
+                            .sort((a, b) => b[1] - a[1])
+                            .map(([type, count]) => `<li>${type}: ${count}</li>`)
+                            .join('')}
+                    </ul>
+                </div>
+            </div>
+            
+            <div class="floor-navigator">
+                <h3>Select Floor</h3>
+                <div class="floor-buttons">
+                    ${data.floors.map((floor, index) => `
+                        <button class="floor-btn" data-floor="${floor.id}">
+                            ${floor.name}
+                        </button>
+                    `).join('')}
+                </div>
+            </div>
+            
+            <div class="floor-display">
+                <div class="floor-info"></div>
+                <div class="floor-visualization"></div>
+                <div class="room-list-container"></div>
+            </div>
+        </div>
+    `;
     
-    fetch(`/get_dimensions?claim_id=${claimId}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`HTTP error! status: ${response.status}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            responseElement.textContent = JSON.stringify(data, null, 2);
-        })
-        .catch(error => {
-            responseElement.textContent = `Error: ${error.message}`;
+    // Store the floor data for later use
+    containerElement.dataset.floorData = JSON.stringify(data);
+    
+    // Add event listeners to floor buttons
+    const floorButtons = containerElement.querySelectorAll('.floor-btn');
+    floorButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const floorId = parseInt(this.dataset.floor);
+            displayFloorDetails(data, floorId, containerElement);
+            
+            // Update active button
+            floorButtons.forEach(btn => btn.classList.remove('active'));
+            this.classList.add('active');
         });
-});
+    });
+    
+    // Display the first floor by default
+    if (floorButtons.length > 0) {
+        floorButtons[0].click();
+    }
+}
+
+// Display details for a specific floor
+function displayFloorDetails(data, floorId, containerElement) {
+    const floor = data.floors.find(f => f.id === floorId);
+    if (!floor) return;
+    
+    // Update floor info
+    const floorInfoElement = containerElement.querySelector('.floor-info');
+    floorInfoElement.innerHTML = `
+        <h3>${floor.name}</h3>
+        <p>Total Rooms: ${floor.totalRooms}</p>
+    `;
+    
+    // Display floor visualization (simplified box model)
+    const visualizationElement = containerElement.querySelector('.floor-visualization');
+    visualizationElement.innerHTML = renderFloorVisualization(floor);
+    
+    // Show room list
+    const roomListElement = containerElement.querySelector('.room-list-container');
+    roomListElement.innerHTML = `
+        <h4>Rooms</h4>
+        <table class="room-table">
+            <thead>
+                <tr>
+                    <th>Room</th>
+                    <th>Ceiling Height</th>
+                    <th>Area</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${floor.rooms.map(room => `
+                    <tr class="room-row" data-room-id="${room.id}">
+                        <td>${room.name}</td>
+                        <td>${room.ceilingHeight}</td>
+                        <td>${room.area.toFixed(2)} sq.ft</td>
+                    </tr>
+                `).join('')}
+            </tbody>
+        </table>
+    `;
+    
+    // Add event listeners to room rows
+    const roomRows = roomListElement.querySelectorAll('.room-row');
+    roomRows.forEach(row => {
+        row.addEventListener('click', function() {
+            const roomId = parseInt(this.dataset.roomId);
+            highlightRoom(roomId, containerElement);
+            
+            // Toggle active state
+            roomRows.forEach(r => r.classList.remove('active'));
+            this.classList.add('active');
+        });
+    });
+}
+
+// Render a simplified visualization of the floor
+function renderFloorVisualization(floor) {
+    const canvasWidth = 500;
+    const canvasHeight = 400;
+    const padding = 20;
+    
+    // Find the bounds of all coordinates
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    
+    floor.rooms.forEach(room => {
+        room.coordinates.forEach(coord => {
+            minX = Math.min(minX, coord[0]);
+            minY = Math.min(minY, coord[1]);
+            maxX = Math.max(maxX, coord[0]);
+            maxY = Math.max(maxY, coord[1]);
+        });
+    });
+    
+    // Calculate the scale factor
+    const rangeX = maxX - minX;
+    const rangeY = maxY - minY;
+    const scaleX = (canvasWidth - 2 * padding) / rangeX;
+    const scaleY = (canvasHeight - 2 * padding) / rangeY;
+    const scale = Math.min(scaleX, scaleY);
+    
+    // Create the SVG element
+    let svg = `<svg width="${canvasWidth}" height="${canvasHeight}" xmlns="http://www.w3.org/2000/svg">`;
+    
+    // Add each room as a polygon
+    floor.rooms.forEach(room => {
+        const points = room.coordinates.map(coord => {
+            const x = (coord[0] - minX) * scale + padding;
+            const y = (coord[1] - minY) * scale + padding;
+            return `${x},${y}`;
+        }).join(' ');
+        
+        svg += `<polygon class="room-shape" data-room-id="${room.id}" points="${points}" 
+                 fill="#e0e0ff" stroke="#333" stroke-width="1" />`;
+                 
+        // Add room label at the center
+        if (room.coordinates.length > 0) {
+            const centerX = room.coordinates.reduce((sum, coord) => sum + coord[0], 0) / room.coordinates.length;
+            const centerY = room.coordinates.reduce((sum, coord) => sum + coord[1], 0) / room.coordinates.length;
+            
+            const labelX = (centerX - minX) * scale + padding;
+            const labelY = (centerY - minY) * scale + padding;
+            
+            svg += `<text x="${labelX}" y="${labelY}" font-size="10" text-anchor="middle" fill="#333">${room.name}</text>`;
+        }
+    });
+    
+    svg += '</svg>';
+    return svg;
+}
+
+// Highlight a specific room
+function highlightRoom(roomId, containerElement) {
+    // Remove previous highlights
+    const shapes = containerElement.querySelectorAll('.room-shape');
+    shapes.forEach(shape => shape.setAttribute('fill', '#e0e0ff'));
+    
+    // Highlight the selected room
+    const selectedShape = containerElement.querySelector(`.room-shape[data-room-id="${roomId}"]`);
+    if (selectedShape) {
+        selectedShape.setAttribute('fill', '#ffcc66');
+    }
+}
+
+// Initialize the display when the DOM is loaded
+document.addEventListener('DOMContentLoaded', initFloorPlanDisplay);
 </script>
 {% endblock %}
