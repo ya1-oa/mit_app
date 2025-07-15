@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rental Agreement</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            margin: 40px;
+        }
+        .document-header {
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .document-header h1 {
+            font-size: 24px;
+            margin-bottom: 10px;
+        }
+        .section {
+            margin-bottom: 25px;
+        }
+        .section-title {
+            font-weight: bold;
+            font-size: 18px;
+            border-bottom: 1px solid #000;
+            margin-bottom: 10px;
+            padding-bottom: 5px;
+        }
+        .two-column {
+            display: flex;
+            justify-content: space-between;
+        }
+        .column {
+            width: 48%;
+        }
+        .signature-block {
+            margin-top: 50px;
+        }
+        .signature-line {
+            border-top: 1px solid #000;
+            width: 300px;
+            margin-top: 40px;
+        }
+        .total-amount {
+            font-weight: bold;
+            font-size: 18px;
+        }
+    </style>
+</head>
+<body>
+    <div class="document-header">
+        <h1>TERM SHEET</h1>
+    </div>
+
+    <div class="section">
+        <div class="section-title">RENTAL PROPERTY:</div>
+        <p>{{ landlord.property_type }}</p>
+        <p>{{ landlord.address }}</p>
+        <p>{{ landlord.city_state_zip }}</p>
+    </div>
+
+    <div class="two-column">
+        <div class="column">
+            <div class="section">
+                <div class="section-title">LANDLORD:</div>
+                <p>{{ landlord.full_name }}</p>
+                <p>{{ landlord.address }}</p>
+                <p>{{ landlord.city_state_zip }}</p>
+                <p>Phone: {{ landlord.phone }}</p>
+                <p>Email: {{ landlord.email }}</p>
+            </div>
+        </div>
+        <div class="column">
+            <div class="section">
+                <div class="section-title">RENTER:</div>
+                <p>{{ client.pOwner }}</p>
+                <p>{{ client.address }}</p>
+                <p>{{ client.city_state_zip }}</p>
+                <p>Phone: {{ client.phone }}</p>
+                <p>Email: {{ client.email }}</p>
+            </div>
+        </div>
+    </div>
+
+    <div class="section">
+        <div class="section-title">RENTAL TERMS:</div>
+        <p>{{ rental_terms.duration }} &amp; Security Deposit</p>
+        <p>${{ rental_terms.monthly_rent|floatformat:2 }} x {{ rental_terms.months }} = ${{ rental_terms.subtotal|floatformat:2 }} plus (1) month Security Deposit ${{ rental_terms.security_deposit|floatformat:2 }} = ${{ rental_terms.subtotal_plus_deposit|floatformat:2 }}</p>
+        <p>{{ rental_terms.management_company }}: ${{ rental_terms.management_fee|floatformat:2 }}</p>
+        <p>{{ rental_terms.management_company }}: Final Inspection &amp; Clean-up: ${{ rental_terms.inspection_fee|floatformat:2 }}</p>
+        <p class="total-amount">TOTAL AMOUNT DUE: ${{ rental_terms.total_amount|floatformat:2 }}</p>
+    </div>
+
+    <div class="section">
+        <div class="section-title">ADDITIONAL TERMS:</div>
+        <p>{{ additional_terms|linebreaks }}</p>
+    </div>
+
+    <div class="two-column">
+        <div class="column">
+            <div class="signature-block">
+                <p>LANDLORD SIGNATURE:</p>
+                <div class="signature-line"></div>
+                <p>Date: ___________________</p>
+            </div>
+        </div>
+        <div class="column">
+            <div class="signature-block">
+                <p>RENTER SIGNATURE:</p>
+                <div class="signature-line"></div>
+                <p>Date: ___________________</p>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

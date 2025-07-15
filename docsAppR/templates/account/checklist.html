@@ -1,0 +1,245 @@
+{% extends "account/base.html" %}
+{% load static %}
+{% block content %}
+<main>
+    <div class="min-h-screen bg-gray-50 p-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="flex items-center gap-3 mb-8">
+                <h1 class="text-2xl font-bold text-gray-800">Room Inspector</h1>
+            </div>
+
+            <!-- Claim Selection Form -->
+            <form method="get" class="bg-white rounded-lg shadow-lg p-6">
+                <div class="mb-6">
+                    <label for="claim-select" class="block text-sm font-medium text-gray-700 mb-2">
+                        Select Claim
+                    </label>
+                    <select
+                        id="claim-select"
+                        name="claim"
+                        class="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        onchange="this.form.submit()"
+                    >
+                        <option value="">Select a claim...</option>
+                        {% for claim in claims %}
+                            <option value="{{ claim.pOwner }}" {% if selected_claim_id == claim.pOwner|stringformat:"s" %}selected{% endif %}>
+                                {{ claim.pOwner }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+
+            <!-- Room Inspection Form -->
+            <form method="post" id="room-inspection-form" class="bg-white rounded-lg shadow-lg p-6">
+                {% csrf_token %}
+                <!-- Room Selection -->
+                <div class="mb-8">
+                    <label for="room-select" class="block text-sm font-medium text-gray-700 mb-2">
+                        Select Room
+                    </label>
+                    <select
+                        id="room-select"
+                        name="room"
+                        class="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                        <option value="">{% if rooms %}Select a room...{% else %}Select a claim first...{% endif %}</option>
+                        {% for room in rooms %}
+                            <option value="{{ room.name }}">{{ room.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <!-- Dropdowns Grid -->
+                <div id="form-inputs-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                    {% for label in labels %}
+                    <div class="space-y-2">
+                        <label class="block text-sm font-medium text-gray-700">
+                            {{ label|cut:"-1"|cut:"-2" }}
+                        </label>
+                        <div class="relative">
+                            <input
+                                type="text"
+                                list="{{ label|lower }}-options"
+                                name="{{ label|lower }}"
+                                class="form-input w-full px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                placeholder="Select or type..."
+                            >
+                            <datalist id="{{ label|lower }}-options">
+                                <option value="Option 1">
+                                <option value="Option 2">
+                                <option value="Option 3">
+                                <option value="TBD">
+                                <option value="NA">
+                            </datalist>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Hidden claim field -->
+                <input type="hidden" name="claim" value="{{ selected_claim_id }}">
+
+                <!-- Submit Button -->
+                <div class="mt-8">
+                    <button 
+                        type="submit"
+                        class="w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                    >
+                        Submit Room Inspection
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+    let roomData = {};
+    let currentRoom = '';
+    let formChanged = false;
+
+    const roomSelect = document.getElementById('room-select');
+    const roomInspectionForm = document.getElementById('room-inspection-form');
+    const formInputs = document.querySelectorAll('#form-inputs-container .form-input');
+
+
+    function saveCurrentFormData() {
+        if (!currentRoom) return;
+
+        const formData = {};
+        formInputs.forEach(input => {
+            formData[input.name] = input.value;
+        });
+        roomData[currentRoom] = formData;
+    }
+
+     function loadFormData(roomId) {
+        formInputs.forEach(input => {
+            input.value = roomData[roomId]?.[input.name] || '';
+        });
+    }
+
+    function clearForm() {
+        formInputs.forEach(input => {
+            input.value = '';
+        });
+    }
+
+ // Room selection change event
+ roomSelect.addEventListener('change', function(e) {
+        if (formChanged && currentRoom) {
+            saveCurrentFormData();
+        }
+
+        currentRoom = e.target.value;
+        if (currentRoom) {
+            loadFormData(currentRoom);
+        } else {
+            clearForm();
+        }
+        formChanged = false;
+    });
+
+    formInputs.forEach(input => {
+        input.addEventListener('input', function() {
+            formChanged = true;
+        });
+    });
+
+    roomInspectionForm.addEventListener('submit', async function(e) {
+    e.preventDefault();
+    
+    // Save current room data
+    saveCurrentFormData();
+    
+    // Show loading indicator
+    const submitButton = this.querySelector('button[type="submit"]');
+    submitButton.disabled = true;
+    submitButton.innerHTML = 'Generating PDF...';
+    
+    const loadingDiv = document.createElement('div');
+    loadingDiv.className = 'loading-indicator';
+    loadingDiv.innerHTML = 'Converting file, please wait...';
+    submitButton.parentNode.insertBefore(loadingDiv, submitButton.nextSibling);
+
+    try {
+        // Create the complete submission object
+        const formData = new FormData();
+        
+        // Add claim ID
+        const claimId = document.querySelector('input[name="claim"]').value;
+        formData.append('claim', claimId);
+        
+        // Add all room data as a JSON string
+        formData.append('rooms_data', JSON.stringify(roomData));
+        
+        // Add CSRF token
+        formData.append('csrfmiddlewaretoken', document.querySelector('[name="csrfmiddlewaretoken"]').value);
+        
+        // Submit the form data
+        const response = await fetch(this.action, {
+            method: 'POST',
+            body: formData
+        });
+
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        
+        // Handle PDF response
+        const contentType = response.headers.get('content-type');
+        if (contentType && contentType.includes('application/pdf')) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            window.open(url);
+        }
+        
+        // Clear stored data after successful submission
+        roomData = {};
+        clearForm();
+        
+        // Reset button state
+        submitButton.disabled = false;
+        submitButton.innerHTML = 'Submit Room Inspection';
+        loadingDiv.remove();
+        
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error submitting form data. Please try again.');
+        submitButton.disabled = false;
+        submitButton.innerHTML = 'Submit Room Inspection';
+        loadingDiv.remove();
+    }
+    });
+
+    let autoSaveTimeout;
+    formInputs.forEach(input => {
+        input.addEventListener('input', function() {
+            clearTimeout(autoSaveTimeout);
+            autoSaveTimeout = setTimeout(() => {
+                saveCurrentFormData();
+
+                const saveIndicator = document.createElement('div');
+                saveIndicator.className = 'fixed bottom-4 right-4 bg-green-500 text-white px-4 py-2 rounded-lg z-50';
+                saveIndicator.textContent = 'Progress saved';
+                document.body.appendChild(saveIndicator);
+                setTimeout(() => saveIndicator.remove(), 2000);
+            }, 1000);
+        });
+    });
+
+    </script>
+
+    <style>
+    .loading-indicator {
+        margin-top: 10px;
+        padding: 10px;
+        background: #fff3cd;
+        border: 1px solid #ffeeba;
+        border-radius: 4px;
+        text-align: center;
+    }
+    </style>
+</main> 
+{% endblock %}

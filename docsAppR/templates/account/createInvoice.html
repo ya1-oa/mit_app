@@ -1,0 +1,2329 @@
+{{ client }}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Invoice</title>
+    <style type="text/css">
+        body {
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+        }
+        .container {
+            width: 80%;
+            margin: auto;
+            padding: 20px;
+            border: 1px solid #000;
+        }
+        .header, .subheader {
+            text-align: center;
+            font-weight: bold;
+            margin-bottom: 20px;
+        }
+        .flex-container {
+            display: flex;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .flex-item {
+            flex: 1 1 45%;
+            margin: 5px;
+        }
+        .section-title {
+            font-weight: bold;
+            text-decoration: underline;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        .field-label {
+            font-weight: bold;
+        }
+        .field {
+            margin-bottom: 5px;
+        }
+        .flex-container-middle {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        .section-title-middle {
+            display: flex;
+            font-weight: bold;
+            text-decoration: underline;
+            justify-content: center;
+            margin-top: 20px;
+            margin-bottom: 10px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 8px;
+            text-align: left;
+            border: 1px solid #ddd;
+        }
+        th, .category-header td {
+            background-color: #f2f2f2;
+            font-weight: bold;
+        }
+        .category-header td {
+            text-align: center;
+        }
+        /* Fixed widths for each column across all tables */
+        td:first-child, th:first-child { width: 20%; } /* Adjust percentage widths as needed */
+        td:nth-child(2), th:nth-child(2) { width: 35%; }
+        td:nth-child(3), th:nth-child(3) { width: 15%; }
+        td:nth-child(4), th:nth-child(4) { width: 10%; }
+        td:nth-child(5), th:nth-child(5) { width: 10%; }
+        td:nth-child(6), th:nth-child(6) { width: 10%; }
+
+        /* Bold rows */
+        .total-row, .subtotal-row, .tax-row {
+            font-weight: bold;
+        }
+        .category-header {
+            font-weight: bold;
+            font-size: 1.2em;
+            background-color: #e0e0e0;
+        }
+        .underlined {
+            text-decoration: underline;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>INVOICE per CONTENTS PACKOUT & STORAGE; PERSONAL PROPERTY HANDLING</h1>
+            <h2>All Phase Consulting, LLC</h2>
+        </div>
+
+        <div class="subheader">
+            <p><a href="http://www.myapcllc.com">WWW.MYAPCLLC.COM</a> | Insured & GA Registered #09073201</p>
+        </div>
+
+        <div class="flex-container">
+            <div class="flex-item">
+                <div class="field"><p> Five Generations of Great Work </p></div>
+            </div>
+            <div class="flex-item">
+                <div class="field"><p> Five Generations of Pride & Skills </p></div>
+            </div>
+        </div>
+
+        <div class="flex-container">
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Main Address:</span> 20810 Aurora Rd, Bedford, OH 44146</div>
+                <div class="field"><span class="field-label">EIN #:</span> TIN 83-226 0563</div>
+            </div>
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Office:</span> 375 Rockbridge Road, Suite 172-343, Lilburn, GA 30047</div>
+                <div class="field"><span class="field-label">Secondary Office:</span> ECI 531 FIFTH AVE, Pelham, NY 10803</div>
+            </div>
+        </div>
+
+        <div class="section-title">Contact Information</div>
+        <div class="flex-container">
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Company Rep.:</span> Joe Jones | 216.450.7228</div>
+                <div class="field"><span class="field-label">Email:</span> <a href="mailto:wsbjoe9@gmail.com">wsbjoe9@gmail.com</a></div>
+            </div>
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Company Rep. #2:</span> 404-446-9060</div>
+                <div class="field"><span class="field-label">Email:</span> <a href="mailto:info@myapcllc.com">info@myapcllc.com</a></div>
+            </div>
+        </div>
+
+        <div class="section-title">Claim Information</div>
+        <div class="flex-container">
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Claim #:</span> 3570V537Z</div>
+                <div class="field"><span class="field-label">Cause of Loss:</span> Water</div>
+                <div class="field"><span class="field-label">Cst-owner Phone# :</span> (216)-624-9774</div>
+                <div class="field"><span class="field-label">Customer Email :</span>  LJ53089@YAHOO.COM </div>
+            </div>
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Policy #:</span> 70 CJ 385 L3</div>
+                <div class="field"><span class="field-label">Insurance Company:</span> State Farm Ins</div>
+                <div class="field"><span class="field-label">Property-Owner Name:</span>  HICKS, JASON</div>
+                <div class="field"><span class="field-label">Property-Address Street:</span> 5630 Turney Road</div>
+                <div class="field"><span class="field-label">Property city, state, zip:</span>  Garfield Heights, OH, 44125</div>
+            </div>
+        </div>
+
+        <div class="section-title">Adjuster Information</div>
+        <div class="flex-container">
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Desk Adjuster DA:</span> TBD</div>
+                <div class="field"><span class="field-label">DA Phone:</span> TBD</div>
+                <div class="field"><span class="field-label">DA Ph. Ext. #:</span> TBD</div>
+                <div class="field"><span class="field-label">DA Email:</span> TBD</div>
+            </div>
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Field Adjuster Name:</span> TBD</div>
+                <div class="field"><span class="field-label">Field Adjuster Email:</span> TBD</div>
+                <div class="field"><span class="field-label">Phone # Field Adj.:</span> TBD</div>
+            </div>
+        </div>
+
+        <div class="section-title">Property Owner Information</div>
+        <div class="flex-container">
+            <div class="flex-item">
+                <div class="field"><span class="field-label">Owner Name:</span>{{ client.pOwner }}</div>
+                <div class="field"><span class="field-label">Property Address:</span> {{ client.pAddress }}</div>
+            </div>
+            <div class="flex-item">
+                <div class="field"><span class="field-label">City, State, Zip:</span> Garfield Heights, OH, 44125</div>
+                <div class="field"><span class="field-label">Customer Email:</span> <a href="mailto:LJ53089@YAHOO.COM">{{ client.cEmail }}</a></div>
+                <div class="field"><span class="field-label">Customer Phone #:</span>{{ client.cPhone }}</div>
+            </div>
+        </div>
+
+        <div class="section-title">
+                <p><strong>Enclosed is an estimate of repair to your property that you may use to submit to your insurer.</strong></p>
+                <p>We are offering Project Management Services, construction consulting, repair or reconstruction services; which may include emergency, tarp installation/mitigation services, damage estimating, cost analysis, written estimates, consulting with customer, insurance adjuster, and or roofing inspector and site visits.</p>
+                
+                <p class="highlight">YOU MAY PERFORM THE SERVICES WE ARE OFFERING ON YOUR OWN. USE OF OUR SERVICES IS OPTIONAL!! BY CHOOSING TO USE OUR SERVICES YOU AGREE TO THE TERMS AND FEES WE CHARGE.</p>
+                
+                <p>In our opinion, the damage is from a storm or other incident normally covered by insurance. We will be present when the insurance adjuster inspects the damage; we may answer questions and discuss the estimates and other technical information with an insurer or its adjuster.</p>
+                
+                <h4>Subcontractors:</h4>
+                <p>The work may be performed by qualified subcontractors whom we may contract with or put you in contact with.</p>
+                
+                <h4>Scope of Work:</h4>
+                <p>Based on our experience, we have made every effort to detail all visible damages and to estimate the most comprehensive and professional methods which are "usual and customary" to restore your property. Work components and processes are from utilizing industry-wide estimating software programs as our base model. Our experience has been that most insurers are very willing to restore your property to the highest industry standards and will normally provide a list detailing why particular items may not be covered or an acceptable alternative repair method.</p>
+                
+                <h4>Pricing:</h4>
+                <p>Pricing is industry-wide standard pricing adjusted for your area, which is "usual and customary" and represents the "reasonable cost" of repairs or replacement with similar construction.</p>
+                
+                <p>One of the primary estimating softwares that we also use is Xactmate/Xactware/Verisk. XACT ware is an independent, third-party company that researches and reports on industry pricing. "We use pricing information from general contractors, subcontractors, insurance carriers, insurance adjusters, and a host of other industry professionals as we research and report on the average market price for each price-list item."</p>
+                
+                <div class="section-title">
+                    Work components and processes are from utilizing industry wide estimating software programs as our base model.
+                </div>
+                <div class="section-title">
+                    <div class="field">Also incorporated are adaptations from the following industry sources:</div>
+                </div>
+                <div class="flex-container">
+                    <div class="flex-item">
+                        <div class="field">Construction Specifications Institute CSI format... </div>
+                        <div class="field">American Institute of Architects AIA details</div>
+                        <div class="field">RS Means Construction Cast Data</div>
+                        <div class="field">Federal OSHA Construction  & Safety Standards</div>
+                    </div>
+                    <div class="flex-item">
+                        <div class="field">ASTM International Standards,</div>
+                        <div class="field">Local and National Major Building Codes</div>
+                        <div class="field">Recognized Trade Customs</div>
+                        <div class="field">Industry Standards</div>
+                        <div class="field">Manufacturers Specifications</div>
+                    </div>
+                </div>
+                <h4>Insurance Coverage:</h4>
+                <p>Insurance coverage will be dependent on your particular policy. We are not Public Adjusters nor Attorneys and you may need their services to help determine coverage. We can't guarantee that the scope of work noted by us is necessarily covered by your particular situation.</p>
+                
+                <p class="highlight">"We are neither Public Adjusters nor Attorneys. We provide information ONLY. Nothing herein shall be considered legal advice. You may wish to consult with a public adjuster or an attorney if you deem that there is a need for one in your situation."</p>  
+        </div>
+        
+        
+
+        <div class="section-title">Insurance Coverage: will be dependent on your particular policy</div>
+        <div class="flex-container">
+            <div class="flex-item">
+                We are not Public Adjusters nor Attorneys and you may need their services to help determine coverage.
+            </div>
+            <div class="flex-item">
+                We can't guarantee that the scope of work noted by us is necessarily covered by your particular situation. 					
+            </div>
+        </div>
+        
+        <div class="section-title">
+            We are neither Public Adjusters nor Attorneys
+        </div>
+        <div class="flex-container">
+            We provide information ONLY. Nothing herein shall be considered legal advice. You may wish to consult with a public adjuster or an attorney; if you so deem that there is a need for one in your situation.
+        </div>
+        <div class="section-title">
+            Payments:
+        </div>
+        <div class="flex-container">
+            <div class="flex-item">Issuance, payment and acceptance of payment are without prejudice to any rights of the Owner or Contractor under the terms of this agreement.</div>
+        </div>
+        <div class="flex-container">
+            <div class="flex-item">The final settled amount is payable only to the Contractor named herein.</div>
+        </div>
+        <div class="section-title">Thank You for your business and entrusting us with your personal property!!!!</div>
+
+        <div class="section-title-middle"><h3>JOB/WORK DETAILS BREIF</h4></div>
+        <div class="flex-container-middle">
+            A)  SUPPLIES ;BOXES, TAPE, LABELS, ETC.
+        </div>
+        <div class="flex-container-middle">
+            B)  Allowance for evaluation & packing only
+        </div>
+        <div class="flex-container-middle">
+            C)  Allowance to wipe down, vacuum, air dust.
+        </div>
+        <div class="flex-container-middle">
+            D)  Allowance for moving labor INTO storage
+        </div>
+        <div class="flex-container-middle">
+            E) Moving Allowance; FROM storage back to property
+        </div>
+        <div class="flex-container-middle">
+            F) Include RESET to original place, UNPACKING
+        </div>
+        <div class="flex-container-middle">
+            G) DEMO packing materials, Bag, haul trash to dump.
+        </div>
+        <div class="flex-container-middle">
+            H)  Allowance for Administrative labor hours
+        </div>
+        <div class="flex-container-middle">
+            I)  Lead Technician
+        </div>
+
+        <!-- JOB/WORK DETAILS EXPANDED NOTES -->
+        <table>
+            <tr class="category-header">
+                <td colspan="2">JOB/WORK DETAILS EXPANDED NOTES</td>
+            </tr>
+            <tr>
+                <td>A] SUPPLIES ;BOXES, TAPE, LABELS, ETC.</td>
+                <td>Includes box, packaging tape, and packing paper.</td>
+            </tr>
+            <tr>
+                <td>B) Allowance for evaluation & packing only</td>
+                <td>Labor to evaluate, pack, and inventory items on a per box basis.</td>
+            </tr>
+            <tr>
+                <td>C) Allowance for moving labor INTO storage</td>
+                <td>
+                    <ol>
+                        <li>Transport to Moving Truck</li>
+                        <li>Load onto Moving Truck</li>
+                        <li>Travel Time to Storage Unit</li>
+                        <li>Unload from Moving Truck</li>
+                        <li>Transport to Storage Unit</li>
+                        <li>Stage Into Storage Unit</li>
+                    </ol>
+                </td>
+            </tr>
+            <tr>
+                <td>D) Allowance to wipe down, vacuum, air dust.</td>
+                <td></td>
+            </tr>
+            <tr>
+                <td>E) Moving Allowance; FROM storage back to property</td>
+                <td>
+                    <ol>
+                        <li>Travel Time to Storage Unit</li>
+                        <li>Transport from Storage Unit</li>
+                        <li>Load onto Moving Truck</li>
+                        <li>Travel Time from Storage Unit to Property</li>
+                        <li>Unload from Moving Truck</li>
+                        <li>Stage Into Property</li>
+                    </ol>
+                </td>
+            </tr>
+            <tr>
+                <td>F) Include RESET to original place, UNPACKING</td>
+                <td>
+                    <ol>
+                        <li>REVIEW/CONSULT ORIGINAL PACKOUT LIST</li>
+                        <li>Determine original location of contents</li>
+                        <li>Confirm reset location with owners</li>
+                        <li>Return/Place contents back to original location.</li>
+                    </ol>
+                </td>
+            </tr>
+
+        <!-- G) Allowance for; DMO -->
+            <tr>
+                <td>G) Allowance for DMO</td>
+                <td>
+                    <ol>
+                        <li>Remove packing materials & bag</li>
+                        <li>Haul to dumpster</li>
+                        <li>Remove from jobsite</li>
+                        <li>Perform final cleaning of property</li>
+                    </ol>
+                </td>
+            </tr>
+
+        <!-- H) Allowance for Administrative labor hours -->
+            <tr>
+                <td>H) Allowance for Administrative labor hours</td>
+                <td>
+                    <ul>
+                        <li>1) DOCUMENTATION MANAGEMENT</li>
+                        <li>A) Posting of items into computer database</li>
+                        <li>B) Tracking all job processes</li>
+                        <li>C) Docs prep by SUBS</li>
+                        <ul>
+                            <li>1. Quickview / CPS Overview</li>
+                            <li>2. Manage handwritten list of contents</li>
+                        </ul>
+                        <li>E) Manage and Provide photo documentation</li>
+                        <li>F) Generate</li>
+                        <ul>
+                            <li>1. Management Reports per Project Verification</li>
+                            <li>2. Invoices/Estimates</li>
+                            <li>3. Emails to involved parties</li>
+                        </ul>
+                        <li>2) INVENTORY of CPS Supplies</li>
+                        <ul>
+                            <li>A) Verify Equipment/Supplies are stocked</li>
+                            <li>B) Order Equipment/Supplies as needed</li>
+                            <li>C) Order Equipment/Supplies per current job as needed</li>
+                            <li>D) Pick up Equipment/Supplies order at supply store as needed</li>
+                            <li>E) Deliver Equipment/Supplies to jobsite</li>
+                        </ul>
+                    </ul>
+                </td>
+            </tr>
+
+        <!-- I) Lead Technician -->
+            <tr>
+                <td>I) Lead Technician</td>
+                <td>
+                    <ol>
+                        <li>Maintain and direct the job in accordance with business requirements</li>
+                        <li>Develop and monitor equipment, schedules and delegate duties to junior technicians</li>
+                        <li>Makes decisions and solves problems, monitors processes and materials</li>
+                        <li>Evaluates information to ensure conformity to industry standards</li>
+                    </ol>
+                    <p>A lead technician must have good vision, effective communication skills, and deductive reasoning ability. Be able to perform tasks competently, use inspection tools and equipment, as well as analytical software.</p>
+                </td>
+            </tr>
+        </table>
+
+
+        <table>
+            <tr class="category-header">
+                <td colspan="5">Summary</td>
+            </tr>
+            <tr>
+                <td colspan="2">Line Item Total</td>
+                <td>$45,911.64</td>
+            </tr>
+            <tr>
+                <td colspan="1">SALES TAX</td>
+                <td>8%</td>
+                <td>$3,672.93</td>
+            </tr>
+            <tr>
+                <td colspan="2">SUB TOTAL</td>
+                <td>$49,584.57</td>
+            </tr>
+            <tr>
+                <td colspan="1">CONTRACTOR OVERHEAD</td>
+                <td>10%</td>
+                <td>$4,958.46</td>
+            </tr>
+            <tr>
+                <td colspan="1">CONTRACTOR PROFIT</td>
+                <td>10%</td>
+                <td>$4,958.46</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="2">Net Claim</td>
+                <td>$54,543.03</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="2">BOX TYPE RECAP</td>
+            </tr>
+            <tr>
+                <td>CPS Contents Evaluation, Packing & Storage</td>
+                <td>$-</td>
+            </tr>
+            <tr>
+                <td>SMALL BOXES TOTAL COUNT</td>
+                <td>$6,222.55</td>
+            </tr>
+            <tr>
+                <td>MEDIUM TOTAL BOX COUNT</td>
+                <td>$14,935.80</td>
+            </tr>
+            <tr>
+                <td>MEDIUM TOTAL BOX COUNT</td>
+                <td>$2,763.73</td>
+            </tr>
+            <tr>
+                <td>LARGE TOTAL BOX COUNT</td>
+                <td>$329.00</td>
+            </tr>
+            <tr>
+                <td>WARDROBE BOX COUNT LG</td>
+                <td>$184.55</td>
+            </tr>
+            <tr>
+                <td>LAMP BOX COUNT</td>
+                <td>$145.62</td>
+            </tr>
+            <tr>
+                <td>PICTURE/MIRROR BOX COUNT</td>
+                <td>$3,026.23</td>
+            </tr>
+            <tr>
+                <td>WARDROBE BOX COUNT</td>
+                <td>$874.17</td>
+            </tr>
+            <tr>
+                <td>MATTRESS BOX COUNT</td>
+                <td>$471.53</td>
+            </tr>
+            <tr>
+                <td>DISH PACK BOX</td>
+                <td>$167.99</td>
+            </tr>
+            <tr>
+                <td>GLASSPACK BOX COUNT</td>
+                <td>$189.24</td>
+            </tr>
+            <tr>
+                <td>POTS & PANS BOX</td>
+                <td>$213.21</td>
+            </tr>
+            <tr>
+                <td>CDC SOFT GARMENT CLEANING PER ITEM</td>
+                <td>$-</td>
+            </tr>
+            <tr class="total-row">
+                <td>Total</td>
+                <td>$29,523.62</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td>Items</td>
+                <td>Total</td>
+            </tr>
+            <tr>
+                <td>CONT: GARMENT & SOFT GOODS CLN</td>
+                <td>$862.71</td>
+            </tr>
+            <tr>
+                <td>CONT: CLEAN - GENERAL ITEMS</td>
+                <td>$10,286.82</td>
+            </tr>
+            <tr>
+                <td>CONT: CLEAN - LAMPS OR VASES</td>
+                <td>$24.42</td>
+            </tr>
+            <tr>
+                <td>CONTENT MANIPULATION</td>
+                <td>$17,003.10</td>
+            </tr>
+            <tr>
+                <td>CONT: PACKING, HANDLING, STORAGE</td>
+                <td>$8,592.71</td>
+            </tr>
+            <tr>
+                <td>CONT: CLEAN, UPHOLSTERY & SOFT</td>
+                <td>$260.56</td>
+            </tr>
+            <tr>
+                <td>GENERAL DEMOLITION</td>
+                <td>$482.33</td>
+            </tr>
+            <tr>
+                <td>LABOR ONLY</td>
+                <td>$1,653.44</td>
+            </tr>
+            <tr>
+                <td>TOTAL Storage COSTS</td>
+                <td>$4,619.04</td>
+            </tr>
+            <tr>
+                <td>TOTAL GENERAL ITEMS COSTS</td>
+                <td>$2,025.97</td>
+            </tr>
+            <tr>
+                <td>WINDOW TREATMENT</td>
+                <td>$100.53</td>
+            </tr>
+            <tr class="subtotal-row">
+                <td>Subtotal</td>
+                <td>$45,911.64</td>
+            </tr>
+            <tr class="tax-row">
+                <td>Total Tax</td>
+                <td>8% $3,672.93</td>
+            </tr>
+            <tr class="total-row">
+                <td>Total</td>
+                <td>$49,584.57</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="7">GENERAL ITEMS</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td></td>
+                <td>CPS</td>
+                <td>Packaging, Handling, Storage (Bid Item) PACKOUT ONLY</td>
+                <td>BX</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>CPS</td>
+                <td>Packaging, Handling, Storage (Bid Item) CLEAN IN HOUSE</td>
+                <td>EA</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>CPS</td>
+                <td>Packaging, Handling, Storage (Bid Item) CLEANING BY OUTSIDE VENDOR</td>
+                <td>EA</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>CUP</td>
+                <td>Upholstery and Soft Goods Cleaning (Bid Item)</td>
+                <td>EA</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td>CPS</td>
+                <td>Packaging, Handling, Storage (Bid Item) CLEANING BY OUTSIDE VENDOR</td>
+                <td>EA</td>
+                <td></td>
+                <td></td>
+                <td></td>
+            </tr>
+            <tr class="category-header">
+                <td colspan="7"><em>Demo & Dumpster Trash Removal</em></td>
+            </tr>
+            <tr>
+                <td>1</td>
+                <td>DMO</td>
+                <td>Haul debris - per pickup truck load - including dump fees</td>
+                <td>EA</td>
+                <td>1</td>
+                <td>$188.85</td>
+                <td>$188.85</td>
+            </tr>
+            <tr class="category-header">
+                <td colspan="7"><em>Contents Evaluation and Packing Supervision</em></td>
+            </tr>
+            <tr>
+                <td>2</td>
+                <td>CPS</td>
+                <td>Contents Evaluation and/or Supervisor/Admin - per hour</td>
+                <td>HR</td>
+                <td>21</td>
+                <td>64.16</td>
+                <td>$1,322.32</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td>Supervisory Hours allowance To Include:</td>
+                <td colspan="4"></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td>a] initial site visit</td>
+                <td colspan="4"></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td>b] work in progress monitoring</td>
+                <td colspan="4"></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td></td>
+                <td>c] final closeout</td>
+                <td colspan="4"></td>
+            </tr>
+            <tr>
+                <td>3</td>
+                <td>CPS</td>
+                <td>Inventory, Packing, Boxing, and Moving charge - per hour</td>
+                <td>HR</td>
+                <td>-</td>
+                <td>$51.67</td>
+                <td>$0.00</td>
+            </tr>
+            <tr class="category-header">
+                <td colspan="7"><em>MISCELLANEOUS PACKING SUPPLIES</em></td>
+            </tr>
+            <tr class="category-header">
+                <td colspan="7">Billed as Percentage/Average of room SF/ CF / PF / Box Count</td>
+            </tr>
+            <tr>
+                <td>4</td>
+                <td>CPS</td>
+                <td>Bubble Wrap - Add-on cost for fragile items</td>
+                <td>LF</td>
+                <td>1,096</td>
+                <td>$0.17</td>
+                <td>$186.39</td>
+            </tr>
+            <tr>
+                <td>5</td>
+                <td>CPS</td>
+                <td>Provide stretch film/wrap</td>
+                <td>RL</td>
+                <td>8</td>
+                <td>$31.15</td>
+                <td>$239.08</td>
+            </tr>
+            <tr>
+                <td>6</td>
+                <td>CPS</td>
+                <td>Loose fill peanuts - Add-on cost for fragile items</td>
+                <td>CF</td>
+                <td>31</td>
+                <td>$2.91</td>
+                <td>$89.34</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL GENERAL ITEMS COSTS</td>
+                <td>$2,025.97</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="7">Storage Info</td>
+            </tr>
+            <tr>
+                <td colspan="7">
+                    <em>Temporary Contents / CPS Staging Space Allotment</em><br>
+                    HOLD damaged replacement items, until disposal approved.<br>
+                    Space Used to Evaluate Personal Property
+                </td>
+            </tr>
+            <tr>
+                <td colspan="7">Percentage/Average of room SF/ CF / PF / Box Count</td>
+            </tr>
+            <tr>
+                <td colspan="7">OFF SITE STORAGE</td>
+            </tr>
+            <tr class="category-header">
+                <td colspan="7">Temporary Contents / CPS Staging Space/ ON SITE</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="7"><em>Temporary Contents / CPS Staging Space/ ON SITE</em></td>
+            </tr>
+            <tr>
+                <td>7</td>
+                <td>CPS</td>
+                <td>Job-site moving/storage container - 20' long - per month</td>
+                <td>MO</td>
+                <td>4</td>
+                <td>$240.00</td>
+                <td>$960.00</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="7">and/or Box Trailer</td>
+            </tr>
+            <tr>
+                <td>8</td>
+                <td>CPS</td>
+                <td>Job-site cargo container - pick up/del. (each way) 16'-40'</td>
+                <td>EA</td>
+                <td>2</td>
+                <td>$220.00</td>
+                <td>$440.00</td>
+            </tr>
+            <tr>
+                <td>9</td>
+                <td>CPS</td>
+                <td>Padlock/disc lock</td>
+                <td>EA</td>
+                <td>2</td>
+                <td>$16.05</td>
+                <td>$32.10</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>OFF SITE = Storage Personal Property</em></td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="7"><em>Month 1</em></td>
+            </tr>
+            <tr>
+                <td>10</td>
+                <td>CPS</td>
+                <td>Off-site storage & insurance - per month</td>
+                <td>SF</td>
+                <td>134</td>
+                <td>$1.02</td>
+                <td>$136.76</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="7"><em>Month 2</em></td>
+            </tr>
+            <tr>
+                <td>11</td>
+                <td>CPS</td>
+                <td>Off-site storage & insurance - per month</td>
+                <td>SF</td>
+                <td>134</td>
+                <td>$1.02</td>
+                <td>$136.76</td>
+            </tr>
+            <tr>
+                <td></td>
+                <td colspan="7"><em>Month 3</em></td>
+            </tr>
+            <tr>
+                <td>12</td>
+                <td>CPS</td>
+                <td>Off-site storage & insurance - per month</td>
+                <td>SF</td>
+                <td>134</td>
+                <td>$1.02</td>
+                <td>$136.76</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>Transporting Contents</em></td>
+            </tr>
+            <tr>
+                <td>18</td>
+                <td>CPS</td>
+                <td>Moving van (21'-27') and equipment - per day</td>
+                <td>EA</td>
+                <td>4</td>
+                <td>$215.40</td>
+                <td>$861.60</td>
+            </tr>
+            <tr>
+                <td>13</td>
+                <td>CPS</td>
+                <td>Cargo van and equipment - per day</td>
+                <td>EA</td>
+                <td>2</td>
+                <td>$130.81</td>
+                <td>$261.62</td>
+            </tr>
+            <tr>
+                <td colspan="7">Allowance for 2 days move out, into storage and 2 days return contents from storage</td>
+            </tr>
+            <tr>
+                <td colspan="7">Allowance for travel time to 2nd or 3rd floor. Steep entry stairs. Confined spaces.</td>
+            </tr>
+            <tr>
+                <td>14</td>
+                <td>LAB</td>
+                <td>General Laborer - per hour</td>
+                <td>HR</td>
+                <td>32</td>
+                <td>$51.67</td>
+                <td>$1,653.44</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Storage COSTS</td>
+                <td>$4,619.04</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="7">SMALL BOXES TOTAL COUNT</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>15</td>
+                <td>CPS</td>
+                <td>Provide box, packing paper & tape - small size</td>
+                <td>EA</td>
+                <td>46</td>
+                <td>$13.25</td>
+                <td>$609.50</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>16</td>
+                <td>CPS</td>
+                <td>Evaluate pack & inventory misc items - per Sml box</td>
+                <td>EA</td>
+                <td>46</td>
+                <td>$13.25</td>
+                <td>$609.50</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>17</td>
+                <td>CGN</td>
+                <td>Clean misc items - per Sml box</td>
+                <td>EA</td>
+                <td>46</td>
+                <td>$50.77</td>
+                <td>$2,335.42</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>18</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>18</td>
+                <td>$51.67</td>
+                <td>$909.39</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 12 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>19</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>18</td>
+                <td>$51.67</td>
+                <td>$909.39</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Moving Allowance: FROM storage back to property - 12 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>20</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>18</td>
+                <td>$51.67</td>
+                <td>$909.39</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 12 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>21</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>18</td>
+                <td>$51.67</td>
+                <td>$909.39</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) DEMO packing materials, Bag, haul trash to dump - 12 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>22</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>4.40</td>
+                <td>$51.67</td>
+                <td>$227.35</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 3 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>17</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1</td>
+                <td>$51.67</td>
+                <td>$22.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>I) Lead Technician - 1 MINUTE PER BOX</em></td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs</td>
+                <td>$6,222.55</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="7">MEDIUM TOTAL BOX COUNT</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>18</td>
+                <td>CPS</td>
+                <td>Provide box, packing paper & tape - medium size</td>
+                <td>EA</td>
+                <td>88</td>
+                <td>$3.78</td>
+                <td>$332.64</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>19</td>
+                <td>CPS</td>
+                <td>Evaluate pack & inventory misc items - per Med box</td>
+                <td>EA</td>
+                <td>88</td>
+                <td>$16.27</td>
+                <td>$1,431.76</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>20</td>
+                <td>CGN</td>
+                <td>Clean misc items - per Med box</td>
+                <td>EA</td>
+                <td>88</td>
+                <td>$60.89</td>
+                <td>$5,358.32</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>21</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>29</td>
+                <td>$51.67</td>
+                <td>$1,515.65</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>22</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>29</td>
+                <td>$51.67</td>
+                <td>$1,515.65</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>23</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>29</td>
+                <td>$51.67</td>
+                <td>$1,515.65</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>24</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>29</td>
+                <td>$67.01</td>
+                <td>$1,965.63</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) DMO remove packing materials & haul to dump - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>25</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>29</td>
+                <td>$18.50</td>
+                <td>$542.67</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>26</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>15</td>
+                <td>$51.67</td>
+                <td>$757.83</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>I) Lead Technician - 10 MINUTES PER BOX</em></td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs</td>
+                <td>$14,935.80</td>
+            </tr>
+        </table>
+        
+        <table>
+            <tr class="category-header">
+                <td colspan="7">LARGE TOTAL BOX COUNT</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>37</td>
+                <td>CPS</td>
+                <td>Provide plastic chair cover & packing tape</td>
+                <td>EA</td>
+                <td>30</td>
+                <td>$4.78</td>
+                <td>$143.40</td>
+            </tr>
+            <tr>
+                <td>38</td>
+                <td>CPS</td>
+                <td>Provide plastic couch/sofa cover & packing tape</td>
+                <td>EA</td>
+                <td>30</td>
+                <td>$8.25</td>
+                <td>$247.50</td>
+            </tr>
+            <tr>
+                <td>38</td>
+                <td>CPS</td>
+                <td>Provide furniture heavyweight blanket/pad</td>
+                <td>EA</td>
+                <td>30</td>
+                <td>$18.26</td>
+                <td>$547.80</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>39</td>
+                <td>CPS</td>
+                <td>Evaluate pack & inventory misc items - per Xlg box</td>
+                <td>EA</td>
+                <td>30</td>
+                <td>$28.06</td>
+                <td>$841.80</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>40</td>
+                <td>CGN</td>
+                <td>Clean misc items - per Xlg box</td>
+                <td>EA</td>
+                <td>30</td>
+                <td>$101.26</td>
+                <td>$3,037.80</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>41</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>30</td>
+                <td>$51.67</td>
+                <td>$1,550.10</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 60 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>42</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>36</td>
+                <td>$51.67</td>
+                <td>$1,860.12</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 72 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>43</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>15</td>
+                <td>$51.67</td>
+                <td>$775.05</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 30 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>44</td>
+                <td>DMO</td>
+                <td>General Demolition - per hour</td>
+                <td>HR</td>
+                <td>15</td>
+                <td>$59.53</td>
+                <td>$892.95</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) DMO remove packing materials & bag, haul to dump - 30 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>45</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>15</td>
+                <td>$51.67</td>
+                <td>$775.05</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 30 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>46</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>15</td>
+                <td>$51.67</td>
+                <td>$775.05</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Large Boxes</td>
+                <td>$11,446.62</td>
+            </tr>
+        </table>
+        
+        <table>
+            <tr class="category-header">
+                <td colspan="7">WARDROBE BOX COUNT LG</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>46</td>
+                <td>CPS</td>
+                <td>Provide mirror/picture box, packing paper & tape</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$10.04</td>
+                <td>$10.04</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>47</td>
+                <td>CPS</td>
+                <td>Evaluate pack & inventory misc items - per Med box</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$16.27</td>
+                <td>$16.27</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>48</td>
+                <td>CGN</td>
+                <td>Clean misc items - per Med box</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$60.89</td>
+                <td>$60.89</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>49</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>50</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>51</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>52</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) DMO remove packing materials & bag, haul to dump - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>53</td>
+                <td>DMO</td>
+                <td>General Demolition - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$59.53</td>
+                <td>$19.84</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>54</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.2</td>
+                <td>$51.67</td>
+                <td>$8.61</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for TV Boxes</td>
+                <td>$184.55</td>
+            </tr>
+        </table>
+        
+        <table>
+            <tr class="category-header">
+                <td colspan="7">LAMP BOX COUNT</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>55</td>
+                <td>CPS</td>
+                <td>Provide lamp box set, packing paper & tape</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$7.58</td>
+                <td>$7.58</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>56</td>
+                <td>CPS</td>
+                <td>Evaluate pack & inventory misc items - per Med box</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$16.27</td>
+                <td>$16.27</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>57</td>
+                <td>CLM</td>
+                <td>Clean floor lamp - flat finish (no shade) - Light clean</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$24.42</td>
+                <td>$24.42</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>58</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>59</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>60</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>61</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) DMO remove packing materials & bag, haul to dump - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>62</td>
+                <td>DMO</td>
+                <td>General Demolition - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$59.53</td>
+                <td>$19.84</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>63</td>
+                <td>CON</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.2</td>
+                <td>$51.67</td>
+                <td>$8.61</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Lamp Boxes</td>
+                <td>$145.62</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="7">Picture/Mirror Box Count</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>64</td>
+                <td>CPS</td>
+                <td>BXTV</td>
+                <td>Provide TV box, packing paper & tape</td>
+                <td>EA</td>
+                <td>15.0</td>
+                <td>$27.24</td>
+                <td>$408.60</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>65</td>
+                <td>CPS</td>
+                <td>BXMME</td>
+                <td>Evaluate pack & inventory misc items - per Med box</td>
+                <td>EA</td>
+                <td>15.0</td>
+                <td>$16.27</td>
+                <td>$244.05</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>66</td>
+                <td>CGN</td>
+                <td>BXMM</td>
+                <td>Clean misc items - per Med box</td>
+                <td>EA</td>
+                <td>15.0</td>
+                <td>$60.89</td>
+                <td>$913.35</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>67</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>5.0</td>
+                <td>$51.67</td>
+                <td>$258.35</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>68</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>5.0</td>
+                <td>$51.67</td>
+                <td>$258.35</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>69</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>5.0</td>
+                <td>$51.67</td>
+                <td>$258.35</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>70</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>5.0</td>
+                <td>$51.67</td>
+                <td>$258.35</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) DMO remove packing materials & bag, haul to dump - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>71</td>
+                <td>DMO</td>
+                <td>LAB</td>
+                <td>General Demolition - per hour</td>
+                <td>HR</td>
+                <td>5.0</td>
+                <td>$59.53</td>
+                <td>$297.65</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>72</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>2.5</td>
+                <td>$51.67</td>
+                <td>$129.18</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Picture/Mirror Box</td>
+                <td>$3,026.23</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="7">Wardrobe Box Count</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>73</td>
+                <td>CPS</td>
+                <td>BXWDR></td>
+                <td>Provide wardrobe box & tape - large size</td>
+                <td>EA</td>
+                <td>4.0</td>
+                <td>$26.64</td>
+                <td>$106.56</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>74</td>
+                <td>CPS</td>
+                <td>BXMLE</td>
+                <td>Evaluate pack & inventory misc items - per Lg box</td>
+                <td>EA</td>
+                <td>4.0</td>
+                <td>$20.68</td>
+                <td>$82.72</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>75</td>
+                <td>CGN</td>
+                <td>BXML</td>
+                <td>Clean misc items - per Lg box</td>
+                <td>EA</td>
+                <td>4.0</td>
+                <td>$76.08</td>
+                <td>$304.32</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>76</td>
+                <td>CDC</td>
+                <td>LABC</td>
+                <td>On-Site Inventory, Packing, Boxing, Moving charge - per hour</td>
+                <td>HR</td>
+                <td>1.3</td>
+                <td>$52.91</td>
+                <td>$70.55</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>77</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.3</td>
+                <td>$51.67</td>
+                <td>$68.89</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>78</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.3</td>
+                <td>$51.67</td>
+                <td>$68.89</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>79</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.3</td>
+                <td>$51.67</td>
+                <td>$68.89</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) Allowance for; DMO remove packing materials & bag, haul to dump - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>80</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.3</td>
+                <td>$51.67</td>
+                <td>$68.89</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>81</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.7</td>
+                <td>$51.67</td>
+                <td>$34.45</td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Wardrobe Box</td>
+                <td>$874.17</td>
+            </tr>
+        </table>
+
+        <table>
+            <tr class="category-header">
+                <td colspan="7">Mattress Box Count</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>82</td>
+                <td>CPS</td>
+                <td>BXMATQ</td>
+                <td>Provide mattress box & tape - queen size</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$33.95</td>
+                <td>$33.95</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>83</td>
+                <td>CUP</td>
+                <td>MATF-</td>
+                <td>Clean & deodorize mattress or box spring - full - Light clean</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$28.06</td>
+                <td>$28.06</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>84</td>
+                <td>CUP</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.0</td>
+                <td>$65.14</td>
+                <td>$65.14</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>85</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.0</td>
+                <td>$51.67</td>
+                <td>$51.67</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 60 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>86</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.2</td>
+                <td>$51.67</td>
+                <td>$62.00</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 72 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>87</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.4</td>
+                <td>$51.67</td>
+                <td>$74.40</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 72 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>88</td>
+                <td>DMO</td>
+                <td>LAB</td>
+                <td>General Demolition - per hour</td>
+                <td>HR</td>
+                <td>1.2</td>
+                <td>$59.53</td>
+                <td>$71.44</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) Allowance for; DMO remove packing materials & bag, haul to dump; remove from jobsite - 72 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>89</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.2</td>
+                <td>$51.67</td>
+                <td>$62.00</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 72 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>90</td>
+                <td>CPS</td>
+                <td>BXGL</td>
+                <td>Provide glasspack box, packing paper & tape</td>
+                <td>EA</td>
+                <td>1.2</td>
+                <td>$19.05</td>
+                <td>$22.86</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>I) Lead Technician - 72 MINUTES PER BOX</em></td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Mattress Box</td>
+                <td>$471.53</td>
+            </tr>
+        </table>
+        
+        <table>
+            <tr class="category-header">
+                <td colspan="7">Dish Pack Box</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>91</td>
+                <td>CPS</td>
+                <td>BXGL</td>
+                <td>Provide glasspack box, packing paper & tape</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$19.05</td>
+                <td>$19.05</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>92</td>
+                <td>CPS</td>
+                <td>BXGLE</td>
+                <td>Evaluate pack & inventory glasspack - per box</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$27.20</td>
+                <td>$27.20</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>93</td>
+                <td>CGN</td>
+                <td>BXGL-</td>
+                <td>Clean glasspack - per box - Light clean</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$27.01</td>
+                <td>$27.01</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>94</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>95</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>96</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>97</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) Allowance for; DMO remove packing materials & bag, haul to dump; remove from jobsite - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>98</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>99</td>
+                <td>CPS</td>
+                <td>BXDISH</td>
+                <td>Provide dishpack box, packing paper & tape</td>
+                <td>EA</td>
+                <td>0.2</td>
+                <td>$51.67</td>
+                <td>$8.61</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>I) Lead Technician - 10 MINUTES PER BOX</em></td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Dish Pack Box</td>
+                <td>$167.99</td>
+            </tr>
+        </table>
+        
+        <table>
+            <tr class="category-header">
+                <td colspan="7">Dish Pack Box</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>91</td>
+                <td>CPS</td>
+                <td>BXGL</td>
+                <td>Provide glasspack box, packing paper & tape</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$19.05</td>
+                <td>$19.05</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>92</td>
+                <td>CPS</td>
+                <td>BXGLE</td>
+                <td>Evaluate pack & inventory glasspack - per box</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$27.20</td>
+                <td>$27.20</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>93</td>
+                <td>CGN</td>
+                <td>BXGL-</td>
+                <td>Clean glasspack - per box - Light clean</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$27.01</td>
+                <td>$27.01</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>94</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>95</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>96</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>97</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) Allowance for; DMO remove packing materials & bag, haul to dump; remove from jobsite - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>98</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>99</td>
+                <td>CPS</td>
+                <td>BXDISH</td>
+                <td>Provide dishpack box, packing paper & tape</td>
+                <td>EA</td>
+                <td>0.2</td>
+                <td>$51.67</td>
+                <td>$8.61</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>I) Lead Technician - 10 MINUTES PER BOX</em></td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Dish Pack Box</td>
+                <td>$167.99</td>
+            </tr>
+        </table>
+        
+        <table>
+            <tr class="category-header">
+                <td colspan="7">Pots & Pans Box</td>
+            </tr>
+            <tr>
+                <th>#</th>
+                <th>ITEM</th>
+                <th>Description</th>
+                <th>Unit</th>
+                <th>Qty</th>
+                <th>Unit Cost</th>
+                <th>TOTAL</th>
+            </tr>
+            <tr>
+                <td>109</td>
+                <td>CPS</td>
+                <td>BXPPE</td>
+                <td>Provide box, packing paper & tape - medium size</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$8.92</td>
+                <td>$8.92</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>A) SUPPLIES: BOXES, TAPE, LABELS, ETC.</em></td>
+            </tr>
+            <tr>
+                <td>110</td>
+                <td>CGN</td>
+                <td>BXMM</td>
+                <td>Clean misc items - per Med box</td>
+                <td>EA</td>
+                <td>1.0</td>
+                <td>$60.89</td>
+                <td>$60.89</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>B) Allowance for evaluation & packing only</em></td>
+            </tr>
+            <tr>
+                <td>111</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>1.0</td>
+                <td>$51.67</td>
+                <td>$51.67</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>C) Allowance to wipe down, vacuum, air dust</em></td>
+            </tr>
+            <tr>
+                <td>112</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>D) Allowance for moving labor INTO storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>113</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>E) Allowance for moving labor BACK FROM storage - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>114</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>F) Include RESET to original place, UNPACKING - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>115</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>G) Allowance for; DMO remove packing materials & bag, haul to dump; remove from jobsite - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>116</td>
+                <td>CON</td>
+                <td>LAB</td>
+                <td>Content Manipulation charge - per hour</td>
+                <td>HR</td>
+                <td>0.3</td>
+                <td>$51.67</td>
+                <td>$17.22</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>H) Allowance for Administrative labor hours - 20 MINUTES PER BOX</em></td>
+            </tr>
+            <tr>
+                <td>117</td>
+                <td>CDC</td>
+                <td>BDSPRQ</td>
+                <td>Clean bedspread - queen size - Full service</td>
+                <td>EA</td>
+                <td>0.2</td>
+                <td>$33.67</td>
+                <td>$5.61</td>
+            </tr>
+            <tr>
+                <td colspan="7"><em>I) Lead Technician - 10 MINUTES PER BOX</em></td>
+            </tr>
+            <tr class="total-row">
+                <td colspan="6">TOTAL Content Manipulation Costs for Pots & Pans Box</td>
+                <td>$213.21</td>
+            </tr>
+        </table>        
+
+    </div>
+
+</body>
+</html>

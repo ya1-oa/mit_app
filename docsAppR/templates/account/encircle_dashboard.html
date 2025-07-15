@@ -1,0 +1,1197 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block extra_css %}
+<style>
+    .dashboard-container {
+        max-width: 1400px;
+        margin: 0 auto;
+        padding: 20px;
+    }
+    
+    .header-section {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px;
+        border-radius: 10px;
+        margin-bottom: 30px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+    }
+    
+    .header-section h1 {
+        margin: 0 0 10px 0;
+        font-size: 2.5rem;
+        font-weight: 300;
+    }
+    
+    .header-section p {
+        margin: 0;
+        opacity: 0.9;
+        font-size: 1.1rem;
+    }
+    
+    .stats-row {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+    
+    .stat-card {
+        background: white;
+        padding: 25px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        text-align: center;
+        border-left: 4px solid #667eea;
+    }
+    
+    .stat-number {
+        font-size: 2.5rem;
+        font-weight: bold;
+        color: #667eea;
+        display: block;
+    }
+    
+    .stat-label {
+        color: #666;
+        font-size: 0.9rem;
+        text-transform: uppercase;
+        letter-spacing: 1px;
+    }
+    
+    .controls-section {
+        background: white;
+        padding: 20px;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        margin-bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 15px;
+    }
+    
+    .search-container {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+    }
+    
+    .search-input {
+        padding: 10px 15px;
+        border: 2px solid #e1e5e9;
+        border-radius: 25px;
+        outline: none;
+        transition: border-color 0.3s;
+        min-width: 250px;
+    }
+    
+    .search-input:focus {
+        border-color: #667eea;
+    }
+    
+    .btn {
+        padding: 10px 20px;
+        border: none;
+        border-radius: 25px;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.3s;
+        text-decoration: none;
+        display: inline-block;
+    }
+    
+    .btn-primary {
+        background-color: #667eea;
+        color: white;
+    }
+    
+    .btn-primary:hover {
+        background-color: #5a67d8;
+        transform: translateY(-2px);
+    }
+    
+    .btn-secondary {
+        background-color: #e2e8f0;
+        color: #4a5568;
+    }
+    
+    .btn-secondary:hover {
+        background-color: #cbd5e0;
+    }
+    
+    .loading-spinner {
+        display: inline-block;
+        width: 20px;
+        height: 20px;
+        border: 3px solid #f3f3f3;
+        border-top: 3px solid #667eea;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-right: 10px;
+    }
+    
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+    
+    .claims-table-container {
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        overflow: hidden;
+    }
+    
+    .claims-table {
+        width: 100%;
+        border-collapse: collapse;
+    }
+    
+    .claims-table th {
+        background: #f8f9fa;
+        padding: 15px;
+        text-align: left;
+        font-weight: 600;
+        color: #495057;
+        border-bottom: 2px solid #e9ecef;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    
+    .claims-table td {
+        padding: 15px;
+        border-bottom: 1px solid #e9ecef;
+        vertical-align: top;
+    }
+    
+    .claims-table tbody tr {
+        transition: background-color 0.2s;
+        cursor: pointer;
+    }
+    
+    .claims-table tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .table-container {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    
+    .claim-id {
+        font-weight: bold;
+        color: #667eea;
+    }
+    
+    .status-badge {
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 0.85rem;
+        font-weight: 500;
+    }
+    
+    .status-active {
+        background-color: #d4edda;
+        color: #155724;
+    }
+    
+    .status-pending {
+        background-color: #fff3cd;
+        color: #856404;
+    }
+    
+    .status-closed {
+        background-color: #f8d7da;
+        color: #721c24;
+    }
+    
+    .room-types-list {
+        font-size: 0.9rem;
+        color: #666;
+    }
+    
+    .room-type-tag {
+        display: inline-block;
+        background-color: #e2e8f0;
+        color: #4a5568;
+        padding: 2px 8px;
+        border-radius: 12px;
+        font-size: 0.8rem;
+        margin: 2px;
+    }
+    
+    .alert {
+        padding: 15px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        display: none;
+    }
+    
+    .alert-success {
+        background-color: #d4edda;
+        border: 1px solid #c3e6cb;
+        color: #155724;
+    }
+    
+    .alert-error {
+        background-color: #f8d7da;
+        border: 1px solid #f5c6cb;
+        color: #721c24;
+    }
+    
+    .no-data {
+        text-align: center;
+        padding: 60px 20px;
+        color: #666;
+    }
+    
+    .no-data img {
+        max-width: 200px;
+        opacity: 0.5;
+        margin-bottom: 20px;
+    }
+    
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(0,0,0,0.5);
+    }
+    
+    .modal-content {
+        background-color: white;
+        margin: 5% auto;
+        padding: 0;
+        border-radius: 10px;
+        width: 90%;
+        max-width: 1000px;
+        max-height: 85vh;
+        overflow-y: auto;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+    }
+    
+    .modal-header {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 10px 10px 0 0;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+    
+    .modal-body {
+        padding: 30px;
+    }
+    
+    .close {
+        color: white;
+        font-size: 28px;
+        font-weight: bold;
+        cursor: pointer;
+        line-height: 1;
+    }
+    
+    .close:hover {
+        opacity: 0.7;
+    }
+    
+    .detail-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+        gap: 30px;
+        margin-bottom: 30px;
+    }
+    
+    .detail-section {
+        background: #f8f9fa;
+        padding: 20px;
+        border-radius: 8px;
+    }
+    
+    .detail-section h3 {
+        margin-top: 0;
+        color: #495057;
+        border-bottom: 2px solid #667eea;
+        padding-bottom: 10px;
+    }
+    
+    .detail-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 8px 0;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .detail-item:last-child {
+        border-bottom: none;
+    }
+    
+    .detail-label {
+        font-weight: 600;
+        color: #495057;
+    }
+    
+    .detail-value {
+        color: #6c757d;
+        text-align: right;
+    }
+    
+    .rooms-table {
+        width: 100%;
+        border-collapse: collapse;
+        margin-top: 20px;
+    }
+    
+    .rooms-table th,
+    .rooms-table td {
+        padding: 12px;
+        text-align: left;
+        border-bottom: 1px solid #e9ecef;
+    }
+    
+    .rooms-table th {
+        background-color: #f8f9fa;
+        font-weight: 600;
+        color: #495057;
+    }
+    
+    .rooms-table tbody tr:hover {
+        background-color: #f8f9fa;
+    }
+    
+    @media (max-width: 768px) {
+        .dashboard-container {
+            padding: 10px;
+        }
+        
+        .header-section h1 {
+            font-size: 2rem;
+        }
+        
+        .stats-row {
+            grid-template-columns: 1fr 1fr;
+        }
+        
+        .controls-section {
+            flex-direction: column;
+            align-items: stretch;
+        }
+        
+        .search-container {
+            justify-content: center;
+        }
+        
+        .search-input {
+            min-width: 100%;
+        }
+        
+        .claims-table {
+            font-size: 0.9rem;
+        }
+        
+        .claims-table th,
+        .claims-table td {
+            padding: 10px 8px;
+        }
+        
+        .modal-content {
+            width: 95%;
+            margin: 2% auto;
+        }
+        
+        .detail-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<main>
+    <div class="dashboard-container">
+        <!-- Header Section -->
+        <div class="header-section">
+            <h1>Encircle Claims Dashboard</h1>
+            <p>Comprehensive view of all property claims and room data</p>
+        </div>
+        
+        <!-- Alert Messages -->
+        <div id="alert-container"></div>
+        
+        <!-- Statistics Row -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <span class="stat-number" id="total-claims">-</span>
+                <span class="stat-label">Total Claims</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="total-rooms">-</span>
+                <span class="stat-label">Total Rooms</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="active-claims">-</span>
+                <span class="stat-label">Active Claims</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-number" id="avg-rooms">-</span>
+                <span class="stat-label">Avg Rooms/Claim</span>
+            </div>
+        </div>
+        
+        <!-- Controls Section -->
+        <div class="controls-section">
+            <div class="search-container">
+                <input type="text" class="search-input" id="search-input" placeholder="Search claims by number, address, or insurer...">
+                <button class="btn btn-secondary" id="clear-search">Clear</button>
+            </div>
+       
+            <div>   
+                <button class="btn btn-secondary" id="generate-excel">
+                    <span id="excel-spinner" class="loading-spinner" style="display: none;"></span>
+                    <span id="excel-button-text">Export to Excel</span>
+                </button>
+            </div>
+            
+  
+            <div>
+                <button class="btn btn-primary" id="refresh-data">
+                    <span id="refresh-spinner" class="loading-spinner" style="display: none;"></span>
+                    Refresh Data
+                </button>
+            </div>
+        </div>
+        
+        <!-- Claims Table -->
+        <div class="claims-table-container">
+            <div class="table-container">
+                <table class="claims-table">
+                    <thead>
+                        <tr>
+                            <th>Claim ID</th>
+                            <th>Customer Name</th>
+                            <th>Property Address</th>
+                            <th>Insurer</th>
+                            <th>Loss Date</th>
+                            <th>Rooms</th>
+                            <th>Room Types</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="claims-table-body">
+                        <tr>
+                            <td colspan="9" class="no-data">
+                                <div class="loading-spinner"></div>
+                                Loading claims data...
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Claim Details Modal -->
+    <div id="claim-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Claim Details</h2>
+                <span class="close" id="modal-close">&times;</span>
+            </div>
+            <div class="modal-body" id="modal-body">
+                <div class="loading-spinner"></div>
+                Loading claim details...
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" id="export-single-claim" style="display: none;">
+                    <span id="single-excel-spinner" class="loading-spinner" style="display: none;"></span>
+                    <span id="single-excel-text">Export This Claim</span>
+                </button>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+class EncircleClaimsDashboard {
+    constructor() {
+        this.claims = [];
+        this.filteredClaims = [];
+        this.currentClaimId = null;
+        this.init();
+    }
+    
+    init() {
+        this.bindEvents();
+        this.loadClaims();
+    }
+    
+    bindEvents() {
+        // Refresh button
+        document.getElementById('refresh-data').addEventListener('click', () => {
+            this.loadClaims();
+        });
+        
+        // Search functionality
+        document.getElementById('search-input').addEventListener('input', (e) => {
+            this.filterClaims(e.target.value);
+        });
+        
+        // Generate Excel for all claims
+        document.getElementById('generate-excel').addEventListener('click', () => {
+            this.exportAllClaimsToExcel();
+        });
+        
+        // Export single claim from modal
+        document.getElementById('export-single-claim').addEventListener('click', () => {
+            this.exportSingleClaimToExcel(this.currentClaimId);
+        });
+        
+        // Clear search
+        document.getElementById('clear-search').addEventListener('click', () => {
+            document.getElementById('search-input').value = '';
+            this.filterClaims('');
+        });
+        
+        // Modal close
+        document.getElementById('modal-close').addEventListener('click', () => {
+            this.closeModal();
+        });
+        
+        // Close modal on outside click
+        window.addEventListener('click', (e) => {
+            if (e.target === document.getElementById('claim-modal')) {
+                this.closeModal();
+            }
+        });
+    }
+    
+    async loadClaims() {
+        try {
+            this.showLoading(true);
+            this.showAlert('Loading claims data...', 'info');
+            
+            const response = await fetch('/api/encircle/claims/');
+            const data = await response.json();
+            
+            if (data.success) {
+                this.claims = data.claims;
+                this.filteredClaims = [...this.claims];
+                this.updateStatistics();
+                this.renderClaimsTable();
+                this.showAlert(`Successfully loaded ${data.total_claims} claims`, 'success');
+            } else {
+                throw new Error(data.error || 'Failed to load claims');
+            }
+        } catch (error) {
+            console.error('Error loading claims:', error);
+            this.showAlert(`Error loading claims: ${error.message}`, 'error');
+            this.renderEmptyState();
+        } finally {
+            this.showLoading(false);
+        }
+    }
+    
+    async exportAllClaimsToExcel() {
+        try {
+            this.showExcelLoading(true, 'generate-excel');
+            this.showAlert('Preparing Excel export for all claims...', 'info');
+
+            // FIXED: Remove X-Requested-With header for binary downloads
+            const response = await fetch('/api/encircle/claims/export/', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                }
+            });
+
+            if (!response.ok) {
+                // FIXED: Try to get error message from response
+                let errorMessage = `HTTP error! status: ${response.status}`;
+                try {
+                    const errorText = await response.text();
+                    if (errorText) errorMessage = errorText;
+                } catch (e) {
+                    // Ignore parsing errors, use default message
+                }
+                throw new Error(errorMessage);
+            }
+
+            // FIXED: Check if response is actually a blob/binary
+            const contentType = response.headers.get('Content-Type');
+            if (!contentType || !contentType.includes('spreadsheet')) {
+                throw new Error('Server returned invalid file format');
+            }
+
+            // Get the filename from the Content-Disposition header
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = 'encircle_claims_export.xlsx';
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+
+            // Convert response to blob
+            const blob = await response.blob();
+
+            // FIXED: Verify blob size
+            if (blob.size === 0) {
+                throw new Error('Received empty file from server');
+            }
+
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            link.style.display = 'none'; // ADDED: Hide the link element
+
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+
+            // FIXED: Cleanup with small delay to ensure download starts
+            setTimeout(() => {
+                document.body.removeChild(link);
+                window.URL.revokeObjectURL(url);
+            }, 100);
+
+            this.showAlert('Excel export completed successfully!', 'success');
+
+        } catch (error) {
+            console.error('Error exporting to Excel:', error);
+            this.showAlert(`Error exporting to Excel: ${error.message}`, 'error');
+        } finally {
+            this.showExcelLoading(false, 'generate-excel');
+        }
+    }
+    
+    async exportSingleClaimToExcel(claimId) {
+        try {
+            this.showExcelLoading(true, 'export-single-claim');
+            this.showAlert(`Preparing Excel export for claim ${claimId}...`, 'info');
+            
+            // Fetch the Excel file
+            const response = await fetch(`/api/encircle/claims/export/${claimId}/`, {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'X-Requested-With': 'XMLHttpRequest',
+                }
+            });
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+            
+            // Get the filename from the Content-Disposition header
+            const contentDisposition = response.headers.get('Content-Disposition');
+            let filename = `encircle_claim_${claimId}_export.xlsx`;
+            if (contentDisposition) {
+                const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+                if (filenameMatch) {
+                    filename = filenameMatch[1];
+                }
+            }
+            
+            // Convert response to blob
+            const blob = await response.blob();
+            
+            // Create download link
+            const url = window.URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = url;
+            link.download = filename;
+            
+            // Trigger download
+            document.body.appendChild(link);
+            link.click();
+            
+            // Cleanup
+            document.body.removeChild(link);
+            window.URL.revokeObjectURL(url);
+            
+            this.showAlert(`Excel export for claim ${claimId} completed successfully!`, 'success');
+            
+        } catch (error) {
+            console.error('Error exporting claim to Excel:', error);
+            this.showAlert(`Error exporting claim to Excel: ${error.message}`, 'error');
+        } finally {
+            this.showExcelLoading(false, 'export-single-claim');
+        }
+    }
+    
+    showExcelLoading(show, buttonId) {
+        const button = document.getElementById(buttonId);
+        const spinner = button.querySelector('.loading-spinner');
+        const textElement = button.querySelector('span:not(.loading-spinner)');
+        
+        if (show) {
+            spinner.style.display = 'inline-block';
+            button.disabled = true;
+            if (buttonId === 'generate-excel') {
+                textElement.textContent = 'Generating Excel...';
+            } else if (buttonId === 'export-single-claim') {
+                textElement.textContent = 'Exporting Claim...';
+            }
+        } else {
+            spinner.style.display = 'none';
+            button.disabled = false;
+            if (buttonId === 'generate-excel') {
+                textElement.textContent = 'Export to Excel';
+            } else if (buttonId === 'export-single-claim') {
+                textElement.textContent = 'Export This Claim';
+            }
+        }
+    }
+
+    filterClaims(searchTerm) {
+        if (!searchTerm) {
+            this.filteredClaims = [...this.claims];
+        } else {
+            const term = searchTerm.toLowerCase();
+            this.filteredClaims = this.claims.filter(claim => 
+                claim.claim_number.toLowerCase().includes(term) ||
+                claim.property_address.toLowerCase().includes(term) ||
+                claim.insurer_name.toLowerCase().includes(term) ||
+                claim.adjuster_name.toLowerCase().includes(term)
+            );
+        }
+        this.renderClaimsTable();
+    }
+    
+    updateStatistics() {
+        const totalClaims = this.claims.length;
+        const totalRooms = this.claims.reduce((sum, claim) => sum + (claim.total_rooms || 0), 0);
+        const activeClaims = this.claims.filter(claim => claim.status === 'Active').length;
+        const avgRooms = totalClaims > 0 ? Math.round(totalRooms / totalClaims) : 0;
+        
+        document.getElementById('total-claims').textContent = totalClaims;
+        document.getElementById('total-rooms').textContent = totalRooms;
+        document.getElementById('active-claims').textContent = activeClaims;
+        document.getElementById('avg-rooms').textContent = avgRooms;
+    }
+    
+    renderClaimsTable() {
+        const tbody = document.getElementById('claims-table-body');
+        console.log(this.filteredClaims);
+        if (this.filteredClaims.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="9" class="no-data">
+                        No claims found matching your search criteria.
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+        
+        tbody.innerHTML = this.filteredClaims.map(claim => `
+            <tr onclick="dashboard.viewClaimDetails(${claim.id})">
+                <td><span class="claim-id">${claim.id}</span></td>
+                <td>${claim.policyholder_name || 'N/A'}</td>
+                <td>${claim.full_address}</td>
+                <td>${claim.insurance_company_name || 'N/A'}</td>
+                <td>${this.formatDate(claim.date_of_loss)}</td>
+                <td>${claim.total_rooms || 'N/A'}</td>
+                <td>
+                    <div class="room-types-list">
+                        ${(claim.room_types || []).map(type => 
+                            `<span class="room-type-tag">${type}</span>`
+                        ).join('')}
+                    </div>
+                </td>
+                <td>
+                    <button class="btn btn-primary" onclick="event.stopPropagation(); dashboard.viewClaimDetails(${claim.id})">
+                        View Details
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+    
+    getStatusClass(status) {
+        switch(status?.toLowerCase()) {
+            case 'active': return 'status-active';
+            case 'pending': return 'status-pending';
+            case 'closed': return 'status-closed';
+            default: return 'status-pending';
+        }
+    }
+    
+    formatDate(dateString) {
+        if (!dateString || dateString === 'N/A') return 'N/A';
+        try {
+            return new Date(dateString).toLocaleDateString();
+        } catch {
+            return dateString;
+        }
+    }
+    
+    async viewClaimDetails(claimId) {
+        try {
+            this.currentClaimId = claimId;
+            const modal = document.getElementById('claim-modal');
+            const modalBody = document.getElementById('modal-body');
+            const modalTitle = document.getElementById('modal-title');
+            const exportButton = document.getElementById('export-single-claim');
+            
+            // Show modal with loading state
+            modal.style.display = 'block';
+            modalTitle.textContent = `Claim Details - Loading...`;
+            modalBody.innerHTML = `
+                <div style="text-align: center; padding: 40px;">
+                    <div class="loading-spinner"></div>
+                    Loading claim details...
+                </div>
+            `;
+            
+            // Show the export button
+            exportButton.style.display = 'inline-block';
+            
+            // Fetch claim details
+            const response = await fetch(`/api/encircle/claims/${claimId}/`);
+            const data = await response.json();
+            
+            if (data.success) {
+                this.renderClaimDetails(data);
+            } else {
+                throw new Error(data.error || 'Failed to load claim details');
+            }
+        } catch (error) {
+            console.error('Error loading claim details:', error);
+            document.getElementById('modal-body').innerHTML = `
+                <div class="alert alert-error">
+                    Error loading claim details: ${error.message}
+                </div>
+            `;
+        }
+    }
+    
+    renderClaimDetails(data) {
+        const modalTitle = document.getElementById('modal-title');
+        const modalBody = document.getElementById('modal-body');
+        
+        modalTitle.textContent = `Claim ${data.claim_details.brand_id} Details`;
+        
+        // Helper function to find floor plan data for a room
+        const findFloorPlanData = (roomName, floorPlanData) => {
+            if (!floorPlanData) return null;
+            
+            // Try exact match first
+            for (const [floor, rooms] of Object.entries(floorPlanData)) {
+                if (rooms[roomName]) {
+                    return {
+                        ...rooms[roomName],
+                        floor: floor
+                    };
+                }
+            }
+            
+            // Try case-insensitive match
+            for (const [floor, rooms] of Object.entries(floorPlanData)) {
+                const matchingRoom = Object.entries(rooms).find(([name]) => 
+                    name.toLowerCase() === roomName.toLowerCase()
+                );
+                if (matchingRoom) {
+                    return {
+                        ...matchingRoom[1],
+                        floor: floor
+                    };
+                }
+            }
+            
+            // Try partial match
+            for (const [floor, rooms] of Object.entries(floorPlanData)) {
+                const matchingRoom = Object.entries(rooms).find(([name]) => 
+                    name.toLowerCase().includes(roomName.toLowerCase()) ||
+                    roomName.toLowerCase().includes(name.toLowerCase())
+                );
+                if (matchingRoom) {
+                    return {
+                        ...matchingRoom[1],
+                        floor: floor
+                    };
+                }
+            }
+            
+            return null;
+        };
+
+        // Helper function to format dimensions
+        const formatDimensions = (dimensions) => {
+            if (!dimensions) return 'N/A';
+            return `${dimensions.length}' × ${dimensions.width}'`;
+        };
+
+        // Helper function to format area
+        const formatArea = (area) => {
+            if (!area) return 'N/A';
+            return `${area} sq ft`;
+        };
+
+        modalBody.innerHTML = `
+            <div class="detail-grid">
+                <!-- Basic Information -->
+                <div class="detail-section">
+                    <h3>Basic Information</h3>
+                    <div class="detail-item">
+                        <span class="detail-label">Claim ID:</span>
+                        <span class="detail-value">${data.claim_details.id}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Brand ID:</span>
+                        <span class="detail-value">${data.claim_details.brand_id}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Organization ID:</span>
+                        <span class="detail-value">${data.claim_details.organization_id}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Date Created:</span>
+                        <span class="detail-value">${this.formatDate(data.claim_details.date_claim_created)}</span>
+                    </div>
+                </div>
+                
+                <!-- Property Information -->
+                <div class="detail-section">
+                    <h3>Property Information</h3>
+                    <div class="detail-item">
+                        <span class="detail-label">Full Address:</span>
+                        <span class="detail-value">${data.claim_details.full_address}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Policyholder:</span>
+                        <span class="detail-value">${data.claim_details.policyholder_name}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Phone:</span>
+                        <span class="detail-value">${data.claim_details.policyholder_phone_number}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Email:</span>
+                        <span class="detail-value">${data.claim_details.policyholder_email_address}</span>
+                    </div>
+                </div>
+                
+                <!-- Insurance Information -->
+                <div class="detail-section">
+                    <h3>Insurance Information</h3>
+                    <div class="detail-item">
+                        <span class="detail-label">Insurance Company:</span>
+                        <span class="detail-value">${data.claim_details.insurance_company_name}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Policy Number:</span>
+                        <span class="detail-value">${data.claim_details.policy_number}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Insurer ID:</span>
+                        <span class="detail-value">${data.claim_details.insurer_identifier}</span>
+                    </div>
+                </div>
+                
+                <!-- Loss Information -->
+                <div class="detail-section">
+                    <h3>Loss Information</h3>
+                    <div class="detail-item">
+                        <span class="detail-label">Date of Loss:</span>
+                        <span class="detail-value">${this.formatDate(data.claim_details.date_of_loss)}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Type of Loss:</span>
+                        <span class="detail-value">${data.claim_details.type_of_loss}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Loss Details:</span>
+                        <span class="detail-value">${data.claim_details.loss_details}</span>
+                    </div>
+                </div>
+                
+                <!-- Adjuster Information -->
+                <div class="detail-section">
+                    <h3>Adjuster Information</h3>
+                    <div class="detail-item">
+                        <span class="detail-label">Name:</span>
+                        <span class="detail-value">${data.claim_details.adjuster_name}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Project Manager:</span>
+                        <span class="detail-value">${data.claim_details.project_manager_name}</span>
+                    </div>
+                    <div class="detail-item">
+                        <span class="detail-label">Contractor ID:</span>
+                        <span class="detail-value">${data.claim_details.contractor_identifier}</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Floor Plan Information -->
+            <div class="detail-section" style="margin-top: 20px;">
+                <h3>Floor Plan Dimensions</h3>
+                ${data.floor_plan ? Object.entries(data.floor_plan).map(([floor, rooms]) => `
+                    <div style="margin-bottom: 30px;">
+                        <h4 style="color: #495057; margin-bottom: 15px; padding-bottom: 5px; border-bottom: 1px solid #dee2e6;">
+                            ${floor.replace('Floor_', 'Floor ')}
+                        </h4>
+                        <div style="max-height: 400px; overflow-y: auto;">
+                            <table class="rooms-table">
+                                <thead>
+                                    <tr>
+                                        <th>Room Name</th>
+                                        <th>Primary Dimensions</th>
+                                        <th>Bounding Box</th>
+                                        <th>Area</th>
+                                        <th>Ceiling Height</th>
+                                        <th>Edge Lengths</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    ${Object.entries(rooms).map(([roomName, roomData]) => `
+                                        <tr>
+                                            <td><strong>${roomName}</strong></td>
+                                            <td>${formatDimensions(roomData.primary_dimensions)}</td>
+                                            <td>${formatDimensions(roomData.bounding_box)}</td>
+                                            <td>${formatArea(roomData.area)}</td>
+                                            <td>${roomData.ceiling_height}"</td>
+                                        </tr>
+                                    `).join('')}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                `).join('') : `
+                    <div class="alert alert-info">
+                        No floor plan data available for this claim.
+                    </div>
+                `}
+            </div>
+            
+            <!-- Rooms Information -->
+            <div class="detail-section" style="margin-top: 20px;">
+                <h3>Rooms (${data.total_rooms})</h3>
+                <div style="margin-bottom: 15px;">
+                    <strong>Room Types: </strong>
+                    ${data.room_types.map(type => `<span class="room-type-tag">${type}</span>`).join('')}
+                </div>
+                
+                ${data.rooms.length > 0 ? `
+                    <div style="max-height: 600px; overflow-y: auto;">
+                        <table class="rooms-table">
+                            <thead>
+                                <tr>
+                                    <th>Room Name</th>
+                                    <th>Type</th>
+                                    <th>Floor</th>
+                                    <th>Dimensions</th>
+                                    <th>Area</th>
+                                    <th>Ceiling Height</th>
+                                    <th>Edge Lengths</th>
+                                    <th>Damage</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                ${data.rooms.map(room => {
+                                    const floorPlanData = findFloorPlanData(room.name, data.floor_plan);
+                                    console.log('Room:', room.name, 'Floor Plan Data:', floorPlanData); // Debug log
+                                    
+                                    return `
+                                        <tr>
+                                            <td><strong>${room.name}</strong></td>
+                                            <td>${room.room_type}</td>
+                                            <td>${floorPlanData ? floorPlanData.floor.replace('Floor_', 'Floor ') : room.floor_name}</td>
+                                            <td>${floorPlanData ? formatDimensions(floorPlanData.primary_dimensions) : 'N/A'}</td>
+                                            <td>${floorPlanData ? formatArea(floorPlanData.area) : 'N/A'}</td>
+                                            <td>${floorPlanData ? floorPlanData.ceiling_height + '"' : room.ceiling_height + '"'}</td>
+                                            <td>
+                                                ${room.damage_present ? 
+                                                    '<span style="color: #dc3545;">Yes</span>' : 
+                                                    '<span style="color: #28a745;">No</span>'
+                                                }
+                                            </td>
+                                        </tr>
+                                    `;
+                                }).join('')}
+                            </tbody>
+                        </table>
+                    </div>
+                ` : '<p>No room data available for this claim.</p>'}
+            </div>
+        `;
+    }
+    
+    closeModal() {
+        document.getElementById('claim-modal').style.display = 'none';
+        document.getElementById('export-single-claim').style.display = 'none';
+        this.currentClaimId = null;
+    }
+    
+    showLoading(show) {
+        const spinner = document.getElementById('refresh-spinner');
+        const button = document.getElementById('refresh-data');
+        
+        if (show) {
+            spinner.style.display = 'inline-block';
+            button.disabled = true;
+        } else {
+            spinner.style.display = 'none';
+            button.disabled = false;
+        }
+    }
+    
+    showAlert(message, type = 'info') {
+        const container = document.getElementById('alert-container');
+        const alertId = 'alert-' + Date.now();
+        
+        container.innerHTML = `
+            <div id="${alertId}" class="alert alert-${type}">
+                ${message}
+            </div>
+        `;
+        
+        const alertElement = document.getElementById(alertId);
+        alertElement.style.display = 'block';
+        
+        // Auto-hide after 5 seconds for success messages
+        if (type === 'success' || type === 'info') {
+            setTimeout(() => {
+                if (alertElement) {
+                    alertElement.style.display = 'none';
+                }
+            }, 5000);
+        }
+    }
+    
+    renderEmptyState() {
+        const tbody = document.getElementById('claims-table-body');
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="9" class="no-data">
+                    <h3>No Claims Data Available</h3>
+                    <p>Unable to load claims data. Please check your connection and try again.</p>
+                    <button class="btn btn-primary" onclick="dashboard.loadClaims()">
+                        Try Again
+                    </button>
+                </td>
+            </tr>
+        `;
+    }
+}
+
+// Initialize the dashboard when the page loads
+let dashboard;
+document.addEventListener('DOMContentLoaded', function() {
+    dashboard = new EncircleClaimsDashboard();
+});
+</script>
+{% endblock %}

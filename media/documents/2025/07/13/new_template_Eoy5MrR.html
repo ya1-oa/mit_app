@@ -1,0 +1,321 @@
+
+{% load humanize %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Monthly Short Term Rental Agreement</title>
+    <style>
+        body {
+        font-family: 'Times New Roman', Times, serif;
+        font-size: 12px;
+        line-height: 1.3; /* Reduced from 1.4 */
+        margin: 0;
+        padding: 5px; /* Reduced from 10px */
+        color: #000;
+        }
+    h1 {
+        text-align: center;
+        font-size: 14pt; /* Reduced from 16pt */
+        margin: 5px 0; /* Reduced spacing */
+        padding-bottom: 10px;
+        text-decoration: underline;
+    }
+    h2 {
+        font-size: 14pt; /* Reduced from 16pt */
+        margin: 8px 0 4px 0; /* Reduced spacing */
+        text-decoration: underline;
+    }
+    h3 {
+        font-size: 13pt; /* Reduced from 15pt */
+        margin: 6px 0 3px 0; /* Reduced spacing */
+    }
+    p {
+        margin: 4px 0; /* Reduced from 6px */
+    }
+        .document {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        .underline {
+            text-decoration: underline;
+        }
+        .signature-section {
+            margin-top: 10px;
+        }
+        .signature-line {
+            display: inline-block;
+            width: 200px;
+            border-bottom: 1px solid #000;
+            margin-right: 10px;
+            height: 20px;
+            vertical-align: bottom;
+        }
+        .signature-date {
+            display: inline-block;
+            width: 80px;
+            border-bottom: 1px solid #000;
+            height: 20px;
+            vertical-align: bottom;
+        }
+        .signature-label {
+            display: inline-block;
+            width: 100px;
+        }
+        .indent {
+            margin-left: 40px;
+        }
+        .checklist {
+            margin-left: 40px;
+        }
+        .centered {
+            text-align: center;
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .uppercase {
+            text-transform: uppercase;
+        }
+        .letterhead {
+            text-align: center;
+            margin-bottom: 5px;
+        }
+        .letterhead img.logo-left,
+        .letterhead img.logo-right {
+            max-height: 50px;  /* Smaller side logos */
+            max-width: 100%;
+        }
+        .letterhead img.logo-center {
+            max-height: 80px;  /* Larger center logo */
+            max-width: 100%;
+        }
+        .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .document-footer {
+            margin-top: 0.3in;
+            padding-top: 0.08in;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            font-size: 9pt;
+            font-weight: bold;
+        }
+
+    </style>
+</head>
+<body>
+    <div class="document">
+
+<div class="letterhead">
+    <div class="logo-container">
+        <img src="http://localhost:8000/media/NAREB-logo.png" alt="NAREB Logo" class="logo-left">
+        <img src="http://localhost:8000/media/dreamteam-letterhead.png" alt="Dream Team Realty" class="logo-center">
+        <img src="http://localhost:8000/media/realtor-logo.png" alt="Realtor Logo" class="logo-right">
+    </div>
+    <div class="company-info">
+        {{ landlord.real_estate_company }}<br>
+        {{ landlord.company_mailing_address }}<br>
+        {{ landlord.company_city }}, {{ landlord.company_state }} {{ landlord.company_zip }}
+    </div>
+</div>
+
+        <h1>MONTHLY SHORT TERM RENTAL AGREEMENT</h1>
+        
+     <p>THIS MONTHLY SHORT TERM RENTAL AGREEMENT hereinafter known as the "Agreement" is made and entered into this <span class="bold">{{ document.created_at|date:"jS" }}</span> day of <span class="bold">{{ document.created_at|date:"F Y" }}</span>, by and between the Landlord:<br>
+<span class="bold">{{ landlord.full_name }}, {{ landlord.address }}, {{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</span><br>
+hereinafter known as the "Landlord" and the Tenant(s):<br>
+<span class="bold centered">{{ client.pOwner }}, {{ client.pAddress }}, {{ client.pCityStateZip }}</span><br>
+hereinafter known as the "Tenant(s)" for and in consideration of the covenants and obligations contained herein and other good and valuable consideration, the receipt and sufficiency of which is hereby acknowledged, the parties hereby agree as follows:</p>
+
+        <h2>PROPERTY</h2><p class="underline">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</p>
+        <p>Landlord owns property and improvements located at <span class="bold">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</span> (hereinafter referred to as the "Property"). Landlord desires to lease the Property to Tenant upon the terms and conditions contained herein. Tenant desires to lease the Property from Landlord upon the terms and conditions contained herein.</p>
+
+
+        <h2>TERM</h2><p class="underline">{{ formatted_start_date }} - {{ formatted_end_date }}</p>
+        <p>The Agreement will start on <span class="bold">{{ formatted_start_date }}</span>, and will continue as a monthly short term tenancy, ending on <span class="bold">{{ formatted_end_date }}</span>. In accordance with the State Statutes to terminate the tenancy, the Landlord or Tenant must give the other party a written 30 days' notice of non-renewal. The Tenant may only terminate their Agreement on the last day of any month and the Landlord must receive written notification of non-renewal at least 30 days prior to the last day of that month. If the Tenant plans to leave on or after the first of any month, they are responsible for that month's full rent. If the Tenant does not provide the Landlord with a written 30 days' notice, they shall forfeit their full deposit amount.</p>
+
+        <h2>PAYMENTS</h2>
+        <p>Tenant agrees to pay to Landlord as rent for the Property in the amount of $<span class="bold underline">{{ landlord.default_rent_amount|floatformat:2|intcomma }}</span> each month in advance on the <span class="bold">${{ landlord.default_rent_due_day }}<sup>{% if landlord.default_rent_due_day == "1" or landlord.default_rent_due_day == "21" or landlord.default_rent_due_day == "31" %}st{% elif landlord.default_rent_due_day == "2" or landlord.default_rent_due_day == "22" %}nd{% elif landlord.default_rent_due_day == "3" or landlord.default_rent_due_day == "23" %}rd{% else %}th{% endif %}</sup></span> day of each month at any other address designated by Landlord. If the Term does not start on the 1st day of the month or end on the last day of a month, the first and last month's rent will be prorated accordingly.</p>
+
+        <h2>SECURITY DEPOSIT</h2>
+        <p>At the signing of this Agreement, Tenant shall deposit with Landlord, in trust, a security deposit of $<span class="bold underline">{{ landlord.default_security_deposit|floatformat:2|intcomma }}</span> as security for the performance by Tenant of the terms under this Agreement and for any damages caused by Tenant, Tenant's family, and visitors to the Property during the term of this Agreement. The Landlord may use part or all of the security deposit to repair any damage to the Property caused by Tenant, Tenant's family, and visitors to the Property. However, the Landlord is not just limited to the security deposit amount and Tenant remains liable for any balance. Tenant shall not apply or deduct any portion of any security deposit from the last or any month's rent. Tenant shall not use or apply any such security deposit at any time in lieu of payment of rent. If Tenant breaches any terms or conditions of this Agreement, Tenant shall forfeit any deposit, as permitted by law.</p>
+
+        <h2>LATE CHARGES</h2>
+        <p>Rent is due on the <span class="bold">{{ landlord.default_rent_due_day }}</span><sup><span class="bold">{% if landlord.default_rent_due_day == "1" or landlord.default_rent_due_day == "21" or landlord.default_rent_due_day == "31" %}st{% elif landlord.default_rent_due_day == "2" or landlord.default_rent_due_day == "22" %}nd{% elif landlord.default_rent_due_day == "3" or landlord.default_rent_due_day == "23" %}rd{% else %}th{% endif %}</sup></span> Day of each month, if any or all of the rent is not received by the <span class="bold">{{ landlord.default_late_fee_start_day }}<sup>{% if landlord.default_late_fee_start_day == "1" or landlord.default_late_fee_start_day == "21" or landlord.default_late_fee_start_day == "31" %}st{% elif landlord.default_late_fee_start_day == "2" or landlord.default_late_fee_start_day == "22" %}nd{% elif landlord.default_late_fee_start_day == "3" or landlord.default_late_fee_start_day == "23" %}rd{% else %}th{% endif %}</sup></span> day of the month, $<span class="bold underline">{{ landlord.default_late_fee|floatformat:2|intcomma }}</span> per-day will be charged as late fees until full rental payment is received. If rent is not received by the {{ landlord.default_eviction_day }}<sup>{% if landlord.default_eviction_day == "1" or landlord.default_eviction_day == "21" or landlord.default_eviction_day == "31" %}st{% elif landlord.default_eviction_day == "2" or landlord.default_eviction_day == "22" %}nd{% elif landlord.default_eviction_day == "3" or landlord.default_eviction_day == "23" %}rd{% else %}th{% endif %}</sup> day of the month, Tenant will be considered in breach of the Agreement and eviction proceedings will be initiated.</p>
+
+        <h2>INSUFFICIENT FUNDS</h2>
+        <p>Tenant agrees to pay the charge of $<span class="bold underline">{{ landlord.default_nsf_fee|floatformat:2|intcomma }}</span> for each check given by Tenant to Landlord that is returned to Landlord for a lack of sufficient funds.</p>
+
+        <h2>USE OF PROPERTY</h2>
+        <p>Tenant shall only use the Property as a residence, The Property shall not be used to carry on any type of business or trade without the prior written consent of the Landlord. The Tenant will comply with all laws, rules, ordinances, statutes, and orders regarding the use of the Property.</p>
+
+        <h2>OCCUPANCY</h2>
+        <p>Tenant agrees that no more than {{ landlord.default_max_occupants }} persons may reside on the Property without the prior written consent of the Landlord.</p>
+
+        <h2>CONDITION</h2>
+        <p>The Tenant has inspected the property, the fixtures, the grounds, building, and improvements and acknowledges that the Property is in good and acceptable condition and are habitable. If at any time during the term of this Agreement, in Tenant's opinion, the conditions change, Tenant shall promptly provide reasonable notice to Landlord.</p>
+
+        <h2>ASSIGNMENT</h2>
+        <p>Under this Agreement Tenant shall / shall not assign or sublease any share in this Agreement. All sublease arrangements must be made with the prior written consent of the Landlord, which consent shall not be unreasonably withheld. Any assignment or sublease without the Landlord's written prior consent shall, at Landlord's option, terminate this Agreement.</p>
+
+        <h2>RIGHT OF ENTRY</h2>
+        <p>Tenant agrees to make the Property available to Landlord or Landlord's agents for the purposes of inspection, making repairs or improvements, or to supply agreed services or show the property to prospective buyers or tenants, or in case of emergency. Except in case of emergency, Landlord shall give Tenant 24-hours' notice of intent to enter. Tenant shall not, without Landlord's prior written consent, add, alter or re-key any locks to the Property. At all times Landlord shall be provided with a key or keys capable of unlocking all such locks and gaining entry. Tenant further agrees to notify Landlord in writing if Tenant installs any burglar alarm system, including instructions on how to disarm it in case of emergency entry.</p>
+
+        <h2>ALTERATIONS AND IMPROVEMENTS</h2>
+        <p>Tenant shall make no alterations to the building or improvements on the Property or construct any building or make any other improvements on the Property without the prior written consent of Landlord. Any and all alterations, changes, and/or improvements built, constructed, or placed on the Property by Tenant shall, unless otherwise provided by written agreement between Landlord and Tenant, be and become the property of Landlord and remain on the Property at the expiration or earlier termination of this Agreement.</p>
+
+        <h2>NON-DELIVERY OF POSSESSION</h2>
+        <p>In the event, the Landlord cannot deliver possession of the Property to Tenant upon the commencement of the Agreement Term, through no fault of Landlord, then Landlord shall have no liability, but the rental herein provided shall abate until possession is given. Landlord shall have 7 days in which to give possession and, if possession is tendered within such time, Tenant agrees to accept the demised Property and pay the rental herein provided from that date. In the event, possession cannot be delivered within such time, through no fault of Landlord, then this Agreement and all rights hereunder shall terminate.</p>
+
+        <h2>HAZARDOUS MATERIALS</h2>
+        <p>Tenant shall not keep on the Property any item of a dangerous, flammable or explosive nature that might unreasonably increase the danger of fire or explosion on the Property or that might be considered hazardous or extra hazardous by any responsible insurance company.</p>
+
+        <h2>UTILITIES</h2>
+        <p>The Landlord shall provide the following utilities and services to the Tenant(s): Heat / Hot Water, Electricity and Cable TV, any other utilities or services not mentioned will be the responsibility of the Tenant(s).</p>
+
+        <h2>MAINTENANCE, REPAIR, AND RULES</h2>
+        <p>Tenant will, at Tenant's sole expense, keep and maintain the Property in a good clean, and sanitary condition and repair during the term of this Agreement and any renewal thereof. Tenant shall be responsible to make all repairs to the Property, fixtures, appliances, and equipment therein that may have been damaged by Tenant's misuse waste, or neglect, or that of the Tenant's family or visitors. Tenant agrees that no painting will be done on or about the Property without the prior written consent of Landlord. Tenant shall promptly notify Landlord of any damage, defect, or destruction of the Property or in the event of the failure of any of the appliances or equipment. The Landlord will use their best efforts to repair or replace any such damaged or defective areas, appliances, or equipment.</p>
+
+        <h2>PETS</h2>
+        <p>Tenant shall not keep any pets on the Property without the prior written consent of the Landlord, If Landlord grants permission to Tenant to keep pets, an additional security deposit of $<span class="bold underline">300.00</span> will be required by the Landlord to keep in trust for potential damage to the Property caused by Tenant's pets.</p>
+
+        <h2>QUIET ENJOYMENT</h2>
+        <p>Upon payment of all the sums referred to herein as being payable by Tenant and Tenant's performance of all Tenant's agreements contained herein and Tenant's observance of all rules and regulations, Tenant shall and may peacefully and quietly have, hold, and enjoy said Property for the term hereof.</p>
+
+        <h2>INDEMNIFICATION</h2>
+        <p>Landlord shall not be liable for any injury to the tenant, tenant's family, guests, or employees or to any person entering the property and shall not be liable for any damage to the building in which the property is located or to goods or equipment, or to the structure or equipment of the structure in which the Property is located, and Tenant hereby agrees to indemnify, defend, and hold Landlord harmless from any and all claims or assertions of every kind and nature.</p>
+
+        <h2>DEFAULT</h2>
+        <p>If Landlord breaches this Agreement, Tenant may seek any relief provided by law. If Tenant fails to comply with any of the material provisions of this Agreement, other than the covenant to pay rent or of any present rules and regulations, or any that may be hereafter prescribed by Landlord, or materially fails to comply with any duties imposed on Tenant by statute, Landlord may terminate this Agreement 30 days after delivery of written notice by Landlord specifying the noncompliance and indicating the intention of Landlord to terminate the Agreement by reason thereof. If Tenant fails to pay rent when due and the default continues for days thereafter, Landlord may, at Landlord's option, declare the entire balance of rent payable hereunder to be immediately due and payable and may exercise any and all rights and remedies available to Landlord at law or in equity or may immediately terminate this Agreement.</p>
+
+        <h2>HOLDOVER</h2>
+        <p>In the event, Tenant remains in possession of the Property for any period after the expiration of the Agreement Term ("Holdover Period") a new monthly short term tenancy shall be created subject to the same terms and conditions of this Agreement at a monthly rental rate of the same in this agreement unless otherwise agreed by the Parties in writing. Such monthly short term tenancy shall be terminable on thirty (30) days' notice by either Party or on longer notice if required by law.</p>
+
+        <h2>ABANDONMENT</h2>
+        <p>If Tenant abandons the Property of any personal property during the term of this Agreement, Landlord may at is option enter the Property by any legal means without liability to Tenant and may at Landlord's option terminate the Agreement. Abandonment is defined as the absence of the Tenants from the Property for at least 30 consecutive days without notice to Landlord. If Tenant abandons the Property while the rent is outstanding for more than 30 days and there is no reasonable evidence, other than the presence of the Tenants' personal property, that the Tenant is occupying the unit, Landlord may at Landlord's option terminate this Agreement and regain possession in the manner prescribed by law. The Landlord will dispose of all abandoned personal property on the Property in any manner allowed by law.</p>
+
+        <h2>ATTORNEYS' FEES</h2>
+        <p>Should it become necessary for Landlord to employ an attorney to enforce any of the conditions or covenants hereof, including the collection of rentals or gaining possession of the Property, Tenant agrees to pay all expenses so incurred, including a reasonable attorneys' fee.</p>
+
+        <h2>COMPLIANCE WITH LAW</h2>
+        <p>The Tenant(s) agrees that during the term of the Agreement, to promptly comply with any present and future laws, ordinances, orders, rules, regulations, and requirements of the Federal, State of Ohio, County, City, and Municipal government or any of their departments, bureaus, boards, commissions and officials thereof with respect to the Property, or the use or occupancy thereof, whether said compliance shall be ordered or directed to or against the Tenant(s), the Landlord, or both.</p>
+
+        <h2>SEVERABILITY</h2>
+        <p>If any provision of this Agreement or the application thereof shall, for any reason and to any extent, be invalid or unenforceable, neither the remainder of this Agreement nor the application of the provision to other persons, entities, or circumstances shall be affected thereby, but instead shall be enforced to the maximum extent permitted by law.</p>
+
+        <h2>BINDING EFFECT</h2>
+        <p>The covenants, obligations, and conditions herein contained shall be binding on and inure to the benefit of the heirs, legal representatives, and assigns of the parties hereto.</p>
+
+        <h2>MODIFICATION</h2>
+        <p>The parties hereby agree that this document contains the entire agreement between the parties and this Agreement shall not be modified, changed, altered, or amended in any way except through a written amendment signed by all of the parties hereto.</p>
+
+        <h2>NOTICE</h2>
+        <p>Any notice required or permitted under this Agreement or under state law shall be delivered to Tenant at the Property address, and to Landlord at the following address:</p>
+        
+        <div class="party-info">
+            <span class="bold">LANDLORD:</span><br>
+            {{ landlord.full_name }}<br>
+            {{ landlord.address }}<br>
+            {{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}
+        </div>
+        
+        <div class="party-info">
+            <span class="bold">TENANT:</span><br>
+            {{ client.pOwner }}<br>
+            {{ client.pAddress }}<br>
+            {{ client.pCityStateZip }}
+        </div>
+
+        <h2>PARKING</h2>
+        <p>The Landlord:<br>
+        Shall provide {{ landlord.default_parking_spaces }} parking space(s) to the Tenant(s) for a fee of $<span class="bold underline">{{ landlord.default_parking_fee|floatformat:2|intcomma }}</span> to be paid at the execution of this Agreement on a monthly basis in addition to the rent. The parking space(s) are described as: Driveway.<br>
+        Guests street parking only</p>
+
+        <h2>SMOKING POLICY</h2>
+        <p>Smoking on the Property is: Permitted in the following areas: Outside Deck</p>
+
+        <h2>ADDITIONAL TERMS AND CONDITIONS</h2>
+        <p>ENTIRE AGREEMENT. This constitutes the entire Agreement between the Parties and supersedes any prior understanding or representation of any kind preceding the date of this Agreement. There are no other promises, conditions, understandings or other agreements, whether oral or written, relating to the subject matter of this Agreement. This Agreement may be modified in writing and must be signed by both Landlord and Tenant.</p>
+
+<div class="signature-section">
+    <h2>IN WITNESS WHEREOF</h2>
+    <p>The Parties have caused this Agreement to be executed in multiple originals as of the undersigned date(s).</p>
+    
+    <!-- Landlord Signature -->
+    <div style="margin-bottom: 30px;">
+        <div class="bold" style="margin-bottom: 5px;">{{ landlord.full_name }}</div>
+        <div>
+            <span style="display: inline-block; width: 120px;">Landlord's Signature:</span>
+            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px;"></div>
+            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
+            <div class="signature-date" style="display: inline-block; width: 100px;"></div>
+        </div>
+    </div>
+    
+    <!-- Tenant Signature -->
+    <div style="margin-bottom: 30px;">
+        <div class="bold" style="margin-bottom: 5px;">{{ client.pOwner }}</div>
+        <div>
+            <span style="display: inline-block; width: 120px;">Tenant's Signature:</span>
+            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px;"></div>
+            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
+            <div class="signature-date" style="display: inline-block; width: 100px;"></div>
+        </div>
+    </div>
+</div>
+
+<h2>REQUIRED DISCLOSURES & ADDENDUMS IN OHIO</h2>
+<p>The following disclosures or addendums are either required for some or all residential lease agreements in Ohio.</p>
+
+<h3>Lead Based Paint Disclosure - for rental units built prior to 1978.</h3>
+<h3>DISCLOSURE OF INFORMATION ON LEAD-BASED PAINT AND/OR LEAD-BASED PAINT HAZARDS LEAD WARNING STATEMENT</h3>
+
+<p>Housing built before 1978 may contain lead-based paint. Lead from paint, paint chips, and dust can pose health hazards if not managed properly. Lead exposure is especially harmful to young children and pregnant women. Before renting pre-1978 housing, lessors must disclose the presence of known lead-based paint and/or lead-based paint hazards in the dwelling. Lessees must also receive a federally approved pamphlet on lead poisoning prevention.</p>
+
+<h3>Lessor's Disclosure:</h3>
+<p>Presence of lead-based paint and/or lead-based paint hazards (check (i) or (ii) below):</p>
+
+<div style="margin-left: 20px;">
+    <!-- Option (i) -->
+    <div style="margin-bottom: 15px;">
+        <div style="display: inline-block; width: 20px;">(i)</div>
+        <div style="display: inline-block; width: 20px; border-bottom: 1px solid #000; margin-right: 10px;"></div>
+        <div style="display: inline-block;">
+            Known lead-based paint and/or lead-based paint hazards are present in the housing (explain).
+        </div>
+    </div>
+    <div style="padding-top: 30px; border-bottom: 1px solid #000; width: 100%; margin-left: 40px;"></div>
+    
+    <!-- Option (ii) -->
+    <div style="margin-bottom: 15px; margin-top: 15px;">
+        <div style="display: inline-block; width: 20px;">(ii)</div>
+        <div style="display: inline-block; width: 20px; border-bottom: 1px solid #000; margin-right: 10px;"></div>
+        <div style="display: inline-block;">
+            Lessor has no knowledge of lead-based paint and/or lead-based paint hazards in the housing.
+        </div>
+    </div>
+    <div style="padding-top: 30px; border-bottom: 1px solid #000; width: 100%; margin-left: 40px;"></div>
+</div>
+<h2>DOCUMENT OWNERSHIP AND INQUIRIES</h2>
+
+<p>
+    This document was created by and is the property of 
+    <span class="bold">{{ landlord.real_estate_company }}</span>. 
+    All inquiries regarding this agreement should be directed to:
+</p>
+
+<div class="indent" style="line-height: 1.6; font-weight: bold;">
+    {{ landlord.company_contact_person }}<br>
+    Phone: {{ landlord.company_phone }}<br>
+    Email: {{ landlord.company_email }}
+</div>
+    <div class="document-footer">
+        www.dreamteamrealtyinc.com | {{ landlord.broker_email|default:"juliuscartwright@gmail.com" }} | {{ landlord.broker_phone|default:"(216) 990-1501" }}
+    </div>
+</div>
+</body>
+</html>

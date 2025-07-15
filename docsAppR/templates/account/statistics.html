@@ -1,0 +1,315 @@
+{% extends "account/base.html" %}
+{% load static %}
+{% block content %}
+    <main class="stats-dashboard">
+        <div class="dashboard-header">
+            <h1>Claims Analytics Dashboard</h1>
+            <div class="dashboard-actions">
+                <select class="time-filter">
+                    <option>Last 30 Days</option>
+                    <option>Last 90 Days</option>
+                    <option>Year to Date</option>
+                    <option>All Time</option>
+                </select>
+                <button class="export-btn">
+                    <i class="fa fa-download"></i> Export
+                </button>
+            </div>
+        </div>
+
+        <!-- Key Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-value">{{ total_claims }}</div>
+                <div class="metric-label">Total Claims</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ avg_completion }}%</div>
+                <div class="metric-label">Avg Completion</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ oldest_claim_age }}d</div>
+                <div class="metric-label">Oldest Claim</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ mit_count }}</div>
+                <div class="metric-label">MIT Claims</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ cps_count }}</div>
+                <div class="metric-label">CPS Claims</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value">{{ ppr_count }}</div>
+                <div class="metric-label">PPR Claims</div>
+            </div>
+        </div>
+
+        <!-- Main Charts -->
+        <div class="chart-grid">
+            <!-- Completion Progress -->
+            <div class="chart-card wide">
+                <div class="chart-header">
+                    <h3>Completion Progress</h3>
+                    <div class="chart-legend">
+                        <span class="legend-item"><span class="legend-color" style="background:#4CC790"></span> 76-100%</span>
+                        <span class="legend-item"><span class="legend-color" style="background:#A3E1B1"></span> 51-75%</span>
+                        <span class="legend-item"><span class="legend-color" style="background:#FFD166"></span> 26-50%</span>
+                        <span class="legend-item"><span class="legend-color" style="background:#FF6B6B"></span> 0-25%</span>
+                    </div>
+                </div>
+                <div class="chart-container">
+                    <canvas id="completionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Age Distribution -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Claim Age Distribution</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="ageChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Completion by Age -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Completion by Age</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="ageCompletionChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Claim Types -->
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Claim Types</h3>
+                </div>
+                <div class="chart-container">
+                    <canvas id="typeChart"></canvas>
+                </div>
+            </div>
+
+            <!-- Document Completion -->
+            <div class="chart-card wide">
+                <div class="chart-header">
+                    <h3>Document Completion Rates</h3>
+                    <select class="chart-filter">
+                        <option>All Documents</option>
+                        <option>MIT Only</option>
+                        <option>CPS Only</option>
+                        <option>PPR Only</option>
+                    </select>
+                </div>
+                <div class="chart-container">
+                    <canvas id="docCompletionChart"></canvas>
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Activity -->
+        <div class="activity-section">
+            <h3>Recent Activity</h3>
+            <div class="activity-list">
+                {% for activity in recent_activity %}
+                <div class="activity-item">
+                    <div class="activity-icon">{{ activity.user_initials }}</div>
+                    <div class="activity-details">
+                        <div class="activity-message">{{ activity.message }}</div>
+                        <div class="activity-time">{{ activity.timestamp|timesince }} ago</div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+    document.addEventListener('DOMContentLoaded', function() {
+    // Convert Django template variables to JavaScript
+    const ageDistribution = {{ age_distribution|safe }}
+    const ageCompletionData = {{ age_completion_data|safe }}
+    const documentStats = {{ document_stats|safe }}
+    const clientCompletionData = {{ client_completion_data|safe }}
+    const claimTypes = {
+        'MIT': {{ mit_count }},
+        'CPS': {{ cps_count }},
+        'PPR': {{ ppr_count }}
+    };
+
+    // Completion Chart (Client-wise)
+    const completionCtx = document.getElementById('completionChart').getContext('2d');
+    new Chart(completionCtx, {
+        type: 'bar',
+        data: {
+            labels: clientCompletionData.map(item => item.pOwner),
+            datasets: [{
+                label: 'Completion %',
+                data: clientCompletionData.map(item => item.completion_percent),
+                backgroundColor: function(context) {
+                    const value = context.raw;
+                    return value >= 75 ? '#4CC790' :
+                           value >= 50 ? '#A3E1B1' :
+                           value >= 25 ? '#FFD166' : '#FF6B6B';
+                },
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.raw + '% complete';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Age Distribution Chart
+    const ageCtx = document.getElementById('ageChart').getContext('2d');
+    new Chart(ageCtx, {
+        type: 'doughnut',
+        data: {
+            labels: Object.keys(ageDistribution),
+            datasets: [{
+                data: Object.values(ageDistribution),
+                backgroundColor: [
+                    '#4CC790', '#A3E1B1', '#FFD166', 
+                    '#FF9F40', '#FF6384', '#C9CBCF'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right' }
+            },
+            cutout: '70%'
+        }
+    });
+
+    // Age Completion Chart
+    const ageCompletionCtx = document.getElementById('ageCompletionChart').getContext('2d');
+    new Chart(ageCompletionCtx, {
+        type: 'bar',
+        data: {
+            labels: Object.keys(ageCompletionData),
+            datasets: [{
+                label: 'Avg Completion %',
+                data: Object.values(ageCompletionData),
+                backgroundColor: [
+                    '#4CC790', '#A3E1B1', '#FFD166', 
+                    '#FF9F40', '#FF6384', '#C9CBCF'
+                ],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.raw.toFixed(1) + '%';
+                        }
+                    }
+                }
+            },
+            scales: {
+                y: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+
+    // Type Distribution Chart
+    const typeCtx = document.getElementById('typeChart').getContext('2d');
+    new Chart(typeCtx, {
+        type: 'pie',
+        data: {
+            labels: Object.keys(claimTypes),
+            datasets: [{
+                data: Object.values(claimTypes),
+                backgroundColor: ['#36A2EB', '#FFCE56', '#FF6384'],
+                borderWidth: 0
+            }]
+        },
+        options: {
+            responsive: true,
+            plugins: {
+                legend: { position: 'right' }
+            }
+        }
+    });
+
+    // Document Completion Chart
+    const docCtx = document.getElementById('docCompletionChart').getContext('2d');
+    new Chart(docCtx, {
+        type: 'bar',
+        data: {
+            labels: documentStats.map(item => item.document_type),
+            datasets: [{
+                label: 'Completion %',
+                data: documentStats.map(item => item.completion_rate),
+                backgroundColor: '#4CC790',
+                borderWidth: 0
+            }]
+        },
+        options: {
+            indexAxis: 'y',
+            responsive: true,
+            plugins: {
+                legend: { display: false },
+                tooltip: {
+                    callbacks: {
+                        label: function(context) {
+                            return context.raw.toFixed(1) + '% complete';
+                        }
+                    }
+                }
+            },
+            scales: {
+                x: {
+                    beginAtZero: true,
+                    max: 100,
+                    ticks: {
+                        callback: function(value) {
+                            return value + '%';
+                        }
+                    }
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

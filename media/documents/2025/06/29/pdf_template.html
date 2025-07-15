@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Month-to-Month Rental Agreement</title>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            line-height: 1.6;
+            margin: 0;
+            padding: 20px;
+            color: #000;
+        }
+        .document {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 18pt;
+            margin-bottom: 30px;
+            text-decoration: underline;
+        }
+        h2 {
+            font-size: 14pt;
+            margin-top: 20px;
+            margin-bottom: 10px;
+            text-decoration: underline;
+        }
+        p {
+            margin: 10px 0;
+            text-align: justify;
+        }
+        .underline {
+            text-decoration: underline;
+        }
+        .signature-section {
+            margin-top: 40px;
+        }
+        .signature-line {
+            display: inline-block;
+            width: 250px;
+            border-bottom: 1px solid #000;
+            margin-right: 20px;
+        }
+        .signature-label {
+            display: inline-block;
+            width: 100px;
+        }
+        .indent {
+            margin-left: 40px;
+        }
+        .checklist {
+            margin-left: 40px;
+        }
+        .centered {
+            text-align: center;
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .uppercase {
+            text-transform: uppercase;
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <h1>MONTH-TO-MONTH RENTAL AGREEMENT</h1>
+        
+        <p>THIS MONTH-TO-MONTH RENTAL AGREEMENT hereinafter known as the "Agreement" is made and entered into this {{ agreement_date|date:"jS" }} day of {{ agreement_date|date:"F Y" }}, by and between the Landlord known as <span class="bold">{{ landlord_name }}, {{ landlord_address }}</span>, hereinafter known as the "Landlord" and the Tenant(s) known as <span class="bold">{{ tenant_name }}, {{ tenant_address }}</span>, hereinafter known as the "Tenant(s)" for and in consideration of the covenants and obligations contained herein and other good and valuable consideration, the receipt and sufficiency of which is hereby acknowledged, the parties hereby agree as follows:</p>
+
+        <h2>PROPERTY</h2>
+        <p>Landlord owns property and improvements located at <span class="bold">{{ property_address }}</span> (hereinafter referred to as the "Property"). Landlord desires to lease the Property to Tenant upon the terms and conditions contained herein. Tenant desires to lease the Property from Landlord upon the terms and conditions contained herein.</p>
+
+        <h2>TERM</h2>
+        <p>The Agreement will start on <span class="bold">{{ lease_start_date|date:"F j, Y" }}</span>, and will continue as a month-to-month tenancy, ending on <span class="bold">{{ lease_end_date|date:"F j, Y" }}</span>. In accordance with the State Statutes to terminate the tenancy, the Landlord or Tenant must give the other party a written 30 days' notice of non-renewal. The Tenant may only terminate their Agreement on the last day of any month and the Landlord must receive written notification of non-renewal at least 30 days prior to the last day of that month. If the Tenant plans to leave on or after the first of any month, they are responsible for that month's full rent. If the Tenant does not provide the Landlord with a written 30 days' notice, they shall forfeit their full deposit amount.</p>
+
+        <h2>PAYMENTS</h2>
+        <p>Tenant agrees to pay to Landlord as rent for the Property in the amount of <span class="bold">{{ rent_amount|upper }}</span> each month in advance on the {{ rent_due_day }}<sup>{% if rent_due_day == "1" or rent_due_day == "21" or rent_due_day == "31" %}st{% elif rent_due_day == "2" or rent_due_day == "22" %}nd{% elif rent_due_day == "3" or rent_due_day == "23" %}rd{% else %}th{% endif %}</sup> day of each month at any other address designated by Landlord. If the Term does not start on the 1st day of the month or end on the last day of a month, the first and last month's rent will be prorated accordingly.</p>
+
+        <h2>SECURITY DEPOSIT</h2>
+        <p>At the signing of this Agreement, Tenant shall deposit with Landlord, in trust, a security deposit of $<span class="underline">{{ security_deposit }}</span> as security for the performance by Tenant of the terms under this Agreement and for any damages caused by Tenant, Tenant's family, and visitors to the Property during the term of this Agreement. The Landlord may use part or all of the security deposit to repair any damage to the Property caused by Tenant, Tenant's family, and visitors to the Property. However, the Landlord is not just limited to the security deposit amount and Tenant remains liable for any balance. Tenant shall not apply or deduct any portion of any security deposit from the last or any month's rent. Tenant shall not use or apply any such security deposit at any time in lieu of payment of rent. If Tenant breaches any terms or conditions of this Agreement, Tenant shall forfeit any deposit, as permitted by law.</p>
+
+        <h2>LATE CHARGES</h2>
+        <p>Rent is due on the {{ rent_due_day }}<sup>{% if rent_due_day == "1" or rent_due_day == "21" or rent_due_day == "31" %}st{% elif rent_due_day == "2" or rent_due_day == "22" %}nd{% elif rent_due_day == "3" or rent_due_day == "23" %}rd{% else %}th{% endif %}</sup> Day of each month, if any or all of the rent is not received by the {{ late_fee_start_day }}<sup>{% if late_fee_start_day == "1" or late_fee_start_day == "21" or late_fee_start_day == "31" %}st{% elif late_fee_start_day == "2" or late_fee_start_day == "22" %}nd{% elif late_fee_start_day == "3" or late_fee_start_day == "23" %}rd{% else %}th{% endif %}</sup> day of the month, ${{ late_fee_amount }} per-day will be charged as late fees until full rental payment is received. If rent is not received by the {{ eviction_day }}<sup>{% if eviction_day == "1" or eviction_day == "21" or eviction_day == "31" %}st{% elif eviction_day == "2" or eviction_day == "22" %}nd{% elif eviction_day == "3" or eviction_day == "23" %}rd{% else %}th{% endif %}</sup> day of the month, Tenant will be considered in breach of the Agreement and eviction proceedings will be initiated.</p>
+
+        <h2>INSUFFICIENT FUNDS</h2>
+        <p>Tenant agrees to pay the charge of ${{ nsf_fee }} for each check given by Tenant to Landlord that is returned to Landlord for a lack of sufficient funds.</p>
+
+        <h2>USE OF PROPERTY</h2>
+        <p>Tenant shall only use the Property as a residence, The Property shall not be used to carry on any type of business or trade without the prior written consent of the Landlord. The Tenant will comply with all laws, rules, ordinances, statutes, and orders regarding the use of the Property.</p>
+
+        <h2>OCCUPANCY</h2>
+        <p>Tenant agrees that no more than {{ max_occupants }} persons may reside on the Property without the prior written consent of the Landlord.</p>
+
+        <!-- Continue with other sections following the same pattern -->
+
+        <div class="signature-section">
+            <h2>IN WITNESS WHEREOF</h2>
+            <p>The Parties have caused this Agreement to be executed in multiple originals as of the undersigned date(s).</p>
+            
+            <p>Landlord's Signature <span class="signature-line"></span> Date <span class="signature-line"></span></p>
+            <p class="indent">Print Name <span class="bold">{{ landlord_name }}</span></p>
+            
+            <p>Tenant's Signature <span class="signature-line"></span> Date <span class="signature-line"></span></p>
+            <p class="indent">Print Name <span class="bold">{{ tenant_name }}</span></p>
+        </div>
+
+        <h2>REQUIRED DISCLOSURES & ADDENDUMS IN OHIO</h2>
+        <p>The following disclosures or addendums are either required for some or all residential lease agreements in Ohio.</p>
+        
+        <h3>Lead Based Paint Disclosure - for rental units built prior to 1978.</h3>
+        <h3>DISCLOSURE OF INFORMATION ON LEAD-BASED PAINT AND/OR LEAD-BASED PAINT HAZARDS LEAD WARNING STATEMENT</h3>
+        
+        <p>Housing built before 1978 may contain lead-based paint. Lead from paint, paint chips, and dust can pose health hazards if not managed property. Lead exposure is especially harmful to young children and pregnant women, before renting pre-1978 housing, lessors must disclose the presence of known lead-based paint and/or lead- based paint hazards in the dwelling. Lessees must also receive a federally approved pamphlet on lead poisoning prevention.</p>
+        
+        <h3>Lessor's Disclosure:</h3>
+        <p>Presence of lead-based paint and/or lead-based paint hazards (check (i) or (ii) below):</p>
+        
+        <div class="checklist">
+            <p>(i) Known lead-based paint and/or lead-based paint hazards are present in the housing (explain).</p>
+            <p>(ii) Lessor has no knowledge of lead-based paint and/or lead-based paint hazards in the housing.</p>
+        </div>
+    </div>
+</body>
+</html>

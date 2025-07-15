@@ -1,0 +1,182 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Engagement Agreement</title>
+    <style>
+
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 14px;
+            line-height: 1.2;  /* Reduced from 1.4 */
+            margin: 0;
+            padding: 10px;  /* Reduced from 20px */
+            color: #000;
+        }
+        .document {
+            max-width: 600px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 16pt;
+            margin-bottom: 15px;  /* Reduced from 20px */
+    
+        }
+        h2 {
+            font-size: 14pt;
+            margin-top: 3px;  /* Reduced from 5px */
+            margin-bottom: 5px;  /* Reduced from 5px */
+            text-align: left;
+        }
+        h3 {
+            font-size: 13pt;
+            margin-top: 10px;  /* Reduced from 20px */
+            margin-bottom: 5px;  /* Reduced from 10px */
+            text-align: left;
+        }
+        p {
+            margin: 6px 0;  /* Reduced from 12px */
+            text-align: left;
+            padding: 0 10px;  /* Reduced from 20px */
+        }
+        .signature-line {
+            margin-top: 5px;  /* Reduced from 10px */
+        }
+        .highlight {
+            font-weight: bold;
+        }
+        .signature-block {
+            margin-top: 5px;  /* Reduced from 10px */
+        }
+        .bold {
+            font-weight: bold;
+        }
+        .signature-pair {
+            margin-bottom: 5px;  /* Reduced from 10px */
+            text-align: left;
+        }
+        .signature-pair p {
+            text-align: center;
+            padding: 0;
+            margin: 3px 0;  /* Added to reduce space between signature lines */
+        }
+        .underline {
+            border-bottom: 1px solid #000;
+            display: inline-block;
+            min-width: 200px;
+            margin: 0 5px;  /* Reduced from 10px */
+        }
+        @media print {
+            body {
+                padding: 20px;  /* Reduced from 40px */
+            }
+        }
+        .letterhead {
+            text-align: center;
+            margin-bottom: 5px;
+        }
+        .letterhead img.logo-left,
+        .letterhead img.logo-right {
+            max-height: 50px;  /* Smaller side logos */
+            max-width: 100%;
+        }
+        .letterhead img.logo-center {
+            max-height: 80px;  /* Larger center logo */
+            max-width: 100%;
+        }
+        .logo-container {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 10px;
+        }
+        .document-footer {
+            margin-top: 0.3in;
+            padding-top: 0.08in;
+            border-top: 1px solid #ddd;
+            text-align: center;
+            font-size: 9pt;
+            font-weight: bold;
+        }
+        .company-info {
+            font-size: 8pt;
+            line-height: 1.2;
+            margin-top: 0.05in;
+            font-weight: bold;
+        }
+        body, div, p {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }   
+    </style>
+</head>
+<body>
+    <div class="document">
+        <div class="letterhead">
+            <div class="logo-container">
+                <img src="http://localhost:8000/media/NAREB-logo.png" alt="NAREB Logo" class="logo-left">
+                <img src="http://localhost:8000/media/dreamteam-letterhead.png" alt="Dream Team Realty" class="logo-center">
+                <img src="http://localhost:8000/media/realtor-logo.png" alt="Realtor Logo" class="logo-right">
+            </div>
+            <div class="company-info">
+                {{ landlord.company_mailing_address }}<br>
+                {{ landlord.company_city }}, {{ landlord.company_state }} {{ landlord.company_zip }}
+            </div>
+        </div>
+
+        <h1>Engagement Agreement</h1>
+        
+        <h3>RE: {{ client.pOwner }}, {{ client.claimNumber}}, {{ client.insuranceCo_Name}}</h3>
+
+        <p>I/We, the undersigned, hereby formally authorize and agree to engage <span class="highlight">DreamTeam Realty, Inc.</span> to assist in locating and securing a suitable dwelling for our temporary residence.
+        
+        <p>By signing below, the <span class="highlight">landlord/owner</span> of the temporary dwelling also acknowledges and agrees to this compensation fee being paid directly to <span class="highlight">DreamTeam Realty, Inc.</span> as part of this arrangement.</p>
+
+            <h3>Tenant Acknowledgment</h3>
+            <p>I do understand my policy allows me to select the vendor provider for any services I need; including relocation services/temporary housing.</p>
+
+            <h3>Lessor Acknowledgment</h3>
+            <p>I agree to allow the lessee to immediately occupy my property with or without a security deposit.</p>
+            <p>We further agree to potentially allow occupancy and wait for the Lessee's insurer to send payment.</p>
+            <p>With the full understanding that lessee shall be ultimately responsible for all monies due.</p>
+
+            <h3>Realtor/Broker Service Provider Acknowledgement</h3>
+            
+            <p>As compensation for the services rendered in securing this temporary dwelling, <span class="highlight">DreamTeam Realty, Inc.</span> shall receive an amount equivalent to the first month's rent. It is understood and agreed that these funds will be provided directly by the designated Insurance Company or other third party responsible for covering our living expenses for the specified duration.</p>
+            <p>Real Estate Company shall do all in their power to fully assure/assist that we are fully compensated for all monies due.</p>
+            <p>This agreement is with the full understanding that the Lessee's insurance company policy does allow the policy holders to select us as a service provider, as a vendor of choice, for temporary housing.</p>
+            <p>Extensions shall require a new fully executed lease and DreamTeam Realty, Inc. shall receive an amount equivalent to 50% of the first month's rent.</p>
+
+            <div class="signature-pair">
+                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                
+                <p>Tenant&nbsp;__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
+                <p style="text-align: left; margin: 10px 0; padding-left: 100px;">Name: <strong>{{ client.pOwner }}</strong><br>
+                Mailing Address: <strong>{{ client.pAddress }}, {{ client.pCityStateZip }} </strong><br>
+                Claim Number: <strong>{{ client.claimNumber }}</strong><br>
+                Insurance Company: <strong>{{ client.insuranceCo_Name }}</strong></p>  
+                
+                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                
+                <p>Lessor__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
+                <p style="text-align: left; margin: 10px 0; padding-left: 100px;">Name: <strong>{{ landlord.full_name }}</strong><br>  
+                Leased Property: <strong>{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }} </strong></p>
+                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                
+                <p>Realtor__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
+                <p style="text-align: left; margin: 10px 0; padding-left: 100px;">Name: <strong>{{ landlord.real_estate_company }}</strong><br>
+                Mailing Address: <strong>{{ landlord.company_mailing_address }}, {{ landlord.company_city }} {{ landlord.company_state }} {{ landlord.company_zip }}</strong><br>
+
+                </p>
+
+            </div>
+
+        </div>
+
+        <div class="document-footer">
+            www.dreamteamrealtyinc.com | {{ landlord.broker_email|default:"juliuscartwright@gmail.com" }} | {{ landlord.broker_phone|default:"(216) 990-1501" }}
+        </div>
+</body>
+</html>

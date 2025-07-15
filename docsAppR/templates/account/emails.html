@@ -1,0 +1,112 @@
+{% extends "account/base.html" %}
+
+{% block content %}
+<main>
+    <h1>Email Documents</h1>
+    
+    <div class="flex-grid">
+        <div>
+            <h2>Recently Generated Documents</h2>
+            <div class="scroll-cards">
+                {% if documents %}
+                    {% for doc in documents %}
+                        <div class="card">
+                            <div class="card-header">
+                                <span>{{ doc.filename }}</span>
+                                <button class="options-btn" onclick="toggleSelection('{{ doc.id }}')">Select</button>
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <p>No recently generated documents found.</p>
+                {% endif %}
+            </div>
+        </div>
+        
+        <div>
+            <h2>Recipients</h2>
+            <form id="emailForm" method="POST">
+                {% csrf_token %}
+                <div class="email-recipients">
+                    <div class="recipient-group">
+                        <input type="email" name="recipients[]" class="email-input" placeholder="Enter email address">
+                        <button type="button" class="options-btn add-recipient">Add Recipient</button>
+                    </div>
+                </div>
+                
+                <div class="email-content">
+                    <input type="text" name="subject" placeholder="Email Subject" class="email-subject">
+                    <textarea name="message" placeholder="Email Message" class="email-message"></textarea>
+                </div>
+                
+                <button type="submit" class="options-btn">Send Documents</button>
+            </form>
+        </div>
+    </div>
+</main>
+
+<style>
+.email-recipients {
+    margin-bottom: 20px;
+}
+
+.recipient-group {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.email-input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.email-content {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    margin-bottom: 20px;
+}
+
+.email-subject {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.email-message {
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    min-height: 100px;
+    resize: vertical;
+}
+
+.selected {
+    background-color: #f0f0f0;
+    border-left: 4px solid #404040;
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    // Add recipient button functionality
+    document.querySelector('.add-recipient').addEventListener('click', function() {
+        const recipientGroup = document.createElement('div');
+        recipientGroup.className = 'recipient-group';
+        recipientGroup.innerHTML = `
+            <input type="email" name="recipients[]" class="email-input" placeholder="Enter email address">
+            <button type="button" class="options-btn" onclick="this.parentElement.remove()">Remove</button>
+        `;
+        document.querySelector('.email-recipients').appendChild(recipientGroup);
+    });
+});
+
+function toggleSelection(docId) {
+    const card = document.querySelector(`[data-doc-id="${docId}"]`);
+    card.classList.toggle('selected');
+}
+</script>
+{% endblock %} 

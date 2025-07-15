@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Relocation Agreement</title>
+  <style>
+    body {
+      font-family: 'Georgia', serif;
+      margin: 60px auto;
+      max-width: 800px;
+      line-height: 1.6;
+      color: #000;
+    }
+
+    .logo {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+
+    .logo img {
+      max-height: 100px;
+    }
+
+    h1 {
+      text-align: center;
+      font-size: 24px;
+      text-decoration: underline;
+      margin-bottom: 30px;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin-top: 50px;
+      text-decoration: underline;
+    }
+
+    h3 {
+      font-size: 18px;
+      margin-top: 30px;
+    }
+
+    p {
+      margin-bottom: 20px;
+      font-size: 16px;
+    }
+
+    .underline {
+      display: block;
+      border-bottom: 1px solid #000;
+      margin-top: 10px;
+      margin-bottom: 30px;
+      height: 25px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+
+    td {
+      font-size: 16px;
+      padding: 8px 4px;
+      vertical-align: bottom;
+    }
+
+    .indent {
+      margin-left: 40px;
+    }
+
+    .bold {
+      font-weight: bold;
+    }
+
+    .line {
+      border-bottom: 1px solid #000;
+      height: 25px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="logo">
+    <!-- Replace with actual logo path -->
+    <img src="dreamteam_logo.png" alt="DreamTeam Realty, Inc. Logo" />
+  </div>
+
+  <h1>Relocation & Short Term Rental Agreement</h1>
+
+  <p>I/We, the undersigned, hereby formally authorize and agree to engage <strong>DreamTeam Realty, Inc.</strong> to assist in locating and securing a suitable dwelling for our temporary residence. This temporary accommodation is required until such time as we can return to our permanent home located at:</p>
+
+  <div class="underline"></div>
+
+  <p>As compensation for the services rendered in securing this temporary dwelling, <strong>DreamTeam Realty, Inc.</strong> shall receive an amount equivalent to the first month's rent. It is understood and agreed that these funds will be provided directly by the designated Insurance Company or other third party responsible for covering our living expenses for the specified duration.</p>
+
+  <p>This agreement for compensation to <strong>DreamTeam Realty, Inc.</strong> is for a specific period, commencing on 
+    <span class="underline" style="width: 200px; display: inline-block;"></span> and concluding on 
+    <span class="underline" style="width: 200px; display: inline-block;"></span>.
+  </p>
+
+  <p>By signing below, the landlord/owner of the temporary dwelling also acknowledges and agrees to this compensation fee being paid directly to <strong>DreamTeam Realty, Inc.</strong> as part of this arrangement.</p>
+
+  <!-- First set of signature lines -->
+  <table>
+    <tr>
+      <td style="width: 150px;">Tenant's Signature</td>
+      <td class="line" style="width: 250px;"></td>
+      <td style="width: 60px;">Date</td>
+      <td class="line" style="width: 250px;"></td>
+    </tr>
+  </table>
+  <p class="indent">Print Name <span class="bold">{{ client.pOwner }}</span></p>
+
+  <table>
+    <tr>
+      <td style="width: 150px;">Landlord's Signature</td>
+      <td class="line" style="width: 250px;"></td>
+      <td style="width: 60px;">Date</td>
+      <td class="line" style="width: 250px;"></td>
+    </tr>
+  </table>
+  <p class="indent">Print Name <span class="bold">{{ landlord.full_name }}</span></p>
+
+  <!-- Second set of signature lines -->
+  <table>
+    <tr>
+      <td style="width: 150px;">Tenant's Signature</td>
+      <td class="line" style="width: 250px;"></td>
+      <td style="width: 60px;">Date</td>
+      <td class="line" style="width: 250px;"></td>
+    </tr>
+  </table>
+  <p class="indent">Print Name <span class="bold">{{ client.pOwner }}</span></p>
+
+  <table>
+    <tr>
+      <td style="width: 150px;">Landlord's Signature</td>
+      <td class="line" style="width: 250px;"></td>
+      <td style="width: 60px;">Date</td>
+      <td class="line" style="width: 250px;"></td>
+    </tr>
+  </table>
+  <p class="indent">Print Name <span class="bold">{{ landlord.full_name }}</span></p>
+
+  <!-- ACKNOWLEDGMENTS Section -->
+  <h2>ACKNOWLEDGMENTS</h2>
+
+  <h3>Tenant Acknowledgment</h3>
+  <p>I do understand my policy allows me to select the vendor provider for any services I need; including relocation services/temporary housing.</p>
+
+  <table>
+    <tr>
+      <td style="width: 150px;">Tenant's Signature</td>
+      <td class="line" style="width: 250px;"></td>
+      <td style="width: 60px;">Date</td>
+      <td class="line" style="width: 250px;"></td>
+    </tr>
+  </table>
+  <p class="indent">Print Name <span class="bold">{{ client.pOwner }}</span></p>
+
+  <h3>Lessor Acknowledgment</h3>
+  <p>I agree to allow the lessee to immediately occupy my property with or without a security deposit.</p>
+  <p>We further agree to potentially allow occupancy and wait for the Lessee's insurer to send payment.</p>
+  <p>With the full understanding that lessee shall be ultimately responsible for all monies due.</p>
+  <p>Real Estate Company shall do all in their power to fully assure/assist that we are fully compensated for all monies due.</p>
+  <p>This agreement is with the full understanding that the Lessee's insurance company policy does allow the policy holders to select us as a service provider, as a vendor of choice, for temporary housing.</p>
+
+  <table>
+    <tr>
+      <td style="width: 150px;">Lessor's Signature</td>
+      <td class="line" style="width: 250px;"></td>
+      <td style="width: 60px;">Date</td>
+      <td class="line" style="width: 250px;"></td>
+    </tr>
+  </table>
+  <p class="indent">Print Name <span class="bold">{{ landlord.full_name }}</span></p>
+
+</body>
+</html>

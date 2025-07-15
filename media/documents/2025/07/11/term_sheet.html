@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Term Sheet</title>
+    <style>
+    .rental-agreement {
+        font-family: Arial, sans-serif;
+        max-width: 800px;
+        margin: 20px auto;
+        padding: 30px;
+        line-height: 1.6;
+        border: 1px solid #ddd;
+        background: white;
+    }
+    .section {
+        margin-bottom: 25px;
+    }
+    .section-title {
+        font-weight: bold;
+        font-size: 1.2em;
+        border-bottom: 1px solid #333;
+        padding-bottom: 5px;
+        margin-bottom: 10px;
+    }
+    .amount-due {
+        font-weight: bold;
+        font-size: 1.3em;
+        text-align: right;
+        margin-top: 20px;
+  }
+</style>
+
+<div class="rental-agreement">
+  <h2 style="text-align: center; margin-bottom: 30px;">TERM SHEET</h2>
+  
+  <div class="section">
+    <div class="section-title">RENTAL PROPERTY:</div>
+    <div>{{ landlord.property_address }}</div>
+    <div>{{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">LANDLORD:</div>
+    <div>{{ landlord.full_name }}</div>
+    <div>{{ landlord.address }}</div>
+    <div>{{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">RENTER:</div>
+    <div>{{ client.pOwner }}{% if client.coOwner2 %} & {{ client.coOwner2 }}{% endif %}</div>
+    <div>{{ client.pAddress }}</div>
+    <div>{{ client.pCityStateZip }}</div>
+  </div>
+  
+  <div class="section">
+    <div class="section-title">RENTAL TERMS:</div>
+    <div>{{ landlord.rental_period_months }} Months & Security Deposit</div>
+    <div>
+      ${{ landlord.default_rent_amount|floatformat:2 }} x {{ landlord.rental_period_months }} = 
+      ${{ landlord.default_rent_amount|multiply:landlord.rental_period_months|floatformat:2 }} 
+      plus (1) month Security Deposit ${{ landlord.default_security_deposit|floatformat:2 }} = 
+      ${{ landlord.default_rent_amount|multiply:landlord.rental_period_months|add:landlord.default_security_deposit|floatformat:2 }}
+    </div>
+  </div>
+  
+  {% if landlord.real_estate_company %}
+  <div class="section">
+    <div>{{ landlord.real_estate_company }}:</div>
+    <div>${{ landlord.default_rent_amount|floatformat:2 }}</div>
+  </div>
+  
+  <div class="section">
+    <div>{{ landlord.real_estate_company }}:</div>
+    <div>Final Inspection & Clean-up:</div>
+    <div>${{ landlord.default_late_fee|floatformat:2 }}</div>
+  </div>
+  {% endif %}
+  
+  <div class="amount-due">
+    TOTAL AMOUNT DUE: 
+    ${{
+      landlord.default_rent_amount|multiply:landlord.rental_period_months|add:landlord.default_security_deposit|add:landlord.default_late_fee|add:landlord.default_rent_amount|floatformat:2
+    }}
+  </div>
+</div>
+</body>
+</html>

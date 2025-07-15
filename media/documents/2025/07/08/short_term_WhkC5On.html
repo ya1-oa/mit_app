@@ -1,0 +1,122 @@
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Relocation & Short Term Rental Agreement</title>
+    <style>
+        body {
+            font-family: 'Times New Roman', Times, serif;
+            font-size: 20px;
+            line-height: 1.4;
+            margin: 0;
+            padding: 10px;
+            color: #000;
+        }
+        .document {
+            max-width: 800px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            font-size: 25pt;
+            margin-bottom: 15px;
+            text-decoration: underline;
+        }
+        h2 {
+            font-size: 22pt;
+            margin-top: 13px;
+            margin-bottom: 8px;
+        }
+        h3 {
+            font-size: 21pt;
+            margin-top: 8px;
+            margin-bottom: 6px;
+        }
+        p {
+            margin: 6px 0;
+            text-align: justify;
+        }
+        .signature-line {
+            margin-top: 20px;
+        }
+        .highlight {
+            font-weight: bold;
+        }
+        .signature-block {
+            display: flex;
+            justify-content: space-between;
+            margin: 20px 0;
+            width: 100%;
+        }
+        .signature-box {
+            width: 45%;
+        }
+        .bold {
+            font-weight: bold;
+        }
+    </style>
+</head>
+<body>
+    <div class="document">
+        <h1>Relocation &amp; Short Term Rental Agreement</h1>
+        
+        <p>I/We, the undersigned, hereby formally authorize and agree to engage <span class="highlight">DreamTeam Realty, Inc.</span> to assist in locating and securing a suitable dwelling for our temporary residence. This temporary accommodation is required until such time as we can return to our permanent home located at:</p>
+        
+        <p>_________________________________________________________________________</p>
+        
+        <p>As compensation for the services rendered in securing this temporary dwelling, <span class="highlight">DreamTeam Realty, Inc.</span> shall receive an amount equivalent to the first month's rent. It is understood and agreed that these funds will be provided directly by the designated Insurance Company or other third party responsible for covering our living expenses for the specified duration.</p>
+        
+        <p>This agreement for compensation to <span class="highlight">DreamTeam Realty, Inc.</span> is for a specific period, commencing on _________________________ and concluding on _________________________.</p>
+        
+        <p>By signing below, the <span class="highlight">landlord/owner</span> of the temporary dwelling also acknowledges and agrees to this compensation fee being paid directly to <span class="highlight">DreamTeam Realty, Inc.</span> as part of this arrangement.</p>
+
+        <div class="signature-block">
+            <div class="signature-box">
+                <p>_________________________________</p>
+                <p>Tenant</p>
+                <p>_________________________________</p>
+                <p>Date</p>
+            </div>
+            <div class="signature-box">
+                <p>_________________________________</p>
+                <p>Landlord/Owner</p>
+                <p>_________________________________</p>
+                <p>Date</p>
+            </div>
+        </div>
+
+        <!-- ACKNOWLEDGMENTS Section -->
+        <h2 style="margin-top: 40px; text-decoration: underline;">ACKNOWLEDGMENTS</h2>
+
+        <h3>Tenant Acknowledgment</h3>
+        <p>I do understand my policy allows me to select the vendor provider for any services I need; including relocation services/temporary housing.</p>
+
+        <div class="signature-block">
+            <div class="signature-box">
+                <p>_________________________________</p>
+                <p>Tenant</p>
+                <p>_________________________________</p>
+                <p>Date</p>
+            </div>
+        </div>
+        <p>Print Name: <strong>{{ client.pOwner }}</strong></p>
+
+        <h3>Lessor Acknowledgment</h3>
+        <p>I agree to allow the lessee to immediately occupy my property with or without a security deposit.</p>
+        <p>We further agree to potentially allow occupancy and wait for the Lessee's insurer to send payment.</p>
+        <p>With the full understanding that lessee shall be ultimately responsible for all monies due.</p>
+        <p>Real Estate Company shall do all in their power to fully assure/assist that we are fully compensated for all monies due.</p>
+        <p>This agreement is with the full understanding that the Lessee's insurance company policy does allow the policy holders to select us as a service provider, as a vendor of choice, for temporary housing.</p>
+
+        <div class="signature-block">
+            <div class="signature-box">
+                <p>_________________________________</p>
+                <p>Lessor</p>
+                <p>_________________________________</p>
+                <p>Date</p>
+            </div>
+        </div>
+        <p>Print Name: <strong>{{ landlord.full_name }}</strong></p>
+    </div>
+</body>
+</html>
