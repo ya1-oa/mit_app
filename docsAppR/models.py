@@ -304,19 +304,19 @@ class File(models.Model):
 
 class Landlord(models.Model):
     # Basic Information
-    full_name = models.CharField(max_length=100, verbose_name="Full Legal Name", blank=True)
-    address = models.TextField(verbose_name="Mailing Address", blank=True)
-    city = models.CharField(max_length=50, blank=True)
-    state = models.CharField(max_length=2, blank=True)
-    zip_code = models.CharField(max_length=10, blank=True)
-    phone = models.CharField(max_length=20, verbose_name="Primary Phone", blank=True)
-    email = models.EmailField(verbose_name="Email Address", blank=True)
+    full_name = models.CharField(max_length=100, verbose_name="Full Legal Name", blank=True, null=True)
+    address = models.TextField(verbose_name="Mailing Address", blank=True, null=True)
+    city = models.CharField(max_length=50, blank=True, null=True)
+    state = models.CharField(max_length=2, blank=True, null=True)
+    zip_code = models.CharField(max_length=10, blank=True, null=True)
+    phone = models.CharField(max_length=20, verbose_name="Primary Phone", blank=True, null=True)
+    email = models.EmailField(verbose_name="Email Address", blank=True, null=True)
 
     # Rental Property Information
-    property_address = models.TextField(verbose_name="Rental Property Address", blank=True)
-    property_city = models.CharField(max_length=50, blank=True)
-    property_state = models.CharField(max_length=2, blank=True)
-    property_zip = models.CharField(max_length=10, blank=True)
+    property_address = models.TextField(verbose_name="Rental Property Address", blank=True, null=True)
+    property_city = models.CharField(max_length=50, blank=True, null=True)
+    property_state = models.CharField(max_length=2, blank=True, null=True)
+    property_zip = models.CharField(max_length=10, blank=True, null=True)
     term_start_date = models.DateField(null=True)
     term_end_date = models.DateField(null=True)
     
