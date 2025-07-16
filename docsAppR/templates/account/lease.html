@@ -329,7 +329,6 @@ hereinafter known as the "Tenant" for and in consideration of the covenants and 
     <h2>IN WITNESS WHEREOF</h2>
     <p>The Parties have caused this Agreement to be executed in multiple originals as of the undersigned date(s).</p>
     
-
     <!-- Landlord Signature -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ landlord.full_name }}</div>
@@ -475,21 +474,6 @@ hereinafter known as the "Tenant" for and in consideration of the covenants and 
             <div class="signature-date" style="display: inline-block; width: 100px; height: 30px;"></div>
         </div>
     </div>
-    
-    {% if landlord.real_estate_company %}
-    <div style="margin-bottom: 30px;">
-        <div class="bold" style="margin-bottom: 5px;">Name: {{ landlord.broker_name }}</div>  <!-- Individual broker/agent name -->
-        <div>
-            <span style="display: inline-block; width: 120px;">Agent's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px; height: 30px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px; height: 30px;"></div>
-        </div>
-        <div style="margin-top: 5px; font-size: 11px;">
-            Representing: {{ landlord.real_estate_company }}  <!-- Company name as secondary info -->
-        </div>
-    </div>
-{% endif %}
 
 <h2>DOCUMENT OWNERSHIP AND INQUIRIES</h2>
 
