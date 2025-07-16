@@ -2888,6 +2888,7 @@ def generate_document_from_html(request):
                 'default_max_occupants': request.POST.get('default_max_occupants', 2),
                 'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
                 'default_parking_fee': request.POST.get('default_parking_fee', 0),
+                'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
                 # Additional Contact Persons
                 'contact_person_1': request.POST.get('contact_person_1'),
                 'contact_person_2': request.POST.get('contact_person_2'),
@@ -2912,8 +2913,9 @@ def generate_document_from_html(request):
                 numeric_fields = {
                     'default_rent_amount': 0,
                     'default_security_deposit': 0,
-                    'default_late_fee': 0,
-                    'default_nsf_fee': 0,
+                    'default_late_fee': 50,
+                    'default_nsf_fee': 35,
+                    'default_inspection_fee': 300.00,
                 }
 
                 if term_start_date and term_end_date:
@@ -3013,6 +3015,7 @@ def save_landlord(request):
                 'default_max_occupants': request.POST.get('default_max_occupants', 2),
                 'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
                 'default_parking_fee': request.POST.get('default_parking_fee', 0),
+                'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
                 # Additional Contact Persons
                 'contact_person_1': request.POST.get('contact_person_1'),
                 'contact_person_2': request.POST.get('contact_person_2'),
@@ -3075,7 +3078,8 @@ def save_landlord(request):
                 'default_eviction_day',
                 'default_max_occupants',
                 'default_parking_spaces',
-                'default_parking_fee'
+                'default_parking_fee',
+                'default_inspection_fee'
             ]
             
             for field in numeric_fields:
