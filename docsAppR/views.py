@@ -3086,7 +3086,7 @@ def save_landlord(request):
                 if landlord_data[field] is not None:
                     try:
                         if field in ['default_rent_amount', 'default_security_deposit', 
-                                    'default_late_fee', 'default_nsf_fee']:
+                                    'default_late_fee', 'default_nsf_fee', 'default_inspection_fee']:
                             landlord_data[field] = float(landlord_data[field])
                         else:
                             landlord_data[field] = int(landlord_data[field])
