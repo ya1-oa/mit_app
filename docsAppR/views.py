@@ -41,7 +41,7 @@ import requests
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
-from xhtml2pdf import pisa
+from weasyprint import HTML
 import tempfile
 
 
