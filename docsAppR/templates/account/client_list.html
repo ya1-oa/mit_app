@@ -489,15 +489,41 @@ h1, h2, h3, h4 {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Clear form fields if they exist
-    const landlordForm = document.getElementById('landlord-form');
-    if (landlordForm) {
-        const inputs = landlordForm.querySelectorAll('input, textarea, select');
-        inputs.forEach(input => {
-            if (input.type !== 'hidden' && input.type !== 'submit' && input.type !== 'button') {
-                input.value = '';
+    function clearLandlordForm() {
+        const landlordForm = document.getElementById('landlord-form');
+        if (landlordForm) {
+            const inputs = landlordForm.querySelectorAll('input, textarea, select');
+            inputs.forEach(input => {
+                if (input.type !== 'hidden' && input.type !== 'submit' && input.type !== 'button') {
+                    input.value = '';
+                    // Reset any validation classes
+                    input.classList.remove('is-invalid');
+                }
+            });
+            // Clear any saved status
+            const landlordFormStatus = document.getElementById('landlordFormStatus');
+            if (landlordFormStatus) {
+                landlordFormStatus.style.display = 'none';
+                landlordFormStatus.textContent = '';
             }
-        });
+        }
     }
+
+    function handleClientChange() {
+        const newClient = clientSelect.value;
+        
+        // Only clear if the client has actually changed
+        if (newClient && newClient !== currentClient) {
+            clearLandlordForm();
+            currentClient = newClient;
+        }
+        
+        localStorage.setItem('selectedClient', newClient);
+        if (documentSelect.value && newClient) {
+            document.getElementById('combined-form').submit();
+        }
+    }
+
     // DOM Elements
     const documentSelect = document.getElementById('document_id');
     const clientSelect = document.getElementById('client_id');
@@ -508,6 +534,7 @@ document.addEventListener('DOMContentLoaded', function() {
     if (savedDocument) documentSelect.value = savedDocument;
     if (savedClient) clientSelect.value = savedClient;
 
+    
     // Form Selections
     function saveSelections() {
         console.log("Event handler for change on form fired!")
@@ -519,7 +546,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     documentSelect.addEventListener('change', saveSelections);
-    clientSelect.addEventListener('change', saveSelections);
+    clientSelect.addEventListener('change', handleClientChange);
 
     const previewButton = document.getElementById('previewButton');
     const downloadButton = document.getElementById('downloadButton');
