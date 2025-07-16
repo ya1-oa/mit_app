@@ -489,8 +489,6 @@ h1, h2, h3, h4 {
 
 document.addEventListener('DOMContentLoaded', function() {
     // Clear form fields if they exist
-    let currentClient = localStorage.getItem('selectedClient');
-    
     function clearLandlordForm() {
         const landlordForm = document.getElementById('landlord-form');
         if (landlordForm) {
@@ -512,16 +510,11 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 
     function handleClientChange() {
-        const newClient = clientSelect.value;
-        
         // Only clear if the client has actually changed
-        if (newClient && newClient !== currentClient) {
-            clearLandlordForm();
-            currentClient = newClient;
-        }
-        
-        localStorage.setItem('selectedClient', newClient);
-        if (documentSelect.value && newClient) {
+        clearLandlordForm();
+        localStorage.setItem('selectedDocument', documentSelect.value);
+        localStorage.setItem('selectedClient', clientSelect.value);
+        if (documentSelect.value) {
             document.getElementById('combined-form').submit();
         }
     }
