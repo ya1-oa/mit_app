@@ -336,72 +336,87 @@ class Landlord(models.Model):
     contact_person_1 = models.CharField(
         max_length=100, 
         verbose_name="Primary Contact Person",
-        blank=True
+        blank=True, 
+        null=True
     )
     contact_person_2 = models.CharField(
         max_length=100, 
         verbose_name="Secondary Contact Person",
-        blank=True
+        blank=True, 
+        null=True
     )
     contact_phone = models.CharField(
         max_length=20, 
         verbose_name="Contact Phone Number",
-        blank=True
+        blank=True, 
+        null=True
     )
     contact_email = models.EmailField(
         verbose_name="Contact Email Address",
-        blank=True
+        blank=True, 
+        null=True
     )
     
     # Real Estate Company Information (Added Fields)
     real_estate_company = models.CharField(
         max_length=100, 
         verbose_name="Real Estate Company Name",
-        blank=True
+        blank=True, 
+        null=True
     )
     company_mailing_address = models.TextField(
         verbose_name="Company Mailing Address",
-        blank=True
+        blank=True, 
+        null=True
     )
     company_city = models.CharField(
         max_length=50,
-        blank=True
+        blank=True, 
+        null=True
     )
     company_state = models.CharField(
         max_length=2,
-        blank=True
+        blank=True, 
+        null=True
     )
     company_zip = models.CharField(
         max_length=10,
-        blank=True
+        blank=True, 
+        null=True
     )
     company_contact_person = models.CharField(
         max_length=100,
         verbose_name="Company Contact Person",
-        blank=True
+        blank=True, 
+        null=True
     )
     company_phone = models.CharField(
         max_length=20,
         verbose_name="Company Phone Number",
-        blank=True
+        blank=True, 
+        null=True
     )
     company_email = models.EmailField(
         verbose_name="Company Email Address",
-        blank=True
+        blank=True, 
+        null=True
     )
     broker_name = models.CharField(
         max_length=100,
         verbose_name="Owner/Broker Name",
-        blank=True
+        blank=True, 
+        null=True
     )
     broker_phone = models.CharField(
         max_length=20,
         verbose_name="Broker Phone Number",
-        blank=True
+        blank=True, 
+        null=True
     )
     broker_email = models.EmailField(
         verbose_name="Broker Email Address",
-        blank=True
+        blank=True, 
+        null=True
     )
 
 
