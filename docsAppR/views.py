@@ -2709,10 +2709,8 @@ def client_list(request):
 
             selected_document = get_object_or_404(documents, name=document_id)
             if selected_document.document_type == 'lease':
-                if selected_document.landlord:
-                    form = LandlordForm(instance=selected_document.landlord)
-                else:
-                    form = LandlordForm()
+                landlord = Landlord()
+                form = LandlordForm(instance=landlord)
     if selected_client:
         print(selected_client.__dict__)
     
