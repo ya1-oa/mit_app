@@ -2846,7 +2846,22 @@ def generate_document_from_html(request):
             try:
                 term_start_date = request.POST.get('term_start_date', '')
                 term_end_date = request.POST.get('term_end_date', '')
-                
+
+                if term_start_date and term_end_date:
+                    try:
+                        start = parse_date(term_start_date)
+                        end = parse_date(term_end_date)
+                        if start and end:
+                            months = (end.year - start.year) * 12 + (end.month - start.month)
+                            if end.day > start.day:  # Count partial month as full month
+                                months += 1
+                            landlord_data['rental_period_months'] = max(1, months)  # Ensure at least 1 month
+                    except Exception as e:
+                        logger.warning(f"Error calculating rental period: {str(e)}")
+                        landlord_data['rental_period_months'] = 1  # Default to 1 month if calculation fails
+                else:
+                    landlord_data['rental_period_months'] = 1  # Default to 1 month if dates missing
+
 
                 print(clean_and_format_date(term_start_date))
                 print(clean_and_format_date(term_end_date))
@@ -2945,20 +2960,14 @@ def generate_document_from_html(request):
             logger.debug("Starting PDF generation")
             try:
                 html_string = template.render(context)
+    
+                # Generate PDF with WeasyPrint
+                pdf_bytes = HTML(
+                    string=html_string,
+                    base_url=request.build_absolute_uri('/')  # For resolving relative URLs
+                ).write_pdf()
                 
-                pdf = BytesIO()
-                pisa_status = pisa.CreatePDF(
-                    html_string, 
-                    dest=pdf,
-                    encoding='UTF-8',
-                    link_callback=lambda uri, _: uri
-                )
-
-                if pisa_status.err:
-                    logger.error(f"PDF generation failed: {pisa_status.err}")
-                    return HttpResponse('PDF generation failed', status=500)
-
-                response = HttpResponse(pdf.getvalue(), content_type='application/pdf')
+                response = HttpResponse(pdf_bytes, content_type='application/pdf')
                 response['Content-Disposition'] = f'attachment; filename="{document_name}_{client_name}.pdf"'
                 logger.debug("PDF generated successfully")
                 return response
