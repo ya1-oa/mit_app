@@ -417,9 +417,20 @@ h1, h2, h3, h4 {
                     </div>
                     <div class="modal-body">
                         <div class="landlord-form-container">
-                            <form id="landlord-form">
+                             <form id="landlord-form" autocomplete="off">
                                 {% csrf_token %}
-                                {{ form.as_p }}
+                                {% for field in form %}
+                                    <div class="form-group">
+                                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                        {{ field }}
+                                        {% if field.help_text %}
+                                            <small class="form-text text-muted">{{ field.help_text }}</small>
+                                        {% endif %}
+                                        {% for error in field.errors %}
+                                            <div class="invalid-feedback">{{ error }}</div>
+                                        {% endfor %}
+                                    </div>
+                                {% endfor %}
                                 <div class="form-group" style="margin-top: 30px;">
                                     <button type="button" id="saveLandlordInfo" class="btn btn-primary">
                                         Save Information
@@ -490,34 +501,38 @@ h1, h2, h3, h4 {
 document.addEventListener('DOMContentLoaded', function() {
     // Clear form fields if they exist
     function clearLandlordForm() {
-        const landlordForm = document.getElementById('landlord-form');
-        if (landlordForm) {
-            const inputs = landlordForm.querySelectorAll('input, textarea, select');
-            inputs.forEach(input => {
-                if (input.type !== 'hidden' && input.type !== 'submit' && input.type !== 'button') {
-                    input.value = '';
-                    // Reset any validation classes
-                    input.classList.remove('is-invalid');
-                }
-            });
-            // Clear any saved status
-            const landlordFormStatus = document.getElementById('landlordFormStatus');
-            if (landlordFormStatus) {
-                landlordFormStatus.style.display = 'none';
-                landlordFormStatus.textContent = '';
-            }
+    const landlordForm = document.getElementById('landlord-form');
+    if (landlordForm) {
+        // Reset the form completely
+        landlordForm.reset();
+        
+        // Clear any validation classes
+        const inputs = landlordForm.querySelectorAll('input, textarea, select');
+        inputs.forEach(input => {
+            input.classList.remove('is-invalid');
+        });
+        
+        // Clear any saved status
+        const landlordFormStatus = document.getElementById('landlordFormStatus');
+        if (landlordFormStatus) {
+            landlordFormStatus.style.display = 'none';
+            landlordFormStatus.textContent = '';
+        }
         }
     }
 
     function handleClientChange() {
-        // Only clear if the client has actually changed
+        // Always clear the landlord form when client changes
         clearLandlordForm();
+        
+        // Save selections and submit
         localStorage.setItem('selectedDocument', documentSelect.value);
         localStorage.setItem('selectedClient', clientSelect.value);
-        if (documentSelect.value) {
+        if (documentSelect.value && clientSelect.value) {
             document.getElementById('combined-form').submit();
         }
     }
+
 
     // DOM Elements
     const documentSelect = document.getElementById('document_id');
@@ -531,8 +546,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
     
     // Form Selections
-    function saveSelections() {
-        console.log("Event handler for change on form fired!")
+    function handleDocumentChange() {
         localStorage.setItem('selectedDocument', documentSelect.value);
         localStorage.setItem('selectedClient', clientSelect.value);
         if (documentSelect.value && clientSelect.value) {
@@ -540,7 +554,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
     
-    documentSelect.addEventListener('change', saveSelections);
+    documentSelect.addEventListener('change', handleDocumentChange);
     clientSelect.addEventListener('change', handleClientChange);
 
     const previewButton = document.getElementById('previewButton');
