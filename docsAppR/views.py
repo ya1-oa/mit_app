@@ -2753,6 +2753,9 @@ from xhtml2pdf import pisa
 logger = logging.getLogger(__name__)
 def generate_document_from_html(request):
     logger.debug("Document generation started")
+    print("STATIC_ROOT:", settings.STATIC_ROOT)
+    print("Files in static:", os.listdir(settings.STATIC_ROOT))
+    
     
     if request.method != 'POST':
         logger.error("Invalid request method")
