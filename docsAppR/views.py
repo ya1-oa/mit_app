@@ -2920,21 +2920,6 @@ def generate_document_from_html(request):
                     'rental_months': 0
                 }
 
-                if term_start_date and term_end_date:
-                    try:
-                        start = parse_date(term_start_date)
-                        end = parse_date(term_end_date)
-                        if start and end:
-                            months = (end.year - start.year) * 12 + (end.month - start.month)
-                            if end.day > start.day:  # Count partial month as full month
-                                months += 1
-                            landlord_data['rental_period_months'] = max(1, months)  # Ensure at least 1 month
-                    except Exception as e:
-                        logger.warning(f"Error calculating rental period: {str(e)}")
-                        landlord_data['rental_period_months'] = 1  # Default to 1 month if calculation fails
-                else:
-                    landlord_data['rental_period_months'] = 1  # Default to 1 month if dates missing
-                
                 for field, default in numeric_fields.items():
                     try:
                         value = request.POST.get(field, default)
