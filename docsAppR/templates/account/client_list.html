@@ -404,43 +404,43 @@ h1, h2, h3, h4 {
             </div>
             
 
-            <!-- Landlord Form (if applicable) -->
-            {% if selected_document.document_type == 'lease' %}
-            <!-- Landlord Form Modal -->
-            <div id="landlordModal" class="modal">
-                <div class="modal-content">
-                    <div class="modal-header">
-                        <h3>Landlord Information</h3>
-                        <span class="close">&times;</span>
-                    </div>
-                    <div class="modal-body">
-                        <div class="landlord-form-container">
-                             <form id="landlord-form" autocomplete="off">
-                                {% csrf_token %}
-                                {% for field in form %}
-                                    <div class="form-group">
-                                        <label for="{{ field.id_for_label }}">{{ field.label }}</label>
-                                        {{ field }}
-                                        {% if field.help_text %}
-                                            <small class="form-text text-muted">{{ field.help_text }}</small>
-                                        {% endif %}
-                                        {% for error in field.errors %}
-                                            <div class="invalid-feedback">{{ error }}</div>
-                                        {% endfor %}
-                                    </div>
-                                {% endfor %}
-                                <div class="form-group" style="margin-top: 30px;">
-                                    <button type="button" id="saveLandlordInfo" class="btn btn-primary">
-                                        Save Information
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            {% endif %}
+<!-- Landlord Form Modal (if applicable) -->
+{% if selected_document.document_type == 'lease' %}
+<div id="landlordModal" class="modal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Landlord Information</h3>
+            <span class="close">&times;</span>
         </div>
+        <div class="modal-body">
+            <div class="landlord-form-container">
+                <form id="landlord-form" autocomplete="off">
+                    {% csrf_token %}
+                    <div class="form-fields-container" style="max-height: 70vh; overflow-y: auto; padding-right: 10px;">
+                        {% for field in form %}
+                            <div class="form-group">
+                                <label for="{{ field.id_for_label }}">{{ field.label }}</label>
+                                {{ field }}
+                                {% if field.help_text %}
+                                    <small class="form-text text-muted">{{ field.help_text }}</small>
+                                {% endif %}
+                                {% for error in field.errors %}
+                                    <div class="invalid-feedback">{{ error }}</div>
+                                {% endfor %}
+                            </div>
+                        {% endfor %}
+                    </div>
+                    <div class="form-group" style="margin-top: 30px;">
+                        <button type="button" id="saveLandlordInfo" class="btn btn-primary">
+                            Save Information
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
         
         <!-- Action Buttons -->
         <div class="action-buttons">
