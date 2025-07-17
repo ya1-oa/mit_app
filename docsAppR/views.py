@@ -2719,6 +2719,7 @@ def client_list(request):
         "documents": documents,
         "selected_client" : selected_client,
         "selected_document": selected_document,
+        'current_client_id': selected_client.id if selected_client else None,
         "form": form,
     })
 

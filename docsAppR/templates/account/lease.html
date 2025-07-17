@@ -1,4 +1,4 @@
-
+{% load static %}
 {% load humanize %}
 <html lang="en">
 <head>
@@ -171,12 +171,13 @@
 
 <div class="letterhead">
     <div class="logo-container">
-        <img src="/media/NAREB-logo.png" alt="NAREB Logo" class="logo-left">
-        <img src="/media/dreamteam-letterhead.png" alt="Dream Team Realty" class="logo-center">
-        <img src="/media/realtor-logo.png" alt="Realtor Logo" class="logo-right">
+        <img src="{% static 'docsAppR/NAREB-logo.png' %}" alt="NAREB Logo" class="logo-left">
+        <img src="{% static 'docsAppR/letterhead.png' %}" alt="Dream Team Realty" class="logo-center">
+        <img src="{% static 'docsAppR/realtor-logo.png' %}" alt="Realtor Logo" class="logo-right">
     </div>
 
     <div class="company-info">
+        {{ landlord.real_estate_company }}<br>
         {{ landlord.company_mailing_address }}<br>
         {{ landlord.company_city }}, {{ landlord.company_state }} {{ landlord.company_zip }}
     </div>
@@ -184,21 +185,20 @@
 
     <h1>MONTHLY SHORT TERM-RENTAL AGREEMENT</h1>
 
-        <h2 class="header-container">
-            <span class="header-title">RE: {{ client.pOwner }}</span>
-            <span class="header-content"><span class="bold-underline">{{ client.insuranceCo_Name}} Claim Number: {{ client.claimNumber}}</span></span>
-        </h2>
+        <h3>RE: {{ client.pOwner }}, </h3>
+        <h3>{{ client.insuranceCo_Name}} Claim Number: {{ client.claimNumber}}</h3>
+
 
      <p>THIS MONTHLY SHORT-TERM RENTAL AGREEMENT hereinafter known as the "Agreement" is made and entered into this <span class="bold">{{ document.created_at|date:"jS" }}</span> day of <span class="bold">{{ document.created_at|date:"F Y" }}</span>, by and between the Landlord and Tenant:<br>
-<span class="bold">{{ landlord.full_name }}, {{ landlord.address }}, {{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</span><br>
-hereinafter known as the "Landlord", and the Tenant:<br>
-<span class="bold centered">{{ client.pOwner }}, {{ client.pAddress }}, {{ client.pCityStateZip }}</span><br>
-hereinafter known as the "Tenant" for and in consideration of the covenants and obligations contained herein and other good and valuable consideration the receipt and sufficiency of which is hereby acknowledged, the parties hereby agree as follows:</p>
+    <span class="bold">{{ landlord.full_name }}, {{ landlord.address }}, {{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</span><br>
+    hereinafter known as the "Landlord", and the Tenant:<br>
+    <span class="bold centered">{{ client.pOwner }}, {{ client.pAddress }}, {{ client.pCityStateZip }}</span><br>
+    hereinafter known as the "Tenant" for and in consideration of the covenants and obligations contained herein and other good and valuable consideration the receipt and sufficiency of which is hereby acknowledged, the parties hereby agree as follows:</p>
 
-        <h2 class="header-container">
-    <span class="header-title">PROPERTY</span>
-    <span class="header-content"><span class="bold-underline">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</span></span>
-</h2>
+    <h2 class="header-container">
+        <span class="header-title">PROPERTY</span>
+        <span class="header-content"><span class="bold-underline">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</span></span>
+    </h2>
         <p>Landlord owns property and improvements located at <span class="bold">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</span> (hereinafter referred to as the "Property"). Landlord desires to lease the Property to Tenant upon the terms and conditions contained herein. Tenant desires to lease the Property from Landlord upon the terms and conditions contained herein.</p>
 
 

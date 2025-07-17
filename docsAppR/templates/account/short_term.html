@@ -1,3 +1,4 @@
+{% load static %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -115,11 +116,11 @@
 <body>
     <div class="document">
         <div class="letterhead">
-            <div class="logo-container">
-                <img src="/media/NAREB-logo.png" alt="NAREB Logo" class="logo-left">
-                <img src="/media/dreamteam-letterhead.png" alt="Dream Team Realty" class="logo-center">
-                <img src="/media/realtor-logo.png" alt="Realtor Logo" class="logo-right">
-            </div>
+        <div class="logo-container">
+            <img src="{% static 'docsAppR/NAREB-logo.png' %}" alt="NAREB Logo" class="logo-left">
+            <img src="{% static 'docsAppR/letterhead.png' %}" alt="Dream Team Realty" class="logo-center">
+            <img src="{% static 'docsAppR/realtor-logo.png' %}" alt="Realtor Logo" class="logo-right">
+        </div>
             <div class="company-info">
                 {{ landlord.real_estate_company }}<br>
                 {{ landlord.company_mailing_address }}<br>
@@ -153,20 +154,21 @@
 
             <div class="signature-pair">
                 <p>Tenant&nbsp;__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
-                <p style="text-align: center; margin: 10px 0;">Name: <strong>{{ client.pOwner }}</strong></p>
-                <p style="text-align: center; margin: 10px 0;">Mailing Address: <strong>{{ client.pAddress }}, {{ client.pCityStateZip }} </strong></p>
-                <p style="text-align: center; margin: 10px 0;">Claim Number: <strong>{{ client.claimNumber }}</strong></p>  
-                <p style="text-align: center; margin: 10px 0;">Insurance Company: <strong>{{ client.insuranceCo_Name }}</strong></p>  
+                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Name: <strong>{{ client.pOwner }}</strong></p>
+                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Mailing Address: <strong>{{ client.pAddress }}, {{ client.pCityStateZip }} </strong></p>
+                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Claim Number: <strong>{{ client.claimNumber }}</strong></p>  
+                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Insurance Company: <strong>{{ client.insuranceCo_Name }}</strong></p>  
                 
                 <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
                 
                 <p>Lessor__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
                 <p style="text-align: center; margin: 10px 0;">Name: <strong>{{ landlord.full_name }}</strong></p>  <!-- Added margin reduction -->
                 <p> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
-                <p style="text-align: center; margin: 10px 0;">Leased Property: <strong>{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }} </strong></p>>
+                <p style="text-align: center; margin: 10px 0;">Leased Property: <strong>{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }} </strong></p>
 
                 <p>Realtor__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
                 <p style="text-align: center; margin: 10px 0;">Name: <strong>{{ landlord.real_estate_company }}</strong></p>
+                <p style="text-align: center; margin: 10px 0;">Mailing Address: <strong>{{ landlord.company_mailing_address }}</strong></p>
 
             </div>
 

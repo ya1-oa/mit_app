@@ -1,5 +1,6 @@
 {% load my_tags %}
 {% load humanize %}
+{% load static %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -126,13 +127,13 @@
 <body>
     <div class="document-container">
         <div class="letterhead">
-            <div class="logo-container">
-                <img src="/media/NAREB-logo.png" alt="NAREB Logo" class="logo-left">
-                <img src="/media/dreamteam-letterhead.png" alt="Dream Team Realty" class="logo-center">
-                <img src="/media/realtor-logo.png" alt="Realtor Logo" class="logo-right">
-            </div>
+        <div class="logo-container">
+            <img src="{% static 'docsAppR/NAREB-logo.png' %}" alt="NAREB Logo" class="logo-left">
+            <img src="{% static 'docsAppR/letterhead.png' %}" alt="Dream Team Realty" class="logo-center">
+            <img src="{% static 'docsAppR/realtor-logo.png' %}" alt="Realtor Logo" class="logo-right">
+        </div>
             <div class="company-info">
-                {{ landlord.real_estate_company }}<br>
+                 {{ landlord.real_estate_company }}<br>
                 {{ landlord.company_mailing_address }}<br>
                 {{ landlord.company_city }}, {{ landlord.company_state }} {{ landlord.company_zip }}
             </div>
@@ -140,34 +141,9 @@
 
         <h1>TERM SHEET</h1>
         <!-- Rental/Leased Property Section -->
-        <h3>RE: {{ client.pOwner }}, </h3>
+        <h3>RE: {{ client.pOwner }}</h3>
         <h3>{{ client.insuranceCo_Name}} Claim Number: {{ client.claimNumber}}</h3>
-
-        <div class="three-columns section-spacer">
-            <div class="label-column">
-                <div class="section-title">RENTAL/LEASED PROPERTY</div>
-            </div>
-            <div class="content-column">
-                <div>{{ landlord.property_address }}</div>
-                <div>{{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</div>
-            </div>
-            <div class="numeric-column"></div>
-        </div>
-
-        <!-- Lessor Section -->
-        <div class="three-columns section-spacer">
-            <div class="label-column">
-                <div class="section-title">LESSOR</div>
-            </div>
-            <div class="content-column">
-                <div>{{ landlord.full_name }}</div>
-                <div>{{ landlord.address }}</div>
-                <div>{{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</div>
-            </div>
-            <div class="numeric-column"></div>
-        </div>
-
-        <!-- Lessee Section -->
+                <!-- Lessee Section -->
         <div class="three-columns section-spacer">
             <div class="label-column">
                 <div class="section-title">LESSEE</div>
@@ -180,13 +156,37 @@
             <div class="numeric-column"></div>
         </div>
 
+                <!-- Lessor Section -->
+        <div class="three-columns section-spacer">
+            <div class="label-column">
+                <div class="section-title">LESSOR</div>
+            </div>
+            <div class="content-column">
+                <div>{{ landlord.full_name }}</div>
+                <div>{{ landlord.address }}</div>
+                <div>{{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</div>
+            </div>
+            <div class="numeric-column"></div>
+        </div>
+
+        <div class="three-columns section-spacer">
+            <div class="label-column">
+                <div class="section-title">RENTAL/LEASED PROPERTY</div>
+            </div>
+            <div class="content-column">
+                <div>{{ landlord.property_address }}</div>
+                <div>{{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</div>
+            </div>
+            <div class="numeric-column"></div>
+        </div>
+
+
         <!-- Rental Terms Section -->
 <div class="three-columns">
     <div class="label-column">
         <div class="section-title">RENTAL TERMS</div>
-        <div class="indented">Months:</div>
-        <div class="indented">Subtotal:</div>
-        <div class="indented">+ Security Deposit</div>
+        <div class="indented">Months</div>
+        <div class="indented">Security Deposit</div>
         <div class="indented">Subtotal</div>
         {% if landlord.real_estate_company %}
         <div class="indented">{{ landlord.real_estate_company }} Fee:</div>
@@ -208,14 +208,15 @@
         <div>&nbsp;</div>
         <div class="indented">&nbsp;</div>
         <div class="indented"><b><u>${{ landlord.default_rent_amount|multiply:landlord.rental_months|floatformat:2|intcomma }}</u></b></div>
+
         <div class="indented"><b><u>${{ landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
         <div class="indented"><b><u>${{ landlord.default_rent_amount|multiply:landlord.rental_months|add:landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
         {% if landlord.real_estate_company %}
         <div class="indented"><b><u>${{ landlord.default_rent_amount|floatformat:2|intcomma }}</u></b></div>
         <div class="indented"><b><u>${{ landlord.default_inspection_fee|floatformat:2|intcomma }}</u></b></div>
         {% endif %}
+        </div>
     </div>
-</div>
 
         <!-- Multi-step calculation preserved -->
         {% with base_rent=landlord.default_rent_amount|default:0|multiply:landlord.rental_months|default:1 %}
