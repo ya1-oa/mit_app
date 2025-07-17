@@ -2887,6 +2887,8 @@ def generate_document_from_html(request):
                 'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
                 'default_parking_fee': request.POST.get('default_parking_fee', 0),
                 'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
+                'bedrooms': request.POST.get('bedrooms', 1),
+                'rental_months': request.POST.get('rental_months'),
                 # Additional Contact Persons
                 'contact_person_1': request.POST.get('contact_person_1'),
                 'contact_person_2': request.POST.get('contact_person_2'),
@@ -2914,6 +2916,8 @@ def generate_document_from_html(request):
                     'default_late_fee': 50,
                     'default_nsf_fee': 35,
                     'default_inspection_fee': 300.00,
+                    'bedrooms': 0,
+                    'rental_months': 0
                 }
 
                 if term_start_date and term_end_date:
@@ -3014,6 +3018,8 @@ def save_landlord(request):
                 'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
                 'default_parking_fee': request.POST.get('default_parking_fee', 0),
                 'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
+                'bedrooms': request.POST.get('bedrooms', 1),
+                'rental_months': request.POST.get('rental_months'),
                 # Additional Contact Persons
                 'contact_person_1': request.POST.get('contact_person_1'),
                 'contact_person_2': request.POST.get('contact_person_2'),
