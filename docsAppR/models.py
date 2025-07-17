@@ -332,6 +332,8 @@ class Landlord(models.Model):
     default_parking_spaces = models.PositiveSmallIntegerField(default=2)
     default_parking_fee = models.PositiveSmallIntegerField(default=0)
     default_inspection_fee = models.DecimalField(max_digits=10, decimal_places=2, default=300.00)
+    bedrooms = models.PositiveSmallIntegerField(default=1)
+    rental_months = models.PositiveSmallIntegerField(blank=True, null=True)
     
     contact_person_1 = models.CharField(
         max_length=100, 
