@@ -117,58 +117,56 @@ h1, h2, h3, h4 {
 }
 
 /* Modal Styles */
-.modal {
-    display: none;
-    position: fixed;
-    z-index: 1050;
-    left: 0;
-    top: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(0,0,0,0.8);
-}
+ /* Preview Modal Styling */
+    .modal {
+        display: none;
+        position: fixed;
+        z-index: 1000;
+        left: 0;
+        top: 0;
+        width: 100%;
+        height: 100%;
+        overflow: auto;
+        background-color: rgba(0,0,0,0.8);
+    }
 
-.modal-content {
-    background-color: #fefefe;
-    margin: 5% auto;
-    padding: 10px;
-    border: 1px solid #888;
-    width: 90%;
-    max-width: 1200px;
-    border-radius: 8px;
-    max-height: 85vh;
-    display: flex;
-    flex-direction: column;
-}
+    .modal-content {
+        background-color: #fefefe;
+        margin: 2% auto;
+        padding: 20px;
+        border: 1px solid #888;
+        width: 90%;
+        max-width: 1200px;
+        height: 90vh;
+        display: flex;
+        flex-direction: column;
+    }
 
-.modal-header {
-    padding: 15px 0;
-    border-bottom: 1px solid #eee;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
+    .modal-header {
+        padding: 10px 0;
+        border-bottom: 1px solid #ddd;
+        margin-bottom: 15px;
+    }
 
-.modal-body {
-    padding: 20px 0;
-    overflow-y: auto;
-    flex-grow: 1;
-}
+    .preview-modal-body {
+        flex: 1;
+        display: flex;
+        flex-direction: column;
+        overflow: hidden;
+    }
 
-.preview-modal-body {
-    padding: 10px 0;
-    overflow-y: hidden;
-    flex-grow: 1;
-}
+    .modal-iframe {
+        flex: 1;
+        width: 100%;
+        border: none;
+        background: white;
+        overflow-y: auto;
+    }
 
-
-.modal-iframe {
-    width: 100%;
-    height: 100%;
-    min-height: 600px;
-    border: none;
-    border-radius: 4px;
-}
+    /* Disable body scroll when modal is open */
+    body.modal-open {
+        overflow: hidden;
+    }
 
 .close {
     color: #aaa;
@@ -639,33 +637,58 @@ document.addEventListener('DOMContentLoaded', function() {
       });
     };
 
-    // Modal Controls
-    previewThumbnail.addEventListener('click', function() {
-        if (modalIframe.style.display === 'block') {
-            previewModal.style.display = 'block';
-        }
-    });
-
-    // Close modal when clicking X
-    closeButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            previewModal.style.display = 'none';
-        });
-    });
+   function openPreviewModal() {
+    document.body.classList.add('modal-open');
+    previewModal.style.display = 'block';
     
-    // Close modal when clicking outside
-    window.addEventListener('click', function(event) {
-        if (event.target === previewModal) {
-            previewModal.style.display = 'none';
+    // Force redraw to ensure proper rendering
+    setTimeout(() => {
+        modalIframe.style.height = '100%';
+        // Focus the iframe to ensure keyboard scrolling works
+        if (modalIframe.contentWindow) {
+            modalIframe.contentWindow.focus();
         }
-    });
+    }, 50);
+}
 
+function closePreviewModal() {
+    document.body.classList.remove('modal-open');
+    previewModal.style.display = 'none';
+}
 
+// Thumbnail click handler
+previewThumbnail.addEventListener('click', function() {
+    if (modalIframe.style.display === 'block') {
+        openPreviewModal();
+    }
+});
 
+// Close modal handlers
+closeButtons.forEach(button => {
+    button.addEventListener('click', closePreviewModal);
+});
+
+// Close modal when clicking outside
+window.addEventListener('click', function(event) {
+    if (event.target === previewModal) {
+        closePreviewModal();
+    }
+});
+
+// Ensure iframe content can be scrolled
+window.addEventListener('keydown', function(event) {
+    if (previewModal.style.display === 'block') {
+        // Allow arrow keys and page up/down to scroll the iframe
+        const iframeWindow = modalIframe.contentWindow;
+        if (iframeWindow) {
+            iframeWindow.dispatchEvent(new KeyboardEvent('keydown', event));
+        }
+    }
+});
 
     // Preview Button
     previewButton.addEventListener('click', function() {
-        previewSpinner.style.display = 'inline-block';
+       openPreviewModal();
         previewButton.disabled = true;
         
         // Validate form if lease document
