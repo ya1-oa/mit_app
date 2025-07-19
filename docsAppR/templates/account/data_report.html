@@ -1,0 +1,350 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block content %}
+<div class="report-container">
+  <div class="report-header">
+    <h1>Data Quality Report</h1>
+    <div class="report-meta">
+      <div>Generated: {% now "F j, Y, g:i a" %}</div>
+      <div>Source: {{ report.metadata.source_file }}</div>
+      <div>Import Date: {{ report.metadata.import_timestamp|date:"F j, Y, g:i a" }}</div>
+    </div>
+  </div>
+
+  <div class="report-summary">
+    <h2>Import Summary</h2>
+    <div class="summary-cards">
+      <div class="summary-card success">
+        <div class="summary-value">{{ import_summary.processed }}</div>
+        <div class="summary-label">Processed</div>
+      </div>
+      <div class="summary-card created">
+        <div class="summary-value">{{ import_summary.success_count }}</div>
+        <div class="summary-label">Created</div>
+      </div>
+      <div class="summary-card updated">
+        <div class="summary-value">{{ import_summary.update_count }}</div>
+        <div class="summary-label">Updated</div>
+      </div>
+      <div class="summary-card errors">
+        <div class="summary-value">{{ import_summary.error_count }}</div>
+        <div class="summary-label">Errors</div>
+      </div>
+      <div class="summary-card rate">
+        <div class="summary-value">{{ report.summary.success_rate }}%</div>
+        <div class="summary-label">Success Rate</div>
+      </div>
+    </div>
+  </div>
+
+  {% if report.most_problematic_fields %}
+  <div class="report-section">
+    <h2>Top Problematic Fields</h2>
+    <div class="problem-fields">
+      {% for field, count in report.most_problematic_fields %}
+      <div class="problem-field">
+        <div class="field-name">{{ field }}</div>
+        <div class="field-count">{{ count }} issues</div>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="report-section">
+    <h2>Data Quality Issues</h2>
+    {% if report.data_quality_issues %}
+      <div class="issues-table-container">
+        <table class="issues-table">
+          <thead>
+            <tr>
+              <th>Field</th>
+              <th>Issues</th>
+              <th>Completeness</th>
+              <th>Example Values</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for issue in report.data_quality_issues %}
+            <tr>
+              <td>{{ issue.field }}</td>
+              <td>{{ issue.issues }}</td>
+              <td>
+                <div class="completeness-bar" style="width: {{ issue.completeness }}%">
+                  {{ issue.completeness }}%
+                </div>
+              </td>
+              <td class="examples">{{ issue.examples }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="no-issues">
+        <i class="fas fa-check-circle"></i>
+        No data quality issues found!
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="report-actions">
+    <button id="printReport" class="report-action-btn print">
+      <i class="fas fa-print"></i> Print Report
+    </button>
+    <button id="downloadPdf" class="report-action-btn pdf">
+      <i class="fas fa-file-pdf"></i> Download PDF
+    </button>
+  </div>
+</div>
+
+<style>
+/* Report Container */
+.report-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 20px;
+  background: white;
+  box-shadow: 0 0 10px rgba(0,0,0,0.1);
+  border-radius: 5px;
+}
+
+/* Header */
+.report-header {
+  text-align: center;
+  margin-bottom: 30px;
+  padding-bottom: 20px;
+  border-bottom: 1px solid #eee;
+}
+
+.report-header h1 {
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.report-meta {
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  color: #666;
+  font-size: 14px;
+  margin-top: 10px;
+}
+
+/* Summary Cards */
+.report-summary {
+  margin-bottom: 30px;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 15px;
+  margin-top: 15px;
+}
+
+.summary-card {
+  padding: 20px;
+  border-radius: 5px;
+  text-align: center;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.summary-value {
+  font-size: 28px;
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.summary-label {
+  font-size: 14px;
+  color: #666;
+}
+
+.summary-card.success { background-color: #e6f7ee; border-left: 4px solid #28a745; }
+.summary-card.created { background-color: #e7f5fe; border-left: 4px solid #17a2b8; }
+.summary-card.updated { background-color: #fff8e6; border-left: 4px solid #ffc107; }
+.summary-card.errors { background-color: #fce8e8; border-left: 4px solid #dc3545; }
+.summary-card.rate { background-color: #f0e6ff; border-left: 4px solid #6f42c1; }
+
+/* Problem Fields */
+.problem-fields {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 15px;
+}
+
+.problem-field {
+  flex: 1 1 200px;
+  padding: 15px;
+  background-color: #f8f9fa;
+  border-radius: 5px;
+  border-left: 4px solid #dc3545;
+}
+
+.field-name {
+  font-weight: bold;
+  margin-bottom: 5px;
+}
+
+.field-count {
+  color: #dc3545;
+  font-size: 14px;
+}
+
+/* Issues Table */
+.issues-table-container {
+  overflow-x: auto;
+  margin-top: 15px;
+}
+
+.issues-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.issues-table th, .issues-table td {
+  padding: 12px 15px;
+  text-align: left;
+  border-bottom: 1px solid #eee;
+}
+
+.issues-table th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+}
+
+.issues-table tr:hover {
+  background-color: #f8f9fa;
+}
+
+.completeness-bar {
+  background-color: #28a745;
+  color: white;
+  padding: 3px 8px;
+  border-radius: 3px;
+  font-size: 12px;
+  min-width: 40px;
+}
+
+.examples {
+  font-size: 13px;
+  color: #666;
+  font-style: italic;
+}
+
+/* No Issues */
+.no-issues {
+  text-align: center;
+  padding: 30px;
+  color: #28a745;
+  font-size: 18px;
+  background-color: #e6f7ee;
+  border-radius: 5px;
+  margin-top: 15px;
+}
+
+.no-issues i {
+  font-size: 24px;
+  margin-right: 10px;
+}
+
+/* Report Actions */
+.report-actions {
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+  margin-top: 30px;
+  padding-top: 20px;
+  border-top: 1px solid #eee;
+}
+
+.report-action-btn {
+  padding: 10px 20px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-size: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.3s;
+}
+
+.report-action-btn.print {
+  background-color: #6c757d;
+  color: white;
+}
+
+.report-action-btn.pdf {
+  background-color: #dc3545;
+  color: white;
+}
+
+.report-action-btn:hover {
+  opacity: 0.9;
+  transform: translateY(-2px);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .summary-cards {
+    grid-template-columns: 1fr 1fr;
+  }
+  
+  .report-meta {
+    flex-direction: column;
+    gap: 5px;
+  }
+  
+  .report-actions {
+    flex-direction: column;
+  }
+  
+  .report-action-btn {
+    justify-content: center;
+  }
+}
+</style>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+  // Print functionality
+  document.getElementById('printReport').addEventListener('click', function() {
+    window.print();
+  });
+
+  // PDF download functionality
+  document.getElementById('downloadPdf').addEventListener('click', function() {
+    // This would typically make an AJAX call to a PDF generation endpoint
+    alert('PDF generation would be implemented here');
+  });
+  
+  // Print styles
+  const style = document.createElement('style');
+  style.textContent = `
+    @media print {
+      body * {
+        visibility: hidden;
+      }
+      .report-container, .report-container * {
+        visibility: visible;
+      }
+      .report-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        box-shadow: none;
+      }
+      .report-actions {
+        display: none;
+      }
+    }
+  `;
+  document.head.appendChild(style);
+});
+</script>
+{% endblock %}
