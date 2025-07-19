@@ -1654,44 +1654,131 @@ def create(request):
     form = ClientForm()
     return render(request, 'account/create.html', {'form': form})
 
+
+import json
+import datetime as dt
+import pandas as pd
+from io import BytesIO
+from django.shortcuts import render, redirect
+from django.contrib import messages
+from django.utils import timezone
+from .models import Client
+from .forms import ClientForm
+
+def clean_session_data(data):
+    """
+    Recursively convert non-serializable objects to JSON-serializable formats.
+    Handles datetime, date, time, pandas Timestamp, numpy types, and other common cases.
+    """
+    if isinstance(data, (dt.datetime, dt.date, dt.time)):
+        return data.isoformat()
+    elif isinstance(data, pd.Timestamp):
+        return data.isoformat()
+    elif isinstance(data, pd.Series):
+        return data.to_dict()
+    elif isinstance(data, pd.DataFrame):
+        return data.to_dict(orient='records')
+    elif isinstance(data, dict):
+        return {k: clean_session_data(v) for k, v in data.items()}
+    elif isinstance(data, (list, tuple, set)):
+        return [clean_session_data(x) for x in data]
+    elif hasattr(data, 'tolist'):  # numpy arrays and similar
+        return data.tolist()
+    elif hasattr(data, 'isoformat'):  # other datetime-like objects
+        return data.isoformat()
+    elif isinstance(data, (int, float, str, bool)) or data is None:
+        return data
+    else:
+        return str(data)  # fallback to string representation
+
 def handle_excel_import(request):
+    # Debug: Check if file exists in request
+    if 'excel_file' not in request.FILES:
+        messages.error(request, 'No file was uploaded')
+        return redirect('create')
+    
     excel_file = request.FILES['excel_file']
+    
+    # Debug: Log file info
+    print(f"📁 File received: {excel_file.name} (Size: {excel_file.size/1024:.2f} KB)")
+    messages.info(request, f"Processing file: {excel_file.name}")
+
     if not excel_file.name.endswith(('.xlsx', '.xls', '.xlsm')):
         messages.error(request, 'Invalid file type. Please upload an Excel file (.xlsx, .xls, or .xlsm)')
         return redirect('create')
     
     try:
+        # Debug: Verify sheet exists
+        xls = pd.ExcelFile(BytesIO(excel_file.read()))
+        if 'ALL' not in xls.sheet_names:
+            messages.error(request, "Sheet 'ALL' not found in Excel file. Available sheets: " + ", ".join(xls.sheet_names))
+            return redirect('create')
+        
+        # Reset file pointer after checking sheets
+        excel_file.seek(0)
         df = pd.read_excel(BytesIO(excel_file.read()), sheet_name='ALL')
         
-        # Find the actual number of clients (columns with data)
-        client_count = 0
-        for col in df.columns[:]:  # Skip first column (headers)
-            if not pd.isna(df[col].iloc[1]):  # Check if second row has data
-                client_count += 1
+        # Debug: Show structure
+        print("🔍 Excel Structure:")
+        print(f"Columns: {df.columns.tolist()}")
+        print(f"First 3 rows:\n{df.head(3)}")
+        messages.info(request, f"Found {len(df.columns)-3} potential clients in file (columns D onward)")
+
+        # Constants for our structure
+        HEADER_COLUMN = 2  # Column C (0-indexed would be 2)
+        FIRST_DATA_COLUMN = 3  # Column D
+        # Find which row in Column C contains "property_owner_name"
+        owner_name_row = None
+        for row_idx in range(len(df)):
+            header_cell = str(df.iloc[row_idx, HEADER_COLUMN]).strip().lower()
+            if 'property-owner_name' in header_cell.replace(' ', '_'):
+                owner_name_row = row_idx
+                break
+        
+        if owner_name_row is None:
+            messages.error(request, "Could not find 'property_owner_name' in header column (Column C)")
+            return redirect('create')
+        
+        print(f"ℹ️ Found property_owner_name at Row {owner_name_row + 1} in Column C")
         
         success_count = 0
         update_count = 0
         error_count = 0
-        error_messages = []
-        
-        MAX_EMPTY_TRIES = 3
-        empty_column_count = 0
+        processing_details = []
 
-        for col_idx in range(1, len(df.columns)):
-            column_data = df.iloc[:, col_idx]
-            if column_data.isna().sum() == len(column_data):  # If entire column is NaN
-                empty_column_count += 1
-                if empty_column_count >= MAX_EMPTY_TRIES:
-                        print(f"⚠️ Skipping column {col_idx} after {MAX_EMPTY_TRIES} empty tries.")
-                        continue
-                else:
-                    empty_column_count = 0
-            
+        for col_idx in range(FIRST_DATA_COLUMN, len(df.columns)):
+            col_name = df.columns[col_idx]
+            client_status = {
+                'column': col_idx + 1,  # Show as Excel column letter/number
+                'name': None,
+                'status': None,
+                'message': None,
+                'dates': [],
+                'errors': []
+            }
+
             try:
-                client_data = {}
+                # Debug: Show which column we're processing
+                print(f"\n📊 Processing Client Column {col_idx+1} (Excel Column {chr(65+col_idx)})")
                 
+                # Get property owner name from first row of this column
+                claim_owner = df.iloc[owner_name_row, col_idx]
+                if pd.isna(claim_owner):
+                    error_msg = f"Column {col_idx+1}: Missing property owner name in first row"
+                    print(f"❌ {error_msg}")
+                    client_status['errors'].append(error_msg)
+                    raise ValueError(error_msg)
+                
+                claim_owner = str(claim_owner).strip()
+                client_status['name'] = claim_owner
+                print(f"👤 Client Name: {claim_owner}")
+                messages.info(request, f"Processing client: {claim_owner}")
+
+                # Build client data from header column (Column C) and current data column
+                client_data = {}
                 for row_idx in range(len(df)):
-                    header = str(df.iloc[row_idx, 0]).strip() if pd.notna(df.iloc[row_idx, 0]) else None
+                    # Get field name from header column (Column C)
+                    header = str(df.iloc[row_idx, HEADER_COLUMN]).strip() if pd.notna(df.iloc[row_idx, HEADER_COLUMN]) else None
                     value = df.iloc[row_idx, col_idx]
                     
                     if not header or pd.isna(value):
@@ -1699,13 +1786,13 @@ def handle_excel_import(request):
                     
                     # Normalize field name
                     field_name = (header.lower()
-                                 .replace(' ', '_')       # Spaces to underscores
-                                 .replace('/', '_')       # Forward slashes to underscores
-                                 .replace('\\', '_')      # Backslashes to underscores
-                                 .replace('.', '_')       # Periods to underscores
-                                 .replace('-', '_')       # Hyphens to underscores
-                                 .replace(':', '_')       # Colons to underscores
-                                 .replace('__', '_')      # Replace double underscores
+                                 .replace(' ', '_')
+                                 .replace('/', '_')
+                                 .replace('\\', '_')
+                                 .replace('.', '_')
+                                 .replace('-', '_')
+                                 .replace(':', '_')
+                                 .replace('__', '_')
                                  .replace('#', 'num')
                                  .strip('_'))
                     
@@ -1713,27 +1800,27 @@ def handle_excel_import(request):
                     if any(term in field_name for term in ['date', 'dol']):
                         parsed_date = parse_excel_date(value)
                         if parsed_date:
-                            print(f"Parsed date: {parsed_date}")  # Log parsed date for debugging
+                            client_status['dates'].append(f"{header}: {parsed_date}")
+                            print(f"📅 Found date: {header} → {parsed_date}")
                             if 'loss' in field_name:
                                 client_data['date_of_loss'] = parsed_date
                             else:
                                 client_data[field_name] = parsed_date
-                                print(f"✅ Processed date {field_name}: {value} → {parsed_date}")
                         continue
                     
                     # Handle boolean fields
                     if isinstance(value, str) and value.lower() in ('yes', 'no', 'true', 'false'):
                         value = value.lower() in ('yes', 'true')
                     
-                    # Add all other fields to client_data
                     client_data[field_name] = value
-                
-                # Only proceed if we have a claim number
-                claim_owner = client_data.get('property_owner_name')
-                if not claim_owner:
-                    error_messages.append(f"Client {col_idx}: Missing property_owner_name")
-                    continue
-                # Use your mapped_data dictionary
+
+                # Debug: Show dates found for this client
+                if client_status['dates']:
+                    print(f"📅 Dates for client {claim_owner}:")
+                    for date_info in client_status['dates']:
+                        print(f"   - {date_info}")
+                    messages.info(request, f"Client {claim_owner} dates: {', '.join(client_status['dates'])}")
+                                # Use your mapped_data dictionary
                 mapped_data = {
                     # Property Owner Information
                     'pOwner': client_data.get('property_owner_name', ''),
@@ -1885,10 +1972,9 @@ def handle_excel_import(request):
                     'termsAmount': client_data.get('terms_amount', ''),
                 }
 
-                # Update or create client
+               # Update or create client
                 existing_client = Client.objects.filter(pOwner=claim_owner).first()
                 if existing_client:
-                    # Only update changed fields
                     update_fields = {}
                     for field, new_value in mapped_data.items():
                         current_value = getattr(existing_client, field, None)
@@ -1897,111 +1983,295 @@ def handle_excel_import(request):
                     
                     if update_fields:
                         Client.objects.filter(pk=existing_client.pk).update(**update_fields)
+                        client_status['status'] = 'updated'
+                        client_status['message'] = f"Updated {len(update_fields)} fields"
                         update_count += 1
-                        print(f"🔄 Updated client {claim_owner} - Changed fields: {', '.join(update_fields.keys())}")
+                        print(f"🔄 Updated client {claim_owner}")
+                        messages.success(request, f"Updated client: {claim_owner}")
+                    else:
+                        client_status['status'] = 'unchanged'
+                        client_status['message'] = "No changes needed"
+                        print(f"➖ No changes for client {claim_owner}")
                 else:
-                    # Create new client
                     Client.objects.create(**mapped_data)
+                    client_status['status'] = 'created'
+                    client_status['message'] = "New client created"
                     success_count += 1
                     print(f"🆕 Created new client {claim_owner}")
-                
+                    messages.success(request, f"Created new client: {claim_owner}")
+
             except Exception as e:
+                client_status['status'] = 'failed'
+                error_msg = f"Error processing column {col_idx+1}: {str(e)}"
+                client_status['errors'].append(error_msg)
                 error_count += 1
-                error_messages.append(f"Client {col_idx}: {str(e)}")
-                continue
+                print(f"❌ {error_msg}")
+                messages.error(request, error_msg)
+            
+            processing_details.append(client_status)
+
+            # Prepare detailed results report
+            result_messages = [f"<strong>Import Results:</strong>",
+                             f"✅ Successfully created: {success_count}",
+                             f"🔄 Updated: {update_count}",
+                             f"❌ Failed: {error_count}",
+                             "<br><strong>Processing Details:</strong>"]
+            
+            for detail in processing_details:
+                status_icon = {"created": "✅", "updated": "🔄", "failed": "❌", "unchanged": "➖"}.get(detail['status'], "�")
+                
+            result_message = (
+                    f"Import complete: {success_count} created, {update_count} updated, "
+                    f"{error_count} errors"
+                )
+            messages.success(request, result_message)
+            
+            processing_details.append(clean_session_data(client_status))  # Clean the client status data
+
+        # Prepare session data
+        session_data = {
+            'success_count': success_count,
+            'update_count': update_count,
+            'error_count': error_count,
+            'processing_details': processing_details,
+            'excel_data': clean_session_data(df.to_dict()),
+            'file_name': excel_file.name,
+            'timestamp': timezone.now().isoformat()
+        }
+
+        # Store cleaned data in session
+        request.session['import_results'] = clean_session_data(session_data)
         
-        # Prepare final message
-        result_messages = []
-        if success_count > 0:
-            result_messages.append(f'Successfully created {success_count} new clients')
-        if update_count > 0:
-            result_messages.append(f'Updated {update_count} existing clients')
-        if error_count > 0:
-            result_messages.append(f'Encountered {error_count} errors')
-            for error in error_messages[:5]:  # Show first 5 errors
-                messages.error(request, error)
-        
-        if result_messages:
-            messages.success(request, ' | '.join(result_messages))
-        
-        return redirect('create')
-    
+        messages.success(request, f"Import complete: {success_count} created, {update_count} updated, {error_count} errors")
+        return render(request, 'account/create.html', {
+            'form': ClientForm(),
+            'import_summary': {
+                'success_count': success_count,
+                'update_count': update_count,
+                'error_count': error_count
+            }
+        })
+
     except Exception as e:
-        messages.error(request, f'Failed to process Excel file: {str(e)}')
+        error_msg = f"❌ File processing error: {str(e)}"
+        print(error_msg)
+        messages.error(request, error_msg)
         return redirect('create')
 
 def parse_excel_date(value):
     """Robust date parser that handles all cases"""
     # Handle empty/None values
-    if pd.isna(value) or value in ('', 'TBD', 'NA', 'N/A'):
-        return None
-    
-    # Handle Excel serial numbers
-    if isinstance(value, (int, float)):
-        try:
-            # Excel's date system starts from 1900-01-01 (with 1900 incorrectly treated as leap year)
-            if value < 0:
-                return None
-            if value == 0:  # Excel's zero date
-                return None
-            if value == 60:  # Excel's 1900-02-29 (non-existent)
-                return dt(1900, 2, 28).date()
-            if value < 60:  # Adjust for Excel's leap year bug
-                value += 1
-            return (dt.datetime(1899, 12, 30) + pd.Timedelta(days=value)).date()
-        except Exception:
-            return None
-    
-    # Convert to string if not already
-    if not isinstance(value, str):
-        value = str(value).strip()
-    else:
-        value = value.strip()
-    
-    # Handle obvious non-dates
-    if not value or value.upper() in ('TBD', 'NA', 'N/A', 'UNKNOWN'):
-        return None
-    
-    # Clean the string
-    value = (value.replace(' ', ' ')  # Non-breaking space
-             .replace('Sept', 'Sep')
-             .replace('Febr', 'Feb')
-             .replace('Dece', 'Dec')
-             .split(' ')[0])  # Take only first part if space separated
-    
-    # Try parsing as datetime string
-    date_formats = [
-        '%Y-%m-%d %H:%M:%S',  # 2024-12-02 00:00:00
-        '%Y-%m-%d',           # 2024-12-02
-        '%m/%d/%Y',           # 1/20/2024
-        '%d-%b-%y',           # 24-Jan-24
-        '%d-%b-%Y',           # 20-Jan-2024
-        '%b %d, %Y',          # Dec 23, 2022
-        '%B %d, %Y',          # December 23, 2022
-        '%d-%m-%Y',           # 20-01-2024
-        '%d %b %Y',           # 20 Jan 2024
-        '%d %B %Y'            # 20 January 2024
-    ]
-    
-    for fmt in date_formats:
-        try:
-            return dt.datetime.strptime(value, fmt).date()
-        except ValueError:
-            continue
-    
-    # Handle pandas Timestamp
-    try:
-        if isinstance(value, (pd.Timestamp, dt)):
-            return value.date()
-    except:
-        pass
-    
-    # Final check for invalid dates
-    if re.match(r'^\d{5,}', value) or re.match(r'.*\D.*\D.*', value):  # Long numbers or multiple non-digits
-        return None
-    
-    return None
 
+    try:
+        if pd.isna(value) or value in ('', 'TBD', 'NA', 'N/A'):
+            return None
+
+
+        
+        # Handle Excel serial numbers
+        if isinstance(value, (int, float)):
+            print(f"🔢 Parsing Excel date number: {value}")
+            try:
+                # Excel's date system starts from 1900-01-01 (with 1900 incorrectly treated as leap year)
+                if value < 0:
+                    return None
+                if value == 0:  # Excel's zero date
+                    return None
+                if value == 60:  # Excel's 1900-02-29 (non-existent)
+                    return dt(1900, 2, 28).date()
+                if value < 60:  # Adjust for Excel's leap year bug
+                    value += 1
+                return (dt.datetime(1899, 12, 30) + pd.Timedelta(days=value)).date()
+            except Exception:
+                return None
+        
+        # Convert to string if not already
+        if not isinstance(value, str):
+            value = str(value).strip()
+            print(f"🔢 Parsing Excel date number: {value}")
+        else:
+            value = value.strip()
+        
+        # Handle obvious non-dates
+        if not value or value.upper() in ('TBD', 'NA', 'N/A', 'UNKNOWN'):
+            return None
+        
+        # Clean the string
+        value = (value.replace(' ', ' ')  # Non-breaking space
+                 .replace('Sept', 'Sep')
+                 .replace('Febr', 'Feb')
+                 .replace('Dece', 'Dec')
+                 .split(' ')[0])  # Take only first part if space separated
+        
+        # Try parsing as datetime string
+        date_formats = [
+            '%Y-%m-%d %H:%M:%S',  # 2024-12-02 00:00:00
+            '%Y-%m-%d',           # 2024-12-02
+            '%m/%d/%Y',           # 1/20/2024
+            '%d-%b-%y',           # 24-Jan-24
+            '%d-%b-%Y',           # 20-Jan-2024
+            '%b %d, %Y',          # Dec 23, 2022
+            '%B %d, %Y',          # December 23, 2022
+            '%d-%m-%Y',           # 20-01-2024
+            '%d %b %Y',           # 20 Jan 2024
+            '%d %B %Y'            # 20 January 2024
+        ]
+        
+        for fmt in date_formats:
+            try:
+                return dt.datetime.strptime(value, fmt).date()
+            except ValueError:
+                continue
+        
+        # Handle pandas Timestamp
+        try:
+            if isinstance(value, (pd.Timestamp, dt)):
+                return value.date()
+        except:
+            pass
+        
+        # Final check for invalid dates
+        if re.match(r'^\d{5,}', value) or re.match(r'.*\D.*\D.*', value):  # Long numbers or multiple non-digits
+            return None
+        
+        return None
+    except Exception as e:
+        print(f"❌ Date parsing error for value '{value}': {str(e)}")
+        return None
+
+def generate_data_report(request):
+    if 'import_results' not in request.session:
+        messages.error(request, "No import data available to generate report")
+        return redirect('create')
+    
+    import_data = request.session['import_results']
+    
+    try:
+        df = pd.DataFrame.from_dict(import_data['excel_data'])
+    except Exception as e:
+        messages.error(request, f"Error loading import data: {str(e)}")
+        return redirect('create')
+
+    # Initialize report data with additional metadata
+    report = {
+        'metadata': {
+            'report_generated': timezone.now().strftime("%Y-%m-%d %H:%M"),
+            'source_file': import_data.get('file_name', 'Unknown')
+        },
+        'summary': {
+            'total_clients': len(df.columns) - 3,  # Subtract ignored columns
+            'processed': import_data['success_count'] + import_data['update_count'],
+            'errors': import_data['error_count'],
+            'success_rate': round((import_data['success_count'] + import_data['update_count']) / max(1, len(df.columns) - 3) * 100, 1)
+        },
+        'field_stats': {},
+        'data_quality_issues': [],
+        'most_problematic_fields': []
+    }
+    
+    # Constants for our structure
+    HEADER_COLUMN = 2  # Column C
+    FIRST_DATA_COLUMN = 3  # Column D
+    
+    # Track most problematic fields
+    field_problem_counts = []
+    
+    # Analyze each field
+    for row_idx in range(len(df)):
+        header = str(df.iloc[row_idx, HEADER_COLUMN]).strip().lower() if pd.notna(df.iloc[row_idx, HEADER_COLUMN]) else None
+        if not header:
+            continue
+            
+        # Normalize field name (keep original for display)
+        field_name = header.replace(' ', '_').replace('/', '_').strip('_')
+        display_name = header.title()  # For nicer display
+        
+        # Initialize field stats
+        field_stats = {
+            'display_name': display_name,
+            'total': 0,
+            'empty': 0,
+            'tbd': 0,
+            'na': 0,
+            'invalid': 0,
+            'completeness': 0,
+            'examples': set()
+        }
+        
+        # Check each client column
+        for col_idx in range(FIRST_DATA_COLUMN, len(df.columns)):
+            value = df.iloc[row_idx, col_idx]
+            if pd.isna(value):
+                field_stats['empty'] += 1
+                continue
+                
+            value_str = str(value).strip().upper()
+            field_stats['total'] += 1
+            
+            # Check for placeholder values
+            if value_str in ('TBD', 'TO BE DETERMINED'):
+                field_stats['tbd'] += 1
+            elif value_str in ('NA', 'N/A', '#N/A'):
+                field_stats['na'] += 1
+            # Special validation for certain fields
+            elif 'zip' in field_name and not any(c.isdigit() for c in value_str):
+                field_stats['invalid'] += 1
+            elif 'date' in field_name and parse_excel_date(value) is None:
+                field_stats['invalid'] += 1
+                
+            # Collect sample values
+            if len(field_stats['examples']) < 3:
+                field_stats['examples'].add(str(value))
+        
+        # Calculate completeness percentage
+        total_values = field_stats['total'] + field_stats['empty']
+        if total_values > 0:
+            field_stats['completeness'] = round((field_stats['total'] - field_stats['empty']) / total_values * 100, 1)
+        
+        # Only include fields with issues in the report
+        if field_stats['empty'] or field_stats['tbd'] or field_stats['na'] or field_stats['invalid']:
+            report['field_stats'][display_name] = field_stats
+            problem_count = sum([field_stats['empty'], field_stats['tbd'], field_stats['na'], field_stats['invalid']])
+            field_problem_counts.append((display_name, problem_count))
+    
+    # Generate quality issue summary
+    quality_issues = []
+    for field, stats in report['field_stats'].items():
+        issues = []
+        if stats['empty']:
+            issues.append(f"{stats['empty']} empty")
+        if stats['tbd']:
+            issues.append(f"{stats['tbd']} TBD")
+        if stats['na']:
+            issues.append(f"{stats['na']} N/A")
+        if stats['invalid']:
+            issues.append(f"{stats['invalid']} invalid")
+        
+        quality_issues.append({
+            'field': field,
+            'issues': ', '.join(issues),
+            'examples': ', '.join(stats['examples']),
+            'completeness': stats['completeness']
+        })
+    
+    # Sort by most problematic first
+    report['data_quality_issues'] = sorted(quality_issues, 
+                                         key=lambda x: (100 - x['completeness']), 
+                                         reverse=True)
+    
+    # Identify top 5 most problematic fields
+    field_problem_counts.sort(key=lambda x: x[1], reverse=True)
+    report['most_problematic_fields'] = field_problem_counts[:5]
+    
+    return render(request, 'account/data_report.html', {
+        'report': report,
+        'import_summary': {
+            'success_count': import_data['success_count'],
+            'update_count': import_data['update_count'],
+            'error_count': import_data['error_count'],
+            'total_clients': len(df.columns) - 3
+        }
+    })
 def checklist(request):
     labels = ["CLG", "LIT", "HVC", "MISC-1", "WAL", "ELE", "FLR", "BB", "MISC-2", "DOR", "OPEN", "WDW", "WDT"]
     activity = ["ALL", "QTY+", "CLN", "R&R", "D&R", "MSK", "MN", "S++", "PNT", "SND", "LF"]
@@ -3308,6 +3578,14 @@ def emails(request):
     
     return render(request, 'account/emails.html', context)
 
+from django.db.models import Count, Avg, Case, When, IntegerField, F, Q
+from django.utils import timezone
+import datetime as dt
+import json
+from django.contrib.auth.decorators import login_required
+from django.shortcuts import render
+from .models import Client, ChecklistItem
+
 @login_required
 def statistics(request):
     # Calculate basic metrics
@@ -3315,38 +3593,65 @@ def statistics(request):
     total_claims = clients.count()
     avg_completion = clients.aggregate(avg=Avg('completion_percent'))['avg'] or 0
     
-    # Get oldest claim age
+    # Get oldest claim age in days
     oldest_claim = clients.order_by('dateOfLoss').first()
-    oldest_claim_age = "N/A"
+    oldest_claim_age = 0
     if oldest_claim and oldest_claim.dateOfLoss:
-        months_diff = (timezone.now().date() - oldest_claim.dateOfLoss).days // 30
-        oldest_claim_age = f"{months_diff} months"
+        oldest_claim_age = (timezone.now().date() - oldest_claim.dateOfLoss).days
     
     # Claim type counts
     mit_count = clients.filter(mitigation=True).count()
     cps_count = clients.filter(CPSCLNCONCGN=True).count()
     ppr_count = clients.filter(replacement=True).count()
     
+    # Calculate trends (month-over-month comparison)
+    last_month = timezone.now() - dt.timedelta(days=30)
+    claim_growth = calculate_percentage_change(
+        clients.filter(created_at__lt=last_month).count(),
+        total_claims
+    )
+    completion_trend = calculate_percentage_change(
+        clients.filter(created_at__lt=last_month).aggregate(avg=Avg('completion_percent'))['avg'] or 0,
+        avg_completion
+    )
+    age_trend = calculate_trend_days(oldest_claim_age, last_month)
+    mit_trend = calculate_percentage_change(
+        clients.filter(mitigation=True, created_at__lt=last_month).count(),
+        mit_count
+    )
+    cps_trend = calculate_percentage_change(
+        clients.filter(CPSCLNCONCGN=True, created_at__lt=last_month).count(),
+        cps_count
+    )
+    ppr_trend = calculate_percentage_change(
+        clients.filter(replacement=True, created_at__lt=last_month).count(),
+        ppr_count
+    )
+    
     # Enhanced Age Distribution
     now = timezone.now().date()
     age_categories = {
-        "Current": Q(dateOfLoss__gte=now - dt.timedelta(days=30)),
-        "Pending": Q(dateOfLoss__lt=now - dt.timedelta(days=30)) & 
-                  Q(dateOfLoss__gte=now - dt.timedelta(days=60)),
-        "Pending+": Q(dateOfLoss__lt=now - dt.timedelta(days=60)) & 
-                   Q(dateOfLoss__gte=now - dt.timedelta(days=120)),
-        "Extended": Q(dateOfLoss__lt=now - dt.timedelta(days=120)) & 
-                   Q(dateOfLoss__gte=now - dt.timedelta(days=180)),
-        "Aged": Q(dateOfLoss__lt=now - dt.timedelta(days=180)) & 
-                Q(dateOfLoss__gte=now - dt.timedelta(days=360)),
-        "Aged+": Q(dateOfLoss__lt=now - dt.timedelta(days=360))
+        "0-30 days": Q(dateOfLoss__gte=now - dt.timedelta(days=30)),
+        "31-60 days": Q(dateOfLoss__lt=now - dt.timedelta(days=30)) & 
+                     Q(dateOfLoss__gte=now - dt.timedelta(days=60)),
+        "61-120 days": Q(dateOfLoss__lt=now - dt.timedelta(days=60)) & 
+                      Q(dateOfLoss__gte=now - dt.timedelta(days=120)),
+        "121-180 days": Q(dateOfLoss__lt=now - dt.timedelta(days=120)) & 
+                       Q(dateOfLoss__gte=now - dt.timedelta(days=180)),
+        "181-360 days": Q(dateOfLoss__lt=now - dt.timedelta(days=180)) & 
+                        Q(dateOfLoss__gte=now - dt.timedelta(days=360)),
+        "360+ days": Q(dateOfLoss__lt=now - dt.timedelta(days=360))
     }
     
+    # Age distribution by claim type
     age_distribution = {
-        category: clients.filter(query).count()
-        for category, query in age_categories.items()
+        'all': {category: clients.filter(query).count() for category, query in age_categories.items()},
+        'MIT': {category: clients.filter(query, mitigation=True).count() for category, query in age_categories.items()},
+        'CPS': {category: clients.filter(query, CPSCLNCONCGN=True).count() for category, query in age_categories.items()},
+        'PPR': {category: clients.filter(query, replacement=True).count() for category, query in age_categories.items()}
     }
     
+    # Age completion data
     age_completion_data = {
         category: clients.filter(query).aggregate(
             avg=Avg('completion_percent')
@@ -3354,16 +3659,50 @@ def statistics(request):
         for category, query in age_categories.items()
     }
     
-    # Document completion rates
-    document_stats = ChecklistItem.objects.values('document_type').annotate(
-        total=Count('id'),
-        completed=Count(Case(When(is_completed=True, then=1), output_field=IntegerField()))
-    ).annotate(
-        completion_rate=100.0 * F('completed') / F('total')
-    ).order_by('-completion_rate')[:10]
-
+    # Document completion rates by type
+    document_stats = {
+        'all': list(ChecklistItem.objects.values('document_type').annotate(
+            total=Count('id'),
+            completed=Count(Case(When(is_completed=True, then=1), output_field=IntegerField()))
+        ).annotate(
+            completion_rate=100.0 * F('completed') / F('total')
+        ).order_by('-completion_rate')[:10]),
+        'MIT': list(ChecklistItem.objects.filter(document_category='MIT').values('document_type').annotate(
+            total=Count('id'),
+            completed=Count(Case(When(is_completed=True, then=1), output_field=IntegerField()))
+        ).annotate(
+            completion_rate=100.0 * F('completed') / F('total')
+        ).order_by('-completion_rate')[:10]),
+        'CPS': list(ChecklistItem.objects.filter(document_category='CPS').values('document_type').annotate(
+            total=Count('id'),
+            completed=Count(Case(When(is_completed=True, then=1), output_field=IntegerField()))
+        ).annotate(
+            completion_rate=100.0 * F('completed') / F('total')
+        ).order_by('-completion_rate')[:10]),
+        'PPR': list(ChecklistItem.objects.filter(document_category='PPR').values('document_type').annotate(
+            total=Count('id'),
+            completed=Count(Case(When(is_completed=True, then=1), output_field=IntegerField()))
+        ).annotate(
+            completion_rate=100.0 * F('completed') / F('total')
+        ).order_by('-completion_rate')[:10])
+    }
+    
     # Client completion data for bar chart
-    client_completion_data = clients.order_by('-completion_percent')[:10]  # Top 10 clients
+    client_completion_data = [
+        {'client_name': c.pOwner, 'completion_percent': c.completion_percent}
+        for c in clients.order_by('-completion_percent')[:10]  # Top 10 clients
+    ]
+    
+    # Recent activity
+    recent_activity = [
+        {
+            'user_initials': request.user.get_initials() if hasattr(request.user, 'get_initials') else 'SY',
+            'message': f"Updated claim for {c.pOwner}",
+            'timestamp': c.updated_at,
+            'type': 'Update'
+        }
+        for c in clients.order_by('-updated_at')[:5]
+    ]
     
     context = {
         'total_claims': total_claims,
@@ -3373,11 +3712,33 @@ def statistics(request):
         'cps_count': cps_count,
         'ppr_count': ppr_count,
         
+        'claim_growth': round(claim_growth, 1),
+        'completion_trend': round(completion_trend, 1),
+        'age_trend': age_trend,
+        'mit_trend': round(mit_trend, 1),
+        'cps_trend': round(cps_trend, 1),
+        'ppr_trend': round(ppr_trend, 1),
+        
         'age_distribution': json.dumps(age_distribution),
         'age_completion_data': json.dumps(age_completion_data),
+        'document_stats': json.dumps(document_stats),
+        'client_completion_data': json.dumps(client_completion_data),
         
-        'document_stats': list(document_stats),  # Convert to list for JSON serialization
-        'client_completion_data': list(client_completion_data.values('pOwner', 'completion_percent')),
+        'recent_activity': recent_activity,
     }
     
     return render(request, 'account/statistics.html', context)
+
+def calculate_percentage_change(old_value, new_value):
+    if old_value == 0:
+        return 0
+    return ((new_value - old_value) / old_value) * 100
+
+def calculate_trend_days(current_days, comparison_date):
+    oldest_last_month = Client.objects.filter(created_at__lt=comparison_date) \
+                                     .order_by('dateOfLoss').first()
+    if not oldest_last_month or not oldest_last_month.dateOfLoss:
+        return 0
+    
+    last_month_days = (comparison_date.date() - oldest_last_month.dateOfLoss).days
+    return current_days - last_month_days
