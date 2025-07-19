@@ -10,45 +10,493 @@
       <h2>Create New Claim</h2>
       
       <!-- Excel Upload Section -->
-      <div class="upload-section">
+      <div class="section-card">
         <h3>Import Clients from Excel</h3>
-        {% if messages %}
-        <div class="messages">
+        
+        <!-- Messages Container - Will show processing updates -->
+        <div id="messages-container" class="messages-container" style="max-height: 200px; overflow-y: auto; margin-bottom: 15px;">
+          {% if messages %}
             {% for message in messages %}
-            <div class="alert alert-{{ message.tags }}">
+              <div class="alert alert-{{ message.tags }}">
                 {{ message }}
-            </div>
+              </div>
             {% endfor %}
+          {% endif %}
+        </div>
+        
+        <p>Each column in your Excel file will be imported as a separate client record.</p>
+        <form method="post" enctype="multipart/form-data" id="import-form">
+          {% csrf_token %}
+          <div class="form-group">
+            <label class="file-upload-btn">
+              Choose Excel File
+              <input type="file" name="excel_file" accept=".xlsx,.xls,.xlsm" required id="excel_file" style="display:none;">
+            </label>
+            <span class="file-name-display" id="file-name-display">No file selected</span>
+          </div>
+          <div class="button-group">
+            <button type="submit" class="btn" id="import-button">
+              Import Clients
+            </button>
+          </div>
+        </form>
+        
+        {% if request.session.import_results %}
+        <div class="mt-4">
+          <a href="{% url 'generate_data_report' %}" class="btn btn-info">
+            <i class="fas fa-chart-bar"></i> View Data Quality Report
+          </a>
+          <small class="text-muted ml-2">(Based on last import)</small>
         </div>
         {% endif %}
-          <p>Each column in your Excel file will be imported as a separate client record.</p>
-          <form method="post" enctype="multipart/form-data">
-              {% csrf_token %}
-              <div class="form-group">
-                  <label for="excel_file">Excel File (must have "ALL" sheet)</label>
-                  <input type="file" name="excel_file" accept=".xlsx,.xls,.xlsm" required class="     form-control-file">
-              </div>
-              <button type="submit" class="btn btn-primary">
-                  <i class="fas fa-file-import"></i> Import Clients
-              </button>
-          </form>
       </div>
+    </div>
+  </div>
 
       <!-- Excel Paste Section -->
-      <div class="paste-section">
+      <div class="section-card">
         <h3>Or Paste Excel Data</h3>
         <textarea id="excel-paste-area" placeholder="Paste Excel column data here..."></textarea>
-        <button id="paste-trigger" class="btn btn-secondary">Map to Form</button>
+        <div class="button-group">
+            <button id="paste-trigger" class="btn">
+                Map to Form
+            </button>
+        </div>
       </div>
 
-      <!-- Main Form -->
-      <form method="post" id="client-form">
-        {% csrf_token %}
-        <table>
-          {{ form.as_table }}
-        </table>
-        <button type="submit" class="btn btn-success">Submit</button>
-      </form>
+      <!-- Form Tabs Section -->
+      <div class="form-tabs-container">
+        <div class="tabs">
+          <button class="tab-button active" data-tab="client">Client Info</button>
+          <button class="tab-button" data-tab="claim">Claim Details</button>
+          <button class="tab-button" data-tab="insurance">Insurance</button>
+          <button class="tab-button" data-tab="property">Property</button>
+          <button class="tab-button" data-tab="mortgage">Mortgage</button>
+          <button class="tab-button" data-tab="contractor">Contractor</button>
+          <button class="tab-button" data-tab="ale">ALE</button>
+        </div>
+        
+        <form method="post" id="client-form">
+          {% csrf_token %}
+          
+          <!-- Client Info Tab -->
+          <div class="tab-pane active" id="client-tab">
+            <div class="two-column-form">
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_pOwner">Primary Owner</label>
+                  {{ form.pOwner }}
+                </div>
+                <div class="form-row">
+                  <label for="id_pAddress">Primary Address</label>
+                  {{ form.pAddress }}
+                </div>
+                <div class="form-row">
+                  <label for="id_pCityStateZip">City/State/Zip</label>
+                  {{ form.pCityStateZip }}
+                </div>
+                <div class="form-row">
+                  <label for="id_cEmail">Email</label>
+                  {{ form.cEmail }}
+                </div>
+                <div class="form-row">
+                  <label for="id_cPhone">Phone</label>
+                  {{ form.cPhone }}
+                </div>
+              </div>
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_coOwner2">Co-Owner</label>
+                  {{ form.coOwner2 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_cAddress2">Co-Owner Address</label>
+                  {{ form.cAddress2 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_cCityStateZip2">Co-Owner City/State/Zip</label>
+                  {{ form.cCityStateZip2 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_cEmail2">Co-Owner Email</label>
+                  {{ form.cEmail2 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_cPhone2">Co-Owner Phone</label>
+                  {{ form.cPhone2 }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Claim Details Tab -->
+          <div class="tab-pane" id="claim-tab">
+            <div class="two-column-form">
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_causeOfLoss">Cause of Loss</label>
+                  {{ form.causeOfLoss }}
+                </div>
+                <div class="form-row">
+                  <label for="id_dateOfLoss">Date of Loss</label>
+                  {{ form.dateOfLoss }}
+                </div>
+                <div class="form-row">
+                  <label for="id_contractDate">Contract Date</label>
+                  {{ form.contractDate }}
+                </div>
+                <div class="form-row">
+                  <label for="id_yearBuilt">Year Built</label>
+                  {{ form.yearBuilt }}
+                </div>
+                <div class="form-row checkbox-row">
+                  {{ form.demo }} <label for="id_demo">Demo Required</label>
+                </div>
+                <div class="form-row checkbox-row">
+                  {{ form.mitigation }} <label for="id_mitigation">Mitigation</label>
+                </div>
+              </div>
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_rebuildType1">Rebuild Type 1</label>
+                  {{ form.rebuildType1 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_rebuildType2">Rebuild Type 2</label>
+                  {{ form.rebuildType2 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_rebuildType3">Rebuild Type 3</label>
+                  {{ form.rebuildType3 }}
+                </div>
+                <div class="form-row checkbox-row">
+                  {{ form.otherStructures }} <label for="id_otherStructures">Other Structures</label>
+                </div>
+                <div class="form-row checkbox-row">
+                  {{ form.replacement }} <label for="id_replacement">Replacement</label>
+                </div>
+                <div class="form-row checkbox-row">
+                  {{ form.CPSCLNCONCGN }} <label for="id_CPSCLNCONCGN">CPSCLNCONCGN</label>
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Insurance Tab -->
+          <div class="tab-pane" id="insurance-tab">
+            <div class="two-column-form">
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_insuranceCo_Name">Insurance Company</label>
+                  {{ form.insuranceCo_Name }}
+                </div>
+                <div class="form-row">
+                  <label for="id_insAddressOvernightMail">Overnight Mail Address</label>
+                  {{ form.insAddressOvernightMail }}
+                </div>
+                <div class="form-row">
+                  <label for="id_insCityStateZip">City/State/Zip</label>
+                  {{ form.insCityStateZip }}
+                </div>
+                <div class="form-row">
+                  <label for="id_insuranceCoPhone">Phone</label>
+                  {{ form.insuranceCoPhone }}
+                </div>
+                <div class="form-row">
+                  <label for="id_insWebsite">Website</label>
+                  {{ form.insWebsite }}
+                </div>
+                <div class="form-row">
+                  <label for="id_claimNumber">Claim Number</label>
+                  {{ form.claimNumber }}
+                </div>
+                <div class="form-row">
+                  <label for="id_policyNumber">Policy Number</label>
+                  {{ form.policyNumber }}
+                </div>
+              </div>
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_deskAdjusterDA">Desk Adjuster</label>
+                  {{ form.deskAdjusterDA }}
+                </div>
+                <div class="form-row">
+                  <label for="id_DAPhone">DA Phone</label>
+                  {{ form.DAPhone }}
+                </div>
+                <div class="form-row">
+                  <label for="id_DAPhExt">DA Phone Ext</label>
+                  {{ form.DAPhExt }}
+                </div>
+                <div class="form-row">
+                  <label for="id_DAEmail">DA Email</label>
+                  {{ form.DAEmail }}
+                </div>
+                <div class="form-row">
+                  <label for="id_fieldAdjusterName">Field Adjuster</label>
+                  {{ form.fieldAdjusterName }}
+                </div>
+                <div class="form-row">
+                  <label for="id_phoneFieldAdj">Field Adjuster Phone</label>
+                  {{ form.phoneFieldAdj }}
+                </div>
+                <div class="form-row">
+                  <label for="id_fieldAdjEmail">Field Adjuster Email</label>
+                  {{ form.fieldAdjEmail }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Property Tab -->
+          <div class="tab-pane" id="property-tab">
+            <div class="two-column-form">
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_roomArea1">Room Area 1</label>
+                  {{ form.roomArea1 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea2">Room Area 2</label>
+                  {{ form.roomArea2 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea3">Room Area 3</label>
+                  {{ form.roomArea3 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea4">Room Area 4</label>
+                  {{ form.roomArea4 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea5">Room Area 5</label>
+                  {{ form.roomArea5 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea6">Room Area 6</label>
+                  {{ form.roomArea6 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea7">Room Area 7</label>
+                  {{ form.roomArea7 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea8">Room Area 8</label>
+                  {{ form.roomArea8 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea9">Room Area 9</label>
+                  {{ form.roomArea9 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea10">Room Area 10</label>
+                  {{ form.roomArea10 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea11">Room Area 11</label>
+                  {{ form.roomArea11 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea12">Room Area 12</label>
+                  {{ form.roomArea12 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea13">Room Area 13</label>
+                  {{ form.roomArea13 }}
+                </div>
+              </div>
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_roomArea14">Room Area 14</label>
+                  {{ form.roomArea14 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea15">Room Area 15</label>
+                  {{ form.roomArea15 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea16">Room Area 16</label>
+                  {{ form.roomArea16 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea17">Room Area 17</label>
+                  {{ form.roomArea17 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea18">Room Area 18</label>
+                  {{ form.roomArea18 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea19">Room Area 19</label>
+                  {{ form.roomArea19 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea20">Room Area 20</label>
+                  {{ form.roomArea20 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea21">Room Area 21</label>
+                  {{ form.roomArea21 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea22">Room Area 22</label>
+                  {{ form.roomArea22 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea23">Room Area 23</label>
+                  {{ form.roomArea23 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea24">Room Area 24</label>
+                  {{ form.roomArea24 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_roomArea25">Room Area 25</label>
+                  {{ form.roomArea25 }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Mortgage Tab -->
+          <div class="tab-pane" id="mortgage-tab">
+            <div class="two-column-form">
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_mortgageCo">Mortgage Company</label>
+                  {{ form.mortgageCo }}
+                </div>
+                <div class="form-row">
+                  <label for="id_mortgageAccountCo">Account #</label>
+                  {{ form.mortgageAccountCo }}
+                </div>
+                <div class="form-row">
+                  <label for="id_mortgageContactPerson">Contact Person</label>
+                  {{ form.mortgageContactPerson }}
+                </div>
+                <div class="form-row">
+                  <label for="id_mortgagePhoneContact">Phone</label>
+                  {{ form.mortgagePhoneContact }}
+                </div>
+                <div class="form-row">
+                  <label for="id_mortgagePhoneExtContact">Phone Ext</label>
+                  {{ form.mortgagePhoneExtContact }}
+                </div>
+              </div>
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_mortgageOverNightMail">Overnight Mail</label>
+                  {{ form.mortgageOverNightMail }}
+                </div>
+                <div class="form-row">
+                  <label for="id_mortgageCityStZipOVN">City/State/Zip</label>
+                  {{ form.mortgageCityStZipOVN }}
+                </div>
+                <div class="form-row">
+                  <label for="id_mortgageEmail">Email</label>
+                  {{ form.mortgageEmail }}
+                </div>
+                <div class="form-row">
+                  <label for="id_mortgageWebsite">Website</label>
+                  {{ form.mortgageWebsite }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- Contractor Tab -->
+          <div class="tab-pane" id="contractor-tab">
+            <div class="two-column-form">
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_coName">Contractor Name</label>
+                  {{ form.coName }}
+                </div>
+                <div class="form-row">
+                  <label for="id_coAddress">Address</label>
+                  {{ form.coAddress }}
+                </div>
+                <div class="form-row">
+                  <label for="id_coCityState">City/State</label>
+                  {{ form.coCityState }}
+                </div>
+                <div class="form-row">
+                  <label for="id_coRepPH">Rep Phone</label>
+                  {{ form.coRepPH }}
+                </div>
+                <div class="form-row">
+                  <label for="id_coREPEmail">Rep Email</label>
+                  {{ form.coREPEmail }}
+                </div>
+              </div>
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_coWebsite">Website</label>
+                  {{ form.coWebsite }}
+                </div>
+                <div class="form-row">
+                  <label for="id_TinW9">TIN/W9</label>
+                  {{ form.TinW9 }}
+                </div>
+                <div class="form-row">
+                  <label for="id_fedExAccount">FedEx Account</label>
+                  {{ form.fedExAccount }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <!-- ALE Tab -->
+          <div class="tab-pane" id="ale-tab">
+            <div class="two-column-form">
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_lossOfUseALE">Loss of Use (ALE)</label>
+                  {{ form.lossOfUseALE }}
+                </div>
+                <div class="form-row">
+                  <label for="id_tenantLesee">Tenant/Lessee</label>
+                  {{ form.tenantLesee }}
+                </div>
+                <div class="form-row">
+                  <label for="id_propertyAddressStreet">Property Address</label>
+                  {{ form.propertyAddressStreet }}
+                </div>
+                <div class="form-row">
+                  <label for="id_propertyCityStateZip">City/State/Zip</label>
+                  {{ form.propertyCityStateZip }}
+                </div>
+                <div class="form-row">
+                  <label for="id_bedrooms">Bedrooms</label>
+                  {{ form.bedrooms }}
+                </div>
+              </div>
+              <div class="form-column">
+                <div class="form-row">
+                  <label for="id_startDate">Start Date</label>
+                  {{ form.startDate }}
+                </div>
+                <div class="form-row">
+                  <label for="id_endDate">End Date</label>
+                  {{ form.endDate }}
+                </div>
+                <div class="form-row">
+                  <label for="id_lessor">Lessor</label>
+                  {{ form.lessor }}
+                </div>
+                <div class="form-row">
+                  <label for="id_termsAmount">Terms Amount</label>
+                  {{ form.termsAmount }}
+                </div>
+              </div>
+            </div>
+          </div>
+          
+          <button type="submit" class="btn btn-success">
+            Submit Claim
+          </button>
+        </form>
+      </div>
     </div>
   </div>
 </main>
@@ -67,8 +515,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Split by rows and columns
     const rows = pastedData.split('\n');
     const fields = [
-      'pOwner', 'pAddress', 'pCityStateZip', 
-      // Add all your form field IDs in order
+      'pOwner', 'pAddress', 'pCityStateZip', 'cEmail', 'cPhone',
+      'coOwner2', 'cPhone2', 'cAddress2', 'cCityStateZip2', 'cEmail2',
+      'causeOfLoss', 'dateOfLoss', 'rebuildType1', 'rebuildType2', 'rebuildType3',
+      'insuranceCo_Name', 'claimNumber', 'policyNumber', 'deskAdjusterDA', 'DAPhone'
     ];
     
     // Map data to form fields
@@ -84,85 +534,213 @@ document.addEventListener('DOMContentLoaded', function() {
     alert('Data mapped to form! Please review before submitting.');
   });
   
+   // File input display
+  const fileInput = document.getElementById('excel_file');
+  const fileNameDisplay = document.getElementById('file-name-display');
+  
+  fileInput.addEventListener('change', function() {
+    fileNameDisplay.textContent = this.files[0] ? this.files[0].name : 'No file selected';
+  });
+  
+  // Form submission handling
+  const importForm = document.getElementById('import-form');
+  const importButton = document.getElementById('import-button');
+  const messagesContainer = document.getElementById('messages-container');
+  
+  if (importForm) {
+    importForm.addEventListener('submit', function() {
+      // Clear previous messages except the final summary
+      const alerts = messagesContainer.querySelectorAll('.alert');
+      alerts.forEach(alert => {
+        if (!alert.textContent.includes('Import complete')) {
+          alert.remove();
+        }
+      });
+      
+      // Disable button and show processing state
+      importButton.disabled = true;
+      importButton.innerHTML = '<span class="processing-message">Processing...</span>';
+    });
+  }
+  
+  // Auto-scroll messages container
+  function scrollMessages() {
+    messagesContainer.scrollTop = messagesContainer.scrollHeight;
+  }
+  
+  // Scroll when new messages are added
+  const observer = new MutationObserver(scrollMessages);
+  observer.observe(messagesContainer, { childList: true });
+  
+  // Tab functionality
+  const tabButtons = document.querySelectorAll('.tab-button');
+  const tabPanes = document.querySelectorAll('.tab-pane');
+  
+  tabButtons.forEach(button => {
+    button.addEventListener('click', function() {
+      const tabId = this.getAttribute('data-tab');
+      
+      // Update active tab button
+      tabButtons.forEach(btn => btn.classList.remove('active'));
+      this.classList.add('active');
+      
+      // Show active pane
+      tabPanes.forEach(pane => pane.classList.remove('active'));
+      document.getElementById(`${tabId}-tab`).classList.add('active');
+    });
+  });
+  
   // Auto-focus the paste area when page loads
   pasteArea.focus();
+
 });
 </script>
 
 <style>
+/* Messages Styling */
+.messages-container {
+  transition: all 0.3s ease;
+}
+
 .alert {
-    padding: 15px;
-    margin-bottom: 20px;
-    border: 1px solid transparent;
-    border-radius: 4px;
+  padding: 10px 15px;
+  margin-bottom: 10px;
+  border-radius: 4px;
+  font-size: 14px;
+  animation: fadeIn 0.3s ease-in-out;
 }
 
 .alert-success {
-    color: #3c763d;
-    background-color: #dff0d8;
-    border-color: #d6e9c6;
-}
-
-.alert-error {
-    color: #a94442;
-    background-color: #f2dede;
-    border-color: #ebccd1;
-}
-
-.alert-warning {
-    color: #8a6d3b;
-    background-color: #fcf8e3;
-    border-color: #faebcc;
+  background-color: #d4edda;
+  color: #155724;
+  border: 1px solid #c3e6cb;
 }
 
 .alert-info {
-    color: #31708f;
-    background-color: #d9edf7;
-    border-color: #bce8f1;
-}
-.upload-section, .paste-section {
-  margin-bottom: 2rem;
-  padding: 1rem;
-  border: 1px solid #ddd;
-  border-radius: 5px;
+  background-color: #d1ecf1;
+  color: #0c5460;
+  border: 1px solid #bee5eb;
 }
 
-#excel-paste-area {
-  width: 100%;
-  min-height: 100px;
-  padding: 0.5rem;
-  margin-bottom: 0.5rem;
+.alert-warning {
+  background-color: #fff3cd;
+  color: #856404;
+  border: 1px solid #ffeeba;
 }
 
-.btn {
-  padding: 0.5rem 1rem;
-  border: none;
+.alert-error {
+  background-color: #f8d7da;
+  color: #721c24;
+  border: 1px solid #f5c6cb;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* Processing animation */
+.processing-message {
+  display: inline-block;
+  padding-left: 25px;
+  position: relative;
+}
+
+.processing-message:after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 12px;
+  height: 12px;
+  border: 2px solid rgba(0,0,0,0.2);
+  border-radius: 50%;
+  border-top-color: #000;
+  animation: spin 1s ease-in-out infinite;
+}
+
+@keyframes spin {
+  to { transform: translateY(-50%) rotate(360deg); }
+}
+
+/* File Upload Styling */
+.file-upload-btn {
+  display: inline-block;
+  background-color: #404040;
+  color: white;
+  padding: 10px 20px;
   border-radius: 4px;
   cursor: pointer;
+  transition: background-color 0.3s;
+  margin-right: 10px;
 }
 
-.btn-primary {
-  background-color: #007bff;
+.file-upload-btn:hover {
+  background-color: #333;
+}
+
+.file-name-display {
+  margin-left: 10px;
+  color: #777;
+}
+
+/* Section Card Styling */
+.section-card {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 15px;
+  margin-bottom: 20px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.section-card h3 {
+  font-size: 14px;
+  font-weight: 400;
+  margin: -15px -15px 15px -15px;
+  padding: 12px 15px;
+  border-bottom: 1px solid #ddd;
+  background-color: #f8f9fa;
+}
+
+/* Button Styles */
+.btn {
+  background-color: #404040;
   color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+  margin-right: 10px;
 }
 
-.btn-secondary {
-  background-color: #6c757d;
-  color: white;
+.btn:hover {
+  background-color: #333;
 }
 
-.btn-success {
-  background-color: #28a745;
-  color: white;
+.btn-info {
+  background-color: #17a2b8;
 }
 
-.upload-section {
-    margin: 20px 0;
-    padding: 20px;
-    border: 1px solid #ddd;
-    border-radius: 5px;
-    background: #f9f9f9;
+.btn-info:hover {
+  background-color: #138496;
 }
-</style>
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .file-upload-btn {
+    display: block;
+    margin-bottom: 10px;
+  }
+  
+  .file-name-display {
+    display: block;
+    margin-left: 0;
+    margin-top: 10px;
+  }
+}
 </style>
 {% endblock %}
