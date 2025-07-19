@@ -235,7 +235,9 @@ class Client(models.Model):
         default=0,
         validators=[MinValueValidator(0), MaxValueValidator(100)]
     )
-
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
     def update_completion_stats(self):
         """Calculate and update completion percentages"""
         from .models import ChecklistItem  # Avoid circular import
