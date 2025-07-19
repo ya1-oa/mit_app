@@ -12,7 +12,7 @@
                     <option>All Time</option>
                 </select>
                 <button class="export-btn">
-                    <i class="fa fa-download"></i> Export
+                    Export Data
                 </button>
             </div>
         </div>
@@ -22,31 +22,49 @@
             <div class="metric-card">
                 <div class="metric-value">{{ total_claims }}</div>
                 <div class="metric-label">Total Claims</div>
+                <div class="metric-trend {% if claim_growth > 0 %}up{% elif claim_growth < 0 %}down{% else %}neutral{% endif %}">
+                    {% if claim_growth > 0 %}↑{% elif claim_growth < 0 %}↓{% else %}→{% endif %} {{ claim_growth|floatformat:1 }}%
+                </div>
             </div>
             <div class="metric-card">
-                <div class="metric-value">{{ avg_completion }}%</div>
+                <div class="metric-value">{{ avg_completion|floatformat:1 }}%</div>
                 <div class="metric-label">Avg Completion</div>
+                <div class="metric-trend {% if completion_trend > 0 %}up{% elif completion_trend < 0 %}down{% else %}neutral{% endif %}">
+                    {% if completion_trend > 0 %}↑{% elif completion_trend < 0 %}↓{% else %}→{% endif %} {{ completion_trend|floatformat:1 }}%
+                </div>
             </div>
             <div class="metric-card">
                 <div class="metric-value">{{ oldest_claim_age }}d</div>
                 <div class="metric-label">Oldest Claim</div>
+                <div class="metric-trend {% if age_trend < 0 %}up{% elif age_trend > 0 %}down{% else %}neutral{% endif %}">
+                    {% if age_trend < 0 %}↓{% elif age_trend > 0 %}↑{% else %}→{% endif %} {{ age_trend }}d
+                </div>
             </div>
             <div class="metric-card">
                 <div class="metric-value">{{ mit_count }}</div>
                 <div class="metric-label">MIT Claims</div>
+                <div class="metric-trend {% if mit_trend > 0 %}up{% elif mit_trend < 0 %}down{% else %}neutral{% endif %}">
+                    {% if mit_trend > 0 %}↑{% elif mit_trend < 0 %}↓{% else %}→{% endif %} {{ mit_trend|floatformat:1 }}%
+                </div>
             </div>
             <div class="metric-card">
                 <div class="metric-value">{{ cps_count }}</div>
                 <div class="metric-label">CPS Claims</div>
+                <div class="metric-trend {% if cps_trend > 0 %}up{% elif cps_trend < 0 %}down{% else %}neutral{% endif %}">
+                    {% if cps_trend > 0 %}↑{% elif cps_trend < 0 %}↓{% else %}→{% endif %} {{ cps_trend|floatformat:1 }}%
+                </div>
             </div>
             <div class="metric-card">
                 <div class="metric-value">{{ ppr_count }}</div>
                 <div class="metric-label">PPR Claims</div>
+                <div class="metric-trend {% if ppr_trend > 0 %}up{% elif ppr_trend < 0 %}down{% else %}neutral{% endif %}">
+                    {% if ppr_trend > 0 %}↑{% elif ppr_trend < 0 %}↓{% else %}→{% endif %} {{ ppr_trend|floatformat:1 }}%
+                </div>
             </div>
         </div>
 
-        <!-- Main Charts -->
-        <div class="chart-grid">
+        <!-- Main Charts Grid -->
+        <div class="charts-grid">
             <!-- Completion Progress -->
             <div class="chart-card wide">
                 <div class="chart-header">
@@ -67,6 +85,12 @@
             <div class="chart-card">
                 <div class="chart-header">
                     <h3>Claim Age Distribution</h3>
+                    <select class="chart-filter" id="ageFilter">
+                        <option value="all">All Types</option>
+                        <option value="MIT">MIT Only</option>
+                        <option value="CPS">CPS Only</option>
+                        <option value="PPR">PPR Only</option>
+                    </select>
                 </div>
                 <div class="chart-container">
                     <canvas id="ageChart"></canvas>
@@ -97,11 +121,11 @@
             <div class="chart-card wide">
                 <div class="chart-header">
                     <h3>Document Completion Rates</h3>
-                    <select class="chart-filter">
-                        <option>All Documents</option>
-                        <option>MIT Only</option>
-                        <option>CPS Only</option>
-                        <option>PPR Only</option>
+                    <select class="chart-filter" id="docFilter">
+                        <option value="all">All Documents</option>
+                        <option value="MIT">MIT Only</option>
+                        <option value="CPS">CPS Only</option>
+                        <option value="PPR">PPR Only</option>
                     </select>
                 </div>
                 <div class="chart-container">
@@ -111,15 +135,21 @@
         </div>
 
         <!-- Recent Activity -->
-        <div class="activity-section">
-            <h3>Recent Activity</h3>
+        <div class="activity-card">
+            <div class="activity-header">
+                <h3>Recent Activity</h3>
+                <button class="view-all-btn">View All</button>
+            </div>
             <div class="activity-list">
                 {% for activity in recent_activity %}
                 <div class="activity-item">
                     <div class="activity-icon">{{ activity.user_initials }}</div>
                     <div class="activity-details">
                         <div class="activity-message">{{ activity.message }}</div>
-                        <div class="activity-time">{{ activity.timestamp|timesince }} ago</div>
+                        <div class="activity-meta">
+                            <span class="activity-time">{{ activity.timestamp|timesince }} ago</span>
+                            <span class="activity-type">{{ activity.type }}</span>
+                        </div>
                     </div>
                 </div>
                 {% endfor %}
@@ -130,186 +160,474 @@
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script>
     document.addEventListener('DOMContentLoaded', function() {
-    // Convert Django template variables to JavaScript
-    const ageDistribution = {{ age_distribution|safe }}
-    const ageCompletionData = {{ age_completion_data|safe }}
-    const documentStats = {{ document_stats|safe }}
-    const clientCompletionData = {{ client_completion_data|safe }}
-    const claimTypes = {
-        'MIT': {{ mit_count }},
-        'CPS': {{ cps_count }},
-        'PPR': {{ ppr_count }}
-    };
+        // Data from Django context - using json_script for safer parsing
+        const completionData = JSON.parse('{{ client_completion_data|escapejs }}');
+        const ageDistribution = JSON.parse('{{ age_distribution|escapejs }}');
+        const ageCompletionData = JSON.parse('{{ age_completion_data|escapejs }}');
+        const documentStats = JSON.parse('{{ document_stats|escapejs }}');
+        const claimTypes = {
+            'MIT': {{ mit_count }},
+            'CPS': {{ cps_count }},
+            'PPR': {{ ppr_count }}
+        };
 
-    // Completion Chart (Client-wise)
-    const completionCtx = document.getElementById('completionChart').getContext('2d');
-    new Chart(completionCtx, {
-        type: 'bar',
-        data: {
-            labels: clientCompletionData.map(item => item.pOwner),
-            datasets: [{
-                label: 'Completion %',
-                data: clientCompletionData.map(item => item.completion_percent),
-                backgroundColor: function(context) {
-                    const value = context.raw;
-                    return value >= 75 ? '#4CC790' :
-                           value >= 50 ? '#A3E1B1' :
-                           value >= 25 ? '#FFD166' : '#FF6B6B';
+        // Completion Chart (Client-wise)
+        const completionCtx = document.getElementById('completionChart').getContext('2d');
+        new Chart(completionCtx, {
+            type: 'bar',
+            data: {
+                labels: completionData.map(item => item.client_name),
+                datasets: [{
+                    label: 'Completion %',
+                    data: completionData.map(item => item.completion_percent),
+                    backgroundColor: function(context) {
+                        const value = context.raw;
+                        return value >= 75 ? '#4CC790' :
+                               value >= 50 ? '#A3E1B1' :
+                               value >= 25 ? '#FFD166' : '#FF6B6B';
+                    },
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.raw + '% complete';
+                            }
+                        }
+                    }
                 },
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.raw + '% complete';
-                        }
-                    }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: {
-                        callback: function(value) {
-                            return value + '%';
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
                         }
                     }
                 }
             }
-        }
-    });
+        });
 
-    // Age Distribution Chart
-    const ageCtx = document.getElementById('ageChart').getContext('2d');
-    new Chart(ageCtx, {
-        type: 'doughnut',
-        data: {
-            labels: Object.keys(ageDistribution),
-            datasets: [{
-                data: Object.values(ageDistribution),
-                backgroundColor: [
-                    '#4CC790', '#A3E1B1', '#FFD166', 
-                    '#FF9F40', '#FF6384', '#C9CBCF'
-                ],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'right' }
+        // Age Distribution Chart
+        const ageCtx = document.getElementById('ageChart').getContext('2d');
+        const ageChart = new Chart(ageCtx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(ageDistribution.all),
+                datasets: [{
+                    data: Object.values(ageDistribution.all),
+                    backgroundColor: [
+                        '#4CC790', '#A3E1B1', '#FFD166', 
+                        '#FF9F40', '#FF6384', '#C9CBCF'
+                    ],
+                    borderWidth: 0
+                }]
             },
-            cutout: '70%'
-        }
-    });
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right' }
+                },
+                cutout: '70%'
+            }
+        });
 
-    // Age Completion Chart
-    const ageCompletionCtx = document.getElementById('ageCompletionChart').getContext('2d');
-    new Chart(ageCompletionCtx, {
-        type: 'bar',
-        data: {
-            labels: Object.keys(ageCompletionData),
-            datasets: [{
-                label: 'Avg Completion %',
-                data: Object.values(ageCompletionData),
-                backgroundColor: [
-                    '#4CC790', '#A3E1B1', '#FFD166', 
-                    '#FF9F40', '#FF6384', '#C9CBCF'
-                ],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.raw.toFixed(1) + '%';
+        // Age Completion Chart
+        const ageCompletionCtx = document.getElementById('ageCompletionChart').getContext('2d');
+        new Chart(ageCompletionCtx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(ageCompletionData),
+                datasets: [{
+                    label: 'Avg Completion %',
+                    data: Object.values(ageCompletionData),
+                    backgroundColor: [
+                        '#4CC790', '#A3E1B1', '#FFD166', 
+                        '#FF9F40', '#FF6384', '#C9CBCF'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.raw.toFixed(1) + '%';
+                            }
                         }
                     }
-                }
-            },
-            scales: {
-                y: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: {
-                        callback: function(value) {
-                            return value + '%';
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
                         }
                     }
                 }
             }
-        }
-    });
+        });
 
-    // Type Distribution Chart
-    const typeCtx = document.getElementById('typeChart').getContext('2d');
-    new Chart(typeCtx, {
-        type: 'pie',
-        data: {
-            labels: Object.keys(claimTypes),
-            datasets: [{
-                data: Object.values(claimTypes),
-                backgroundColor: ['#36A2EB', '#FFCE56', '#FF6384'],
-                borderWidth: 0
-            }]
-        },
-        options: {
-            responsive: true,
-            plugins: {
-                legend: { position: 'right' }
-            }
-        }
-    });
-
-    // Document Completion Chart
-    const docCtx = document.getElementById('docCompletionChart').getContext('2d');
-    new Chart(docCtx, {
-        type: 'bar',
-        data: {
-            labels: documentStats.map(item => item.document_type),
-            datasets: [{
-                label: 'Completion %',
-                data: documentStats.map(item => item.completion_rate),
-                backgroundColor: '#4CC790',
-                borderWidth: 0
-            }]
-        },
-        options: {
-            indexAxis: 'y',
-            responsive: true,
-            plugins: {
-                legend: { display: false },
-                tooltip: {
-                    callbacks: {
-                        label: function(context) {
-                            return context.raw.toFixed(1) + '% complete';
-                        }
-                    }
-                }
+        // Type Distribution Chart
+        const typeCtx = document.getElementById('typeChart').getContext('2d');
+        new Chart(typeCtx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(claimTypes),
+                datasets: [{
+                    data: Object.values(claimTypes),
+                    backgroundColor: ['#36A2EB', '#FFCE56', '#FF6384'],
+                    borderWidth: 0
+                }]
             },
-            scales: {
-                x: {
-                    beginAtZero: true,
-                    max: 100,
-                    ticks: {
-                        callback: function(value) {
-                            return value + '%';
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { position: 'right' }
+                }
+            }
+        });
+
+        // Document Completion Chart
+        const docCtx = document.getElementById('docCompletionChart').getContext('2d');
+        const docChart = new Chart(docCtx, {
+            type: 'bar',
+            data: {
+                labels: documentStats.all.map(item => item.document_type),
+                datasets: [{
+                    label: 'Completion %',
+                    data: documentStats.all.map(item => item.completion_rate),
+                    backgroundColor: '#4CC790',
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return context.raw.toFixed(1) + '% complete';
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        beginAtZero: true,
+                        max: 100,
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
                         }
                     }
                 }
             }
-        }
+        });
+
+        // Filter handlers
+        document.getElementById('ageFilter').addEventListener('change', function() {
+            const filterValue = this.value;
+            ageChart.data.datasets[0].data = Object.values(ageDistribution[filterValue]);
+            ageChart.update();
+        });
+
+        document.getElementById('docFilter').addEventListener('change', function() {
+            const filterValue = this.value;
+            const filteredData = documentStats[filterValue];
+            docChart.data.labels = filteredData.map(item => item.document_type);
+            docChart.data.datasets[0].data = filteredData.map(item => item.completion_rate);
+            docChart.update();
+        });
     });
-});
-</script>
+    </script>
+    <style>
+    /* Dashboard Layout */
+    .stats-dashboard {
+        padding: 20px;
+        max-width: 1400px;
+        margin: 0 auto;
+    }
+
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 30px;
+    }
+
+    .dashboard-header h1 {
+        font-size: 24px;
+        color: #333;
+        margin: 0;
+    }
+
+    .dashboard-actions {
+        display: flex;
+        gap: 15px;
+    }
+
+    /* Metrics Grid */
+    .metrics-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .metric-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid #eee;
+    }
+
+    .metric-value {
+        font-size: 32px;
+        font-weight: 600;
+        color: #404040;
+        margin-bottom: 5px;
+    }
+
+    .metric-label {
+        font-size: 14px;
+        color: #777;
+        margin-bottom: 8px;
+    }
+
+    .metric-trend {
+        font-size: 12px;
+        padding: 3px 8px;
+        border-radius: 12px;
+        display: inline-block;
+    }
+
+    .metric-trend.up {
+        background: #e6f7ed;
+        color: #4CC790;
+    }
+
+    .metric-trend.down {
+        background: #ffebee;
+        color: #FF6B6B;
+    }
+
+    .metric-trend.neutral {
+        background: #f5f5f5;
+        color: #777;
+    }
+
+    /* Charts Grid */
+    .charts-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(400px, 1fr));
+        gap: 20px;
+        margin-bottom: 30px;
+    }
+
+    .chart-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid #eee;
+    }
+
+    .chart-card.wide {
+        grid-column: span 2;
+    }
+
+    .chart-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .chart-header h3 {
+        font-size: 16px;
+        color: #333;
+        margin: 0;
+    }
+
+    .chart-legend {
+        display: flex;
+        gap: 15px;
+    }
+
+    .legend-item {
+        display: flex;
+        align-items: center;
+        font-size: 12px;
+        color: #777;
+    }
+
+    .legend-color {
+        width: 12px;
+        height: 12px;
+        border-radius: 3px;
+        margin-right: 5px;
+    }
+
+    .chart-container {
+        position: relative;
+        height: 300px;
+    }
+
+    /* Activity Card */
+    .activity-card {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        border: 1px solid #eee;
+    }
+
+    .activity-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 20px;
+    }
+
+    .activity-header h3 {
+        font-size: 16px;
+        color: #333;
+        margin: 0;
+    }
+
+    .view-all-btn {
+        background: none;
+        border: none;
+        color: #4CC790;
+        font-size: 14px;
+        cursor: pointer;
+    }
+
+    .activity-list {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+    }
+
+    .activity-item {
+        display: flex;
+        align-items: center;
+        gap: 15px;
+        padding-bottom: 15px;
+        border-bottom: 1px solid #eee;
+    }
+
+    .activity-item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    .activity-icon {
+        width: 36px;
+        height: 36px;
+        border-radius: 50%;
+        background: #404040;
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+    }
+
+    .activity-details {
+        flex: 1;
+    }
+
+    .activity-message {
+        font-size: 14px;
+        color: #333;
+        margin-bottom: 5px;
+    }
+
+    .activity-meta {
+        display: flex;
+        gap: 10px;
+        font-size: 12px;
+        color: #777;
+    }
+
+    .activity-type {
+        background: #f5f5f5;
+        padding: 2px 8px;
+        border-radius: 12px;
+    }
+
+    /* Form Elements */
+    select, button {
+        padding: 8px 12px;
+        border-radius: 4px;
+        border: 1px solid #ddd;
+        font-family: 'Open Sans', sans-serif;
+        font-size: 14px;
+    }
+
+    button {
+        background-color: #404040;
+        color: white;
+        border: none;
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+
+    button:hover {
+        background-color: #333;
+    }
+
+    .export-btn {
+        background-color: #4CC790;
+    }
+
+    .export-btn:hover {
+        background-color: #3daa7a;
+    }
+
+    /* Responsive */
+    @media (max-width: 768px) {
+        .dashboard-header {
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 15px;
+        }
+        
+        .metrics-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+        
+        .charts-grid {
+            grid-template-columns: 1fr;
+        }
+        
+        .chart-card.wide {
+            grid-column: span 1;
+        }
+    }
+    </style>
 {% endblock %}
