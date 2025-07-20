@@ -1638,20 +1638,23 @@ def calculate_polygon_area(coordinates):
     area = abs(area) / 2.0
     return area
 
+
+from .forms import UploadClientForm
+
 @login_required
 def create(request):
     if request.method == "POST":
         if 'excel_file' in request.FILES:
             return handle_excel_import(request)
         else:
-            form = ClientForm(request.POST)
+            form = UploadClientForm(request.POST)
             if form.is_valid():
                 form.save()
                 messages.success(request, 'Client created successfully!')
                 return redirect('dashboard')
             return render(request, 'account/create.html', {'form': form})
     
-    form = ClientForm()
+    form = UploadClientForm()
     return render(request, 'account/create.html', {'form': form})
 
 
