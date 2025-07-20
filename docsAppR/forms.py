@@ -45,7 +45,7 @@ class UploadClientForm(forms.Form):
     hazardMaterialRemediation = forms.CharField()
 
     #Insurance
-    insuranceCo_Name = forms.CharField()
+    insuranceCoName = forms.CharField()
     insAddressOvernightMail = forms.CharField()
     insCityStateZip = forms.CharField()
     insuranceCoPhone = forms.CharField()
@@ -57,7 +57,7 @@ class UploadClientForm(forms.Form):
     emailInsCo = forms.CharField()
     deskAdjusterDA = forms.CharField()
     DAPhone = forms.CharField()
-    DAPhExt = forms.CharField()
+    DAPhExtNumber = forms.CharField()
     DAEmail = forms.CharField()
     fieldAdjusterName = forms.CharField()
     phoneFieldAdj = forms.CharField()
@@ -174,100 +174,128 @@ class UploadClientForm(forms.Form):
 
 
 class ClientForm(forms.ModelForm):
+    dateOfLoss = forms.DateTimeField(
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+        required=False
+    )
+    contractDate = forms.DateTimeField(
+        widget=forms.DateTimeInput(attrs={'type': 'datetime-local'}),
+        required=False
+    )
     class Meta:
-            model = Client
-            fields = [
-                'pOwner',
-                'pAddress',
-                'pCityStateZip',
-                'cEmail',
-                'cPhone',
-                'coOwner2',
-                'cPhone2',
-                'cAddress2',
-                'cCityStateZip2',
-                'cEmail2',
-                'causeOfLoss',
-                'dateOfLoss',
-                'rebuildType1',
-                'rebuildType2',
-                'rebuildType3',
-                'demo',
-                'mitigation',
-                'otherStructures',
-                'replacement',
-                'CPSCLNCONCGN',
-                'yearBuilt',
-                'contractDate',
-                'lossOfUse',
-                'breathingIssue',
-                'hazardMaterialRemediation',
-                'insuranceCo_Name',
-                'insAddressOvernightMail',
-                'insCityStateZip',
-                'insuranceCoPhone',
-                'insWebsite',
-                'insMailingAddress',
-                'insMailCityStateZip',
-                'claimNumber',
-                'policyNumber',
-                'emailInsCo',
-                'deskAdjusterDA',
-                'DAPhone',
-                'DAPhExt',
-                'DAEmail',
-                'fieldAdjusterName',
-                'phoneFieldAdj',
-                'fieldAdjEmail',
-                'adjContents',
-                'adjCpsPhone',
-                'adjCpsEmail',
-                'emsAdj',
-                'emsAdjPhone',
-                'emsTmpEmail',
-                'attLossDraftDept',
-                'newCustomerID',
-                'roomID',
-                'roomArea1',
-                'roomArea2',
-                'roomArea3',
-                'roomArea4',
-                'roomArea5',
-                'roomArea6',
-                'roomArea7',
-                'roomArea8',
-                'roomArea9',
-                'roomArea10',
-                'roomArea11',
-                'roomArea12',
-                'roomArea13',
-                'roomArea14',
-                'roomArea15',
-                'roomArea16',
-                'roomArea17',
-                'roomArea18',
-                'roomArea19',
-                'roomArea20',
-                'roomArea21',
-                'roomArea22',
-                'roomArea23',
-                'roomArea24',
-                'roomArea25',
-                'mortgageCo',
-                'mortgageAccountCo',
-                'mortgageContactPerson',
-                'mortgagePhoneContact',
-                'mortgagePhoneExtContact',
-                'mortgageAttnLossDraftDept',
-                'mortgageOverNightMail',
-                'mortgageCityStZipOVN',
-                'mortgageEmail',
-                'mortgageWebsite',
-                'mortgageWebsite',
-                'mortgageCoFax',
-                'mortgageMailingAddress',
-            ]
-
+        model = Client
+        fields = [
+        # Customer fields
+        'pOwner',
+        'pAddress', 
+        'pCityStateZip',
+        'cEmail',
+        'cPhone',
+        'coOwner2',
+        'cPhone2',
+        'cAddress2',
+        'cCityStateZip2',
+        'cEmail2',
+        
+        # Claim fields
+        'causeOfLoss',
+        'dateOfLoss',
+        'rebuildType1',
+        'rebuildType2',
+        'rebuildType3',
+        'demo',
+        'mitigation',
+        'otherStructures',
+        'replacement',
+        'CPSCLNCONCGN',
+        'yearBuilt',
+        'contractDate',
+        'lossOfUse',
+        'breathingIssue',
+        'hazardMaterialRemediation',
+        
+        # Insurance fields
+        'insuranceCoName',  # Note: model has insuranceCoName (inconsistent)
+        'insAddressOvernightMail',
+        'insCityStateZip',
+        'insuranceCoPhone',
+        'insWebsite',
+        'insMailingAddress',
+        'insMailCityStateZip',
+        'claimNumber',
+        'policyNumber',
+        'emailInsCo',
+        'deskAdjusterDA',
+        'DAPhone',
+        'DAPhExtNumber',  # Note: model has DAPhExtNumber (inconsistent)
+        'DAEmail',
+        'fieldAdjusterName',
+        'phoneFieldAdj',
+        'fieldAdjEmail',
+        'adjContents',
+        'adjCpsPhone',
+        'adjCpsEmail',
+        'emsAdj',
+        'emsAdjPhone',
+        'emsTmpEmail',
+        'attLossDraftDept',
+        
+        # Room fields
+        'newCustomerID',
+        'roomID',
+        'roomArea1',
+        'roomArea2',
+        'roomArea3',
+        'roomArea4',
+        'roomArea5',
+        'roomArea6',
+        'roomArea7',
+        'roomArea8',
+        'roomArea9',
+        'roomArea10',
+        'roomArea11',
+        'roomArea12',
+        'roomArea13',
+        'roomArea14',
+        'roomArea15',
+        'roomArea16',
+        'roomArea17',
+        'roomArea18',
+        'roomArea19',
+        'roomArea20',
+        'roomArea21',
+        'roomArea22',
+        'roomArea23',
+        'roomArea24',
+        'roomArea25',
+        
+        # Mortgage fields
+        'mortgageCo',
+        'mortgageAccountCo',
+        'mortgageContactPerson',
+        'mortgagePhoneContact',
+        'mortgagePhoneExtContact',
+        'mortgageAttnLossDraftDept',
+        'mortgageOverNightMail',
+        'mortgageCityStZipOVN',
+        'mortgageEmail',
+        'mortgageWebsite',
+        'mortgageCoFax',
+        'mortgageMailingAddress',
+        
+        # ALE Fields (These were missing)
+        'lossOfUseALE',
+        'tenantLesee',
+        'propertyAddressStreet',
+        'propertyCityStateZip',
+        'customerEmail',
+        'cstOwnerPhoneNumber',
+        'startDate',
+        'endDate',
+        'lessor',
+        'bedrooms',
+        'termsAmount'
+    ]
 
 class DocumentUploadForm(forms.ModelForm):
     class Meta:
