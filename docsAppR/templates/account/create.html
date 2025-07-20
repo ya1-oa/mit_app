@@ -452,7 +452,7 @@
               <div class="form-column">
                 <div class="form-row">
                   <label for="id_lossOfUseALE">Loss of Use (ALE)</label>
-                  {{ form.lossOfUseALE }}
+                  {{ form.lossOfUse }}
                 </div>
                 <div class="form-row">
                   <label for="id_tenantLesee">Tenant/Lessee</label>
@@ -742,5 +742,174 @@ document.addEventListener('DOMContentLoaded', function() {
     margin-top: 10px;
   }
 }
+
+/* Base styles from your base.html */
+.section-card {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  padding: 15px;
+  margin-bottom: 20px;
+}
+
+.section-card h3 {
+  font-size: 14px;
+  font-weight: 400;
+  margin: -15px -15px 15px -15px;
+  padding: 12px 15px;
+  border-bottom: 1px solid #ddd;
+}
+
+/* File Upload Styling */
+.file-upload-btn {
+  display: inline-block;
+  background-color: #404040;
+  color: white;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  transition: background-color 0.3s;
+  margin-right: 10px;
+}
+
+.file-upload-btn:hover {
+  background-color: #333;
+}
+
+.file-name-display {
+  margin-left: 10px;
+  color: #777;
+}
+
+/* Form Styling */
+.form-tabs-container {
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+}
+
+.tabs {
+  display: flex;
+  border-bottom: 1px solid #ddd;
+}
+
+.tab-button {
+  padding: 12px 15px;
+  background: none;
+  border: none;
+  font-size: 14px;
+  color: #777;
+  cursor: pointer;
+}
+
+.tab-button.active {
+  color: #404040;
+  font-weight: 600;
+  border-bottom: 2px solid #404040;
+}
+
+.tab-pane {
+  padding: 15px;
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+.form-row {
+  margin-bottom: 15px;
+}
+
+.form-row label {
+  display: block;
+  margin-bottom: 5px;
+  color: #777;
+}
+
+.form-row input,
+.form-row select,
+.form-row textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-family: 'Open Sans', sans-serif;
+}
+
+/* Button Styles */
+.btn {
+  background-color: #404040;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: background-color 0.3s;
+  margin-right: 10px;
+}
+
+.btn:last-child {
+  margin-right: 0;
+}
+
+.btn:hover {
+  background-color: #333;
+}
+
+.btn-submit {
+  background-color: #4CC790;
+  margin-top: 15px;
+}
+
+.btn-submit:hover {
+  background-color: #3daa7a;
+}
+
+/* Textarea Styling */
+#excel-paste-area {
+  width: 100%;
+  min-height: 100px;
+  padding: 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  margin-bottom: 15px;
+  font-family: 'Open Sans', sans-serif;
+}
+
+/* Button Group Styling */
+.button-group {
+  display: flex;
+  gap: 15px;
+  margin-top: 15px;
+}
+
+/* Responsive Adjustments */
+@media (max-width: 768px) {
+  .tabs {
+    flex-wrap: wrap;
+  }
+  
+  .tab-button {
+    flex: 1;
+    min-width: 120px;
+  }
+  
+  .button-group {
+    flex-direction: column;
+  }
+  
+  .btn {
+    width: 100%;
+    margin-right: 0;
+    margin-bottom: 10px;
+  }
+  
+  .btn:last-child {
+    margin-bottom: 0;
+  }
+}
+
 </style>
 {% endblock %}
