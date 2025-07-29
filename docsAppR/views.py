@@ -2361,7 +2361,6 @@ import subprocess
 import time
 from pathlib import Path
 from openpyxl import load_workbook
-from PyPDF2 import PdfWriter, PdfReader
 from django.core.files.base import ContentFile
 from django.http import JsonResponse, HttpResponse
 from django.shortcuts import get_object_or_404, render
