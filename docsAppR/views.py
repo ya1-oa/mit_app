@@ -1912,7 +1912,6 @@ def handle_excel_import(request):
                     'roomArea24': client_data.get('room_area_24', ''),
                     'roomArea25': client_data.get('room_area_25', ''),
                     
-                    
                     # Mortgage Information
                     'mortgageCo': client_data.get('mortgage_co', ''),
                     'mortgageAccountCo': client_data.get('account_num_mtge_co', ''),
@@ -2353,536 +2352,555 @@ def checklist(request):
     
     return render(request, 'account/checklist.html', context)
 
+import os
+import re
+import math
+import logging
+import tempfile
+import subprocess
+import time
+from pathlib import Path
+from openpyxl import load_workbook
+from PyPDF2 import PdfWriter, PdfReader
+from django.core.files.base import ContentFile
+from django.http import JsonResponse, HttpResponse
+from django.shortcuts import get_object_or_404, render
+from django.conf import settings
+from django.contrib.auth.decorators import login_required
+from docsAppR.models import Client, File  # Update with your actual models
 
+logger = logging.getLogger(__name__)
 
 @login_required
 def labels(request):
-    claims = Client.objects.all()
-    
-    # Get rooms for selected claim
-    selected_claim_id = request.GET.get('claim')
-    rooms = []
-    
-    if selected_claim_id:
-        try:
-            client = get_object_or_404(Client, pOwner=selected_claim_id)
-            
-            # Get all non-empty rooms
-            for i in range(1, 26):
-                room_attr = f'roomArea{i}'
-                room_value = getattr(client, room_attr, None)
-                
-                if room_value and isinstance(room_value, str):
-                    room_value = room_value.strip()
-                    if room_value.lower() not in ['', 'tbd', 'n/a']:
-                        rooms.append({
-                            'id': room_attr,
-                            'name': room_value
-                        })
-        except Client.DoesNotExist:
-            rooms = []
-            logger.error(f"Client not found: {selected_claim_id}")
-    
-    # Handle POST request (just the placeholder for now)
-    if request.method == 'POST':
-        try:
-            claim_id = request.POST.get('claim')
+    # GET request handling - show the form
+    if request.method == 'GET':
+        claims = Client.objects.all()
+        selected_claim_id = request.GET.get('claim')
+        rooms = []
         
-            # Process the room labels data from the form
+        if selected_claim_id:
+            try:
+                client = get_object_or_404(Client, pOwner=selected_claim_id)
+                
+                # Get all non-empty rooms
+                for i in range(1, 26):
+                    room_attr = f'roomArea{i}'
+                    room_value = getattr(client, room_attr, None)
+                    
+                    if room_value and isinstance(room_value, str):
+                        room_value = room_value.strip()
+                        if room_value.lower() not in ['', 'tbd', 'n/a']:
+                            rooms.append({
+                                'id': room_attr,
+                                'name': room_value
+                            })
+            except Client.DoesNotExist:
+                rooms = []
+                logger.error(f"Client not found: {selected_claim_id}")
+        
+        context = {
+            'claims': claims,
+            'rooms': rooms,
+            'selected_claim_id': selected_claim_id
+        }
+        return render(request, 'account/labels.html', context)
+    
+    # POST request handling - generate PDFs
+    elif request.method == 'POST':
+        try:
+            # Initialize room_labels dictionary
             room_labels = {}
+            claim_id = request.POST.get('claim', '').strip()
+            
+            if not claim_id:
+                return JsonResponse({'status': 'error', 'message': 'Missing claim ID'}, status=400)
+
+            # Parse room labels from POST data
             for key, value in request.POST.items():
                 if key.startswith('room_labels['):
-                    room_name = key[len('room_labels['):-1]  # Extract room name from room_labels[name]
-                try:
-                    count = int(value)
-                    if count > 0:  # Only include rooms with at least 1 label
-                        room_labels[room_name] = count
-                except ValueError:
-                    continue
-        
-            # Store the data in session (optional, if you need it later)
-            request.session['room_labels_data'] = {
-                'claim_id': claim_id,
-                'room_labels': room_labels
-            }
-        
-            # Generate and return PDF response
-            return generate_room_labels_pdf(request)
-            
-        except Exception as e:
-            logger.error(f"Error in POST processing: {str(e)}")
-            return HttpResponse(f"An error occurred while processing the form: {str(e)}", status=500)
-    
-    context = {
-        'claims': claims,
-        'rooms': rooms,
-        'selected_claim_id': selected_claim_id
-    }
-    
-    return render(request, 'account/labels.html', context)
+                    try:
+                        room_name = key[len('room_labels['):-1]  # Extract room name
+                        count = int(value)
+                        if count > 0:
+                            room_labels[room_name] = count
+                    except ValueError:
+                        continue
 
+            if not room_labels:
+                return JsonResponse({'status': 'success', 'message': 'No labels requested', 'pdfs': []})
 
-def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, num_labels):
-    """
-    Convert specific Excel sheet to PDF with page range
-    Works on both Windows and Linux platforms
-    """
-    # Calculate pages needed (2 labels per page)
-    num_pages = math.ceil(num_labels / 2)
-    
-    try:
-        system = platform.system()
-        
-        if system == "Windows":
-            # Windows implementation using win32com
-            import win32com.client
-            import pythoncom
+            # Get client data
+            client = get_object_or_404(Client, pOwner=claim_id)
+
+            # Create room index mapping
+            room_indices = {}
+            for i in range(1, 26):  # roomArea1 through roomArea25
+                field_name = f'roomArea{i}'
+                if hasattr(client, field_name):
+                    room_value = getattr(client, field_name)
+                    if room_value:  # Only add if not empty
+                        room_indices[room_value] = i
+
+            template_path = os.path.join(settings.BASE_DIR, 'docsAppR', 'templates', 'excel', 'room_labels_template.xlsx')
             
-            # Initialize COM in this thread
-            pythoncom.CoInitialize()
-            excel = None
-            
-            try:
-                # Create Excel application object
-                excel = win32com.client.Dispatch("Excel.Application")
-                excel.Visible = False
-                excel.DisplayAlerts = False
+            if not os.path.exists(template_path):
+                return JsonResponse({'status': 'error', 'message': 'Template file not found'}, status=500)
+
+            with tempfile.TemporaryDirectory() as temp_dir:
+                pdfs_info = []
                 
-                # Open workbook
-                workbook = excel.Workbooks.Open(excel_path)
-                
-                # First, hide all sheets
-                for i in range(1, workbook.Sheets.Count + 1):
+                for room_name, num_labels in room_labels.items():
                     try:
-                        workbook.Sheets(i).Visible = 2  # xlSheetVeryHidden (2)
-                    except:
-                        pass
-                
-                # Find the sheet by name and make it visible
-                target_sheet = None
-                sheet_found = False
-                for i in range(1, workbook.Sheets.Count + 1):
-                    sheet = workbook.Sheets(i)
-                    if sheet.Name == sheet_name:
-                        sheet.Visible = -1  # xlSheetVisible (-1)
-                        target_sheet = sheet
-                        sheet_found = True
-                        break
-                
-                if not sheet_found:
-                    logger.error(f"Sheet {sheet_name} not found")
-                    workbook.Close(False)
-                    raise ValueError(f"Sheet {sheet_name} not found")
-                
-                # Activate the sheet
-                target_sheet.Activate()
-                
-                # Save as PDF using sheet-specific export
-                workbook.ActiveSheet.ExportAsFixedFormat(
-                    Type=0,  # 0 = PDF
-                    Filename=pdf_path,
-                    Quality=0,
-                    IncludeDocProperties=True,
-                    IgnorePrintAreas=False,
-                    OpenAfterPublish=False,
-                    From=1,
-                    To=num_pages
-                )
-                
-                # Close workbook
-                workbook.Close(False)
-                return True
-                
-            except Exception as e:
-                logger.error(f"Error in Excel processing: {str(e)}")
-                raise
-            finally:
-                # Ensure Excel is properly closed
-                if excel:
-                    try:
-                        excel.Quit()
-                    except:
-                        pass
-                    
-                    # Release COM objects
-                    del excel
-                
-                # Uninitialize COM
-                pythoncom.CoUninitialize()
-                
-        elif system == "Linux":
-            # Linux implementation using LibreOffice and unoconv
-            os.makedirs(os.path.dirname(pdf_path), exist_ok=True)
-            
-            # First, mark the specific sheet for printing
-            try:
-                # Using openpyxl to set the active sheet
-                from openpyxl import load_workbook
-                wb = load_workbook(excel_path)
-                
-                # Check if the sheet exists
-                if sheet_name not in wb.sheetnames:
-                    logger.error(f"Sheet {sheet_name} not found")
-                    raise ValueError(f"Sheet {sheet_name} not found")
-                
-                # Make the target sheet active
-                wb.active = wb[sheet_name]
-                
-                # Save temporary workbook with desired sheet active
-                temp_excel_path = f"{excel_path}.tmp"
-                wb.save(temp_excel_path)
-                
-                # Convert Excel to PDF using unoconv or LibreOffice
-                try:
-                    # Try using unoconv first (more reliable for sheet-specific conversion)
-                    import subprocess
-                    
-                    # Check if unoconv is installed
-                    try:
-                        subprocess.run(['which', 'unoconv'], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        
-                        # Use unoconv for the conversion
-                        subprocess.run([
-                            'unoconv',
-                            '-f', 'pdf',
-                            '-o', pdf_path,
-                            temp_excel_path
-                        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        
-                    except (subprocess.SubprocessError, FileNotFoundError):
-                        # If unoconv not available, fall back to LibreOffice
-                        logger.info("Unoconv not found, using LibreOffice directly")
-                        
-                        # Get the directory of the output file
-                        output_dir = os.path.dirname(pdf_path)
-                        output_filename = os.path.basename(pdf_path)
-                        
-                        # Convert using LibreOffice
-                        subprocess.run([
-                            'libreoffice',
-                            '--headless',
-                            '--convert-to', 'pdf',
-                            '--outdir', output_dir,
-                            temp_excel_path
-                        ], check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
-                        
-                        # LibreOffice will create a file with the same name but .pdf extension
-                        lo_output_pdf = os.path.splitext(temp_excel_path)[0] + '.pdf'
-                        lo_output_pdf = os.path.join(output_dir, os.path.basename(lo_output_pdf))
-                        
-                        # Rename to desired output name if necessary
-                        if os.path.exists(lo_output_pdf) and lo_output_pdf != pdf_path:
-                            os.rename(lo_output_pdf, pdf_path)
-                    
-                    # For page range limitation, use PyPDF2 to extract pages
-                    if num_pages > 0 and os.path.exists(pdf_path):
+                        # Get room index
+                        room_index = room_indices.get(room_name)
+                        if not room_index:
+                            room_index = get_room_index_from_name(room_name)
+                            if not room_index:
+                                logger.warning(f"No index found for room: {room_name}")
+                                continue
+
+                        # Create safe filenames
+                        safe_claim = safe_filename(claim_id)
+                        safe_room = safe_filename(room_name)
+                        excel_filename = f"labels_{safe_claim}_{safe_room}.xlsx"
+                        pdf_filename = f"labels_{safe_claim}_{safe_room}.pdf"
+                        temp_excel_path = os.path.join(temp_dir, excel_filename)
+                        temp_pdf_path = os.path.join(temp_dir, pdf_filename)
+                        sheet_name = f"RM ({room_index})"
+
+                        logger.info(f"Processing {room_name} (Room {room_index}) - {num_labels} labels")
+
+                        # 1. Create Excel from template with client data
+                        if not create_excel_from_template(template_path, temp_excel_path, sheet_name, room_index, claim_id, client):
+                            logger.error(f"Failed to create Excel for {room_name}")
+                            continue
+
+                        # 2. Convert to PDF with proper label format
                         try:
-                            import PyPDF2
-                            
-                            # Open the PDF
-                            with open(pdf_path, 'rb') as file:
-                                pdf_reader = PyPDF2.PdfReader(file)
-                                pdf_writer = PyPDF2.PdfWriter()
-                                
-                                # Add only the required pages
-                                for page_num in range(min(num_pages, len(pdf_reader.pages))):
-                                    pdf_writer.add_page(pdf_reader.pages[page_num])
-                                
-                                # Save the new PDF
-                                with open(pdf_path + '.tmp', 'wb') as output_file:
-                                    pdf_writer.write(output_file)
-                            
-                            # Replace the original with the trimmed version
-                            os.replace(pdf_path + '.tmp', pdf_path)
-                            
-                        except ImportError:
-                            logger.warning("PyPDF2 not installed. Cannot limit pages in PDF.")
-                
-                except Exception as e:
-                    logger.error(f"Error converting with LibreOffice/unoconv: {str(e)}")
-                    raise Exception(f"Conversion failed: {str(e)}")
-                
-                finally:
-                    # Clean up temporary file
-                    if os.path.exists(temp_excel_path):
-                        os.remove(temp_excel_path)
-                
-            except Exception as e:
-                logger.error(f"Error preparing Excel file for conversion: {str(e)}")
-                raise
-        
-        else:
-            logger.error(f"Unsupported operating system: {system}")
-            raise ValueError(f"Unsupported operating system: {system}")
-            
-    except Exception as e:
-        logger.error(f"Error converting Excel to PDF: {str(e)}")
-        raise
+                            convert_excel_to_pdf_with_pages(
+                                excel_path=temp_excel_path,
+                                pdf_path=temp_pdf_path,
+                                sheet_name=sheet_name,
+                                room_name=room_name,
+                                p_owner=client.pOwner,  # Using pOwner as the owner value
+                                num_labels=num_labels
+                            )
+                        except Exception as e:
+                            logger.error(f"PDF conversion failed for {room_name}: {str(e)}")
+                            continue
 
+                        # 3. Store the PDF
+                        if os.path.exists(temp_pdf_path):
+                            with open(temp_pdf_path, 'rb') as pdf_file:
+                                pdf_content = pdf_file.read()
+                            
+                            pdf_obj = File(
+                                filename=pdf_filename,
+                                size=len(pdf_content))
+                            pdf_obj.file.save(pdf_filename, ContentFile(pdf_content))
+                            
+                            pdfs_info.append({
+                                'room_name': room_name,
+                                'pdf_url': pdf_obj.file.url,
+                                'num_labels': num_labels,
+                                'print_area': calculate_print_area(num_labels)
+                            })
+                            
+                            logger.info(f"Successfully generated PDF for {room_name} with {num_labels} labels")
+
+                    except Exception as e:
+                        logger.error(f"Error processing room {room_name}: {str(e)}", exc_info=True)
+                        continue
+
+                return JsonResponse({
+                    'status': 'success', 
+                    'pdfs': pdfs_info
+                }) if pdfs_info else JsonResponse({
+                    'status': 'success',
+                    'message': 'No valid labels generated',
+                    'pdfs': []
+                })
+
+        except Exception as e:
+            logger.error(f"Label generation failed: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Label generation failed. Please try again.'
+            }, status=500)
+
+# Helper functions
+def safe_filename(name, max_length=120):
+    """Create filesystem-safe filename"""
+    return re.sub(r'[<>:"/\\|?*]', '_', name)[:max_length]
 
 def get_room_index_from_name(room_name):
-    """
-    Extract the room index from room name
-    Example: 'Living Room' from roomArea5 would return 5
-    """
-    # Try to find a number in the room name first (for UI display names)
+    """Extract the room index from room name"""
     match = re.search(r'(\d+)', room_name)
     if match:
         return int(match.group(1))
     return None
 
-def create_excel_from_template(template_path, output_path, sheet_name, room_index, claim_id):
-    """
-    Create a new Excel file from template with appropriate data
-    Works on both Windows and Linux platforms
-    """
-    system = platform.system()
+def calculate_print_area(num_labels):
+    """Calculate the print area based on number of labels requested"""
+    if num_labels <= 0:
+        return "A1:B4"  # Default to at least one label area
     
-    # Clean up filename - remove problematic characters
-    dir_name = os.path.dirname(output_path)
-    base_name = os.path.basename(output_path)
+    labels_per_block = 2
+    blocks_needed = math.ceil(num_labels / labels_per_block)
+    end_row = blocks_needed * 4
     
-    # Remove extension first
-    base_name_no_ext, ext = os.path.splitext(base_name)
-    
-    # Replace all non-alphanumeric characters (except underscores and dots)
-    safe_name = re.sub(r'[^a-zA-Z0-9_.-]', '_', base_name_no_ext)
-    
-    # Add timestamp and restore extension
-    safe_name = f"{safe_name}_{int(time.time())}{ext}"
-    safe_path = os.path.join(dir_name, safe_name)
-    
-    # Create directory if it doesn't exist
-    os.makedirs(dir_name, exist_ok=True)
-    
-    if system == "Windows":
-        # Windows implementation using win32com
-        import win32com.client
-        import pythoncom
+    return f"A1:B{end_row}"
+
+def create_excel_from_template(template_path, output_path, sheet_name, room_index, claim_id, client):
+    """Creates an Excel file from template with client data populated"""
+    try:
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+        wb = load_workbook(template_path, data_only=False)  # Keep formulas as formulas
         
-        # Initialize COM in this thread
-        pythoncom.CoInitialize()
-        excel = None
-        
-        try:
-            # Create Excel application object
-            excel = win32com.client.Dispatch("Excel.Application")
-            excel.Visible = False
-            excel.DisplayAlerts = False
-            
-            # Open the template
-            workbook = excel.Workbooks.Open(template_path)
-            
-            # Find the sheet by name
-            sheet_found = False
-            for i in range(1, workbook.Sheets.Count + 1):
-                if workbook.Sheets(i).Name == sheet_name:
-                    sheet_found = True
-                    break
-            
-            if not sheet_found:
-                logger.error(f"Sheet {sheet_name} not found")
-                workbook.Close(False)
-                return False
-            
-            # Save to the output path
-            if ext.lower() == ".xlsm":
-                workbook.SaveAs(safe_path, FileFormat=51)  # xlOpenXMLWorkbookMacroEnabled
-            else:
-                workbook.SaveAs(safe_path)
-            workbook.Close(True)
-            
-            # If we saved to a different path than requested, copy the file
-            if safe_path != output_path and os.path.exists(safe_path):
-                import shutil
-                shutil.copy2(safe_path, output_path)
-                os.remove(safe_path)
-                
-            return True
-            
-        except Exception as e:
-            logger.error(f"Error creating Excel file with win32com: {str(e)}")
+        if sheet_name not in wb.sheetnames:
+            logger.error(f"Sheet '{sheet_name}' not found in template. Available sheets: {wb.sheetnames}")
             return False
-            
-        finally:
-            # Ensure Excel is properly closed
-            if excel:
-                try:
-                    excel.Quit()
-                except:
-                    pass
-                
-                # Release COM objects
-                del excel
-                
-            # Uninitialize COM
-            pythoncom.CoUninitialize()
-    
-    elif system == "Linux":
-        # Linux implementation with openpyxl and xlrd/xlwt or LibreOffice
-        try:
-            # First attempt: use openpyxl for Excel files
-            import shutil
-            from openpyxl import load_workbook
-            
-            # First check if it's a macro-enabled file (.xlsm)
-            if template_path.lower().endswith('.xlsm'):
-                # For macro-enabled files, we need to preserve macros
-                # Copy the file and then use LibreOffice to manipulate it if needed
-                shutil.copy2(template_path, output_path)
-                
-                # If we need to make changes to specific sheets, we can use the LibreOffice API
-                # through Python-UNO bridge, but that's complex.
-                # For now, we'll just copy the file as is
-                return True
-            else:
-                # For regular Excel files, use openpyxl
-                wb = load_workbook(template_path, keep_vba=True)
-                
-                # Check if the specified sheet exists
-                if sheet_name in wb.sheetnames:
-                    # Activate the sheet
-                    wb.active = wb[sheet_name]
-                
-                # Save the workbook
-                wb.save(output_path)
-                return True
-                
-        except Exception as e:
-            logger.error(f"Error with openpyxl on Linux: {str(e)}")
-            
-            # Second attempt: use shutil (simple file copy)
+        
+        # Populate jobinfo sheet if exists
+        jobinfo_sheet = None
+        for sheet in wb.sheetnames:
+            if 'jobinfo(2)' in sheet.lower():
+                jobinfo_sheet = wb[sheet]
+                break
+        
+        if jobinfo_sheet:
             try:
-                import shutil
-                shutil.copy2(template_path, output_path)
-                return True
-            except Exception as e2:
-                logger.error(f"Error copying file on Linux: {str(e2)}")
-                return False
-    
-    else:
-        logger.error(f"Unsupported operating system: {system}")
+                # Create a mapping of field names to their column C positions
+                # This should match how your template is structured
+                field_mapping = {
+                    # Primary Client Information
+                    'pOwner': 1,
+                    'pAddress': 2,
+                    'pCityStateZip': 3,
+                    'cEmail': 4,
+                    'cPhone': 5,
+                    'coOwner2': 6,
+                    'cPhone2': 7,
+                    'cAddress2': 8,
+                    'cCityStateZip2': 9,
+                    'cEmail2': 10,
+                    
+                    # Claim Information
+                    'causeOfLoss': 11,
+                    'dateOfLoss': 12,
+                    'rebuildType1': 13,
+                    'rebuildType2': 14,
+                    'rebuildType3': 15,
+                    'demo': 16,
+                    'mitigation': 17,
+                    'otherStructures': 18,
+                    'replacement': 19,
+                    'CPSCLNCONCGN': 20,
+                    'yearBuilt': 21,
+                    'contractDate': 22,
+                    'lossOfUse': 23,
+                    'breathingIssue': 24,
+                    'hazardMaterialRemediation': 25,
+                    
+                    # Insurance Information
+                    'insuranceCo_Name': 26,
+                    'insAddressOvernightMail': 27,
+                    'insCityStateZip': 28,
+                    'insuranceCoPhone': 29,
+                    'insWebsite': 30,
+                    'insMailingAddress': 31,
+                    'insMailCityStateZip': 32,
+                    'claimNumber': 33,
+                    'policyNumber': 34,
+                    'emailInsCo': 35,
+                    'deskAdjusterDA': 36,
+                    'DAPhone': 37,
+                    'DAPhExt': 38,
+                    'DAEmail': 39,
+                    'fieldAdjusterName': 40,
+                    'phoneFieldAdj': 41,
+                    'fieldAdjEmail': 42,
+                    'adjContents': 43,
+                    'adjCpsPhone': 44,
+                    'adjCpsEmail': 45,
+                    'emsAdj': 46,
+                    'emsAdjPhone': 47,
+                    'emsTmpEmail': 48,
+                    'attLossDraftDept': 49,
+                    
+                    # Room Information
+                    'newCustomerID': 50,
+                    'roomID': 51,
+                    'roomArea1': 52,
+                    'roomArea2': 53,
+                    'roomArea3': 54,
+                    'roomArea4': 55,
+                    'roomArea5': 56,
+                    'roomArea6': 57,
+                    'roomArea7': 58,
+                    'roomArea8': 59,
+                    'roomArea9': 60,
+                    'roomArea10': 61,
+                    'roomArea11': 62,
+                    'roomArea12': 63,
+                    'roomArea13': 64,
+                    'roomArea14': 65,
+                    'roomArea15': 66,
+                    'roomArea16': 67,
+                    'roomArea17': 68,
+                    'roomArea18': 69,
+                    'roomArea19': 70,
+                    'roomArea20': 71,
+                    'roomArea21': 72,
+                    'roomArea22': 73,
+                    'roomArea23': 74,
+                    'roomArea24': 75,
+                    'roomArea25': 76,
+                    
+                    # Mortgage Information
+                    'mortgageCo': 77,
+                    'mortgageAccountCo': 78,
+                    'mortgageContactPerson': 79,
+                    'mortgagePhoneContact': 80,
+                    'mortgagePhoneExtContact': 81,
+                    'mortgageAttnLossDraftDept': 82,
+                    'mortgageOverNightMail': 83,
+                    'mortgageCityStZipOVN': 84,
+                    'mortgageEmail': 85,
+                    'mortgageWebsite': 86,
+                    'mortgageCoFax': 87,
+                    'mortgageMailingAddress': 88,
+                    'mortgageInitialOfferPhase1ContractAmount': 89,
+                    
+                    # Cash Flow
+                    'drawRequest': 90,
+                    
+                    # Contractor Information
+                    'coName': 91,
+                    'coWebsite': 92,
+                    'coEmailstatus': 93,
+                    'coAddress': 94,
+                    'coCityState': 95,
+                    'coAddress2': 96,
+                    'coCityState2': 97,
+                    'coCityState3': 98,
+                    'coLogo1': 99,
+                    'coLogo2': 100,
+                    'coLogo3': 101,
+                    'coRepPH': 102,
+                    'coREPEmail': 103,
+                    'coPhone2': 104,
+                    'TinW9': 105,
+                    'fedExAccount': 106,
+                    
+                    # Claim Reporting
+                    'claimReportDate': 107,
+                    'insuranceCustomerServiceRep': 108,
+                    'timeOfClaimReport': 109,
+                    'phoneExt': 110,
+                    'tarpExtTMPOk': 111,
+                    'IntTMPOk': 112,
+                    'DRYPLACUTOUTMOLDSPRAYOK': 113,
+                    
+                    # ALE Information
+                    'lossOfUseALE': 114,
+                    'tenantLesee': 115,
+                    'propertyAddressStreet': 116,
+                    'propertyCityStateZip': 117,
+                    'customerEmail': 118,
+                    'cstOwnerPhoneNumber': 119,
+                    
+                    # Duplicate/Additional Fields (appearing later in model)
+                    'contractDate': 122,
+                    'insuranceCoName': 123,
+                    'claimNumber': 124,
+                    'policyClaimNumber': 125,
+                    'emailInsCo': 126,
+                    'deskAdjusterDA': 127,
+                    'DAPhone': 128,
+                    'DAPhExtNumber': 129,
+                    'DAEmail': 130,
+                    'startDate': 131,
+                    'endDate': 132,
+                    'lessor': 133,
+                    'propertyAddressStreet': 134,
+                    'propertyCityStateZip': 135,
+                    'customerEmail': 136,
+                    'cstOwnerPhoneNumber': 137,
+                    'bedrooms': 138,
+                    'termsAmount': 139
+                }
+                
+                datetime_fields = [
+                    'dateOfLoss',
+                    'contractDate',
+                    'claimReportDate',
+                    'startDate',
+                    'endDate'
+                ]
+
+                # Populate the fields we know about
+                for field_name, row_num in field_mapping.items():
+                    cell_ref = f'C{row_num}'
+                    try:
+                        value = getattr(client, field_name, None)
+                        
+                        # Handle datetime fields
+                        if field_name in datetime_fields and value is not None:
+                            if value.tzinfo is not None:
+                                # Remove timezone info
+                                value = value.replace(tzinfo=None)
+                            jobinfo_sheet[cell_ref] = value
+                        
+                        # Handle boolean fields
+                        elif isinstance(value, bool):
+                            jobinfo_sheet[cell_ref] = 'Yes' if value else 'No'
+                        
+                        # Handle normal fields
+                        else:
+                            jobinfo_sheet[cell_ref] = str(value) if value not in [None, ''] else 'TBD'
+                    
+                    except Exception as e:
+                        logger.warning(f"Error setting {field_name} in {cell_ref}: {str(e)}")
+                        jobinfo_sheet[cell_ref] = 'ERROR'
+
+                # Refresh formulas (optional - only needed if you have formulas referencing these cells)
+                for row in jobinfo_sheet.iter_rows():
+                    for cell in row:
+                        if cell.data_type == 'f':  # Formula
+                            try:
+                                jobinfo_sheet[cell.coordinate] = f'={cell.value}'
+                            except Exception as e:
+                                logger.warning(f"Could not refresh formula in {cell.coordinate}: {str(e)}")
+                
+                logger.info("Successfully populated client data in jobinfo sheet")
+                
+            except Exception as e:
+                logger.warning(f"Could not populate client data: {str(e)}", exc_info=True)
+        
+        # Save the workbook
+        wb.template = False  # Important: Set to False to save as regular workbook
+        wb.save(output_path)
+        wb.close()
+        return True
+        
+    except Exception as e:
+        logger.error(f"Failed to create Excel from template: {str(e)}", exc_info=True)
         return False
 
-
-def generate_room_labels_pdf(request):
-    """Generate room labels PDF based on user input"""
+def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, room_name, p_owner, num_labels):
+    """Convert Excel to PDF with proper print area, eliminating formula errors"""
     try:
-        # Get claim ID and room labels data
-        claim_id = request.POST.get('claim')
-        room_labels = {}
+        with tempfile.NamedTemporaryFile(suffix='.xlsx', delete=False) as tmp_file:
+            temp_xlsx = tmp_file.name
         
-        # Parse room labels data - format is room_labels[room_name]=count
-        for key, value in request.POST.items():
-            if key.startswith('room_labels['):
-                room_name = key[len('room_labels['):-1]  # Extract room name from room_labels[name]
+        try:
+            # 1. Load and prepare the workbook
+            wb = load_workbook(excel_path)
+            if sheet_name not in wb.sheetnames:
+                raise ValueError(f"Sheet '{sheet_name}' not found in {excel_path}")
+            
+            # 2. Process the target sheet
+            ws = wb[sheet_name]
+
+            # 4. Remove other sheets (after processing formulas)
+            for sheet in wb.sheetnames:
+                if sheet != sheet_name:
+                    wb.remove(wb[sheet])
+            
+
+            labels_per_page = 4
+            total_labels = math.ceil(num_labels / labels_per_page) * labels_per_page
+            total_rows = total_labels * 2 
+
+            room_name_upper = room_name.upper()  # Convert to ALL CAPS
+            for row_num in range(1, total_rows + 1):
+                # Odd rows (1, 3, 5...) get room name
+                if row_num % 2 == 1:
+                    ws.cell(row=row_num, column=1, value=room_name_upper)  # A1, A3, A5...
+                # Even rows (2, 4, 6...) get owner name
+                else:
+                    ws.cell(row=row_num, column=1, value=p_owner)  # A2, A4, A6...
+            
+            # 5. Set print area
+            print_area = calculate_print_area(num_labels)
+            if ':' in print_area:  # Validate print area format
+                ws.print_area = print_area
+                logger.info(f"Set print area for {sheet_name}: {print_area}")
+            else:
+                logger.warning(f"Invalid print area format: {print_area}")
+            
+            # 6. Save the cleaned workbook
+            wb.template = False
+            wb.security = None
+            wb.save(temp_xlsx)
+            wb.close()
+            
+            # 7. Convert to PDF using LibreOffice
+            temp_dir = os.path.dirname(temp_xlsx)
+            cmd = [
+                'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+                '--headless',
+                '--convert-to', 'pdf',
+                '--outdir', temp_dir,
+                temp_xlsx
+            ]
+            
+            # 8. Run conversion with error handling
+            result = subprocess.run(
+                cmd, 
+                check=True, 
+                timeout=120, 
+                capture_output=True,
+                text=True
+            )
+            logger.debug(f"LibreOffice output: {result.stdout}")
+            
+            # 9. Handle the generated PDF
+            generated_pdf = os.path.splitext(temp_xlsx)[0] + '.pdf'
+            max_wait = 30
+            waited = 0
+            
+            while waited < max_wait:
+                if os.path.exists(generated_pdf):
+                    try:
+                        with open(generated_pdf, 'rb') as f:
+                            pdf_data = f.read()
+                        with open(pdf_path, 'wb') as f:
+                            f.write(pdf_data)
+                        logger.info(f"PDF successfully generated at {pdf_path}")
+                        return True
+                    except PermissionError:
+                        time.sleep(0.5)
+                        waited += 0.5
+                else:
+                    time.sleep(0.5)
+                    waited += 0.5
+            
+            raise RuntimeError(f"PDF generation timed out after {max_wait} seconds")
+            
+        finally:
+            # 10. Cleanup temporary files
+            cleanup_files = [temp_xlsx]
+            temp_pdf = os.path.splitext(temp_xlsx)[0] + '.pdf'
+            if os.path.exists(temp_pdf):
+                cleanup_files.append(temp_pdf)
+            
+            for file_path in cleanup_files:
                 try:
-                    count = int(value)
-                    if count > 0:  # Only include rooms with at least 1 label
-                        room_labels[room_name] = count
-                except ValueError:
-                    continue
-        
-        # Return early if no labels were requested
-        if not claim_id or not room_labels:
-            return JsonResponse({'status': 'success', 'message': 'No labels requested', 'pdfs': []})
-        
-        # Get client data
-        client = get_object_or_404(Client, pOwner=claim_id)
-        
-        # Create mapping from room names to their indices in the Client model
-        room_indices = {}
-        
-        # Get all roomArea fields from client
-        for i in range(1, 26):  # roomArea1 through roomArea25
-            field_name = f'roomArea{i}'
-            if hasattr(client, field_name) and getattr(client, field_name):
-                room_value = getattr(client, field_name)
-                room_indices[room_value] = i
-        
-        # Load the template Excel file
-        template_path = os.path.join(settings.BASE_DIR, 'docsAppR', 'templates', 'excel', 'room_labels_template.xlsm')
-        
-        # Create a temporary directory for file operations
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Results to collect PDFs for each room
-            pdfs_info = []
-            
-            # Process each room
-            for room_name, num_labels in room_labels.items():
-                # Skip if no labels requested
-                if num_labels <= 0:
-                    continue
-                
-                # Get the room index - first check our mapping from client model
-                room_index = room_indices.get(room_name)
-                
-                # If not found, try to extract a number from the room name
-                if room_index is None:
-                    room_index = get_room_index_from_name(room_name)
-                    
-                # If still not found, skip this room
-                if room_index is None:
-                    logger.warning(f"Could not determine room index for {room_name}")
-                    continue
-                
-                sheet_name = f"RM ({room_index})"
-                
-                # Create filenames for the temporary files
-                excel_filename = f"room_labels_{claim_id}_{room_name}.xlsm"
-                temp_excel_path = os.path.join(temp_dir, excel_filename)
-                
-                # Create PDF filename
-                pdf_filename = f"room_labels_{claim_id}_{room_name}.pdf"
-                temp_pdf_path = os.path.join(temp_dir, pdf_filename)
-                
-                # Create Excel file from template
-                if not create_excel_from_template(template_path, temp_excel_path, sheet_name, room_index, claim_id):
-                    logger.warning(f"Failed to create Excel file for {room_name}")
-                    continue
-                
-                # Convert Excel to PDF with specific sheet and page range based on label count
-                convert_excel_to_pdf_with_pages(temp_excel_path, temp_pdf_path, sheet_name, num_labels)
-                
-                # Check if PDF was created
-                if not os.path.exists(temp_pdf_path):
-                    logger.warning(f"PDF was not created for {room_name}")
-                    continue
-                
-                # Read the generated PDF
-                with open(temp_pdf_path, 'rb') as pdf_file:
-                    pdf_content = pdf_file.read()
-                
-                # Save the PDF to the File model
-                pdf_obj = File(
-                    filename=pdf_filename,
-                    size=len(pdf_content)
-                )
-                pdf_obj.file.save(pdf_filename, ContentFile(pdf_content), save=True)
-                
-                # Add to our results
-                pdfs_info.append({
-                    'room_name': room_name,
-                    'pdf_url': pdf_obj.file.url,
-                    'num_labels': num_labels
-                })
-            
-            # If no PDFs were generated, return a message
-            if not pdfs_info:
-                return JsonResponse({'status': 'success', 'message': 'No valid labels to generate', 'pdfs': []})
-                
-            # Return JSON response with PDF URLs
-            return JsonResponse({
-                'status': 'success', 
-                'pdfs': pdfs_info
-            })
-            
+                    os.unlink(file_path)
+                except Exception as e:
+                    logger.warning(f"Could not delete temp file {file_path}: {e}")
+    
+    except subprocess.CalledProcessError as e:
+        error_msg = f"LibreOffice conversion failed: {e.stderr}"
+        logger.error(error_msg)
+        raise RuntimeError(error_msg)
     except Exception as e:
-        logger.error(f"Error generating room labels: {str(e)}")
-        return JsonResponse({
-            'status': 'error', 
-            'message': str(e)
-        }, status=500)
+        logger.error(f"PDF conversion error: {str(e)}", exc_info=True)
+        raise
+
 
 @login_required
 def dashboard(request):
