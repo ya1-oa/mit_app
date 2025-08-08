@@ -2,60 +2,54 @@
 {% load static %}
 
 {% block content %}
-<style>
-.container {
-    max-width: 800px;
-}
-
-.alert {
-    margin-top: 20px;
-}
-
-.btn-primary {
-    background-color: #0066cc;
-    border-color: #0066cc;
-}
-
-.text-muted {
-    font-size: 0.9rem;
-}
-</style>
-<div class="container mt-5">
-    <h2>Download Encircle Media</h2>
-    
-    {% if messages %}
-    <div class="mt-3">
-        {% for message in messages %}
-        <div class="alert alert-{% if message.tags %}{{ message.tags }}{% endif %}">
-            {{ message }}
-        </div>
-        {% endfor %}
+<div class="card">
+    <div class="card-header">
+        <h2>Download Encircle Media</h2>
     </div>
-    {% endif %}
     
-    <form method="post" class="mt-4">
-        {% csrf_token %}
-        <div class="form-group">
-            <label for="claim_id">Property Claim ID</label>
-            <input type="text" class="form-control" id="claim_id" name="claim_id" 
-                   placeholder="Enter claim ID (e.g. 123456)" required>
+    <div class="card">
+        {% if messages %}
+        <div class="scroll-cards">
+            {% for message in messages %}
+            <div class="alert alert-{% if message.tags %}{{ message.tags }}{% endif %}">
+                {{ message }}
+            </div>
+            {% endfor %}
         </div>
+        {% endif %}
         
-        <div class="form-group mt-3">
-            <label for="room_filter">Room Filter (optional)</label>
-            <input type="text" class="form-control" id="room_filter" name="room_filter"
-                   placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
-            <small class="form-text text-muted">Leave blank to download all rooms</small>
+        <form method="post">
+            {% csrf_token %}
+            <div class="form-group">
+                <label for="claim_id">Property Claim ID</label>
+                <input type="text" class="form-control" id="claim_id" name="claim_id" 
+                       placeholder="Enter claim ID (e.g. 123456)" required>
+            </div>
+            
+            <div class="form-group">
+                <label for="room_filter">Room Filter (optional)</label>
+                <input type="text" class="form-control" id="room_filter" name="room_filter"
+                       placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
+                <small class="text-muted">Leave blank to download all rooms</small>
+            </div>
+            
+            <button type="submit" class="options-btn">Download Media</button>
+        </form>
+        
+        <div class="mail-info">
+            <p><strong>How it works:</strong></p>
+            <p>Media files will be downloaded directly to a zip file with the following structure:</p>
+            <p><code>claim_[ID]_media.zip<br>
+            ├── Room_Name_1/<br>
+            │   ├── 01_filename.jpg<br>
+            │   ├── 02_filename.png<br>
+            │   └── ...<br>
+            ├── Room_Name_2/<br>
+            │   ├── 03_filename.pdf<br>
+            │   └── ...<br>
+            └── ...</code></p>
+            <p>Each file includes a metadata file with additional information.</p>
         </div>
-        
-        <button type="submit" class="btn btn-primary mt-3">Download Media</button>
-    </form>
-    
-    <div class="mt-4">
-        <p class="text-muted">
-            Media will be downloaded to: <code>encircle_media_downloads/</code> in your project root.
-            Files are organized by room labels with sequential numbering.
-        </p>
     </div>
 </div>
 {% endblock %}
