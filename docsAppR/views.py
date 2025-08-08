@@ -1152,30 +1152,262 @@ class EncircleMediaDownloader:
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
 
+from django.views.decorators.csrf import csrf_exempt
+from automations.tasks import AutomationTasks
+from django.http import JsonResponse, HttpRequest
 
-@login_required
+@csrf_exempt
+def execute_automation(request: HttpRequest) -> JsonResponse:
+    """
+    API endpoint to execute automation tasks
+    
+    Expected POST data format:
+    {
+        "browser": "chrome",
+        "headless": true,
+        "url": "https://example.com",
+        "page_objects": {
+            "login_page": {
+                "username": {"by": "id", "value": "username"},
+                "password": {"by": "id", "value": "password"}
+            }
+        },
+        "actions": [
+            {"action": "input", "locator": ["id", "username"], "value": "testuser", "page": "login_page"},
+            {"action": "click", "locator": ["xpath", "//button[@type='submit']"}
+        ]
+    }
+    """
+    tasks = AutomationTasks()
+    result = tasks.generic_automation(
+        url="https://example.com",
+        actions=[
+            {"action": "click", "locator": ("link text", "Sign In")},
+            {"action": "input", "locator": ("id", "email"), "value": "user@example.com"},
+            {"action": "click", "locator": ("id", "submit-btn")}
+        ]
+    )
+    
+    if result['status'] == 'completed':
+        return HttpResponse("Automation completed successfully!")
+    else:
+        return HttpResponse(f"Automation failed: {result.get('error', 'Unknown error')}")
+
+import io
+import zipfile
+
 def download_media_view(request):
     if request.method == 'POST':
         claim_id = request.POST.get('claim_id')
         room_filter = request.POST.get('room_filter', '')
-        
         target_rooms = [r.strip() for r in room_filter.split(',') if r.strip()]
         
         try:
-            api_client = EncircleAPIClient()
-            downloader = EncircleMediaDownloader(api_client, target_rooms)
-            downloader.download_claim_media(int(claim_id))
+            # Create a zip file in memory
+            zip_buffer = io.BytesIO()
             
-            msg = f"Downloaded media for {claim_id}"
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                api_client = EncircleAPIClient()
+                downloader = ZipMediaDownloader(api_client, target_rooms, zip_file)
+                downloader.download_claim_media(int(claim_id))
+            
+            # Prepare the response with the zip file
+            response = HttpResponse(zip_buffer.getvalue(), content_type='application/zip')
+            response['Content-Disposition'] = f'attachment; filename="claim_{claim_id}_media.zip"'
+            
+            msg = f"Prepared media download for {claim_id}"
             if target_rooms:
                 msg += f" (filtered by rooms: {', '.join(target_rooms)})"
             messages.success(request, msg)
+            
+            return response
+            
         except Exception as e:
             messages.error(request, f"Error: {str(e)}")
-        
-        return redirect('download_media')
+            return redirect('download_media')
     
     return render(request, 'account/download_media.html')
+
+class ZipMediaDownloader:
+    """
+    Downloads media files from Encircle API and organizes them in a zip file by room labels.
+    """
+    
+    def __init__(self, api_client, target_rooms=None, zip_file=None):
+        self.api_client = api_client
+        self.target_rooms = target_rooms or []
+        self.downloaded_files = 0
+        self.failed_downloads = 0
+        self.zip_file = zip_file
+        
+    def download_claim_media(self, property_claim_id):
+        """
+        Main method to download all media for a specific claim into the zip file
+        """
+        print(f"\nStarting media download for claim ID: {property_claim_id}")
+        print("="*60)
+        
+        try:
+            # Get media list from API
+            media_list = self._get_media_list(property_claim_id)
+            
+            if not media_list:
+                print("No media found for this claim.")
+                return
+            
+            # Process each media item
+            for idx, media_item in enumerate(media_list, 1):
+                if self._should_download(media_item):
+                    self._process_media_item(media_item, idx, len(media_list))
+                else:
+                    print(f"Skipping {media_item['filename']} - not in target rooms")
+
+        except Exception as e:
+            logging.error(f"Error downloading media for claim {property_claim_id}: {str(e)}")
+            raise
+            
+        print("\nDownload Summary:")
+        print(f"- Successfully downloaded: {self.downloaded_files}")
+        print(f"- Failed downloads: {self.failed_downloads}")
+    
+    def _should_download(self, media_item):
+        """Check if media belongs to target room(s)"""
+        if not self.target_rooms:
+            return True  # Download all if no filter
+        
+        labels = media_item.get('labels', [])
+        return any(room.lower() in [label.lower() for label in labels] 
+               for room in self.target_rooms)
+
+    def _get_media_list(self, property_claim_id):
+        """Fetch media list from API with pagination support"""
+        all_media = []
+        after_cursor = None
+        
+        while True:
+            params = {'limit': 100}
+            if after_cursor:
+                params['after'] = after_cursor
+                
+            endpoint = f"property_claims/{property_claim_id}/media"
+            response = self.api_client._make_request(endpoint, params=params)
+            
+            if not response or 'list' not in response:
+                break
+                
+            all_media.extend(response['list'])
+            after_cursor = response.get('cursor', {}).get('after')
+            
+            if not after_cursor:
+                break
+                
+        return all_media
+        
+    def _process_media_item(self, media_item, current_index, total_items):
+        """Handle a single media item download into the zip file"""
+        try:
+            # Determine folder based on labels
+            folder_name = self._get_folder_name(media_item)
+            file_extension = self._get_file_extension(media_item['content_type'])
+            
+            # Create safe filename with sequential number
+            seq_num = str(current_index).zfill(len(str(total_items)))
+            clean_filename = f"{seq_num}_{media_item['filename']}"
+            clean_filename = self._sanitize_filename(clean_filename)
+            
+            # Ensure proper file extension
+            if not clean_filename.lower().endswith(file_extension.lower()):
+                clean_filename += file_extension
+                
+            # Prepare full path in zip
+            zip_path = os.path.join(folder_name, clean_filename)
+            
+            # Download the file
+            print(f"\nDownloading {current_index}/{total_items}: {clean_filename}")
+            print(f"Type: {media_item['content_type']}")
+            print(f"Labels: {', '.join(media_item.get('labels', ['No labels']))}")
+            print(f"Adding to zip at: {zip_path}")
+            
+            file_content = self._download_file_content(media_item['download_uri'])
+            self.zip_file.writestr(zip_path, file_content)
+            self.downloaded_files += 1
+            
+            # Add metadata file
+            self._add_metadata_file(media_item, zip_path)
+            
+        except Exception as e:
+            self.failed_downloads += 1
+            logging.error(f"Failed to process media item: {str(e)}")
+            print(f"Error processing item {current_index}: {str(e)}")
+            
+    def _get_folder_name(self, media_item):
+        """Create nested folder structure from all labels, handling edge cases"""
+        labels = media_item.get('labels', [])
+        
+        if not labels:
+            return "unlabeled_media"
+        
+        # Handle cases where labels might be empty strings
+        valid_labels = [label.strip() for label in labels if label.strip()]
+        if not valid_labels:
+            return "unlabeled_media"
+        
+        # Limit folder depth to prevent overly long paths
+        max_depth = 3  # Main_Building/Sub_Room/Area
+        truncated_labels = valid_labels[:max_depth]
+        
+        # Sanitize and join
+        return os.path.join(*[self._sanitize_folder_name(label) for label in truncated_labels])
+        
+    def _sanitize_filename(self, filename):
+        """Remove invalid characters from filenames"""
+        invalid_chars = '<>:"/\\|?*'
+        for char in invalid_chars:
+            filename = filename.replace(char, '_')
+        return filename
+        
+    def _sanitize_folder_name(self, foldername):
+        """Sanitize folder names and truncate if too long"""
+        invalid_chars = '<>:"/\\|?*'
+        for char in invalid_chars:
+            foldername = foldername.replace(char, '_')
+        return foldername[:50]  # Prevent too long folder names
+        
+    def _get_file_extension(self, content_type):
+        """Map content type to file extension"""
+        extension_map = {
+            'image/jpeg': '.jpg',
+            'image/png': '.png',
+            'application/pdf': '.pdf',
+            'video/mp4': '.mp4',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': '.docx',
+        }
+        return extension_map.get(content_type, '.bin')
+        
+    def _download_file_content(self, url):
+        """Download the actual file content from the URI"""
+        try:
+            response = requests.get(url, stream=True)
+            response.raise_for_status()
+            return response.content
+        except requests.exceptions.RequestException as e:
+            raise Exception(f"Download failed: {str(e)}")
+            
+    def _add_metadata_file(self, media_item, file_path):
+        """Create a metadata file in the zip"""
+        metadata = {
+            'original_filename': media_item['filename'],
+            'content_type': media_item['content_type'],
+            'source_type': media_item['source']['type'],
+            'source_id': media_item['source']['primary_id'],
+            'creator': media_item['creator']['actor_identifier'],
+            'created_date': media_item['primary_server_created'],
+            'labels': media_item.get('labels', []),
+            'download_time': dt.now().isoformat()
+        }
+        
+        metadata_path = f"{file_path}.meta.json"
+        self.zip_file.writestr(metadata_path, json.dumps(metadata, indent=2))
 
 @login_required
 def export_claims_to_excel(request, claim_id=None):
