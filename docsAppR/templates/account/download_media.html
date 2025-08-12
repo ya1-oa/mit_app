@@ -2,54 +2,187 @@
 {% load static %}
 
 {% block content %}
-<div class="card">
-    <div class="card-header">
-        <h2>Download Encircle Media</h2>
-    </div>
-    
-    <div class="card">
-        {% if messages %}
-        <div class="scroll-cards">
-            {% for message in messages %}
-            <div class="alert alert-{% if message.tags %}{{ message.tags }}{% endif %}">
-                {{ message }}
+<div class="container-fluid">
+    <div class="row d-flex flex-nowrap">  <!-- Changed to flex-nowrap -->
+        <!-- Left Column - Media Downloader -->
+        <div class="col-auto">  <!-- Changed to col-auto -->
+            <div class="card mb-4" style="width: 400px;">  <!-- Fixed width -->
+                <div class="card-header">
+                    <h2>Download Encircle Media</h2>
+                </div>
+                
+                <div class="card-body">
+                    {% if messages %}
+                    <div class="scroll-cards">
+                        {% for message in messages %}
+                        <div class="alert alert-{% if message.tags %}{{ message.tags }}{% endif %}">
+                            {{ message }}
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+                    
+                    <form method="post">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="claim_id">Property Claim ID</label>
+                            <input type="text" class="form-control" id="claim_id" name="claim_id" 
+                                   placeholder="Enter claim ID (e.g. 123456)" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="room_filter">Room Filter (optional)</label>
+                            <input type="text" class="form-control" id="room_filter" name="room_filter"
+                                   placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
+                            <small class="text-muted">Leave blank to download all rooms</small>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Download Media</button>
+                    </form>
+                    
+                    <div class="mail-info mt-3">
+                        <p><strong>How it works:</strong></p>
+                        <p>Media files will be downloaded directly to a zip file with the following structure:</p>
+                        <p><code>claim_[ID]_media.zip<br>
+                        ├── Room_Name_1/<br>
+                        │   ├── 01_filename.jpg<br>
+                        │   ├── 02_filename.png<br>
+                        │   └── ...<br>
+                        ├── Room_Name_2/<br>
+                        │   ├── 03_filename.pdf<br>
+                        │   └── ...<br>
+                        └── ...</code></p>
+                        <p>Each file includes a metadata file with additional information.</p>
+                    </div>
+                </div>
             </div>
-            {% endfor %}
         </div>
-        {% endif %}
-        
-        <form method="post">
-            {% csrf_token %}
-            <div class="form-group">
-                <label for="claim_id">Property Claim ID</label>
-                <input type="text" class="form-control" id="claim_id" name="claim_id" 
-                       placeholder="Enter claim ID (e.g. 123456)" required>
+
+        <!-- Right Column - List Creation -->
+        <div class="col-auto ml-3">  <!-- Changed to col-auto with margin-left -->
+            <div class="card mb-4" style="width: 400px;">  <!-- Fixed width -->
+                <div class="card-header">
+                    <h2>Create Room Template</h2>
+                </div>
+                
+                <div class="card-body">
+                    <form id="templateForm" enctype="multipart/form-data" method="post" action="{% url 'automate' %}">
+                        {% csrf_token %}
+                        <div class="form-group">
+                            <label for="email">Email</label>
+                            <input type="email" class="form-control" id="email" name="email" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="password">Password</label>
+                            <input type="password" class="form-control" id="password" name="password" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="template_name">Template Name</label>
+                            <input type="text" class="form-control" id="template_name" name="template_name" required>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="excel_file">Excel File</label>
+                            <input type="file" class="form-control-file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+                            <small class="text-muted">Must be the jobinfo(3) tab with proper column structure</small>
+                        </div>
+                        
+                        <button type="submit" class="btn btn-primary">Create Rooms</button>
+                    </form>
+                    
+                    <div id="status" class="mt-3"></div>
+                    
+                    <div class="instructions mt-4">
+                        <h5>Excel File Requirements:</h5>
+                        <ul>
+                            <li>Must contain 'jobinfo(3)' worksheet tab</li>
+                            <li>Columns A-B and D-E for basic room info</li>
+                            <li>Columns I-K and M-O for SOURCE OF LOSS</li>
+                            <li>Columns R-T and V-X for DMO sections</li>
+                            <li>Columns Z-AA and AC-AD for FSI sections</li>
+                            <li>Columns AF-AG and AH-AI for WTF MIT sections</li>
+                        </ul>
+                    </div>
+                </div>
             </div>
-            
-            <div class="form-group">
-                <label for="room_filter">Room Filter (optional)</label>
-                <input type="text" class="form-control" id="room_filter" name="room_filter"
-                       placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
-                <small class="text-muted">Leave blank to download all rooms</small>
-            </div>
-            
-            <button type="submit" class="options-btn">Download Media</button>
-        </form>
-        
-        <div class="mail-info">
-            <p><strong>How it works:</strong></p>
-            <p>Media files will be downloaded directly to a zip file with the following structure:</p>
-            <p><code>claim_[ID]_media.zip<br>
-            ├── Room_Name_1/<br>
-            │   ├── 01_filename.jpg<br>
-            │   ├── 02_filename.png<br>
-            │   └── ...<br>
-            ├── Room_Name_2/<br>
-            │   ├── 03_filename.pdf<br>
-            │   └── ...<br>
-            └── ...</code></p>
-            <p>Each file includes a metadata file with additional information.</p>
         </div>
     </div>
 </div>
-{% endblock %}
+
+<script>
+document.getElementById('templateForm').addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const statusDiv = document.getElementById('status');
+    statusDiv.innerHTML = '<div class="alert alert-info">Processing Excel file and creating rooms...</div>';
+    
+    try {
+        const formData = new FormData(e.target);
+        const response = await fetch(e.target.action, {
+            method: 'POST',
+            body: formData
+        });
+        
+        const data = await response.json();
+        
+        if (data.status === 'completed') {
+            const summary = data.processing_summary || {};
+            statusDiv.innerHTML = `
+                <div class="alert alert-success">
+                    <strong>Success!</strong><br>
+                    Template "${data.template_name}" created with ${summary.rooms_added} rooms.<br>
+                    ${summary.errors_encountered || 0} errors encountered.
+                </div>
+            `;
+        } else {
+            statusDiv.innerHTML = `
+                <div class="alert alert-danger">
+                    <strong>Error:</strong> ${data.error || 'Unknown error occurred during processing'}
+                </div>
+            `;
+        }
+    } catch (error) {
+        statusDiv.innerHTML = `
+            <div class="alert alert-danger">
+                <strong>Error:</strong> ${error.message || 'Failed to submit form'}
+            </div>
+        `;
+    }
+});
+</script>
+
+<style>
+.container-fluid {
+    padding: 20px;
+    overflow-x: auto; /* Allows horizontal scrolling if needed */
+}
+.card {
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    min-width: 400px; /* Minimum width for cards */
+}
+.card-header {
+    background-color: #f8f9fa;
+    padding: 15px 20px;
+    border-bottom: 1px solid #eee;
+}
+.mail-info, .instructions {
+    background-color: #f8f9fa;
+    padding: 15px;
+    border-radius: 5px;
+    margin-top: 20px;
+}
+.scroll-cards {
+    max-height: 200px;
+    overflow-y: auto;
+    margin-bottom: 15px;
+}
+.row.d-flex {
+    flex-wrap: nowrap; /* Prevent wrapping to new line */
+}
+.col-auto {
+    flex: 0 0 auto;
+    width: auto;
+}
+</style>
+{% endblock %} 
