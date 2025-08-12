@@ -24,5 +24,6 @@ urlpatterns = [
     path('download-media/', views.download_media_view, name='download_media'),
     path('save-landlord/', views.save_landlord, name='save_landlord'),
     path('generate-data-report/', views.generate_data_report, name='generate_data_report'),
+    path('api/automate', views.create_room_template_from_excel, name='automate'),
     #path('download-status/', views.download_status_view, name='download_status')
 ]
