@@ -19,6 +19,7 @@ from allauth.account.decorators import login_required
 from .config.excel_mappings import SCOPE_FORM_MAPPINGS
 from .forms import ClientForm, CreateUserForm, UploadClientForm, UploadFilesForm, LandlordForm
 from docsAppR.models import ChecklistItem, Client, File, Document, Landlord
+from automations.tasks import RoomTemplateAutomation
 
 """Python Standard Library"""
 import datetime as dt
@@ -1155,44 +1156,101 @@ class EncircleMediaDownloader:
 from django.views.decorators.csrf import csrf_exempt
 from automations.tasks import AutomationTasks
 from django.http import JsonResponse, HttpRequest
-
+from django.core.files.storage import FileSystemStorage
 @csrf_exempt
-def execute_automation(request: HttpRequest) -> JsonResponse:
-    """
-    API endpoint to execute automation tasks
-    
-    Expected POST data format:
-    {
-        "browser": "chrome",
-        "headless": true,
-        "url": "https://example.com",
-        "page_objects": {
-            "login_page": {
-                "username": {"by": "id", "value": "username"},
-                "password": {"by": "id", "value": "password"}
-            }
-        },
-        "actions": [
-            {"action": "input", "locator": ["id", "username"], "value": "testuser", "page": "login_page"},
-            {"action": "click", "locator": ["xpath", "//button[@type='submit']"}
-        ]
-    }
-    """
-    tasks = AutomationTasks()
-    result = tasks.generic_automation(
-        url="https://example.com",
-        actions=[
-            {"action": "click", "locator": ("link text", "Sign In")},
-            {"action": "input", "locator": ("id", "email"), "value": "user@example.com"},
-            {"action": "click", "locator": ("id", "submit-btn")}
-        ]
-    )
-    
-    if result['status'] == 'completed':
-        return HttpResponse("Automation completed successfully!")
-    else:
-        return HttpResponse(f"Automation failed: {result.get('error', 'Unknown error')}")
 
+def create_room_template_from_excel(request):
+    """
+    Handle Excel file upload and execute automation with the new column structure
+    
+    Expected POST data:
+    - email: User email
+    - password: User password
+    - template_name: Name for the template
+    - excel_file: Uploaded Excel file
+    """
+    try:
+        # Validate required fields
+        required_fields = ['email', 'password', 'template_name']
+        if not all(field in request.POST for field in required_fields):
+            return JsonResponse(
+                {
+                    "status": "failed",
+                    "error": f"Missing required fields: {', '.join(required_fields)}"
+                },
+                status=400
+            )
+        
+        if 'excel_file' not in request.FILES:
+            return JsonResponse(
+                {
+                    "status": "failed",
+                    "error": "No Excel file uploaded"
+                },
+                status=400
+            )
+        
+        # Save uploaded file temporarily
+        excel_file = request.FILES['excel_file']
+        fs = FileSystemStorage(location='temp_uploads')
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"room_template_{timestamp}_{excel_file.name}"
+        file_path = fs.save(filename, excel_file)
+        full_path = os.path.join(fs.location, file_path)
+        
+        try:
+            # Execute automation with the new Excel processing
+            automator = RoomTemplateAutomation(headless=False)  # Set headless=True in production
+            results = automator.create_room_template_from_excel(
+                email=request.POST['email'],
+                password=request.POST['password'],
+                template_name=request.POST['template_name'],
+                excel_file_path=full_path
+            )
+            
+            # Add additional processing metadata
+            results['file_processing'] = {
+                'original_filename': excel_file.name,
+                'temp_file_path': full_path,
+                'file_size': excel_file.size
+            }
+            
+            return JsonResponse(results)
+            
+        except Exception as e:
+            return JsonResponse(
+                {
+                    "status": "failed",
+                    "error": str(e),
+                    "stage": "automation_execution"
+                },
+                status=500
+            )
+            
+        finally:
+            # Clean up temporary file in all cases
+            try:
+                os.remove(full_path)
+            except Exception as e:
+                print(f"Error deleting temp file: {str(e)}")
+        
+    except json.JSONDecodeError:
+        return JsonResponse(
+            {
+                "status": "failed",
+                "error": "Invalid JSON data"
+            },
+            status=400
+        )
+    except Exception as e:
+        return JsonResponse(
+            {
+                "status": "failed",
+                "error": str(e),
+                "stage": "request_processing"
+            },
+            status=500
+        )     
 import io
 import zipfile
 
