@@ -69,19 +69,28 @@ class WebAutomator:
         
         self._init_driver()
         
-    def _init_driver(self):
-        """Initialize the WebDriver based on configuration"""
-        if self.browser == "chrome":
-            options = webdriver.ChromeOptions()
-            if self.headless:
-                options.add_argument("--headless=new")
-            if self.download_dir:
-                prefs = {
-                    "download.default_directory": self.download_dir,
-                    "download.prompt_for_download": False,
-                    "download.directory_upgrade": True,
-                    "safebrowsing.enabled": True
-                }
+def _init_driver(self):
+    """Initialize the WebDriver based on configuration"""
+    if self.browser == "chrome":
+        options = webdriver.ChromeOptions()
+        if self.headless:
+            options.add_argument("--headless=new")
+        
+        # Add these lines to handle the user data directory
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument(f"--user-data-dir=/tmp/chrome-user-data-{time.time()}")
+        
+        if self.download_dir:
+            prefs = {
+                "download.default_directory": self.download_dir,
+                "download.prompt_for_download": False,
+                "download.directory_upgrade": True,
+                "safebrowsing.enabled": True
+            }
+            options.add_experimental_option("prefs", prefs)
+        
+        # Rest of your initialization code...
                 options.add_experimental_option("prefs", prefs)
             
             if self.driver_path:
