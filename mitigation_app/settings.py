@@ -36,7 +36,7 @@ CSRF_TRUSTED_ORIGINS = [
 
 
 #DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "False") == "True"
-#DEVELOPMENT_MODE = True
+DEVELOPMENT_MODE = True
 # Application definition
 
 
