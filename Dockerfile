@@ -17,7 +17,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libreoffice-writer \
     libreoffice-calc \
     libreoffice-base \
-    uno-libs3 \
+    libreoffice-core \
+    uno-libs-private \
     ure \
     && rm -rf /var/lib/apt/lists/*
 
