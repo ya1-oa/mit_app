@@ -27,13 +27,19 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", get_random_secret_key())
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.getenv("DEBUG", "False") == "False"
-#DEBUG=True
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,").split(",")
+#DEBUG = os.getenv("DEBUG", "False") == "False"
+DEBUG=True
+ALLOWED_HOSTS = os.getenv("sea-lion-app-o5y45.ondigitalocean.app/", "127.0.0.1,localhost,").split(",")
+CSRF_TRUSTED_ORIGINS = [
+    "https://sea-lion-app-o5y45.ondigitalocean.app/"
+]
+
 
 #DEVELOPMENT_MODE = os.getenv("DEVELOPMENT_MODE", "False") == "True"
-DEVELOPMENT_MODE = True
+#DEVELOPMENT_MODE = True
 # Application definition
+
+
 
 INSTALLED_APPS = [
     'docsAppR',
@@ -166,6 +172,3 @@ AUTH_USER_MODEL = 'docsAppR.CustomUser'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
-CSRF_TRUSTED_ORIGINS = [
-    "DJANGO_ALLOWED_HOSTS"
-]
