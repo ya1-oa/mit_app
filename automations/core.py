@@ -69,85 +69,85 @@ class WebAutomator:
         
         self._init_driver()
         
-def _init_driver(self):
-    """Initialize the WebDriver based on configuration"""
-    if self.browser == "chrome":
-        options = webdriver.ChromeOptions()
-        if self.headless:
-            options.add_argument("--headless=new")
-        
-        # Add these lines to handle the user data directory
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument(f"--user-data-dir=/tmp/chrome-user-data-{time.time()}")
-        
-        if self.download_dir:
-            prefs = {
-                "download.default_directory": self.download_dir,
-                "download.prompt_for_download": False,
-                "download.directory_upgrade": True,
-                "safebrowsing.enabled": True
-            }
-            options.add_experimental_option("prefs", prefs)
-        
-        # Rest of your initialization code...
-                options.add_experimental_option("prefs", prefs)
+    def _init_driver(self):
+        """Initialize the WebDriver based on configuration"""
+        if self.browser == "chrome":
+            options = webdriver.ChromeOptions()
+            if self.headless:
+                options.add_argument("--headless=new")
             
-            if self.driver_path:
-                self.driver = webdriver.Chrome(
-                    executable_path=self.driver_path,
-                    options=options
-                )
-            else:
-                self.driver = webdriver.Chrome(options=options)
-                
-        elif self.browser == "firefox":
-            options = webdriver.FirefoxOptions()
-            if self.headless:
-                options.add_argument("--headless")
-            if self.download_dir:
-                profile = webdriver.FirefoxProfile()
-                profile.set_preference("browser.download.folderList", 2)
-                profile.set_preference("browser.download.dir", self.download_dir)
-                profile.set_preference(
-                    "browser.helperApps.neverAsk.saveToDisk",
-                    "application/octet-stream,application/pdf,application/vnd.ms-excel"
-                )
-                self.driver = webdriver.Firefox(
-                    firefox_profile=profile,
-                    options=options,
-                    executable_path=self.driver_path if self.driver_path else None
-                )
-            else:
-                self.driver = webdriver.Firefox(
-                    options=options,
-                    executable_path=self.driver_path if self.driver_path else None
-                )
-                
-        elif self.browser == "edge":
-            options = webdriver.EdgeOptions()
-            if self.headless:
-                options.add_argument("--headless")
+            # Add these lines to handle the user data directory
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument(f"--user-data-dir=/tmp/chrome-user-data-{time.time()}")
+            
             if self.download_dir:
                 prefs = {
                     "download.default_directory": self.download_dir,
-                    "download.prompt_for_download": False
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": True
                 }
                 options.add_experimental_option("prefs", prefs)
             
-            if self.driver_path:
-                self.driver = webdriver.Edge(
-                    executable_path=self.driver_path,
-                    options=options
-                )
-            else:
-                self.driver = webdriver.Edge(options=options)
-        
-        else:
-            raise ValueError(f"Unsupported browser: {self.browser}")
+            # Rest of your initialization code...
+                    options.add_experimental_option("prefs", prefs)
+                
+                if self.driver_path:
+                    self.driver = webdriver.Chrome(
+                        executable_path=self.driver_path,
+                        options=options
+                    )
+                else:
+                    self.driver = webdriver.Chrome(options=options)
+                    
+            elif self.browser == "firefox":
+                options = webdriver.FirefoxOptions()
+                if self.headless:
+                    options.add_argument("--headless")
+                if self.download_dir:
+                    profile = webdriver.FirefoxProfile()
+                    profile.set_preference("browser.download.folderList", 2)
+                    profile.set_preference("browser.download.dir", self.download_dir)
+                    profile.set_preference(
+                        "browser.helperApps.neverAsk.saveToDisk",
+                        "application/octet-stream,application/pdf,application/vnd.ms-excel"
+                    )
+                    self.driver = webdriver.Firefox(
+                        firefox_profile=profile,
+                        options=options,
+                        executable_path=self.driver_path if self.driver_path else None
+                    )
+                else:
+                    self.driver = webdriver.Firefox(
+                        options=options,
+                        executable_path=self.driver_path if self.driver_path else None
+                    )
+                    
+            elif self.browser == "edge":
+                options = webdriver.EdgeOptions()
+                if self.headless:
+                    options.add_argument("--headless")
+                if self.download_dir:
+                    prefs = {
+                        "download.default_directory": self.download_dir,
+                        "download.prompt_for_download": False
+                    }
+                    options.add_experimental_option("prefs", prefs)
+                
+                if self.driver_path:
+                    self.driver = webdriver.Edge(
+                        executable_path=self.driver_path,
+                        options=options
+                    )
+                else:
+                    self.driver = webdriver.Edge(options=options)
             
-        self.driver.implicitly_wait(self.implicit_wait)
-        self.original_window = self.driver.current_window_handle
+            else:
+                raise ValueError(f"Unsupported browser: {self.browser}")
+                
+            self.driver.implicitly_wait(self.implicit_wait)
+            self.original_window = self.driver.current_window_handle
         
     def define_page(
         self,
@@ -555,3 +555,4 @@ def _init_driver(self):
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - ensure browser is closed"""
         self.close()
+
