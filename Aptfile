@@ -1,2 +1,8 @@
 libreoffice-writer
 libreoffice-calc
+chromium-browser
+chromium-chromedriver
+libgbm1
+libnss3
+libnspr4
+fonts-liberation
