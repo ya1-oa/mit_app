@@ -91,7 +91,7 @@ class WebAutomator:
                 options.add_experimental_option("prefs", prefs)
             
             # Rest of your initialization code...
-                    options.add_experimental_option("prefs", prefs)
+                options.add_experimental_option("prefs", prefs)
                 
                 if self.driver_path:
                     self.driver = webdriver.Chrome(
@@ -555,4 +555,5 @@ class WebAutomator:
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit - ensure browser is closed"""
         self.close()
+
 
