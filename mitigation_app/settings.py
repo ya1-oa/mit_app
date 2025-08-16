@@ -29,9 +29,10 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", get_random_secret_key())
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = os.getenv("DEBUG", "False") == "False"
 DEBUG=True
-ALLOWED_HOSTS = os.getenv("sea-lion-app-o5y45.ondigitalocean.app/", "127.0.0.1,localhost,").split(",")
+ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+
 CSRF_TRUSTED_ORIGINS = [
-    "https://sea-lion-app-o5y45.ondigitalocean.app/"
+    "https://sea-lion-app-o5y45.ondigitalocean.app"
 ]
 
 
