@@ -3,10 +3,10 @@
 
 {% block content %}
 <div class="container-fluid">
-    <div class="row d-flex flex-nowrap">  <!-- Changed to flex-nowrap -->
+    <div class="row">
         <!-- Left Column - Media Downloader -->
-        <div class="col-auto">  <!-- Changed to col-auto -->
-            <div class="card mb-4" style="width: 400px;">  <!-- Fixed width -->
+        <div class="col-6">
+            <div class="card mb-4">
                 <div class="card-header">
                     <h2>Download Encircle Media</h2>
                 </div>
@@ -25,19 +25,19 @@
                     <form method="post">
                         {% csrf_token %}
                         <div class="form-group">
-                            <label for="claim_id">Property Claim ID</label>
-                            <input type="text" class="form-control" id="claim_id" name="claim_id" 
+                            <label for="claim_id" class="form-label">Property Claim ID</label>
+                            <input type="text" class="form-control form-control-styled" id="claim_id" name="claim_id" 
                                    placeholder="Enter claim ID (e.g. 123456)" required>
                         </div>
                         
                         <div class="form-group">
-                            <label for="room_filter">Room Filter (optional)</label>
-                            <input type="text" class="form-control" id="room_filter" name="room_filter"
+                            <label for="room_filter" class="form-label">Room Filter (optional)</label>
+                            <input type="text" class="form-control form-control-styled" id="room_filter" name="room_filter"
                                    placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
-                            <small class="text-muted">Leave blank to download all rooms</small>
+                            <small class="form-text text-muted">Leave blank to download all rooms</small>
                         </div>
                         
-                        <button type="submit" class="btn btn-primary">Download Media</button>
+                        <button type="submit" class="btn btn-primary btn-styled">Download Media</button>
                     </form>
                     
                     <div class="mail-info mt-3">
@@ -59,8 +59,8 @@
         </div>
 
         <!-- Right Column - List Creation -->
-        <div class="col-auto ml-3">  <!-- Changed to col-auto with margin-left -->
-            <div class="card mb-4" style="width: 400px;">  <!-- Fixed width -->
+        <div class="col-6">
+            <div class="card mb-4">
                 <div class="card-header">
                     <h2>Create Room Template</h2>
                 </div>
@@ -69,27 +69,27 @@
                     <form id="templateForm" enctype="multipart/form-data" method="post" action="{% url 'automate' %}">
                         {% csrf_token %}
                         <div class="form-group">
-                            <label for="email">Email</label>
-                            <input type="email" class="form-control" id="email" name="email" required>
+                            <label for="email" class="form-label">Email</label>
+                            <input type="email" class="form-control form-control-styled" id="email" name="email" required>
                         </div>
                         
                         <div class="form-group">
-                            <label for="password">Password</label>
-                            <input type="password" class="form-control" id="password" name="password" required>
+                            <label for="password" class="form-label">Password</label>
+                            <input type="password" class="form-control form-control-styled" id="password" name="password" required>
                         </div>
                         
                         <div class="form-group">
-                            <label for="template_name">Template Name</label>
-                            <input type="text" class="form-control" id="template_name" name="template_name" required>
+                            <label for="template_name" class="form-label">Template Name</label>
+                            <input type="text" class="form-control form-control-styled" id="template_name" name="template_name" required>
                         </div>
                         
                         <div class="form-group">
-                            <label for="excel_file">Excel File</label>
-                            <input type="file" class="form-control-file" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
-                            <small class="text-muted">Must be the jobinfo(3) tab with proper column structure</small>
+                            <label for="excel_file" class="form-label">Excel File</label>
+                            <input type="file" class="form-control-file form-file-styled" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
+                            <small class="form-text text-muted">Must be the jobinfo(3) tab with proper column structure</small>
                         </div>
                         
-                        <button type="submit" class="btn btn-primary">Create Rooms</button>
+                        <button type="submit" class="btn btn-primary btn-styled">Create Rooms</button>
                     </form>
                     
                     <div id="status" class="mt-3"></div>
@@ -155,11 +155,18 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
 <style>
 .container-fluid {
     padding: 20px;
-    overflow-x: auto; /* Allows horizontal scrolling if needed */
+}
+.row {
+    display: flex;
+    flex-wrap: nowrap;
+}
+.col-6 {
+    width: 50%;
+    padding-right: 15px;
+    padding-left: 15px;
 }
 .card {
     box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-    min-width: 400px; /* Minimum width for cards */
 }
 .card-header {
     background-color: #f8f9fa;
@@ -177,12 +184,72 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
     overflow-y: auto;
     margin-bottom: 15px;
 }
-.row.d-flex {
-    flex-wrap: nowrap; /* Prevent wrapping to new line */
+
+/* Enhanced Form Styling */
+.form-group {
+    margin-bottom: 20px;
 }
-.col-auto {
-    flex: 0 0 auto;
-    width: auto;
+
+.form-label {
+    font-weight: bold;
+    font-size: 14px;
+    color: #333;
+    margin-bottom: 8px;
+    display: block;
+}
+
+.form-control-styled {
+    height: 45px;
+    padding: 12px 15px;
+    font-size: 16px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    width: 100%;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-control-styled:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    outline: none;
+}
+
+.form-file-styled {
+    padding: 10px 15px;
+    font-size: 14px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    width: 100%;
+    background-color: #fff;
+    transition: all 0.3s ease;
+    box-sizing: border-box;
+}
+
+.form-file-styled:focus {
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+    outline: none;
+}
+
+.form-text {
+    margin-top: 5px;
+    font-size: 12px;
+}
+
+.btn-styled {
+    padding: 12px 30px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 8px;
+    width: 100%;
+    margin-top: 10px;
+    transition: all 0.3s ease;
+}
+
+.btn-styled:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 </style>
-{% endblock %} 
+{% endblock %}
