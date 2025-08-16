@@ -1,5 +1,5 @@
 # Use Python 3.9 slim as base
-FROM python:3.9-slim
+FROM python:3.10-slim
 
 # Install system dependencies in separate layers for better caching
 # First - Chrome/Selenium dependencies
