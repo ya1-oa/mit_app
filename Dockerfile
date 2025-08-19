@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     wget \
     gnupg \
     ca-certificates \
+    unzip \
     && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
@@ -29,30 +30,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxkbcommon0 \
     libxrandr2 \
     xdg-utils \
-    # LibreOffice dependencies
-    libreoffice-writer \
-    libreoffice-calc \
-    libreoffice-core \
-    uno-libs-private \
-    ure \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver (matching Chrome version)
-RUN google-chrome --version | cut -d " " -f 3 > /tmp/chrome_version.txt \
-    && CHROME_MAJOR_VERSION=$(cat /tmp/chrome_version.txt | cut -d "." -f 1) \
-    && CHROME_DRIVER_VERSION=$(wget -qO- https://chromedriver.storage.googleapis.com/LATEST_RELEASE_${CHROME_MAJOR_VERSION}) \
-    && wget -O /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/${CHROME_DRIVER_VERSION}/chromedriver_linux64.zip \
-    && unzip /tmp/chromedriver.zip -d /usr/bin/ \
-    && chmod +x /usr/bin/chromedriver \
-    && rm /tmp/chromedriver.zip /tmp/chrome_version.txt
+# Install ChromeDriver (fixed version matching)
+RUN CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
+    && echo "Chrome version: $CHROME_VERSION" \
+    && CHROME_MAJOR_VERSION=$(echo $CHROME_VERSION | cut -d. -f1) \
+    && echo "Chrome major version: $CHROME_MAJOR_VERSION" \
+    && CHROME_DRIVER_VERSION=$(wget -qO- https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION) \
+    && echo "ChromeDriver version: $CHROME_DRIVER_VERSION" \
+    && wget -O /tmp/chromedriver.zip https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip \
+    && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm /tmp/chromedriver.zip
 
 # Verify installations
 RUN google-chrome --version && chromedriver --version
 
 # Set environment variables
 ENV CHROME_BIN=/usr/bin/google-chrome \
-    CHROME_DRIVER_PATH=/usr/bin/chromedriver \
-    LIBREOFFICE_PATH=/usr/bin/libreoffice \
+    CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
     PYTHONUNBUFFERED=1
 
 # Create and set working directory
@@ -64,9 +61,6 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
 COPY . .
-
-# Collect static files (if using Django)
-RUN python manage.py collectstatic --noinput
 
 # Run gunicorn
 CMD ["gunicorn", "--worker-tmp-dir", "/dev/shm", "mitigation_app.wsgi:application", "--log-file", "-"]
