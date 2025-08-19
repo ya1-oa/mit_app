@@ -3,6 +3,8 @@ import time
 import tempfile
 from typing import Dict, List, Optional, Tuple, Union
 from selenium import webdriver
+from selenium.webdriver.firefox.service import Service as FirefoxService
+from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
@@ -23,18 +25,18 @@ class WebAutomationError(Exception):
 
 class WebAutomator:
     """
-    Enhanced Selenium Automation Framework with Chrome fixes
+    Enhanced Selenium Automation Framework with Firefox as default
     
     Features all original functionality plus:
-    - Fixed Chrome initialization issues
-    - Better Docker compatibility
-    - More robust session handling
+    - Firefox as primary browser (better container compatibility)
+    - Chrome as fallback option
+    - Better Docker/App Platform compatibility
     """
 
     def __init__(
         self,
-        browser: str = "chrome",
-        headless: bool = False,
+        browser: str = "firefox",  # Changed default to firefox
+        headless: bool = True,     # Changed default to True for containers
         implicit_wait: int = 10,
         download_dir: Optional[str] = None,
         driver_path: Optional[str] = None
@@ -52,41 +54,74 @@ class WebAutomator:
     
     def _get_default_driver_path(self):
         """Get default driver path based on browser"""
-        if self.browser == "chrome":
-            return os.getenv('CHROME_DRIVER_PATH', '/usr/bin/chromedriver')
-        elif self.browser == "firefox":
-            return os.getenv('GECKO_DRIVER_PATH', '/usr/bin/geckodriver')
+        if self.browser == "firefox":
+            return os.getenv('GECKO_DRIVER_PATH', '/usr/local/bin/geckodriver')
+        elif self.browser == "chrome":
+            return os.getenv('CHROME_DRIVER_PATH', '/usr/local/bin/chromedriver')
         elif self.browser == "edge":
             return os.getenv('EDGE_DRIVER_PATH', '/usr/bin/msedgedriver')
         return None
         
     def _init_driver(self):
-        """Initialize the WebDriver with Chrome-specific fixes"""
+        """Initialize the WebDriver with container-optimized settings"""
         browser = self.browser.lower()
         
-        if browser == "chrome":
-            user_data_dir = tempfile.mkdtemp()
+        if browser == "firefox":
+            options = FirefoxOptions()
             
-            options = ChromeOptions()
-            options.binary_location = os.getenv('CHROME_BIN', '/usr/bin/google-chrome')
-            options.add_argument(f"--user-data-dir={user_data_dir}")
+            # Container-friendly Firefox options
+            if self.headless:
+                options.add_argument("--headless")
+            
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
-            options.add_argument("--remote-debugging-port=0")
+            options.add_argument("--width=1920")
+            options.add_argument("--height=1080")
             
-            # Add these critical stability options:
+            # Set download preferences if needed
+            if self.download_dir:
+                os.makedirs(self.download_dir, exist_ok=True)
+                profile = webdriver.FirefoxProfile()
+                profile.set_preference("browser.download.folderList", 2)
+                profile.set_preference("browser.download.dir", self.download_dir)
+                profile.set_preference(
+                    "browser.helperApps.neverAsk.saveToDisk",
+                    "application/octet-stream,application/pdf,application/vnd.ms-excel,text/csv,application/zip"
+                )
+                profile.set_preference("browser.download.manager.showWhenStarting", False)
+                
+                service = FirefoxService(executable_path=self.driver_path)
+                self.driver = webdriver.Firefox(
+                    firefox_profile=profile,
+                    options=options,
+                    service=service
+                )
+            else:
+                service = FirefoxService(executable_path=self.driver_path)
+                self.driver = webdriver.Firefox(
+                    options=options,
+                    service=service
+                )
+            
+        elif browser == "chrome":
+            options = ChromeOptions()
+            options.binary_location = os.getenv('CHROME_BIN', '/usr/bin/google-chrome')
+            
+            # Container-optimized Chrome options
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
             options.add_argument("--disable-extensions")
-            options.add_argument("--disable-plugins")
-            options.add_argument("--disable-background-timer-throttling")
-            options.add_argument("--disable-backgrounding-occluded-windows")
-            options.add_argument("--disable-renderer-backgrounding")
-            options.add_argument("--disable-features=TranslateUI")
-            options.add_argument("--disable-ipc-flooding-protection")
-            options.add_argument("--single-process")  # Critical for containers
-        
+            options.add_argument("--disable-web-security")
+            options.add_argument("--allow-running-insecure-content")
+            options.add_argument("--disable-features=VizDisplayCompositor")
+            options.add_argument("--remote-debugging-port=9222")
+            options.add_argument("--window-size=1920,1080")
+            
             if self.headless:
                 options.add_argument("--headless=new")
+            
             if self.download_dir:
                 os.makedirs(self.download_dir, exist_ok=True)
                 prefs = {
@@ -97,38 +132,11 @@ class WebAutomator:
                 }
                 options.add_experimental_option("prefs", prefs)
             
-            service = ChromeService(
-                executable_path=self.driver_path,
-                service_args=["--verbose"]
-            )
-            
+            service = ChromeService(executable_path=self.driver_path)
             self.driver = webdriver.Chrome(
                 service=service,
                 options=options
             )
-            
-        elif browser == "firefox":
-            options = webdriver.FirefoxOptions()
-            if self.headless:
-                options.add_argument("--headless")
-            if self.download_dir:
-                profile = webdriver.FirefoxProfile()
-                profile.set_preference("browser.download.folderList", 2)
-                profile.set_preference("browser.download.dir", self.download_dir)
-                profile.set_preference(
-                    "browser.helperApps.neverAsk.saveToDisk",
-                    "application/octet-stream,application/pdf,application/vnd.ms-excel"
-                )
-                self.driver = webdriver.Firefox(
-                    firefox_profile=profile,
-                    options=options,
-                    executable_path=self.driver_path
-                )
-            else:
-                self.driver = webdriver.Firefox(
-                    options=options,
-                    executable_path=self.driver_path
-                )
                 
         elif browser == "edge":
             options = webdriver.EdgeOptions()
@@ -330,4 +338,3 @@ class WebAutomator:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
