@@ -31,10 +31,10 @@
                         </div>
                         
                         <div class="form-group">
-                            <label for="room_filter" class="form-label">Room Filter (optional)</label>
+                            <label for="room_filter" class="form-label">Room Filter (Leave blank to download all rooms images)</label>
                             <input type="text" class="form-control form-control-styled" id="room_filter" name="room_filter"
                                    placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
-                            <small class="form-text text-muted">Leave blank to download all rooms</small>
+                            <small class="form-text text-muted">Only use this if you don't want to download all images but specific rooms instead</small>
                         </div>
                         
                         <button type="submit" class="btn btn-primary btn-styled">Download Media</button>
@@ -43,16 +43,15 @@
                     <div class="mail-info mt-3">
                         <p><strong>How it works:</strong></p>
                         <p>Media files will be downloaded directly to a zip file with the following structure:</p>
-                        <p><code>claim_[ID]_media.zip<br>
-                        ├── Room_Name_1/<br>
-                        │   ├── 01_filename.jpg<br>
-                        │   ├── 02_filename.png<br>
+                        <p><code>claim_3793680_media.zip<br>
+                        ├── Main Building/<br>
+                        │   ├── 601 Foyer DN FRT.jpg<br>
+                        │   ├── 603 Living Room DN.png<br>
                         │   └── ...<br>
-                        ├── Room_Name_2/<br>
-                        │   ├── 03_filename.pdf<br>
+                        ├── unlabeled_media/<br>
+                        │   ├── 002_OH24CHERRY 600 HMR DMO & WIP V2.pdf<br>
                         │   └── ...<br>
                         └── ...</code></p>
-                        <p>Each file includes a metadata file with additional information.</p>
                     </div>
                 </div>
             </div>
