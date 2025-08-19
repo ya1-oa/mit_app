@@ -75,9 +75,18 @@ class WebAutomator:
             options.add_argument("--disable-gpu")
             options.add_argument("--remote-debugging-port=0")
             
+            # Add these critical stability options:
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-plugins")
+            options.add_argument("--disable-background-timer-throttling")
+            options.add_argument("--disable-backgrounding-occluded-windows")
+            options.add_argument("--disable-renderer-backgrounding")
+            options.add_argument("--disable-features=TranslateUI")
+            options.add_argument("--disable-ipc-flooding-protection")
+            options.add_argument("--single-process")  # Critical for containers
+        
             if self.headless:
                 options.add_argument("--headless=new")
-            
             if self.download_dir:
                 os.makedirs(self.download_dir, exist_ok=True)
                 prefs = {
@@ -321,3 +330,4 @@ class WebAutomator:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
