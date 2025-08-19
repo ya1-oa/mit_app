@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     # Firefox for automation (primary)
     firefox-esr \
     # Chrome (fallback)
+    unzip \
     wget \
     gnupg \
     ca-certificates \
