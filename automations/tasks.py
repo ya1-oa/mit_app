@@ -195,7 +195,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver.remote.webelement import WebElement
 
 class RoomTemplateAutomation:
-    def __init__(self, browser: str = "chrome", headless: bool = True):
+    def __init__(self, browser: str = "firefox", headless: bool = True):
         # Initialize with performance logging capabilities
         self.automator = WebAutomator(browser=browser, headless=headless)
         self._force_browser_ready()
@@ -709,4 +709,5 @@ class RoomTemplateAutomation:
             self.automator.close()
             results['end_time'] = datetime.now().isoformat()
             
+
         return results
