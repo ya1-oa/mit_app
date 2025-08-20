@@ -1,6 +1,7 @@
 import os
 import time
 import tempfile
+import shutil
 from typing import Dict, List, Optional, Tuple, Union
 from selenium import webdriver
 from selenium.webdriver.firefox.service import Service as FirefoxService
@@ -16,7 +17,8 @@ from selenium.common.exceptions import (
     NoSuchElementException,
     TimeoutException,
     ElementNotInteractableException,
-    StaleElementReferenceException
+    StaleElementReferenceException,
+    WebDriverException
 )
 
 class WebAutomationError(Exception):
@@ -25,18 +27,13 @@ class WebAutomationError(Exception):
 
 class WebAutomator:
     """
-    Enhanced Selenium Automation Framework with Firefox as default
-    
-    Features all original functionality plus:
-    - Firefox as primary browser (better container compatibility)
-    - Chrome as fallback option
-    - Better Docker/App Platform compatibility
+    Enhanced Selenium Automation Framework optimized for DigitalOcean App Platform
     """
 
     def __init__(
         self,
-        browser: str = "firefox",  # Changed default to firefox
-        headless: bool = True,     # Changed default to True for containers
+        browser: str = "firefox",
+        headless: bool = True,
         implicit_wait: int = 10,
         download_dir: Optional[str] = None,
         driver_path: Optional[str] = None
@@ -45,122 +42,213 @@ class WebAutomator:
         self.headless = headless
         self.implicit_wait = implicit_wait
         self.download_dir = download_dir
-        self.driver_path = driver_path or self._get_default_driver_path()
+        self.driver_path = driver_path
         self.driver = None
         self.page_objects = {}
         self.original_window = None
         
         self._init_driver()
     
-    def _get_default_driver_path(self):
-        """Get default driver path based on browser"""
-        if self.browser == "firefox":
-            return os.getenv('GECKO_DRIVER_PATH', '/usr/local/bin/geckodriver')
-        elif self.browser == "chrome":
-            return os.getenv('CHROME_DRIVER_PATH', '/usr/local/bin/chromedriver')
-        elif self.browser == "edge":
-            return os.getenv('EDGE_DRIVER_PATH', '/usr/bin/msedgedriver')
+    def _find_driver_executable(self, driver_name: str) -> Optional[str]:
+        """Find driver executable in various common locations"""
+        possible_paths = []
+        
+        if driver_name == "geckodriver":
+            possible_paths = [
+                "/usr/local/bin/geckodriver",
+                "/usr/bin/geckodriver",
+                "/opt/geckodriver",
+                shutil.which("geckodriver")
+            ]
+        elif driver_name == "chromedriver":
+            possible_paths = [
+                "/usr/local/bin/chromedriver",
+                "/usr/bin/chromedriver",
+                "/opt/chromedriver",
+                shutil.which("chromedriver")
+            ]
+        
+        # Add environment variable paths
+        env_var = f"{driver_name.upper()}_PATH"
+        if os.getenv(env_var):
+            possible_paths.insert(0, os.getenv(env_var))
+            
+        # Return first existing path
+        for path in possible_paths:
+            if path and os.path.exists(path) and os.access(path, os.X_OK):
+                return path
+                
         return None
         
     def _init_driver(self):
-        """Initialize the WebDriver with container-optimized settings"""
+        """Initialize WebDriver with App Platform optimizations"""
         browser = self.browser.lower()
         
         if browser == "firefox":
-            options = FirefoxOptions()
-            
-            # Container-friendly Firefox options
-            if self.headless:
-                options.add_argument("--headless")
-            
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--width=1920")
-            options.add_argument("--height=1080")
-            
-            # Set download preferences if needed
-            if self.download_dir:
-                os.makedirs(self.download_dir, exist_ok=True)
-                profile = webdriver.FirefoxProfile()
-                profile.set_preference("browser.download.folderList", 2)
-                profile.set_preference("browser.download.dir", self.download_dir)
-                profile.set_preference(
-                    "browser.helperApps.neverAsk.saveToDisk",
-                    "application/octet-stream,application/pdf,application/vnd.ms-excel,text/csv,application/zip"
-                )
-                profile.set_preference("browser.download.manager.showWhenStarting", False)
-                
-                service = FirefoxService(executable_path=self.driver_path)
-                self.driver = webdriver.Firefox(
-                    firefox_profile=profile,
-                    options=options,
-                    service=service
-                )
-            else:
-                service = FirefoxService(executable_path=self.driver_path)
-                self.driver = webdriver.Firefox(
-                    options=options,
-                    service=service
-                )
-            
+            self._init_firefox()
         elif browser == "chrome":
-            options = ChromeOptions()
-            options.binary_location = os.getenv('CHROME_BIN', '/usr/bin/google-chrome')
-            
-            # Container-optimized Chrome options
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            options.add_argument("--disable-gpu")
-            options.add_argument("--disable-extensions")
-            options.add_argument("--disable-web-security")
-            options.add_argument("--allow-running-insecure-content")
-            options.add_argument("--disable-features=VizDisplayCompositor")
-            options.add_argument("--remote-debugging-port=9222")
-            options.add_argument("--window-size=1920,1080")
-            
-            if self.headless:
-                options.add_argument("--headless=new")
-            
-            if self.download_dir:
-                os.makedirs(self.download_dir, exist_ok=True)
-                prefs = {
-                    "download.default_directory": self.download_dir,
-                    "download.prompt_for_download": False,
-                    "download.directory_upgrade": True,
-                    "safebrowsing.enabled": True
-                }
-                options.add_experimental_option("prefs", prefs)
-            
-            service = ChromeService(executable_path=self.driver_path)
-            self.driver = webdriver.Chrome(
-                service=service,
-                options=options
-            )
-                
-        elif browser == "edge":
-            options = webdriver.EdgeOptions()
-            if self.headless:
-                options.add_argument("--headless")
-            if self.download_dir:
-                prefs = {
-                    "download.default_directory": self.download_dir,
-                    "download.prompt_for_download": False
-                }
-                options.add_experimental_option("prefs", prefs)
-            
-            self.driver = webdriver.Edge(
-                executable_path=self.driver_path,
-                options=options
-            )
-            
+            self._init_chrome()
         else:
             raise ValueError(f"Unsupported browser: {browser}")
             
-        self.driver.implicitly_wait(self.implicit_wait)
-        self.original_window = self.driver.current_window_handle
+        if self.driver:
+            self.driver.implicitly_wait(self.implicit_wait)
+            self.original_window = self.driver.current_window_handle
 
-    # ========== ORIGINAL METHODS PRESERVED EXACTLY AS THEY WERE ==========
+    def _init_firefox(self):
+        """Initialize Firefox with container optimizations"""
+        options = FirefoxOptions()
+        
+        # Essential container options
+        if self.headless:
+            options.add_argument("--headless")
+        
+        # Critical for containerized environments
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-software-rasterizer")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--disable-features=TranslateUI")
+        options.add_argument("--disable-ipc-flooding-protection")
+        options.add_argument("--window-size=1920,1080")
+        
+        # Memory optimization
+        options.add_argument("--memory-pressure-off")
+        options.add_argument("--max_old_space_size=4096")
+        
+        # Set preferences for stability
+        options.set_preference("dom.webdriver.enabled", False)
+        options.set_preference("useAutomationExtension", False)
+        options.set_preference("browser.cache.disk.enable", False)
+        options.set_preference("browser.cache.memory.enable", False)
+        options.set_preference("browser.cache.offline.enable", False)
+        options.set_preference("network.http.use-cache", False)
+        
+        # Download preferences if needed
+        if self.download_dir:
+            os.makedirs(self.download_dir, exist_ok=True)
+            options.set_preference("browser.download.folderList", 2)
+            options.set_preference("browser.download.dir", self.download_dir)
+            options.set_preference(
+                "browser.helperApps.neverAsk.saveToDisk",
+                "application/octet-stream,application/pdf,application/vnd.ms-excel,text/csv,application/zip"
+            )
+            options.set_preference("browser.download.manager.showWhenStarting", False)
+        
+        # Find driver executable
+        if not self.driver_path:
+            self.driver_path = self._find_driver_executable("geckodriver")
+            
+        if not self.driver_path:
+            raise WebAutomationError("Geckodriver not found. Install with: apt-get install firefox-geckodriver")
+        
+        try:
+            service = FirefoxService(executable_path=self.driver_path)
+            self.driver = webdriver.Firefox(options=options, service=service)
+        except Exception as e:
+            raise WebAutomationError(f"Failed to initialize Firefox: {str(e)}")
+
+    def _init_chrome(self):
+        """Initialize Chrome with container optimizations"""
+        options = ChromeOptions()
+        
+        # Try to find Chrome binary
+        chrome_binaries = [
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable", 
+            "/usr/bin/chromium-browser",
+            "/usr/bin/chromium",
+            os.getenv('CHROME_BIN')
+        ]
+        
+        chrome_binary = None
+        for binary in chrome_binaries:
+            if binary and os.path.exists(binary):
+                chrome_binary = binary
+                break
+                
+        if chrome_binary:
+            options.binary_location = chrome_binary
+        
+        # Essential container options
+        options.add_argument("--no-sandbox")
+        options.add_argument("--disable-dev-shm-usage")
+        options.add_argument("--disable-gpu")
+        options.add_argument("--disable-extensions")
+        options.add_argument("--disable-web-security")
+        options.add_argument("--allow-running-insecure-content")
+        options.add_argument("--disable-features=VizDisplayCompositor")
+        options.add_argument("--disable-features=VizServiceDisplayCompositor")
+        options.add_argument("--disable-background-timer-throttling")
+        options.add_argument("--disable-backgrounding-occluded-windows")
+        options.add_argument("--disable-renderer-backgrounding")
+        options.add_argument("--remote-debugging-port=9222")
+        options.add_argument("--window-size=1920,1080")
+        options.add_argument("--start-maximized")
+        options.add_argument("--disable-logging")
+        options.add_argument("--disable-dev-tools")
+        
+        if self.headless:
+            options.add_argument("--headless=new")
+        
+        # Memory and performance
+        options.add_argument("--memory-pressure-off")
+        options.add_argument("--disable-background-networking")
+        options.add_argument("--disable-sync")
+        options.add_argument("--disable-translate")
+        
+        if self.download_dir:
+            os.makedirs(self.download_dir, exist_ok=True)
+            prefs = {
+                "download.default_directory": self.download_dir,
+                "download.prompt_for_download": False,
+                "download.directory_upgrade": True,
+                "safebrowsing.enabled": True
+            }
+            options.add_experimental_option("prefs", prefs)
+        
+        # Find driver executable
+        if not self.driver_path:
+            self.driver_path = self._find_driver_executable("chromedriver")
+            
+        if not self.driver_path:
+            raise WebAutomationError("Chromedriver not found. Install with: apt-get install chromium-chromedriver")
+        
+        try:
+            service = ChromeService(executable_path=self.driver_path)
+            self.driver = webdriver.Chrome(service=service, options=options)
+        except Exception as e:
+            raise WebAutomationError(f"Failed to initialize Chrome: {str(e)}")
+
+    # Test method to verify setup
+    def test_browser_setup(self) -> Dict[str, any]:
+        """Test browser setup and return diagnostics"""
+        diagnostics = {
+            'browser': self.browser,
+            'driver_path': self.driver_path,
+            'driver_exists': os.path.exists(self.driver_path) if self.driver_path else False,
+            'driver_executable': os.access(self.driver_path, os.X_OK) if self.driver_path else False,
+            'driver_initialized': self.driver is not None,
+            'test_navigation': False,
+            'page_title': None,
+            'user_agent': None
+        }
+        
+        if self.driver:
+            try:
+                self.driver.get('https://httpbin.org/user-agent')
+                diagnostics['test_navigation'] = True
+                diagnostics['page_title'] = self.driver.title
+                diagnostics['user_agent'] = self.driver.execute_script("return navigator.userAgent;")
+            except Exception as e:
+                diagnostics['navigation_error'] = str(e)
+        
+        return diagnostics
+
+    # ========== ALL ORIGINAL METHODS PRESERVED ==========
     
     def define_page(self, page_name: str, elements: Dict[str, Dict[str, str]], base_url: Optional[str] = None):
         self.page_objects[page_name] = {
