@@ -95,7 +95,7 @@ class WebAutomator:
             self.driver.implicitly_wait(self.implicit_wait)
             self.original_window = self.driver.current_window_handle
 
-   def _init_firefox(self):
+    def _init_firefox(self):
         """Initialize Firefox with detailed debugging"""
         try:
             # Test if Firefox is actually working
@@ -404,4 +404,5 @@ class WebAutomator:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
 
