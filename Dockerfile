@@ -5,6 +5,8 @@ FROM python:3.11-slim
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Firefox for automation (primary)
     firefox-esr \
+    # Virtual display for headless browsers (CRITICAL FOR FIREFOX)
+    xvfb \
     # Chrome (fallback)
     unzip \
     wget \
@@ -67,6 +69,7 @@ ENV GECKO_DRIVER_PATH=/usr/local/bin/geckodriver \
     CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
     CHROME_BIN=/usr/bin/google-chrome \
     LIBREOFFICE_PATH=/usr/bin/libreoffice \
+    DISPLAY=:99 \  # This tells applications to use the virtual display
     PYTHONUNBUFFERED=1
 
 # Create and set working directory
@@ -82,5 +85,9 @@ COPY . .
 # Collect static files (if using Django)
 RUN python manage.py collectstatic --noinput
 
-# Run gunicorn
-CMD ["gunicorn", "--worker-tmp-dir", "/dev/shm", "mitigation_app.wsgi:application", "--log-file", "-"]
+# Create startup script
+COPY start.sh /app/start.sh
+RUN chmod +x /app/start.sh
+
+# Use the startup script instead of direct gunicorn
+CMD ["/app/start.sh"]
