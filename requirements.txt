@@ -57,3 +57,4 @@ webdriver-manager==4.0.1
 selenium-wire==5.1.0
 pyvirtualdisplay==3.0
 Xvfbwrapper==0.2.9
+webdriver-manager
