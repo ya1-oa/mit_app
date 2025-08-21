@@ -1,80 +1,70 @@
 #!/bin/bash
 
-# Start Xvfb virtual display (required for Firefox headless)
-echo "🚀 Starting Xvfb virtual display..."
-echo "📋 Display will be set to :99 with resolution 1920x1080x24"
+# Memory optimization for Chrome in low-memory environment (1GB RAM)
+export CHROME_OPTIONS="--disable-dev-shm-usage --no-sandbox --disable-gpu --single-process --memory-pressure-off"
 
-# Start Xvfb in the background
-Xvfb :99 -screen 0 1920x1080x24 -ac +extension GLX +render -noreset > /tmp/xvfb.log 2>&1 &
-XVFB_PID=$!
+echo "🚀 Starting Chrome-based automation environment..."
+echo "💻 Memory optimization: 1GB RAM detected"
 
-# Wait for Xvfb to start
-echo "⏳ Waiting for Xvfb to initialize..."
-sleep 3
-
-# Check if Xvfb started successfully
-if ps -p $XVFB_PID > /dev/null; then
-    echo "✅ Xvfb started successfully with PID: $XVFB_PID"
-    echo "📊 Xvfb process details:"
-    ps -f -p $XVFB_PID
-    
-    # Test if the display is working
-    echo "🧪 Testing Xvfb display..."
-    if xdpyinfo -display :99 > /dev/null 2>&1; then
-        echo "✅ Xvfb display test passed - display :99 is working"
-        echo "📏 Display info:"
-        xdpyinfo -display :99 | grep -E "(dimensions|resolution|version)" | head -5
-    else
-        echo "❌ Xvfb display test failed - check /tmp/xvfb.log for details"
-        echo "📄 Xvfb log contents:"
-        cat /tmp/xvfb.log
-    fi
-else
-    echo "❌ Xvfb failed to start!"
-    echo "📄 Xvfb log contents:"
-    cat /tmp/xvfb.log
-    echo "⚠️ Continuing without Xvfb - Chrome may still work..."
-fi
-
-# Export DISPLAY environment variable
-export DISPLAY=:99
-echo "🌐 Set DISPLAY environment variable to: $DISPLAY"
-
-# Display current environment for debugging
-echo "🔍 Current environment variables:"
-env | grep -E "(DISPLAY|GECKO|CHROME|PATH)" | sort
-
-# Check if browsers are available
-echo "🔍 Checking browser availability:"
-if command -v firefox > /dev/null 2>&1; then
-    echo "✅ Firefox found: $(firefox --version 2>/dev/null || echo 'version unknown')"
-else
-    echo "❌ Firefox not found"
-fi
-
+# Check Chrome availability
 if command -v google-chrome > /dev/null 2>&1; then
-    echo "✅ Chrome found: $(google-chrome --version 2>/dev/null || echo 'version unknown')"
+    CHROME_VERSION=$(google-chrome --version 2>/dev/null || echo "version unknown")
+    echo "✅ Chrome found: $CHROME_VERSION"
 else
-    echo "❌ Chrome not found"
+    echo "❌ Chrome not found!"
+    echo "🔍 Searching for Chrome in common locations:"
+    ls -la /usr/bin/google-chrome* /usr/bin/chromium* 2>/dev/null || echo "No Chrome binaries found"
+    exit 1
 fi
 
-# Check if drivers are available
-echo "🔍 Checking driver availability:"
-if [ -x "$GECKO_DRIVER_PATH" ]; then
-    echo "✅ Geckodriver found: $($GECKO_DRIVER_PATH --version 2>/dev/null || echo 'version unknown')"
+# Check ChromeDriver availability
+if [ -x "/usr/local/bin/chromedriver" ]; then
+    CHROME_DRIVER_VERSION=$(/usr/local/bin/chromedriver --version 2>/dev/null || echo "version unknown")
+    echo "✅ ChromeDriver found: $CHROME_DRIVER_VERSION"
 else
-    echo "❌ Geckodriver not found or not executable at: $GECKO_DRIVER_PATH"
+    echo "❌ ChromeDriver not found or not executable!"
+    echo "🔍 Searching for ChromeDriver:"
+    ls -la /usr/local/bin/chromedriver* 2>/dev/null || echo "No ChromeDriver found"
+    exit 1
 fi
 
-if [ -x "$CHROME_DRIVER_PATH" ]; then
-    echo "✅ Chromedriver found: $($CHROME_DRIVER_PATH --version 2>/dev/null || echo 'version unknown')"
+# Check essential Chrome dependencies
+echo "🔍 Checking Chrome dependencies..."
+if ldconfig -p | grep -q libnss3; then
+    echo "✅ libnss3: found"
 else
-    echo "❌ Chromedriver not found or not executable at: $CHROME_DRIVER_PATH"
+    echo "❌ libnss3: missing (essential for Chrome)"
 fi
 
-# Start your Django application with gunicorn
-echo "🚀 Starting Django application with gunicorn..."
-echo "📋 Command: gunicorn --worker-tmp-dir /dev/shm mitigation_app.wsgi:application --log-file -"
+if ldconfig -p | grep -q libnspr4; then
+    echo "✅ libnspr4: found"
+else
+    echo "❌ libnspr4: missing (essential for Chrome)"
+fi
 
-# Execute the original gunicorn command
-exec gunicorn --worker-tmp-dir /dev/shm mitigation_app.wsgi:application --log-file -
+# Display Chrome configuration
+echo "🔧 Chrome configuration:"
+echo "   CHROME_BIN: ${CHROME_BIN:-/usr/bin/google-chrome}"
+echo "   CHROME_DRIVER_PATH: ${CHROME_DRIVER_PATH:-/usr/local/bin/chromedriver}"
+echo "   Chrome options: $CHROME_OPTIONS"
+
+# Memory status
+echo "💾 Memory status:"
+free -h || echo "free command not available"
+
+# Start your Django application with optimized gunicorn for low memory
+echo "🚀 Starting Django application with memory-optimized gunicorn..."
+echo "📋 Command: gunicorn --worker-tmp-dir /dev/shm --workers 2 --threads 2 --worker-class gthread mitigation_app.wsgi:application --log-file -"
+
+# Execute the optimized gunicorn command
+exec gunicorn \
+    --worker-tmp-dir /dev/shm \
+    --workers 2 \
+    --threads 2 \
+    --worker-class gthread \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --timeout 120 \
+    --keepalive 5 \
+    mitigation_app.wsgi:application \
+    --log-file -
