@@ -2,10 +2,10 @@ import os
 import time
 import tempfile
 import shutil
+import subprocess
+import sys
 from typing import Dict, List, Optional, Tuple, Union
 from selenium import webdriver
-from selenium.webdriver.firefox.service import Service as FirefoxService
-from selenium.webdriver.firefox.options import Options as FirefoxOptions
 from selenium.webdriver.chrome.service import Service as ChromeService
 from selenium.webdriver.chrome.options import Options as ChromeOptions
 from selenium.webdriver.common.by import By
@@ -27,201 +27,282 @@ class WebAutomationError(Exception):
 
 class WebAutomator:
     """
-    Enhanced Selenium Automation Framework optimized for DigitalOcean App Platform
+    Chromium-only Selenium Automation Framework optimized for DigitalOcean App Platform
     """
 
     def __init__(
         self,
-        browser: str = "firefox",
         headless: bool = True,
         implicit_wait: int = 10,
         download_dir: Optional[str] = None,
-        driver_path: Optional[str] = None
+        driver_path: Optional[str] = None,
+        chromium_path: Optional[str] = None
     ):
-        self.browser = browser.lower()
         self.headless = headless
         self.implicit_wait = implicit_wait
         self.download_dir = download_dir
         self.driver_path = driver_path
+        self.chromium_path = chromium_path
         self.driver = None
         self.page_objects = {}
         self.original_window = None
         
         self._init_driver()
     
-    def _find_driver_executable(self, driver_name: str) -> Optional[str]:
-        """Find driver executable in various common locations"""
-        possible_paths = []
-        
-        if driver_name == "geckodriver":
-            possible_paths = [
-                "/usr/local/bin/geckodriver",
-                "/usr/bin/geckodriver",
-                "/opt/geckodriver",
-                shutil.which("geckodriver")
-            ]
-        elif driver_name == "chromedriver":
-            possible_paths = [
-                "/usr/local/bin/chromedriver",
-                "/usr/bin/chromedriver",
-                "/opt/chromedriver",
-                shutil.which("chromedriver")
-            ]
-        
-        # Add environment variable paths
-        env_var = f"{driver_name.upper()}_PATH"
-        if os.getenv(env_var):
-            possible_paths.insert(0, os.getenv(env_var))
-            
-        # Return first existing path
-        for path in possible_paths:
-            if path and os.path.exists(path) and os.access(path, os.X_OK):
-                return path
-                
-        return None
-        
-    def _init_driver(self):
-        """Initialize WebDriver with App Platform optimizations"""
-        browser = self.browser.lower()
-        
-        if browser == "firefox":
-            self._init_firefox()
-        elif browser == "chrome":
-            self._init_chrome()
-        else:
-            raise ValueError(f"Unsupported browser: {browser}")
-            
-        if self.driver:
-            self.driver.implicitly_wait(self.implicit_wait)
-            self.original_window = self.driver.current_window_handle
-
-    def _init_firefox(self):
-        """Initialize Firefox with detailed debugging"""
+    def _debug_print(self, message: str, level: str = "INFO"):
+        """Print debug messages with timestamps"""
+        timestamp = time.strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] [{level}] {message}", file=sys.stderr)
+    
+    def _run_command(self, cmd: List[str], description: str) -> Tuple[bool, str]:
+        """Run a command and return success status and output"""
         try:
-            # Test if Firefox is actually working
-            result = subprocess.run(['firefox', '--version'], 
-                                  capture_output=True, text=True, timeout=10)
-            print(f"Firefox version: {result.stdout}")
-            
-            # Test if geckodriver works
-            if self.driver_path:
-                result = subprocess.run([self.driver_path, '--version'],
-                                      capture_output=True, text=True, timeout=10)
-                print(f"Geckodriver version: {result.stdout}")
-            
-            options = FirefoxOptions()
-            options.add_argument("--headless")
-            options.add_argument("--no-sandbox")
-            options.add_argument("--disable-dev-shm-usage")
-            
-            service = FirefoxService(
-                executable_path=self.driver_path,
-                log_path='/tmp/geckodriver.log'  # Save logs to file
-            )
-            
-            self.driver = webdriver.Firefox(options=options, service=service)
-            
+            self._debug_print(f"Running: {description}")
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                return True, result.stdout.strip()
+            else:
+                return False, f"STDOUT: {result.stdout}\nSTDERR: {result.stderr}"
+        except subprocess.TimeoutExpired:
+            return False, "Command timed out after 30 seconds"
         except Exception as e:
-            print(f"Detailed Firefox error: {str(e)}")
-            # Check if log file exists and show contents
-            if os.path.exists('/tmp/geckodriver.log'):
-                with open('/tmp/geckodriver.log', 'r') as f:
-                    print("Geckodriver logs:", f.read())
-            raise
-
-    def _init_chrome(self):
-        """Initialize Chrome with container optimizations"""
-        options = ChromeOptions()
-        
-        # Try to find Chrome binary
-        chrome_binaries = [
-            "/usr/bin/google-chrome",
-            "/usr/bin/google-chrome-stable", 
-            "/usr/bin/chromium-browser",
+            return False, f"Exception: {str(e)}"
+    
+    def _find_chromium_binary(self) -> Optional[str]:
+        """Find Chromium binary in various common locations"""
+        possible_paths = [
             "/usr/bin/chromium",
+            "/usr/bin/chromium-browser",
+            "/usr/bin/google-chrome",
+            "/usr/bin/google-chrome-stable",
+            "/snap/bin/chromium",
+            os.getenv('CHROMIUM_BIN'),
             os.getenv('CHROME_BIN')
         ]
         
-        chrome_binary = None
-        for binary in chrome_binaries:
-            if binary and os.path.exists(binary):
-                chrome_binary = binary
-                break
-                
-        if chrome_binary:
-            options.binary_location = chrome_binary
+        for path in possible_paths:
+            if path and os.path.exists(path) and os.access(path, os.X_OK):
+                self._debug_print(f"Found Chromium at: {path}")
+                return path
         
-        # Essential container options
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-extensions")
-        options.add_argument("--disable-web-security")
-        options.add_argument("--allow-running-insecure-content")
-        options.add_argument("--disable-features=VizDisplayCompositor")
-        options.add_argument("--disable-features=VizServiceDisplayCompositor")
-        options.add_argument("--disable-background-timer-throttling")
-        options.add_argument("--disable-backgrounding-occluded-windows")
-        options.add_argument("--disable-renderer-backgrounding")
-        options.add_argument("--remote-debugging-port=9222")
-        options.add_argument("--window-size=1920,1080")
-        options.add_argument("--start-maximized")
-        options.add_argument("--disable-logging")
-        options.add_argument("--disable-dev-tools")
-        
-        if self.headless:
-            options.add_argument("--headless=new")
-        
-        # Memory and performance
-        options.add_argument("--memory-pressure-off")
-        options.add_argument("--disable-background-networking")
-        options.add_argument("--disable-sync")
-        options.add_argument("--disable-translate")
-        
-        if self.download_dir:
-            os.makedirs(self.download_dir, exist_ok=True)
-            prefs = {
-                "download.default_directory": self.download_dir,
-                "download.prompt_for_download": False,
-                "download.directory_upgrade": True,
-                "safebrowsing.enabled": True
-            }
-            options.add_experimental_option("prefs", prefs)
-        
-        # Find driver executable
-        if not self.driver_path:
-            self.driver_path = self._find_driver_executable("chromedriver")
-            
-        if not self.driver_path:
-            raise WebAutomationError("Chromedriver not found. Install with: apt-get install chromium-chromedriver")
-        
+        # Additional search using which command
         try:
-            service = ChromeService(executable_path=self.driver_path)
+            which_path = shutil.which("chromium") or shutil.which("chromium-browser") or shutil.which("google-chrome")
+            if which_path:
+                self._debug_print(f"Found via which: {which_path}")
+                return which_path
+        except:
+            pass
+            
+        self._debug_print("Chromium not found in common locations", "WARNING")
+        return None
+    
+    def _find_chromedriver(self) -> Optional[str]:
+        """Find ChromeDriver executable"""
+        possible_paths = [
+            "/usr/local/bin/chromedriver",
+            "/usr/bin/chromedriver",
+            "/opt/chromedriver",
+            "/snap/bin/chromedriver",
+            os.getenv('CHROMEDRIVER_PATH'),
+            os.getenv('CHROME_DRIVER_PATH'),
+            shutil.which("chromedriver")
+        ]
+        
+        for path in possible_paths:
+            if path and os.path.exists(path):
+                if os.access(path, os.X_OK):
+                    self._debug_print(f"Found ChromeDriver at: {path}")
+                    return path
+                else:
+                    self._debug_print(f"ChromeDriver found but not executable: {path}", "WARNING")
+        
+        self._debug_print("ChromeDriver not found in common locations", "WARNING")
+        return None
+    
+    def _check_system_dependencies(self):
+        """Check if all required system dependencies are available"""
+        self._debug_print("Checking system dependencies...")
+        
+        # Check essential libraries
+        essential_libs = [
+            "libnss3", "libnspr4", "libatk-bridge2.0-0", "libatk1.0-0",
+            "libx11-6", "libxcb1", "libxcomposite1", "libxdamage1",
+            "libxext6", "libxfixes3", "libxi6", "libxrandr2",
+            "libxss1", "libxtst6", "libgtk-3.0", "libgbm1",
+            "libasound2", "libcups2", "libdbus-1-3"
+        ]
+        
+        missing_libs = []
+        for lib in essential_libs:
+            success, output = self._run_command(["ldconfig", "-p", "|", "grep", "-q", lib], f"Check library {lib}")
+            if not success:
+                missing_libs.append(lib)
+        
+        if missing_libs:
+            self._debug_print(f"Missing essential libraries: {missing_libs}", "ERROR")
+    
+    def _init_driver(self):
+        """Initialize Chromium WebDriver with detailed error reporting"""
+        try:
+            self._debug_print("Initializing Chromium driver...")
+            
+            # Check system dependencies first
+            self._check_system_dependencies()
+            
+            # Find Chromium binary
+            if not self.chromium_path:
+                self.chromium_path = self._find_chromium_binary()
+                if not self.chromium_path:
+                    raise WebAutomationError("Chromium browser not found. Please install chromium or chromium-browser")
+            
+            # Find ChromeDriver
+            if not self.driver_path:
+                self.driver_path = self._find_chromedriver()
+                if not self.driver_path:
+                    raise WebAutomationError("ChromeDriver not found. Please install chromium-chromedriver")
+            
+            # Verify Chromium version
+            success, version_output = self._run_command([self.chromium_path, "--version"], "Get Chromium version")
+            if success:
+                self._debug_print(f"Chromium version: {version_output}")
+            else:
+                self._debug_print(f"Failed to get Chromium version: {version_output}", "WARNING")
+            
+            # Verify ChromeDriver version
+            success, driver_version = self._run_command([self.driver_path, "--version"], "Get ChromeDriver version")
+            if success:
+                self._debug_print(f"ChromeDriver version: {driver_version}")
+            else:
+                self._debug_print(f"Failed to get ChromeDriver version: {driver_version}", "WARNING")
+            
+            # Initialize Chrome options
+            options = ChromeOptions()
+            options.binary_location = self.chromium_path
+            
+            # Essential container options for low memory (1GB RAM)
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")  # Critical for low memory
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--disable-software-rasterizer")
+            
+            # Memory optimization flags
+            options.add_argument("--single-process")  # Reduces memory usage
+            options.add_argument("--memory-pressure-off")
+            options.add_argument("--disable-background-timer-throttling")
+            options.add_argument("--disable-backgrounding-occluded-windows")
+            options.add_argument("--disable-renderer-backgrounding")
+            
+            # Performance optimizations
+            options.add_argument("--disable-logging")
+            options.add_argument("--log-level=3")
+            options.add_argument("--disable-dev-tools")
+            options.add_argument("--remote-debugging-port=0")  # Disable remote debugging
+            
+            if self.headless:
+                options.add_argument("--headless=new")
+            
+            # Window size optimized for low memory
+            options.add_argument("--window-size=1280,720")
+            
+            # Download preferences if needed
+            if self.download_dir:
+                os.makedirs(self.download_dir, exist_ok=True)
+                prefs = {
+                    "download.default_directory": self.download_dir,
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": False  # Disable for performance
+                }
+                options.add_experimental_option("prefs", prefs)
+            
+            # Configure service with detailed logging for debugging
+            service = ChromeService(
+                executable_path=self.driver_path,
+                service_args=["--verbose", "--log-level=DEBUG"],
+                log_path="/tmp/chromedriver.log"
+            )
+            
+            self._debug_print("Starting Chromium driver...")
             self.driver = webdriver.Chrome(service=service, options=options)
+            
+            # Set minimal implicit wait
+            self.driver.implicitly_wait(self.implicit_wait)
+            self.original_window = self.driver.current_window_handle
+            
+            self._debug_print("Chromium driver initialized successfully")
+            
         except Exception as e:
-            raise WebAutomationError(f"Failed to initialize Chrome: {str(e)}")
+            # Read ChromeDriver logs for detailed error information
+            error_details = f"Initialization error: {str(e)}"
+            
+            if os.path.exists("/tmp/chromedriver.log"):
+                try:
+                    with open("/tmp/chromedriver.log", "r") as f:
+                        chromedriver_logs = f.read()
+                        error_details += f"\n\nChromeDriver logs:\n{chromedriver_logs}"
+                except Exception as log_error:
+                    error_details += f"\n\nFailed to read ChromeDriver logs: {str(log_error)}"
+            
+            # Additional system diagnostics
+            error_details += f"\n\nSystem diagnostics:"
+            error_details += f"\n- Chromium path: {self.chromium_path}"
+            error_details += f"\n- ChromeDriver path: {self.driver_path}"
+            error_details += f"\n- Chromium exists: {os.path.exists(self.chromium_path) if self.chromium_path else False}"
+            error_details += f"\n- ChromeDriver exists: {os.path.exists(self.driver_path) if self.driver_path else False}"
+            error_details += f"\n- Chromium executable: {os.access(self.chromium_path, os.X_OK) if self.chromium_path else False}"
+            error_details += f"\n- ChromeDriver executable: {os.access(self.driver_path, os.X_OK) if self.driver_path else False}"
+            
+            # List available browsers and drivers
+            try:
+                browsers = subprocess.run(["ls", "-la", "/usr/bin/chromium*", "/usr/bin/google-chrome*"], 
+                                        capture_output=True, text=True)
+                error_details += f"\n\nAvailable browsers:\n{browsers.stdout}"
+            except:
+                pass
+                
+            try:
+                drivers = subprocess.run(["ls", "-la", "/usr/local/bin/chromedriver*", "/usr/bin/chromedriver*"], 
+                                       capture_output=True, text=True)
+                error_details += f"\n\nAvailable drivers:\n{drivers.stdout}"
+            except:
+                pass
+            
+            self._debug_print(error_details, "ERROR")
+            raise WebAutomationError(error_details)
 
-    # Test method to verify setup
     def test_browser_setup(self) -> Dict[str, any]:
-        """Test browser setup and return diagnostics"""
+        """Test browser setup and return detailed diagnostics"""
         diagnostics = {
-            'browser': self.browser,
+            'browser': 'chromium',
+            'chromium_path': self.chromium_path,
             'driver_path': self.driver_path,
+            'chromium_exists': os.path.exists(self.chromium_path) if self.chromium_path else False,
             'driver_exists': os.path.exists(self.driver_path) if self.driver_path else False,
+            'chromium_executable': os.access(self.chromium_path, os.X_OK) if self.chromium_path else False,
             'driver_executable': os.access(self.driver_path, os.X_OK) if self.driver_path else False,
             'driver_initialized': self.driver is not None,
             'test_navigation': False,
             'page_title': None,
-            'user_agent': None
+            'user_agent': None,
+            'error': None
         }
         
         if self.driver:
             try:
-                self.driver.get('https://httpbin.org/user-agent')
+                # Use a lightweight test page
+                self.driver.get('about:version')
                 diagnostics['test_navigation'] = True
                 diagnostics['page_title'] = self.driver.title
                 diagnostics['user_agent'] = self.driver.execute_script("return navigator.userAgent;")
+                
+                # Additional diagnostics
+                diagnostics['window_handles'] = len(self.driver.window_handles)
+                diagnostics['current_url'] = self.driver.current_url
+                
             except Exception as e:
+                diagnostics['error'] = str(e)
                 diagnostics['navigation_error'] = str(e)
         
         return diagnostics
@@ -395,7 +476,7 @@ class WebAutomator:
             try:
                 self.driver.quit()
             except Exception as e:
-                print(f"Warning: Error during driver quit: {str(e)}")
+                self._debug_print(f"Warning: Error during driver quit: {str(e)}", "WARNING")
             finally:
                 self.driver = None
                 
@@ -404,5 +485,3 @@ class WebAutomator:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
-
-
