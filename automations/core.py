@@ -95,61 +95,39 @@ class WebAutomator:
             self.driver.implicitly_wait(self.implicit_wait)
             self.original_window = self.driver.current_window_handle
 
-    def _init_firefox(self):
-        """Initialize Firefox with container optimizations"""
-        options = FirefoxOptions()
-        
-        # Essential container options
-        if self.headless:
-            options.add_argument("--headless")
-        
-        # Critical for containerized environments
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-software-rasterizer")
-        options.add_argument("--disable-background-timer-throttling")
-        options.add_argument("--disable-backgrounding-occluded-windows")
-        options.add_argument("--disable-renderer-backgrounding")
-        options.add_argument("--disable-features=TranslateUI")
-        options.add_argument("--disable-ipc-flooding-protection")
-        options.add_argument("--window-size=1920,1080")
-        
-        # Memory optimization
-        options.add_argument("--memory-pressure-off")
-        options.add_argument("--max_old_space_size=4096")
-        
-        # Set preferences for stability
-        options.set_preference("dom.webdriver.enabled", False)
-        options.set_preference("useAutomationExtension", False)
-        options.set_preference("browser.cache.disk.enable", False)
-        options.set_preference("browser.cache.memory.enable", False)
-        options.set_preference("browser.cache.offline.enable", False)
-        options.set_preference("network.http.use-cache", False)
-        
-        # Download preferences if needed
-        if self.download_dir:
-            os.makedirs(self.download_dir, exist_ok=True)
-            options.set_preference("browser.download.folderList", 2)
-            options.set_preference("browser.download.dir", self.download_dir)
-            options.set_preference(
-                "browser.helperApps.neverAsk.saveToDisk",
-                "application/octet-stream,application/pdf,application/vnd.ms-excel,text/csv,application/zip"
-            )
-            options.set_preference("browser.download.manager.showWhenStarting", False)
-        
-        # Find driver executable
-        if not self.driver_path:
-            self.driver_path = self._find_driver_executable("geckodriver")
-            
-        if not self.driver_path:
-            raise WebAutomationError("Geckodriver not found. Install with: apt-get install firefox-geckodriver")
-        
+   def _init_firefox(self):
+        """Initialize Firefox with detailed debugging"""
         try:
-            service = FirefoxService(executable_path=self.driver_path)
+            # Test if Firefox is actually working
+            result = subprocess.run(['firefox', '--version'], 
+                                  capture_output=True, text=True, timeout=10)
+            print(f"Firefox version: {result.stdout}")
+            
+            # Test if geckodriver works
+            if self.driver_path:
+                result = subprocess.run([self.driver_path, '--version'],
+                                      capture_output=True, text=True, timeout=10)
+                print(f"Geckodriver version: {result.stdout}")
+            
+            options = FirefoxOptions()
+            options.add_argument("--headless")
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            
+            service = FirefoxService(
+                executable_path=self.driver_path,
+                log_path='/tmp/geckodriver.log'  # Save logs to file
+            )
+            
             self.driver = webdriver.Firefox(options=options, service=service)
+            
         except Exception as e:
-            raise WebAutomationError(f"Failed to initialize Firefox: {str(e)}")
+            print(f"Detailed Firefox error: {str(e)}")
+            # Check if log file exists and show contents
+            if os.path.exists('/tmp/geckodriver.log'):
+                with open('/tmp/geckodriver.log', 'r') as f:
+                    print("Geckodriver logs:", f.read())
+            raise
 
     def _init_chrome(self):
         """Initialize Chrome with container optimizations"""
@@ -426,3 +404,4 @@ class WebAutomator:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
