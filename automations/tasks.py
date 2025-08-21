@@ -3,6 +3,10 @@ from typing import Dict, Any, List, Optional, Tuple, Union
 import pandas as pd
 import re
 import time
+import os
+import json
+import subprocess
+import sys
 from datetime import datetime
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
@@ -14,10 +18,22 @@ from selenium.common.exceptions import (
     StaleElementReferenceException
 )
 from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.remote.webelement import WebElement
 
 class AutomationTasks:
-    def __init__(self, browser: str = "chrome", headless: bool = False):
-        self.automator = WebAutomator(browser=browser, headless=headless)
+    def __init__(self, headless: bool = True):
+        # Initialize with Chromium-only automator
+        try:
+            self.automator = WebAutomator(headless=headless)
+            self._log("AutomationTasks initialized successfully with Chromium")
+        except Exception as e:
+            self._log(f"Failed to initialize WebAutomator: {str(e)}", "ERROR")
+            raise
+    
+    def _log(self, message: str, level: str = "INFO"):
+        """Log messages with timestamps"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] [{level}] {message}", file=sys.stderr)
     
     def generic_automation(
         self,
@@ -37,39 +53,57 @@ class AutomationTasks:
         Returns:
             Dict with results and status
         """
-        results = {"status": "started", "steps": []}
+        results = {"status": "started", "steps": [], "diagnostics": {}}
         
         try:
+            # First test browser setup
+            diagnostics = self.automator.test_browser_setup()
+            results['diagnostics'] = diagnostics
+            
+            if not diagnostics['driver_initialized']:
+                raise WebAutomationError(f"Browser not initialized: {diagnostics}")
+            
             # Register page objects if provided
             if page_objects:
                 for page_name, elements in page_objects.items():
                     self.automator.define_page(page_name, elements)
             
             # Navigate to starting URL
+            self._log(f"Navigating to: {url}")
             self.automator.navigate_to(url)
             results['steps'].append({"action": "navigate", "url": url, "status": "success"})
             
             # Process each action
-            for action in actions:
+            for i, action in enumerate(actions):
                 try:
+                    self._log(f"Executing action {i+1}/{len(actions)}: {action.get('action')}")
                     step_result = self._execute_action(action)
                     results['steps'].append(step_result)
                 except Exception as e:
+                    error_msg = f"Action {i+1} failed: {action} - {str(e)}"
+                    self._log(error_msg, "ERROR")
                     results['steps'].append({
                         "action": action.get('action'),
                         "element": action.get('locator'),
                         "status": "failed",
-                        "error": str(e)
+                        "error": str(e),
+                        "step_number": i+1
                     })
-                    raise WebAutomationError(f"Action failed: {action}") from e
+                    raise WebAutomationError(error_msg) from e
             
             results["status"] = "completed"
+            self._log("Automation completed successfully")
             
         except Exception as e:
             results["status"] = "failed"
             results["error"] = str(e)
+            self._log(f"Automation failed: {str(e)}", "ERROR")
         finally:
-            self.automator.close()
+            try:
+                self.automator.close()
+                self._log("Browser closed successfully")
+            except Exception as close_error:
+                self._log(f"Error closing browser: {str(close_error)}", "WARNING")
         
         return results
     
@@ -93,6 +127,11 @@ class AutomationTasks:
     def _extract_rooms_from_excel(self, file_path: str) -> List[str]:
         """Extract rooms from Excel with the specified column structure"""
         try:
+            self._log(f"Reading Excel file: {file_path}")
+            
+            if not os.path.exists(file_path):
+                raise WebAutomationError(f"Excel file not found: {file_path}")
+            
             # Read the Excel file (jobinfo(3) tab, rows 2-26)
             df = pd.read_excel(
                 file_path,
@@ -100,44 +139,53 @@ class AutomationTasks:
                 header=None,
                 skiprows=1  # Skip header row
             )
-            rows_to_process = range(25)  # Rows 2-26 (0-indexed)
+            
+            if df.empty:
+                raise WebAutomationError("Excel file is empty or couldn't be read")
+            
+            rows_to_process = range(min(25, len(df)))  # Rows 2-26 (0-indexed)
             rooms = []
             
-            # 1. Basic rooms (A-B and D-E)
-            rooms += self._process_excel_section(df, rows_to_process, [0, 1])  # A-B
-            rooms += self._process_excel_section(df, rows_to_process, [3, 4])  # D-E
+            # Process all sections
+            sections = [
+                ([0, 1], False, "A-B"),          # Basic rooms
+                ([3, 4], False, "D-E"),          # Basic rooms
+                ([8, 9, 10], True, "I-K"),       # SOURCE OF LOSS
+                ([12, 13, 14], True, "M-O"),     # SOURCE OF LOSS
+                ([17, 18, 19], True, "R-T"),     # DMO
+                ([21, 22, 23], True, "V-X"),     # DMO
+                ([25, 26], False, "Z-AA"),       # FSI
+                ([28, 29], False, "AC-AD"),      # FSI
+                ([30, 31], False, "AF-AG"),      # WTF MIT
+                ([33, 34], False, "AH-AI")       # WTF MIT
+            ]
             
-            # 2. SOURCE OF LOSS sections
-            rooms += self._process_excel_section(df, rows_to_process, [8, 9, 10], label=True)  # I-K
-            rooms += self._process_excel_section(df, rows_to_process, [12, 13, 14], label=True)  # M-O
-            
-            # 3. DMO sections
-            rooms += self._process_excel_section(df, rows_to_process, [17, 18, 19], label=True)  # R-T
-            rooms += self._process_excel_section(df, rows_to_process, [21, 22, 23], label=True)  # V-X
-            
-            # 4. FSI sections
-            rooms += self._process_excel_section(df, rows_to_process, [25, 26])  # Z-AA
-            rooms += self._process_excel_section(df, rows_to_process, [28, 29])  # AC-AD
-            
-            # 5. WTF MIT sections
-            rooms += self._process_excel_section(df, rows_to_process, [30, 31])  # AF-AG
-            rooms += self._process_excel_section(df, rows_to_process, [33, 34])  # AH-AI
+            for cols, has_label, section_name in sections:
+                section_rooms = self._process_excel_section(df, rows_to_process, cols, has_label)
+                self._log(f"Section {section_name}: Found {len(section_rooms)} rooms")
+                rooms.extend(section_rooms)
             
             # Remove duplicates and sort
             unique_rooms = []
             seen = set()
             for room in rooms:
-                if room not in seen:
+                if room and room not in seen:
                     seen.add(room)
                     unique_rooms.append(room)
             
             # Sort by numeric prefix
-            unique_rooms.sort(key=lambda x: int(re.search(r'^\d+', x).group()))
+            try:
+                unique_rooms.sort(key=lambda x: int(re.search(r'^\d+', x).group()) if re.search(r'^\d+', x) else 0)
+            except:
+                unique_rooms.sort()  # Fallback alphabetical sort
             
+            self._log(f"Total unique rooms found: {len(unique_rooms)}")
             return unique_rooms
             
         except Exception as e:
-            raise WebAutomationError(f"Excel processing failed: {str(e)}")
+            error_msg = f"Excel processing failed: {str(e)}"
+            self._log(error_msg, "ERROR")
+            raise WebAutomationError(error_msg)
 
     def _execute_action(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a single automation action"""
@@ -154,64 +202,63 @@ class AutomationTasks:
             "status": "success"
         }
         
-        if action_type == "click":
-            self.automator.click(locator, page_name, timeout)
-        elif action_type == "input":
-            self.automator.input_text(locator, value, page_name, timeout)
-        elif action_type == "hover":
-            self.automator.hover(locator, page_name, timeout)
-        elif action_type == "right_click":
-            self.automator.right_click(locator, page_name, timeout)
-        elif action_type == "select":
-            self.automator.select_dropdown_option(locator, value, page_name, timeout)
-        elif action_type == "wait":
-            self.automator.wait_for_element(locator, page_name, timeout)
-        elif action_type == "navigate":
-            self.automator.navigate_to(value)
-        elif action_type == "reload":
-            self.automator.reload_page()
-        else:
-            raise WebAutomationError(f"Unknown action type: {action_type}")
-        
-        return result
+        try:
+            if action_type == "click":
+                self.automator.click(locator, page_name, timeout)
+            elif action_type == "input":
+                self.automator.input_text(locator, value, page_name, timeout)
+            elif action_type == "hover":
+                self.automator.hover(locator, page_name, timeout)
+            elif action_type == "right_click":
+                self.automator.right_click(locator, page_name, timeout)
+            elif action_type == "select":
+                self.automator.select_dropdown_option(locator, value, page_name, timeout)
+            elif action_type == "wait":
+                self.automator.wait_for_element(locator, page_name, timeout)
+            elif action_type == "navigate":
+                self.automator.navigate_to(value)
+            elif action_type == "reload":
+                self.automator.reload_page()
+            else:
+                raise WebAutomationError(f"Unknown action type: {action_type}")
+            
+            return result
+            
+        except Exception as e:
+            error_msg = f"Action '{action_type}' failed: {str(e)}"
+            self._log(error_msg, "ERROR")
+            raise WebAutomationError(error_msg)
 
-from .core import WebAutomator, WebAutomationError
-from typing import Dict, Any, List, Optional, Tuple, Union
-import pandas as pd
-import re
-import time
-import os
-import json
-from datetime import datetime
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.common.exceptions import (
-    NoSuchElementException,
-    TimeoutException,
-    ElementNotInteractableException,
-    StaleElementReferenceException
-)
-from selenium.webdriver.remote.webelement import WebElement
 
 class RoomTemplateAutomation:
-    def __init__(self, browser: str = "firefox", headless: bool = True):
-        # Initialize with performance logging capabilities
-        self.automator = WebAutomator(browser=browser, headless=headless)
-        self._force_browser_ready()
+    def __init__(self, headless: bool = True):
+        # Initialize with Chromium-only automator
+        try:
+            self.automator = WebAutomator(headless=headless)
+            self._log("RoomTemplateAutomation initialized successfully")
+            self._force_browser_ready()
+        except Exception as e:
+            self._log(f"Failed to initialize RoomTemplateAutomation: {str(e)}", "ERROR")
+            raise
+    
+    def _log(self, message: str, level: str = "INFO"):
+        """Log messages with timestamps"""
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        print(f"[{timestamp}] [{level}] {message}", file=sys.stderr)
 
     def _force_browser_ready(self):
         """Ensure browser is fully ready before any interaction"""
         try:
-            # Set explicit window size (bypasses maximize issues)
+            # Set explicit window size
             self.automator.driver.set_window_size(1920, 1080)
             
             # Wait for all initializations to complete
             WebDriverWait(self.automator.driver, 30).until(
                 lambda d: d.execute_script("return document.readyState") == "complete"
             )
+            self._log("Browser ready check completed")
         except Exception as e:
-            print(f"⚠️ Browser initialization warning: {str(e)}")
+            self._log(f"Browser initialization warning: {str(e)}", "WARNING")
 
     def _save_debug_info(self, prefix: str = "error"):
         """Save comprehensive debug information"""
@@ -220,38 +267,39 @@ class RoomTemplateAutomation:
         os.makedirs(debug_dir, exist_ok=True)
         
         try:
+            debug_info = {}
+            
             # Save screenshot
             screenshot_path = f"{debug_dir}/{prefix}_{timestamp}.png"
             self.automator.driver.save_screenshot(screenshot_path)
+            debug_info["screenshot"] = screenshot_path
             
             # Save page source
             page_source_path = f"{debug_dir}/{prefix}_page_source_{timestamp}.html"
             with open(page_source_path, "w", encoding="utf-8") as f:
                 f.write(self.automator.driver.page_source)
-                
+            debug_info["page_source"] = page_source_path
+            
             # Save browser logs if available
             try:
                 logs = self.automator.driver.get_log("browser")
                 log_path = f"{debug_dir}/{prefix}_console_logs_{timestamp}.json"
                 with open(log_path, "w") as f:
                     json.dump(logs, f)
+                debug_info["logs"] = log_path
             except Exception as log_error:
-                print(f"Could not save browser logs: {str(log_error)}")
-                
-            return {
-                "screenshot": screenshot_path,
-                "page_source": page_source_path,
-                "logs": log_path if 'log_path' in locals() else None
-            }
+                self._log(f"Could not save browser logs: {str(log_error)}", "WARNING")
+            
+            self._log(f"Debug info saved: {debug_info}")
+            return debug_info
             
         except Exception as e:
-            print(f"Could not save debug info: {str(e)}")
-            return None
+            self._log(f"Could not save debug info: {str(e)}", "ERROR")
+            return {"error": str(e)}
 
     def _wait_for_page_transition(self, timeout=30):
         """Wait for page to fully transition after navigation"""
         try:
-            # Get current window handles if this might open new tab/window
             original_handles = self.automator.driver.window_handles
             
             # Wait for document ready state
@@ -265,22 +313,17 @@ class RoomTemplateAutomation:
                              if h not in original_handles][0]
                 self.automator.driver.switch_to.window(new_window)
                 
-            # Additional wait for jQuery/other frameworks if needed
+            # Additional wait for frameworks
             try:
                 WebDriverWait(self.automator.driver, 10).until(
                     lambda d: d.execute_script("return (typeof jQuery === 'undefined') || jQuery.active == 0"))
             except:
                 pass
                 
-            # Wait for any loading indicators to disappear
-            try:
-                WebDriverWait(self.automator.driver, 10).until_not(
-                    EC.presence_of_element_located((By.CSS_SELECTOR, '.loading, .spinner, .progress-bar')))
-            except:
-                pass
+            self._log("Page transition completed")
                 
         except Exception as e:
-            print(f"Page transition warning: {str(e)}")
+            self._log(f"Page transition warning: {str(e)}", "WARNING")
             self._save_debug_info("transition_warning")
 
     def _find_element_with_fallbacks(self, selector_options: List[Dict[str, Any]], timeout: int = 10) -> WebElement:
@@ -307,20 +350,22 @@ class RoomTemplateAutomation:
     def login(self, email: str, password: str) -> bool:
         """Handle the login process with proper tab management"""
         try:
+            self._log("Starting login process")
+            
             # Define login page elements
             login_page = {
                 'login_button': {'by': By.CSS_SELECTOR, 'value': 'a.button_2[href*="login"]'},
                 'email_input': {'by': By.ID, 'value': 'username'},
                 'email_continue': {'by': By.CSS_SELECTOR, 'value': 'button._button-login-id'},
                 'password_input': {'by': By.ID, 'value': 'password'},
-                'password_continue': {'by': By.CSS_SELECTOR, 'value': 'button._button-login-password'}
+                'password_continue': {'by': By.CSS_SELECTor, 'value': 'button._button-login-password'}
             }
             self.automator.define_page('login', login_page)
             
             # Execute login flow
             self.automator.navigate_to('https://encircleapp.com/')
             
-            # Store original window handle (should be only one tab at this point)
+            # Store original window handle
             original_window = self.automator.driver.current_window_handle
             
             # Click the login button (will open new tab)
@@ -331,7 +376,7 @@ class RoomTemplateAutomation:
                 lambda d: len(d.window_handles) > 1
             )
             
-            # Switch to the new tab (should be the login page)
+            # Switch to the new tab
             new_window = [window for window in self.automator.driver.window_handles 
                          if window != original_window][0]
             self.automator.driver.switch_to.window(new_window)
@@ -362,12 +407,13 @@ class RoomTemplateAutomation:
                     lambda d: "dashboard" in d.current_url.lower() or
                              any(x in d.current_url.lower() for x in ["home", "app", "workspace"])
                 )
+                self._log("Login successful")
                 return True
             except TimeoutException:
                 raise Exception("Failed to verify successful login")
                 
         except Exception as e:
-            print(f"Login failed: {str(e)}")
+            self._log(f"Login failed: {str(e)}", "ERROR")
             self._save_debug_info("login_failure")
             return False
 
@@ -397,7 +443,7 @@ class RoomTemplateAutomation:
             try:
                 org_settings = WebDriverWait(self.automator.driver, 10).until(
                     EC.element_to_be_clickable((By.XPATH, '//div[contains(@class, "SettingsDropdownMenuLinkItem-content") and contains(text(), "Organization Settings")]'))
-        )
+                )
                 self.automator.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", org_settings)
                 time.sleep(0.3)
                 org_settings.click()
@@ -418,7 +464,7 @@ class RoomTemplateAutomation:
             debug_info['error'] = str(e)
             debug_info['final_url'] = self.automator.driver.current_url
             debug_info['screenshot'] = self._save_debug_info("org_settings_nav_failure")
-            print(f"Navigation failed: {json.dumps(debug_info, indent=2)}")
+            self._log(f"Navigation failed: {json.dumps(debug_info, indent=2)}", "ERROR")
             return False
 
     def navigate_to_manage_lists(self) -> bool:
@@ -440,8 +486,8 @@ class RoomTemplateAutomation:
 
         except Exception:
             # If we fail, just continue assuming we're on the right page
+            self._log("Failed to navigate to manage lists, continuing anyway", "WARNING")
             return True
-
 
     def create_room_template(self, template_name: str, room_names: list) -> dict:
         """Create room template using Enter key instead of button clicks"""
@@ -498,13 +544,14 @@ class RoomTemplateAutomation:
                         )
                         results['rooms_added'] += 1
                     except:
-                        print(f"Warning: Room '{room_name}' may not have been added")
+                        self._log(f"Warning: Room '{room_name}' may not have been added", "WARNING")
                     
                     time.sleep(0.3)
                     
                 except Exception as e:
-                    results['errors'].append(f"Failed to add room '{room_name}': {str(e)}")
-                    print(f"Error adding room: {str(e)}")
+                    error_msg = f"Failed to add room '{room_name}': {str(e)}"
+                    results['errors'].append(error_msg)
+                    self._log(error_msg, "ERROR")
                     continue
 
             # 4. Save Template (still using click)
@@ -519,16 +566,18 @@ class RoomTemplateAutomation:
                     EC.presence_of_element_located((By.CSS_SELECTOR, '.Notifier__notification--success'))
                 )
                 results['status'] = 'completed'
+                self._log("Template saved successfully")
             except:
                 results['status'] = 'completed_with_warnings'
-                print("Warning: Could not verify save completion")
+                self._log("Warning: Could not verify save completion", "WARNING")
 
         except Exception as e:
+            error_msg = f"Critical error in template creation: {str(e)}"
             results.update({
                 'status': 'failed',
-                'error': str(e)
+                'error': error_msg
             })
-            print(f"Critical error: {str(e)}")
+            self._log(error_msg, "ERROR")
 
         return results
 
@@ -644,10 +693,13 @@ class RoomTemplateAutomation:
             'template_creation': None,
             'start_time': datetime.now().isoformat(),
             'total_rooms': len(room_names),
-            'debug_info': []
+            'debug_info': [],
+            'diagnostics': self.automator.test_browser_setup()  # Add browser diagnostics
         }
         
         try:
+            self._log("Starting full automation flow")
+            
             # Step 1: Login
             login_success = self.login(email, password)
             results['login_status'] = 'success' if login_success else 'failed'
@@ -696,8 +748,13 @@ class RoomTemplateAutomation:
             # Wait a moment before closing
             time.sleep(2)
             
+            results['status'] = 'completed'
+            self._log("Full automation flow completed successfully")
+            
         except Exception as e:
-            results['error'] = str(e)
+            error_msg = f"Automation flow failed: {str(e)}"
+            self._log(error_msg, "ERROR")
+            results['error'] = error_msg
             results['status'] = 'failed'
             results['debug_info'].append({
                 'step': 'flow_error',
@@ -706,10 +763,11 @@ class RoomTemplateAutomation:
                 'screenshot': self._save_debug_info("flow_failure")
             })
         finally:
-            self.automator.close()
+            try:
+                self.automator.close()
+                self._log("Browser closed after automation flow")
+            except Exception as close_error:
+                self._log(f"Error closing browser: {str(close_error)}", "WARNING")
             results['end_time'] = datetime.now().isoformat()
             
-
         return results
-
-
