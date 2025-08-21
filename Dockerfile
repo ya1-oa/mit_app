@@ -69,7 +69,7 @@ ENV GECKO_DRIVER_PATH=/usr/local/bin/geckodriver \
     CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
     CHROME_BIN=/usr/bin/google-chrome \
     LIBREOFFICE_PATH=/usr/bin/libreoffice \
-    DISPLAY=:99 \  # This tells applications to use the virtual display
+    DISPLAY=:99 \
     PYTHONUNBUFFERED=1
 
 # Create and set working directory
