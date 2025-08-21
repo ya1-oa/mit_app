@@ -16,7 +16,7 @@ from selenium.common.exceptions import (
 from selenium.webdriver.common.keys import Keys
 
 class AutomationTasks:
-    def __init__(self, browser: str = "chrome", headless: bool = false):
+    def __init__(self, browser: str = "chrome", headless: bool = False):
         self.automator = WebAutomator(browser=browser, headless=headless)
     
     def generic_automation(
@@ -711,4 +711,5 @@ class RoomTemplateAutomation:
             
 
         return results
+
 
