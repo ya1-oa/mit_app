@@ -120,170 +120,170 @@ class WebAutomator:
         self._debug_print("ChromeDriver not found in common locations", "WARNING")
         return None
     
-def _check_system_dependencies(self):
-    """Simple dependency check - just verify Chrome works"""
-    self._debug_print("Performing Chrome dependency check...")
-    
-    # Set default path first
-    chrome_path = self.chromium_path or "/usr/bin/google-chrome"
-    
-    try:
-        # Test if Chrome can start with a simple command
-        result = subprocess.run(
-            [chrome_path, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom", "about:blank"],
-            capture_output=True, 
-            text=True, 
-            timeout=30
-        )
+    def _check_system_dependencies(self):
+        """Simple dependency check - just verify Chrome works"""
+        self._debug_print("Performing Chrome dependency check...")
         
-        if result.returncode == 0:
-            self._debug_print("Chrome dependency check passed", "INFO")
-            return True
-        else:
-            error_msg = result.stderr or result.stdout or "Unknown error"
-            self._debug_print(f"Chrome test failed: {error_msg}", "ERROR")
-            return False
-            
-    except Exception as e:
-        self._debug_print(f"Dependency check failed: {str(e)}", "ERROR")
-        return False
-
-def _init_driver(self):
-    """Initialize Chrome WebDriver using webdriver-manager for automatic version matching"""
-    try:
-        self._debug_print("Initializing Chrome driver with webdriver-manager...")
+        # Set default path first
+        chrome_path = self.chromium_path or "/usr/bin/google-chrome"
         
-        # Set default path first to avoid None errors
-        self.chromium_path = self.chromium_path or "/usr/bin/google-chrome"
-        
-        # Verify Chrome exists before any checks
-        if not os.path.exists(self.chromium_path):
-            raise WebAutomationError(f"Chrome not found at: {self.chromium_path}")
-        if not os.access(self.chromium_path, os.X_OK):
-            raise WebAutomationError(f"Chrome not executable at: {self.chromium_path}")
-        
-        # Get Chrome version
-        success, version_output = self._run_command([self.chromium_path, "--version"], "Get Chrome version")
-        if success:
-            self._debug_print(f"Chrome version: {version_output}")
-            # Extract version number (e.g., "139.0.7258.138")
-            chrome_version = version_output.replace('Google Chrome ', '').strip()
-        else:
-            self._debug_print("Failed to get Chrome version, using webdriver-manager default", "WARNING")
-            chrome_version = None
-        
-        # Use webdriver-manager to handle ChromeDriver automatically
         try:
-            from webdriver_manager.chrome import ChromeDriverManager
-            from webdriver_manager.core.utils import ChromeType
+            # Test if Chrome can start with a simple command
+            result = subprocess.run(
+                [chrome_path, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom", "about:blank"],
+                capture_output=True, 
+                text=True, 
+                timeout=30
+            )
             
-            self._debug_print("Using webdriver-manager for automatic ChromeDriver management")
-            
-            if chrome_version:
-                self._debug_print(f"Requesting ChromeDriver for Chrome version: {chrome_version}")
-                # Get specific ChromeDriver for this Chrome version
-                self.driver_path = ChromeDriverManager(
-                    chrome_type=ChromeType.GOOGLE,
-                    version=chrome_version  # Match exact Chrome version
-                ).install()
+            if result.returncode == 0:
+                self._debug_print("Chrome dependency check passed", "INFO")
+                return True
             else:
-                # Fallback: get latest compatible ChromeDriver
-                self.driver_path = ChromeDriverManager(
-                    chrome_type=ChromeType.GOOGLE
-                ).install()
+                error_msg = result.stderr or result.stdout or "Unknown error"
+                self._debug_print(f"Chrome test failed: {error_msg}", "ERROR")
+                return False
+                
+        except Exception as e:
+            self._debug_print(f"Dependency check failed: {str(e)}", "ERROR")
+            return False
+    
+    def _init_driver(self):
+        """Initialize Chrome WebDriver using webdriver-manager for automatic version matching"""
+        try:
+            self._debug_print("Initializing Chrome driver with webdriver-manager...")
             
-            self._debug_print(f"ChromeDriver installed at: {self.driver_path}")
+            # Set default path first to avoid None errors
+            self.chromium_path = self.chromium_path or "/usr/bin/google-chrome"
             
-            # Verify ChromeDriver version
-            success, driver_version = self._run_command([self.driver_path, "--version"], "Get ChromeDriver version")
+            # Verify Chrome exists before any checks
+            if not os.path.exists(self.chromium_path):
+                raise WebAutomationError(f"Chrome not found at: {self.chromium_path}")
+            if not os.access(self.chromium_path, os.X_OK):
+                raise WebAutomationError(f"Chrome not executable at: {self.chromium_path}")
+            
+            # Get Chrome version
+            success, version_output = self._run_command([self.chromium_path, "--version"], "Get Chrome version")
             if success:
-                self._debug_print(f"ChromeDriver version: {driver_version}")
+                self._debug_print(f"Chrome version: {version_output}")
+                # Extract version number (e.g., "139.0.7258.138")
+                chrome_version = version_output.replace('Google Chrome ', '').strip()
+            else:
+                self._debug_print("Failed to get Chrome version, using webdriver-manager default", "WARNING")
+                chrome_version = None
             
-        except ImportError:
-            self._debug_print("webdriver-manager not available, falling back to manual detection", "WARNING")
-            # Manual fallback - try to find existing ChromeDriver
-            possible_paths = [
-                "/usr/local/bin/chromedriver",
-                "/usr/bin/chromedriver",
-                shutil.which("chromedriver")
-            ]
-            
-            for path in possible_paths:
-                if path and os.path.exists(path) and os.access(path, os.X_OK):
-                    self.driver_path = path
-                    self._debug_print(f"Found ChromeDriver at: {path}")
-                    break
-            
-            if not self.driver_path:
-                raise WebAutomationError("ChromeDriver not found and webdriver-manager not available")
-        
-        # Initialize Chrome options
-        options = ChromeOptions()
-        options.binary_location = self.chromium_path
-        
-        # Essential container options
-        options.add_argument("--no-sandbox")
-        options.add_argument("--disable-dev-shm-usage")
-        options.add_argument("--disable-gpu")
-        options.add_argument("--disable-extensions")
-        options.add_argument("--headless=new")
-        options.add_argument("--window-size=1280,720")
-        options.add_argument("--disable-dev-tools")
-        options.add_argument("--log-level=3")
-        
-        # Memory optimization
-        options.add_argument("--single-process")
-        options.add_argument("--memory-pressure-off")
-        
-        # Download preferences if needed
-        if self.download_dir:
-            os.makedirs(self.download_dir, exist_ok=True)
-            prefs = {
-                "download.default_directory": self.download_dir,
-                "download.prompt_for_download": False,
-                "download.directory_upgrade": True,
-                "safebrowsing.enabled": False
-            }
-            options.add_experimental_option("prefs", prefs)
-        
-        # Configure service
-        service = ChromeService(
-            executable_path=self.driver_path,
-            service_args=["--verbose"],
-            log_path="/tmp/chromedriver.log"
-        )
-        
-        self._debug_print("Starting Chrome driver...")
-        self.driver = webdriver.Chrome(service=service, options=options)
-        
-        # Set minimal implicit wait
-        self.driver.implicitly_wait(self.implicit_wait)
-        self.original_window = self.driver.current_window_handle
-        
-        self._debug_print("Chrome driver initialized successfully with webdriver-manager")
-        
-    except Exception as e:
-        # Enhanced error reporting
-        error_details = f"Initialization error: {str(e)}"
-        
-        # Read ChromeDriver logs if they exist
-        if os.path.exists("/tmp/chromedriver.log"):
+            # Use webdriver-manager to handle ChromeDriver automatically
             try:
-                with open("/tmp/chromedriver.log", "r") as f:
-                    chromedriver_logs = f.read()
-                    error_details += f"\n\nChromeDriver logs:\n{chromedriver_logs[-1000:]}"  # Last 1000 chars
-            except Exception as log_error:
-                error_details += f"\n\nFailed to read ChromeDriver logs: {str(log_error)}"
-        
-        # System diagnostics
-        error_details += f"\n\nSystem diagnostics:"
-        error_details += f"\n- Chrome path: {self.chromium_path}"
-        error_details += f"\n- ChromeDriver path: {self.driver_path}"
-        error_details += f"\n- Chrome exists: {os.path.exists(self.chromium_path) if self.chromium_path else False}"
-        error_details += f"\n- ChromeDriver exists: {os.path.exists(self.driver_path) if self.driver_path else False}"
-        
-        self._debug_print(error_details, "ERROR")
-        raise WebAutomationError(error_details)
+                from webdriver_manager.chrome import ChromeDriverManager
+                from webdriver_manager.core.utils import ChromeType
+                
+                self._debug_print("Using webdriver-manager for automatic ChromeDriver management")
+                
+                if chrome_version:
+                    self._debug_print(f"Requesting ChromeDriver for Chrome version: {chrome_version}")
+                    # Get specific ChromeDriver for this Chrome version
+                    self.driver_path = ChromeDriverManager(
+                        chrome_type=ChromeType.GOOGLE,
+                        version=chrome_version  # Match exact Chrome version
+                    ).install()
+                else:
+                    # Fallback: get latest compatible ChromeDriver
+                    self.driver_path = ChromeDriverManager(
+                        chrome_type=ChromeType.GOOGLE
+                    ).install()
+                
+                self._debug_print(f"ChromeDriver installed at: {self.driver_path}")
+                
+                # Verify ChromeDriver version
+                success, driver_version = self._run_command([self.driver_path, "--version"], "Get ChromeDriver version")
+                if success:
+                    self._debug_print(f"ChromeDriver version: {driver_version}")
+                
+            except ImportError:
+                self._debug_print("webdriver-manager not available, falling back to manual detection", "WARNING")
+                # Manual fallback - try to find existing ChromeDriver
+                possible_paths = [
+                    "/usr/local/bin/chromedriver",
+                    "/usr/bin/chromedriver",
+                    shutil.which("chromedriver")
+                ]
+                
+                for path in possible_paths:
+                    if path and os.path.exists(path) and os.access(path, os.X_OK):
+                        self.driver_path = path
+                        self._debug_print(f"Found ChromeDriver at: {path}")
+                        break
+                
+                if not self.driver_path:
+                    raise WebAutomationError("ChromeDriver not found and webdriver-manager not available")
+            
+            # Initialize Chrome options
+            options = ChromeOptions()
+            options.binary_location = self.chromium_path
+            
+            # Essential container options
+            options.add_argument("--no-sandbox")
+            options.add_argument("--disable-dev-shm-usage")
+            options.add_argument("--disable-gpu")
+            options.add_argument("--disable-extensions")
+            options.add_argument("--headless=new")
+            options.add_argument("--window-size=1280,720")
+            options.add_argument("--disable-dev-tools")
+            options.add_argument("--log-level=3")
+            
+            # Memory optimization
+            options.add_argument("--single-process")
+            options.add_argument("--memory-pressure-off")
+            
+            # Download preferences if needed
+            if self.download_dir:
+                os.makedirs(self.download_dir, exist_ok=True)
+                prefs = {
+                    "download.default_directory": self.download_dir,
+                    "download.prompt_for_download": False,
+                    "download.directory_upgrade": True,
+                    "safebrowsing.enabled": False
+                }
+                options.add_experimental_option("prefs", prefs)
+            
+            # Configure service
+            service = ChromeService(
+                executable_path=self.driver_path,
+                service_args=["--verbose"],
+                log_path="/tmp/chromedriver.log"
+            )
+            
+            self._debug_print("Starting Chrome driver...")
+            self.driver = webdriver.Chrome(service=service, options=options)
+            
+            # Set minimal implicit wait
+            self.driver.implicitly_wait(self.implicit_wait)
+            self.original_window = self.driver.current_window_handle
+            
+            self._debug_print("Chrome driver initialized successfully with webdriver-manager")
+            
+        except Exception as e:
+            # Enhanced error reporting
+            error_details = f"Initialization error: {str(e)}"
+            
+            # Read ChromeDriver logs if they exist
+            if os.path.exists("/tmp/chromedriver.log"):
+                try:
+                    with open("/tmp/chromedriver.log", "r") as f:
+                        chromedriver_logs = f.read()
+                        error_details += f"\n\nChromeDriver logs:\n{chromedriver_logs[-1000:]}"  # Last 1000 chars
+                except Exception as log_error:
+                    error_details += f"\n\nFailed to read ChromeDriver logs: {str(log_error)}"
+            
+            # System diagnostics
+            error_details += f"\n\nSystem diagnostics:"
+            error_details += f"\n- Chrome path: {self.chromium_path}"
+            error_details += f"\n- ChromeDriver path: {self.driver_path}"
+            error_details += f"\n- Chrome exists: {os.path.exists(self.chromium_path) if self.chromium_path else False}"
+            error_details += f"\n- ChromeDriver exists: {os.path.exists(self.driver_path) if self.driver_path else False}"
+            
+            self._debug_print(error_details, "ERROR")
+            raise WebAutomationError(error_details)
 
     def test_browser_setup(self) -> Dict[str, any]:
         """Test browser setup and return detailed diagnostics"""
@@ -498,6 +498,7 @@ def _init_driver(self):
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
 
 
 
