@@ -121,109 +121,29 @@ class WebAutomator:
         return None
     
 def _check_system_dependencies(self):
-    """Check if all required system dependencies are available on Ubuntu Trixie"""
-    self._debug_print("Checking system dependencies for Ubuntu Trixie...")
+    """Practical dependency check - assume libraries are installed if Chrome works"""
+    self._debug_print("Performing practical dependency check...")
     
-    essential_libs = [
-        "libnss3", "libnspr4", "libatk-bridge2.0-0", "libatk1.0-0",
-        "libx11-6", "libxcb1", "libxcomposite1", "libxdamage1",
-        "libxext6", "libxfixes3", "libxi6", "libxrandr2",
-        "libxss1", "libxtst6", "libgtk-3.0", "libgbm1",
-        "libasound2", "libcups2", "libdbus-1-3"
-    ]
-    
-    missing_libs = []
-    
-    # First, try using dpkg to check installed packages that provide these libraries
     try:
-        # Get list of all installed packages
+        # Test if Chrome can start with a simple command
         result = subprocess.run(
-            ["dpkg", "-l"], 
+            [self.chromium_path, "--headless", "--no-sandbox", "--disable-gpu", "--dump-dom", "about:blank"],
             capture_output=True, 
             text=True, 
             timeout=30
         )
         
-        installed_packages = result.stdout.lower()
-        
-        for lib in essential_libs:
-            # Check if library is likely provided by an installed package
-            # This is a heuristic approach since libraries can be provided by multiple packages
-            lib_found = False
+        if result.returncode == 0:
+            self._debug_print("System dependencies check passed - Chrome can run", "INFO")
+            return True
+        else:
+            error_msg = result.stderr or result.stdout or "Unknown error"
+            self._debug_print(f"Chrome test failed: {error_msg}", "ERROR")
+            return False
             
-            # Common package names that provide these libraries
-            possible_packages = {
-                "libnss3": "libnss3",
-                "libnspr4": "libnspr4",
-                "libatk-bridge2.0-0": "libatk-bridge2.0-0",
-                "libatk1.0-0": "libatk1.0-0",
-                "libx11-6": "libx11-6",
-                "libxcb1": "libxcb1",
-                "libxcomposite1": "libxcomposite1",
-                "libxdamage1": "libxdamage1",
-                "libxext6": "libxext6",
-                "libxfixes3": "libxfixes3",
-                "libxi6": "libxi6",
-                "libxrandr2": "libxrandr2",
-                "libxss1": "libxss1",
-                "libxtst6": "libxtst6",
-                "libgtk-3.0": "libgtk-3-0",
-                "libgbm1": "libgbm1",
-                "libasound2": "libasound2",
-                "libcups2": "libcups2",
-                "libdbus-1-3": "libdbus-1-3"
-            }
-            
-            pkg_name = possible_packages.get(lib, lib)
-            if pkg_name in installed_packages:
-                lib_found = True
-            else:
-                # Fallback: check if library file exists
-                try:
-                    # Common library paths
-                    lib_paths = [
-                        f"/usr/lib/x86_64-linux-gnu/{lib}.so",
-                        f"/usr/lib/x86_64-linux-gnu/{lib}.so.0",
-                        f"/usr/lib/{lib}.so",
-                        f"/usr/lib/{lib}.so.0",
-                        f"/lib/x86_64-linux-gnu/{lib}.so",
-                        f"/lib/x86_64-linux-gnu/{lib}.so.0"
-                    ]
-                    
-                    for path in lib_paths:
-                        if os.path.exists(path):
-                            lib_found = True
-                            break
-                except:
-                    pass
-            
-            if not lib_found:
-                missing_libs.append(lib)
-                
     except Exception as e:
-        self._debug_print(f"Error checking packages: {str(e)}", "WARNING")
-        # Fallback to simple file existence check
-        for lib in essential_libs:
-            try:
-                result = subprocess.run(
-                    ["find", "/usr/lib", "/lib", "-name", f"*{lib}*", "-type", "f"],
-                    capture_output=True, 
-                    text=True, 
-                    timeout=15
-                )
-                if not result.stdout.strip():
-                    missing_libs.append(lib)
-            except:
-                missing_libs.append(lib)
-    
-    if missing_libs:
-        self._debug_print(f"Missing essential libraries: {missing_libs}", "ERROR")
-        self._debug_print("These libraries are required for Chrome to run in headless mode", "ERROR")
-        self._debug_print("Install them with: apt-get install -y libnss3 libnspr4 libatk-bridge2.0-0 libatk1.0-0 libx11-6 libxcb1 libxcomposite1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1 libxtst6 libgtk-3-0 libgbm1 libasound2 libcups2 libdbus-1-3", "ERROR")
+        self._debug_print(f"Dependency check failed: {str(e)}", "ERROR")
         return False
-    
-    self._debug_print("All essential libraries found", "INFO")
-    return True
 
 def _init_driver(self):
     """Initialize Chromium WebDriver using webdriver-manager for automatic version matching"""
@@ -598,4 +518,5 @@ def _init_driver(self):
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
 
