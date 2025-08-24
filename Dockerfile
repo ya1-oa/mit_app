@@ -29,6 +29,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     unzip \
     curl \
+    jq \
     # LibreOffice dependencies
     libreoffice-writer \
     libreoffice-calc \
@@ -39,29 +40,25 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# IMPROVED ChromeDriver installation with better error handling
-RUN echo "Installing ChromeDriver..." \
-    && CHROME_FULL_VERSION=$(google-chrome --version | awk '{print $3}') \
-    && CHROME_MAJOR_VERSION=$(echo $CHROME_FULL_VERSION | cut -d. -f1) \
-    && echo "Chrome version: $CHROME_FULL_VERSION" \
-    && echo "Chrome major version: $CHROME_MAJOR_VERSION" \
-    # Try multiple ChromeDriver download strategies
-    && (CHROME_DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION" 2>/dev/null) || \
-        CHROME_DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE" 2>/dev/null) || \
-        CHROME_DRIVER_VERSION="$CHROME_FULL_VERSION") \
-    && echo "Downloading ChromeDriver version: $CHROME_DRIVER_VERSION" \
-    # Try exact version first, then major version, then latest
-    && (wget --no-verbose --tries=3 --timeout=30 \
-        "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" -O /tmp/chromedriver.zip || \
-        wget --no-verbose --tries=3 --timeout=30 \
-        "https://chromedriver.storage.googleapis.com/$CHROME_MAJOR_VERSION.0.0.0/chromedriver_linux64.zip" -O /tmp/chromedriver.zip || \
-        wget --no-verbose --tries=3 --timeout=30 \
-        "https://chromedriver.storage.googleapis.com/LATEST_RELEASE/chromedriver_linux64.zip" -O /tmp/chromedriver.zip) \
-    && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
+# SIMPLE ChromeDriver installation using Chrome for Testing direct URL
+RUN echo "Installing ChromeDriver using Chrome for Testing API..." \
+    && CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
+    && echo "Chrome version: $CHROME_VERSION" \
+    # Direct download from Chrome for Testing storage
+    && echo "Downloading ChromeDriver for version $CHROME_VERSION..." \
+    && wget --no-verbose --tries=3 --timeout=30 \
+        "https://storage.googleapis.com/chrome-for-testing-public/$CHROME_VERSION/linux64/chromedriver-linux64.zip" \
+        -O /tmp/chromedriver.zip \
+    && echo "Extracting ChromeDriver..." \
+    && unzip /tmp/chromedriver.zip -d /tmp/ \
+    && find /tmp -name "chromedriver" -type f -exec cp {} /usr/local/bin/chromedriver \; \
     && chmod +x /usr/local/bin/chromedriver \
-    && rm /tmp/chromedriver.zip \
+    && rm -rf /tmp/chromedriver* \
     && echo "ChromeDriver installed successfully" \
-    && /usr/local/bin/chromedriver --version
+    && /usr/local/bin/chromedriver --version \
+    && echo "Verifying Chrome and ChromeDriver compatibility..." \
+    && google-chrome --version \
+    && echo "✅ Chrome and ChromeDriver setup complete"
 
 # Set environment variables
 ENV CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
