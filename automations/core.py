@@ -149,102 +149,77 @@ class WebAutomator:
             return False
     
     def _init_driver(self):
-        """Initialize Chrome WebDriver using webdriver-manager for automatic version matching"""
+        """Initialize Chrome WebDriver with forced version matching"""
         try:
-            self._debug_print("Initializing Chrome driver with webdriver-manager...")
+            self._debug_print("Initializing Chrome driver with forced version matching...")
             
-            # Set default path first to avoid None errors
+            # Set default path
             self.chromium_path = self.chromium_path or "/usr/bin/google-chrome"
             
-            # Verify Chrome exists before any checks
+            # Verify Chrome exists
             if not os.path.exists(self.chromium_path):
                 raise WebAutomationError(f"Chrome not found at: {self.chromium_path}")
             if not os.access(self.chromium_path, os.X_OK):
                 raise WebAutomationError(f"Chrome not executable at: {self.chromium_path}")
             
-            # Get Chrome version
+            # Get Chrome version - CRITICAL for version matching
             success, version_output = self._run_command([self.chromium_path, "--version"], "Get Chrome version")
             if success:
                 self._debug_print(f"Chrome version: {version_output}")
-                # Extract version number (e.g., "139.0.7258.138")
+                # Extract exact version number (e.g., "139.0.7258.138")
                 chrome_version = version_output.replace('Google Chrome ', '').strip()
+                # Extract major version (139)
+                chrome_major_version = chrome_version.split('.')[0]
             else:
-                self._debug_print("Failed to get Chrome version, using webdriver-manager default", "WARNING")
-                chrome_version = None
+                raise WebAutomationError("Failed to get Chrome version")
             
-            # Use webdriver-manager to handle ChromeDriver automatically
+            # FORCE webdriver-manager to get the correct ChromeDriver version
             try:
                 from webdriver_manager.chrome import ChromeDriverManager
                 from webdriver_manager.core.utils import ChromeType
                 
-                self._debug_print("Using webdriver-manager for automatic ChromeDriver management")
+                self._debug_print(f"FORCING ChromeDriver download for Chrome {chrome_version}")
                 
-                if chrome_version:
-                    self._debug_print(f"Requesting ChromeDriver for Chrome version: {chrome_version}")
-                    # Get specific ChromeDriver for this Chrome version
+                # Method 1: Try exact version first
+                try:
                     self.driver_path = ChromeDriverManager(
                         chrome_type=ChromeType.GOOGLE,
-                        version=chrome_version  # Match exact Chrome version
+                        version=chrome_version  # EXACT version match
                     ).install()
-                else:
-                    # Fallback: get latest compatible ChromeDriver
+                    self._debug_print(f"Successfully installed ChromeDriver {chrome_version}")
+                except:
+                    # Method 2: Try major version if exact fails
+                    self._debug_print(f"Exact version failed, trying major version {chrome_major_version}")
                     self.driver_path = ChromeDriverManager(
-                        chrome_type=ChromeType.GOOGLE
+                        chrome_type=ChromeType.GOOGLE,
+                        version=chrome_major_version  # Major version match
                     ).install()
-                
-                self._debug_print(f"ChromeDriver installed at: {self.driver_path}")
+                    self._debug_print(f"Successfully installed ChromeDriver for major version {chrome_major_version}")
                 
                 # Verify ChromeDriver version
-                success, driver_version = self._run_command([self.driver_path, "--version"], "Get ChromeDriver version")
+                success, driver_version = self._run_command([self.driver_path, "--version"], "Verify ChromeDriver version")
                 if success:
-                    self._debug_print(f"ChromeDriver version: {driver_version}")
+                    self._debug_print(f"Final ChromeDriver version: {driver_version}")
                 
             except ImportError:
-                self._debug_print("webdriver-manager not available, falling back to manual detection", "WARNING")
-                # Manual fallback - try to find existing ChromeDriver
-                possible_paths = [
-                    "/usr/local/bin/chromedriver",
-                    "/usr/bin/chromedriver",
-                    shutil.which("chromedriver")
-                ]
-                
-                for path in possible_paths:
-                    if path and os.path.exists(path) and os.access(path, os.X_OK):
-                        self.driver_path = path
-                        self._debug_print(f"Found ChromeDriver at: {path}")
-                        break
-                
-                if not self.driver_path:
-                    raise WebAutomationError("ChromeDriver not found and webdriver-manager not available")
+                raise WebAutomationError("webdriver-manager is not installed. Add 'webdriver-manager' to requirements.txt")
+            
+            # MANUAL FALLBACK: If webdriver-manager still fails, download directly
+            if not self.driver_path or not os.path.exists(self.driver_path):
+                self._debug_print("webdriver-manager failed, downloading ChromeDriver manually...")
+                self._download_chromedriver_manually(chrome_version)
             
             # Initialize Chrome options
             options = ChromeOptions()
             options.binary_location = self.chromium_path
             
-            # Essential container options
+            # Essential options
             options.add_argument("--no-sandbox")
             options.add_argument("--disable-dev-shm-usage")
             options.add_argument("--disable-gpu")
-            options.add_argument("--disable-extensions")
             options.add_argument("--headless=new")
             options.add_argument("--window-size=1280,720")
-            options.add_argument("--disable-dev-tools")
-            options.add_argument("--log-level=3")
-            
-            # Memory optimization
-            options.add_argument("--single-process")
-            options.add_argument("--memory-pressure-off")
-            
-            # Download preferences if needed
-            if self.download_dir:
-                os.makedirs(self.download_dir, exist_ok=True)
-                prefs = {
-                    "download.default_directory": self.download_dir,
-                    "download.prompt_for_download": False,
-                    "download.directory_upgrade": True,
-                    "safebrowsing.enabled": False
-                }
-                options.add_experimental_option("prefs", prefs)
+            options.add_argument("--disable-extensions")
             
             # Configure service
             service = ChromeService(
@@ -256,35 +231,89 @@ class WebAutomator:
             self._debug_print("Starting Chrome driver...")
             self.driver = webdriver.Chrome(service=service, options=options)
             
-            # Set minimal implicit wait
             self.driver.implicitly_wait(self.implicit_wait)
             self.original_window = self.driver.current_window_handle
             
-            self._debug_print("Chrome driver initialized successfully with webdriver-manager")
+            self._debug_print("Chrome driver initialized successfully!")
             
         except Exception as e:
-            # Enhanced error reporting
             error_details = f"Initialization error: {str(e)}"
             
-            # Read ChromeDriver logs if they exist
-            if os.path.exists("/tmp/chromedriver.log"):
-                try:
-                    with open("/tmp/chromedriver.log", "r") as f:
-                        chromedriver_logs = f.read()
-                        error_details += f"\n\nChromeDriver logs:\n{chromedriver_logs[-1000:]}"  # Last 1000 chars
-                except Exception as log_error:
-                    error_details += f"\n\nFailed to read ChromeDriver logs: {str(log_error)}"
-            
-            # System diagnostics
-            error_details += f"\n\nSystem diagnostics:"
+            # Enhanced diagnostics
+            error_details += f"\n\nVersion diagnostics:"
             error_details += f"\n- Chrome path: {self.chromium_path}"
             error_details += f"\n- ChromeDriver path: {self.driver_path}"
-            error_details += f"\n- Chrome exists: {os.path.exists(self.chromium_path) if self.chromium_path else False}"
-            error_details += f"\n- ChromeDriver exists: {os.path.exists(self.driver_path) if self.driver_path else False}"
+            
+            # Check what versions are actually present
+            try:
+                chrome_ver = subprocess.run([self.chromium_path, "--version"], capture_output=True, text=True)
+                error_details += f"\n- Chrome version: {chrome_ver.stdout.strip() if chrome_ver.returncode == 0 else 'Unknown'}"
+            except:
+                pass
+                
+            try:
+                driver_ver = subprocess.run([self.driver_path, "--version"], capture_output=True, text=True) if self.driver_path else None
+                error_details += f"\n- ChromeDriver version: {driver_ver.stdout.strip() if driver_ver and driver_ver.returncode == 0 else 'Unknown'}"
+            except:
+                pass
             
             self._debug_print(error_details, "ERROR")
             raise WebAutomationError(error_details)
-
+    
+    def _download_chromedriver_manually(self, chrome_version):
+        """Manual fallback to download ChromeDriver"""
+        try:
+            # Download specific ChromeDriver version
+            download_url = f"https://chromedriver.storage.googleapis.com/{chrome_version}/chromedriver_linux64.zip"
+            self._debug_print(f"Downloading ChromeDriver from: {download_url}")
+            
+            # Download and extract
+            subprocess.run(["wget", "-O", "/tmp/chromedriver.zip", download_url], check=True)
+            subprocess.run(["unzip", "-o", "/tmp/chromedriver.zip", "-d", "/usr/local/bin/"], check=True)
+            subprocess.run(["chmod", "+x", "/usr/local/bin/chromedriver"], check=True)
+            subprocess.run(["rm", "/tmp/chromedriver.zip"], check=True)
+            
+            self.driver_path = "/usr/local/bin/chromedriver"
+            self._debug_print("Manually installed ChromeDriver")
+            
+        except Exception as e:
+            raise WebAutomationError(f"Manual ChromeDriver download failed: {str(e)}")
+    
+    def _emergency_chromedriver_fix(self):
+        """Emergency fix for version mismatches"""
+        try:
+            self._debug_print("Attempting emergency ChromeDriver fix...")
+            
+            # Get current Chrome version
+            result = subprocess.run(["/usr/bin/google-chrome", "--version"], 
+                                  capture_output=True, text=True)
+            if result.returncode == 0:
+                chrome_version = result.stdout.strip().replace('Google Chrome ', '')
+                self._debug_print(f"Detected Chrome version: {chrome_version}")
+                
+                # Download matching ChromeDriver
+                import requests, zipfile, io
+                url = f"https://chromedriver.storage.googleapis.com/{chrome_version}/chromedriver_linux64.zip"
+                
+                self._debug_print(f"Downloading matching ChromeDriver from: {url}")
+                response = requests.get(url)
+                response.raise_for_status()
+                
+                # Extract and install
+                with zipfile.ZipFile(io.BytesIO(response.content)) as zipf:
+                    zipf.extractall("/usr/local/bin/")
+                
+                # Make executable
+                subprocess.run(["chmod", "+x", "/usr/local/bin/chromedriver"], check=True)
+                
+                self.driver_path = "/usr/local/bin/chromedriver"
+                self._debug_print("Emergency fix completed successfully")
+                return True
+                
+        except Exception as e:
+            self._debug_print(f"Emergency fix failed: {str(e)}", "ERROR")
+            return False
+            
     def test_browser_setup(self) -> Dict[str, any]:
         """Test browser setup and return detailed diagnostics"""
         diagnostics = {
@@ -498,6 +527,7 @@ class WebAutomator:
         
     def __exit__(self, exc_type, exc_val, exc_tb):
         self.close()
+
 
 
 
