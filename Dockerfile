@@ -28,6 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     ca-certificates \
     unzip \
+    curl \
     # LibreOffice dependencies
     libreoffice-writer \
     libreoffice-calc \
@@ -38,22 +39,28 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver with EXACT version matching
+# IMPROVED ChromeDriver installation with better error handling
 RUN echo "Installing ChromeDriver..." \
     && CHROME_FULL_VERSION=$(google-chrome --version | awk '{print $3}') \
     && CHROME_MAJOR_VERSION=$(echo $CHROME_FULL_VERSION | cut -d. -f1) \
     && echo "Chrome version: $CHROME_FULL_VERSION" \
     && echo "Chrome major version: $CHROME_MAJOR_VERSION" \
-    && CHROME_DRIVER_VERSION=$(wget -qO- "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION" 2>/dev/null || \
-        wget -qO- "https://chromedriver.storage.googleapis.com/LATEST_RELEASE" 2>/dev/null || \
-        echo "139.0.7258.138") \
+    # Try multiple ChromeDriver download strategies
+    && (CHROME_DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE_$CHROME_MAJOR_VERSION" 2>/dev/null) || \
+        CHROME_DRIVER_VERSION=$(curl -s "https://chromedriver.storage.googleapis.com/LATEST_RELEASE" 2>/dev/null) || \
+        CHROME_DRIVER_VERSION="$CHROME_FULL_VERSION") \
     && echo "Downloading ChromeDriver version: $CHROME_DRIVER_VERSION" \
-    && wget --no-verbose --tries=3 --timeout=30 \
-        "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" -O /tmp/chromedriver.zip \
+    # Try exact version first, then major version, then latest
+    && (wget --no-verbose --tries=3 --timeout=30 \
+        "https://chromedriver.storage.googleapis.com/$CHROME_DRIVER_VERSION/chromedriver_linux64.zip" -O /tmp/chromedriver.zip || \
+        wget --no-verbose --tries=3 --timeout=30 \
+        "https://chromedriver.storage.googleapis.com/$CHROME_MAJOR_VERSION.0.0.0/chromedriver_linux64.zip" -O /tmp/chromedriver.zip || \
+        wget --no-verbose --tries=3 --timeout=30 \
+        "https://chromedriver.storage.googleapis.com/LATEST_RELEASE/chromedriver_linux64.zip" -O /tmp/chromedriver.zip) \
     && unzip /tmp/chromedriver.zip -d /usr/local/bin/ \
     && chmod +x /usr/local/bin/chromedriver \
     && rm /tmp/chromedriver.zip \
-    && echo "ChromeDriver $CHROME_DRIVER_VERSION installed successfully" \
+    && echo "ChromeDriver installed successfully" \
     && /usr/local/bin/chromedriver --version
 
 # Set environment variables
@@ -68,9 +75,6 @@ WORKDIR /app
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install webdriver-manager for automatic driver management
-RUN pip install --no-cache-dir webdriver-manager
 
 # Copy application code
 COPY . .
