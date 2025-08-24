@@ -71,6 +71,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+RUN rm -f /usr/local/bin/chromedriver /usr/bin/chromedriver
+
 # Install webdriver-manager for automatic driver management
 RUN pip install --no-cache-dir webdriver-manager
 
