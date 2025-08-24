@@ -38,8 +38,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-RUN rm -f /usr/local/bin/chromedriver
-
 # Install ChromeDriver with EXACT version matching
 RUN echo "Installing ChromeDriver..." \
     && CHROME_FULL_VERSION=$(google-chrome --version | awk '{print $3}') \
@@ -70,8 +68,6 @@ WORKDIR /app
 # Install Python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-RUN rm -f /usr/local/bin/chromedriver /usr/bin/chromedriver
 
 # Install webdriver-manager for automatic driver management
 RUN pip install --no-cache-dir webdriver-manager
