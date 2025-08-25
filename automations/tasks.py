@@ -358,7 +358,7 @@ class RoomTemplateAutomation:
                 'email_input': {'by': By.ID, 'value': 'username'},
                 'email_continue': {'by': By.CSS_SELECTOR, 'value': 'button._button-login-id'},
                 'password_input': {'by': By.ID, 'value': 'password'},
-                'password_continue': {'by': By.CSS_SELECTor, 'value': 'button._button-login-password'}
+                'password_continue': {'by': By.CSS_SELECTOR, 'value': 'button._button-login-password'}
             }
             self.automator.define_page('login', login_page)
             
@@ -771,3 +771,4 @@ class RoomTemplateAutomation:
             results['end_time'] = datetime.now().isoformat()
             
         return results
+
