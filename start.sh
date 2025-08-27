@@ -14,7 +14,7 @@ exec gunicorn \
     --bind 0.0.0.0:$PORT \
     --workers 2 \
     --threads 2 \
-    --timeout 600 \
+    --timeout 800 \
     --worker-class gthread \
     --access-logfile - \
     --error-logfile - \
