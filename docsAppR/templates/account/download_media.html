@@ -8,7 +8,7 @@
         <div class="col-6">
             <div class="card mb-4">
                 <div class="card-header">
-                    <h2>Download Encircle Media</h2>
+                    <h2>Download Encircle Media/Images</h2>
                 </div>
                 
                 <div class="card-body">
@@ -31,27 +31,30 @@
                         </div>
                         
                         <div class="form-group">
-                            <label for="room_filter" class="form-label">Room Filter (Leave blank to download all rooms images)</label>
+                            <label for="room_filter" class="form-label">Room Filter (optional)</label>
                             <input type="text" class="form-control form-control-styled" id="room_filter" name="room_filter"
                                    placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
-                            <small class="form-text text-muted">Only use this if you don't want to download all images but specific rooms instead</small>
+                            <small class="form-text text-muted">Leave blank to download all rooms</small>
                         </div>
                         
-                        <button type="submit" class="btn btn-primary btn-styled">Download Media</button>
+                        <button type="submit" class="btn btn-primary btn-styled">Download Images</button>
                     </form>
                     
                     <div class="mail-info mt-3">
                         <p><strong>How it works:</strong></p>
                         <p>Media files will be downloaded directly to a zip file with the following structure:</p>
-                        <p><code>claim_3793680_media.zip<br>
-                        ├── Main Building/<br>
-                        │   ├── 601 Foyer DN FRT.jpg<br>
-                        │   ├── 603 Living Room DN.png<br>
-                        │   └── ...<br>
-                        ├── unlabeled_media/<br>
-                        │   ├── 002_OH24CHERRY 600 HMR DMO & WIP V2.pdf<br>
-                        │   └── ...<br>
-                        └── ...</code></p>
+                        <div class="file-structure">
+                            <pre><code>claim_[ID]_media.zip
+                            ├── Room_Name_1/
+                            │   ├── 01_filename.jpg
+                            │   ├── 02_filename.png
+                            │   └── ...
+                            ├── Room_Name_2/
+                            │   ├── 03_filename.pdf
+                            │   └── ...
+                            └── ...</code></pre>
+                        </div>
+                        <p>Each file includes a metadata file with additional information.</p>
                     </div>
                 </div>
             </div>
@@ -61,48 +64,128 @@
         <div class="col-6">
             <div class="card mb-4">
                 <div class="card-header">
-                    <h2>Create Room Template</h2>
+                    <h2>Create Room Lists</h2>
                 </div>
                 
                 <div class="card-body">
-                    <form id="templateForm" enctype="multipart/form-data" method="post" action="{% url 'automate' %}">
+                    <form id="templateForm" method="post" action="{% url 'automate' %}">
                         {% csrf_token %}
+                       <div class="form-group textarea-with-numbers">
+                            <label for="room_data" class="form-label">Room Data (Room Name, LOS)</label>
+                            <div class="line-numbers-container">
+                                <div id="line-numbers" class="line-numbers"></div>
+                                <textarea 
+                                    class="form-control form-textarea-styled line-numbered-textarea" 
+                                    id="room_data" 
+                                    name="room_data" 
+                                    rows="8" 
+                                    placeholder="Paste your room data here (Room Name, LOS per line)&#10;&#10;Example:&#10;Living Room, LOS&#10;Kitchen, LOS&#10;Master Bedroom, .&#10;Bathroom, .&#10;..."
+                                    required></textarea>
+                            </div>
+                            <small class="form-text text-muted">
+                                Paste room data from Excel with format: "Room Name, LOS" (one per line). Be careful when copying room data, do not copy blank rows! Erroneous rows will be flagged invalid below.
+                            </small>
+                            <div class="data-preview mt-2">
+                                <small class="text-muted">
+                                    <span id="line-count">0</span> rooms detected
+                                </small>
+                                <div id="data-validation-details" class="mt-1"></div>
+                            </div>
+                        </div>
+
+                        <!-- Template Selection Section -->
                         <div class="form-group">
-                            <label for="email" class="form-label">Email</label>
-                            <input type="email" class="form-control form-control-styled" id="email" name="email" required>
+                            <label class="form-label">Select Room Lists to Generate</label>
+                            <div class="template-selection">
+
+                                <div class="template-option">
+                                    <input type="checkbox" id="readings_default" name="selected_templates" value="readings default">
+                                    <label for="readings_default" class="template-label">
+                                        <strong>Stabilization Readings List</strong>
+                                        <p>Generates readings template with room names and LOS data (Columns Q & R)</p>
+                                    </label>
+                                </div>
+
+                                <div class="template-option">
+                                    <input type="checkbox" id="template_default" name="selected_templates" value="default">
+                                    <label for="template_default" class="template-label">
+                                        <strong>Default Jobsite List</strong>
+                                        <p>Generates room data from room names and LOS data</p>
+                                    </label>
+                                </div>
+
+                                <div class="template-option">
+                                    <input type="checkbox" id="template_basic" name="selected_templates" value="basic">
+                                    <label for="template_basic" class="template-label">
+                                        <strong>100-800s Basic Room List</strong>
+                                        <p>Generates basic room structure with room names and LOS data (Columns Q & R)</p>
+                                    </label>
+                                </div>
+                                
+                                <div class="template-option">
+                                    <input type="checkbox" id="template_extended" name="selected_templates" value="extended">
+                                    <label for="template_extended" class="template-label">
+                                        <strong>400s Extended Room List</strong>
+                                        <p>Generates extended room data with room names and LOS in separate columns (Q & R)</p>
+                                    </label>
+                                </div>
+                                
+                                <div class="template-option">
+                                    <input type="checkbox" id="template_readings" name="selected_templates" value="readings">
+                                    <label for="template_readings" class="template-label">
+                                        <strong>6000-7000s Readings List</strong>
+                                        <p>Generates readings template with room names and LOS data (Columns Q & R)</p>
+                                    </label>
+                                </div>
+
+                            </div>
+                            <small class="form-text text-muted">Select which templates you want to create. Templates will be generated in the order shown above. The template at the top will ALWAYS be the default, so if you deselect the top template, the NEXT in line will be the new default.</small>
                         </div>
                         
-                        <div class="form-group">
-                            <label for="password" class="form-label">Password</label>
-                            <input type="password" class="form-control form-control-styled" id="password" name="password" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="template_name" class="form-label">Template Name</label>
-                            <input type="text" class="form-control form-control-styled" id="template_name" name="template_name" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="excel_file" class="form-label">Excel File</label>
-                            <input type="file" class="form-control-file form-file-styled" id="excel_file" name="excel_file" accept=".xlsx,.xls" required>
-                            <small class="form-text text-muted">Must be the jobinfo(3) tab with proper column structure</small>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary btn-styled">Create Rooms</button>
+                        <button type="submit" class="btn btn-primary btn-styled">Create Selected Room Lists</button>
                     </form>
                     
                     <div id="status" class="mt-3"></div>
                     
                     <div class="instructions mt-4">
-                        <h5>Excel File Requirements:</h5>
-                        <ul>
-                            <li>Must contain 'jobinfo(3)' worksheet tab</li>
-                            <li>Columns A-B and D-E for basic room info</li>
-                            <li>Columns I-K and M-O for SOURCE OF LOSS</li>
-                            <li>Columns R-T and V-X for DMO sections</li>
-                            <li>Columns Z-AA and AC-AD for FSI sections</li>
-                            <li>Columns AF-AG and AH-AI for WTF MIT sections</li>
-                        </ul>
+                        <h5>This Apps Automation Process:</h5>
+                        <ol>
+                            <li>App logs in to Encircle platform</li>
+                            <li>App Navigates to Organization Settings → Manage Lists</li>
+                            <li>App Deletes existing templates</li>
+                            <li>App Creates selected templates in priority order</li>
+                            <li>Each room list template gets room names and LOS data from the pasted data</li>
+                        </ol>
+                        
+                        <div class="data-input-help mt-3">
+                            <h6>How to paste room and LOS data:</h6>
+                            <ul>
+                                <li>Copy data from Excel columns that contain both room names and LOS information</li>
+                                <li>Format should be: "Room Name, LOS" on each line</li>
+                                <li>Example: "Living Room, LOS"</li>
+                                <li>System will automatically split into Column Q (Room Name) and Column R (LOS)</li>
+                                <li>The system will validate and count your data entries</li>
+                                <li>Empty lines and malformed entries will be flagged as invalid and their index in the data shown.</li>
+                            </ul>
+                            
+                            <div class="data-format-examples mt-3">
+                                <h6>Supported Formats:</h6>
+                                <div class="format-example">
+                                    <strong>✅ Correct:</strong><br>
+                                    <code>Living Room, LOS<br>
+                                    Kitchen, LOS<br>
+                                    Master Bedroom, ...</code>
+                                </div>
+                                <div class="format-example mt-2">
+                                    <strong>❌ Incorrect:</strong><br>
+                                    <code>Living Room<br>
+                                    LOS<br>
+                                    Master Bedroom,
+                                    LOS<br>
+                                    Foyer<br></code>
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </div>
@@ -111,10 +194,198 @@
 </div>
 
 <script>
+
+function updateLineNumbers() {
+    const textarea = document.getElementById('room_data');
+    const lineNumbers = document.getElementById('line-numbers');
+    
+    if (!textarea || !lineNumbers) return;
+    
+    const lines = textarea.value.split('\n').length;
+    const visibleLines = Math.max(textarea.rows, lines, 8); // Minimum 8 lines
+    
+    let numbersHtml = '';
+    for (let i = 1; i <= visibleLines; i++) {
+        numbersHtml += `<div style="height: 1.5em; line-height: 1.5em;">${i}</div>`;
+    }
+    lineNumbers.innerHTML = numbersHtml;
+    
+    // Sync scrolling
+    lineNumbers.scrollTop = textarea.scrollTop;
+}
+
+// Initialize line numbers and set up event listeners
+function initializeLineNumbers() {
+    const textarea = document.getElementById('room_data');
+    if (!textarea) return;
+    
+    // Update on various events
+    textarea.addEventListener('input', function() {
+        updateLineNumbers();
+    });
+    
+    textarea.addEventListener('scroll', function() {
+        const lineNumbers = document.getElementById('line-numbers');
+        if (lineNumbers) {
+            lineNumbers.scrollTop = textarea.scrollTop;
+        }
+    });
+    
+    textarea.addEventListener('paste', function() {
+        setTimeout(updateLineNumbers, 10);
+    });
+    
+    // Initial update
+    updateLineNumbers();
+}
+
+// Call this when the DOM is loaded
+document.addEventListener('DOMContentLoaded', function() {
+    initializeLineNumbers();
+});
+
+// Room data counter and validation with LOS support
+document.getElementById('room_data').addEventListener('input', function(e) {
+
+    updateLineNumbers();
+
+    const text = e.target.value.trim();
+    const lines = text ? text.split('\n').filter(line => line.trim() !== '') : [];
+    
+    // Parse and validate each line
+    let validEntries = [];
+    let invalidEntries = [];
+    
+    lines.forEach((line, index) => {
+        const trimmedLine = line.trim();
+        if (trimmedLine === '') return;
+        
+        // Check if line contains a comma
+        if (trimmedLine.includes(',')) {
+            const parts = trimmedLine.split(',');
+            if (parts.length >= 2) {
+                const roomName = parts[0].trim();
+                const los = parts.slice(1).join(',').trim(); // Handle commas in LOS description
+                
+                if (roomName && los) {
+                    validEntries.push({
+                        line: index + 1,
+                        roomName: roomName,
+                        los: los,
+                        original: trimmedLine
+                    });
+                } else {
+                    invalidEntries.push({
+                        line: index + 1,
+                        error: 'Empty room name or LOS',
+                        original: trimmedLine
+                    });
+                }
+            } else {
+                invalidEntries.push({
+                    line: index + 1,
+                    error: 'Missing LOS data after comma',
+                    original: trimmedLine
+                });
+            }
+        } else {
+            invalidEntries.push({
+                line: index + 1,
+                error: 'Missing comma separator',
+                original: trimmedLine
+            });
+        }
+    });
+    
+    // Update count display
+    document.getElementById('line-count').textContent = validEntries.length;
+    
+    // Update validation details
+    const detailsDiv = document.getElementById('data-validation-details');
+    const preview = document.querySelector('.data-preview small');
+    
+    if (validEntries.length === 0 && lines.length === 0) {
+        preview.className = 'text-muted';
+        detailsDiv.innerHTML = '';
+    } else if (validEntries.length === 0 && lines.length > 0) {
+        preview.className = 'text-danger';
+        detailsDiv.innerHTML = `<small class="text-danger">❌ No valid entries found. Please check format: "Room Name, LOS"</small>`;
+    } else if (invalidEntries.length > 0) {
+        preview.className = 'text-warning';
+        let detailsHtml = `<small class="text-success">✅ ${validEntries.length} valid entries</small>`;
+        if (invalidEntries.length <= 3) {
+            detailsHtml += `<br><small class="text-warning">⚠️ ${invalidEntries.length} invalid entries:</small>`;
+            invalidEntries.forEach(entry => {
+                detailsHtml += `<br><small class="text-muted">Line ${entry.line}: ${entry.error}</small>`;
+            });
+        } else {
+            detailsHtml += `<br><small class="text-warning">⚠️ ${invalidEntries.length} invalid entries (check format)</small>`;
+        }
+        detailsDiv.innerHTML = detailsHtml;
+    } else if (validEntries.length < 5) {
+        preview.className = 'text-warning';
+        detailsDiv.innerHTML = `<small class="text-warning">Consider adding more room entries for better coverage</small>`;
+    } else {
+        preview.className = 'text-success';
+        detailsDiv.innerHTML = `<small class="text-success">✅ All entries valid - Ready for Import to Encircle</small>`;
+    }
+});
+
 document.getElementById('templateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
     const statusDiv = document.getElementById('status');
-    statusDiv.innerHTML = '<div class="alert alert-info">Processing Excel file and creating rooms...</div>';
+    
+    // Check if at least one template is selected
+    const selectedTemplates = document.querySelectorAll('input[name="selected_templates"]:checked');
+    if (selectedTemplates.length === 0) {
+        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> Please select at least one template to generate.</div>';
+        return;
+    }
+    
+    // Validate room data
+    const roomData = document.getElementById('room_data').value.trim();
+    if (!roomData) {
+        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> Please paste room data before proceeding.</div>';
+        return;
+    }
+    
+    // Validate format and get valid entries
+    const lines = roomData.split('\n').filter(line => line.trim() !== '');
+    const validEntries = lines.filter(line => {
+        const parts = line.trim().split(',');
+        return parts.length >= 2 && parts[0].trim() && parts[1].trim();
+    });
+    
+    if (validEntries.length === 0) {
+        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> No valid room data found. Please ensure format is "Room Name, LOS" per line.</div>';
+        return;
+    }
+    
+    // Show processing status - with null checks to prevent the error
+    const templateNames = Array.from(selectedTemplates).map(cb => {
+        const labelElement = document.querySelector(`label[for="${cb.id}"]`);
+        if (!labelElement) {
+            console.warn(`Label not found for checkbox: ${cb.id}`);
+            return cb.value; // Fallback to checkbox value
+        }
+        
+        const strongElement = labelElement.querySelector('strong');
+        return strongElement ? strongElement.textContent : cb.value;
+    });
+    
+    statusDiv.innerHTML = `
+        <div class="alert alert-info">
+            <strong>Processing ${validEntries.length} room entries...</strong><br>
+            Selected templates: ${templateNames.join(', ')}<br>
+            Data format: Room Names → Column Q, LOS → Column S<br>
+            <div class="progress-steps">
+                <div class="step active">🔄 Logging in...</div>
+                <div class="step">📋 Navigating to settings...</div>
+                <div class="step">🗑️ Deleting existing templates...</div>
+                <div class="step">✨ Creating templates with Q & R data...</div>
+            </div>
+        </div>
+    `;
     
     try {
         const formData = new FormData(e.target);
@@ -125,21 +396,62 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
         
         const data = await response.json();
         
-        if (data.status === 'completed') {
-            const summary = data.processing_summary || {};
-            statusDiv.innerHTML = `
-                <div class="alert alert-success">
-                    <strong>Success!</strong><br>
-                    Template "${data.template_name}" created with ${summary.rooms_added} rooms.<br>
-                    ${summary.errors_encountered || 0} errors encountered.
-                </div>
-            `;
+        if (data.overall_status === 'completed') {
+            let successHtml = '<div class="alert alert-success"><strong>Success!</strong><br>';
+            successHtml += `Generated ${data.templates_successful} template(s) successfully.<br>`;
+            successHtml += `Processed ${validEntries.length} room entries with LOS data.<br>`;
+            successHtml += `Data populated in Encircle.<br>`;
+            
+            if (data.deletion_status && data.deletion_status.templates_deleted > 0) {
+                successHtml += `Deleted ${data.deletion_status.templates_deleted} existing template(s).<br>`;
+            }
+            
+            // Show details for each template
+            successHtml += '<div class="template-results mt-2">';
+            data.templates_processed.forEach(template => {
+                if (template.status === 'completed') {
+                    successHtml += `<div class="template-result success">
+                        <strong>${template.config.name}:</strong> ${template.rooms_added || template.rooms_extracted} entries added to Encircle Room List
+                    </div>`;
+                }
+            });
+            successHtml += '</div></div>';
+            statusDiv.innerHTML = successHtml;
+            
+        } else if (data.overall_status === 'partially_completed') {
+            let partialHtml = '<div class="alert alert-warning"><strong>Partially Completed</strong><br>';
+            partialHtml += `${data.templates_successful} template(s) successful, ${data.templates_failed} failed.<br>`;
+            
+            partialHtml += '<div class="template-results mt-2">';
+            data.templates_processed.forEach(template => {
+                const statusClass = template.status === 'completed' ? 'success' : 'failed';
+                const statusIcon = template.status === 'completed' ? '✅' : '❌';
+                partialHtml += `<div class="template-result ${statusClass}">
+                    ${statusIcon} <strong>${template.config.name}:</strong> ${template.status}
+                    ${template.error ? ` - ${template.error}` : ''}
+                </div>`;
+            });
+            partialHtml += '</div></div>';
+            statusDiv.innerHTML = partialHtml;
+            
         } else {
-            statusDiv.innerHTML = `
-                <div class="alert alert-danger">
-                    <strong>Error:</strong> ${data.error || 'Unknown error occurred during processing'}
-                </div>
-            `;
+            let errorHtml = '<div class="alert alert-danger"><strong>Error:</strong> ';
+            errorHtml += data.overall_error || data.error || 'Unknown error occurred during processing';
+            
+            // Show template-specific errors if available
+            if (data.templates_processed && data.templates_processed.length > 0) {
+                errorHtml += '<div class="template-results mt-2">';
+                data.templates_processed.forEach(template => {
+                    if (template.error) {
+                        errorHtml += `<div class="template-result failed">
+                            ❌ <strong>${template.config.name}:</strong> ${template.error}
+                        </div>`;
+                    }
+                });
+                errorHtml += '</div>';
+            }
+            errorHtml += '</div>';
+            statusDiv.innerHTML = errorHtml;
         }
     } catch (error) {
         statusDiv.innerHTML = `
@@ -149,6 +461,19 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
         `;
     }
 });
+
+// Update progress steps based on status updates (you can extend this for real-time updates)
+function updateProgressSteps(currentStep) {
+    const steps = document.querySelectorAll('.progress-steps .step');
+    steps.forEach((step, index) => {
+        step.classList.remove('active', 'completed');
+        if (index < currentStep) {
+            step.classList.add('completed');
+        } else if (index === currentStep) {
+            step.classList.add('active');
+        }
+    });
+}
 </script>
 
 <style>
@@ -184,6 +509,28 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
     margin-bottom: 15px;
 }
 
+/* File structure styling */
+.file-structure {
+    background-color: #f4f4f4;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    margin: 10px 0;
+}
+
+.file-structure pre {
+    margin: 0;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.file-structure code {
+    background: none;
+    padding: 0;
+    color: #333;
+}
+
 /* Enhanced Form Styling */
 .form-group {
     margin-bottom: 20px;
@@ -214,8 +561,9 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
     outline: none;
 }
 
-.form-file-styled {
-    padding: 10px 15px;
+/* New textarea styling */
+.form-textarea-styled {
+    padding: 12px 15px;
     font-size: 14px;
     border: 2px solid #e0e0e0;
     border-radius: 8px;
@@ -223,12 +571,91 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
     background-color: #fff;
     transition: all 0.3s ease;
     box-sizing: border-box;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    line-height: 1.5;
+    resize: vertical;
+    min-height: 120px;
 }
 
-.form-file-styled:focus {
+.form-textarea-styled:focus {
     border-color: #007bff;
     box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
     outline: none;
+}
+
+.form-textarea-styled::placeholder {
+    color: #999;
+    line-height: 1.5;
+}
+
+/* Data preview styling */
+.data-preview {
+    padding: 5px 0;
+}
+
+/* Enhanced data validation styling */
+#data-validation-details {
+    background-color: #f8f9fa;
+    padding: 8px 12px;
+    border-radius: 5px;
+    border-left: 3px solid #dee2e6;
+    margin-top: 5px;
+}
+
+#data-validation-details:empty {
+    display: none;
+}
+
+.data-input-help {
+    background-color: #e8f4f8;
+    padding: 15px;
+    border-radius: 8px;
+    border-left: 4px solid #17a2b8;
+}
+
+.data-input-help h6 {
+    color: #17a2b8;
+    margin-bottom: 10px;
+    font-weight: bold;
+}
+
+.data-input-help ul {
+    margin: 0;
+    padding-left: 20px;
+}
+
+.data-input-help li {
+    margin-bottom: 5px;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Format examples styling */
+.data-format-examples {
+    background-color: #fff3cd;
+    padding: 12px;
+    border-radius: 6px;
+    border: 1px solid #ffeaa7;
+}
+
+.format-example {
+    background-color: white;
+    padding: 10px;
+    border-radius: 4px;
+    border: 1px solid #ddd;
+    margin: 5px 0;
+}
+
+.format-example code {
+    background-color: #f8f9fa;
+    padding: 8px;
+    border-radius: 3px;
+    display: block;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    line-height: 1.4;
+    margin-top: 5px;
+    white-space: pre-line;
 }
 
 .form-text {
@@ -249,6 +676,165 @@ document.getElementById('templateForm').addEventListener('submit', async (e) => 
 .btn-styled:hover {
     transform: translateY(-1px);
     box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+}
+
+/* Template Selection Styling */
+.template-selection {
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+    padding: 15px;
+    background-color: #f9f9f9;
+}
+
+.template-option {
+    display: flex;
+    align-items: flex-start;
+    margin-bottom: 15px;
+    padding: 12px;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    background-color: white;
+    transition: all 0.3s ease;
+}
+
+.template-option:hover {
+    background-color: #f0f8ff;
+    border-color: #007bff;
+}
+
+.template-option input[type="checkbox"] {
+    margin-right: 12px;
+    margin-top: 2px;
+    transform: scale(1.2);
+}
+
+.template-label {
+    flex: 1;
+    cursor: pointer;
+    margin: 0;
+}
+
+.template-label strong {
+    color: #333;
+    display: block;
+    margin-bottom: 5px;
+}
+
+.template-label p {
+    margin: 0;
+    color: #666;
+    font-size: 13px;
+    line-height: 1.4;
+}
+
+/* Line numbering container */
+.textarea-with-numbers {
+    position: relative;
+}
+
+.line-numbers-container {
+    position: relative;
+    width: 100%;
+}
+
+.line-numbers {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 40px;
+    height: 100%;
+    background-color: #f8f9fa;
+    border: 2px solid #e0e0e0;
+    border-right: 1px solid #ddd;
+    border-radius: 8px 0 0 8px;
+    padding: 12px 5px;
+    font-family: 'Courier New', monospace;
+    font-size: 14px;
+    line-height: 1.5;
+    color: #666;
+    text-align: right;
+    overflow: hidden;
+    z-index: 2;
+    pointer-events: none;
+}
+
+.line-numbered-textarea {
+    padding-left: 50px !important;
+    position: relative;
+    z-index: 1;
+}
+
+/* Form Check Styling */
+.form-check {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background-color: #f9f9f9;
+    border-radius: 6px;
+}
+
+.form-check-input {
+    margin-right: 10px;
+    transform: scale(1.1);
+}
+
+.form-check-label {
+    cursor: pointer;
+    margin: 0;
+    font-weight: 500;
+}
+
+/* Progress Steps */
+.progress-steps {
+    margin-top: 10px;
+}
+
+.progress-steps .step {
+    padding: 5px 0;
+    color: #666;
+    font-size: 14px;
+}
+
+.progress-steps .step.active {
+    color: #007bff;
+    font-weight: bold;
+}
+
+.progress-steps .step.completed {
+    color: #28a745;
+}
+
+/* Template Results */
+.template-results {
+    background-color: #f8f9fa;
+    padding: 10px;
+    border-radius: 5px;
+    border-left: 4px solid #007bff;
+}
+
+.template-result {
+    padding: 5px 0;
+    font-size: 14px;
+}
+
+.template-result.success {
+    color: #28a745;
+}
+
+.template-result.failed {
+    color: #dc3545;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .row {
+        flex-direction: column;
+    }
+    
+    .col-6 {
+        width: 100%;
+        margin-bottom: 20px;
+    }
 }
 </style>
 {% endblock %}

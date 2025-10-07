@@ -25,5 +25,11 @@ urlpatterns = [
     path('save-landlord/', views.save_landlord, name='save_landlord'),
     path('generate-data-report/', views.generate_data_report, name='generate_data_report'),
     path('api/automate', views.create_room_template_from_excel, name='automate'),
-    #path('download-status/', views.download_status_view, name='download_status')
+    path('readings/', views.reading_browser, name='reading_browser'),
+    path('readings/upload/', views.upload_readings, name='upload_readings'),
+    path('readings/sorted/', views.get_sorted_readings, name='get_sorted_readings'),
+    path('readings/export/', views.export_readings, name='export_readings'),
+    path('readings/delete/<int:image_id>/', views.delete_reading, name='delete_reading'),
+    path('readings/rename/<int:image_id>/', views.rename_reading, name='rename_reading'),
+    path('api/import-client-with-rooms/', views.import_client_with_rooms, name='import_client_with_rooms'),
 ]

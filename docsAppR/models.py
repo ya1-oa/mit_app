@@ -3,6 +3,7 @@ from django.contrib.auth.models import AbstractUser
 from django.contrib.auth.base_user import BaseUserManager
 from django.forms import ModelForm
 import os
+import re
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
 from django.conf import settings
 
@@ -133,31 +134,6 @@ class Client(models.Model):
     #Rooms
     newCustomerID = models.CharField(max_length=255, blank=True)
     roomID = models.CharField(max_length=255, blank=True)
-    roomArea1 = models.CharField(max_length=255, blank=True)
-    roomArea2 = models.CharField(max_length=255, blank=True)
-    roomArea3 = models.CharField(max_length=255, blank=True)
-    roomArea4 = models.CharField(max_length=255, blank=True)
-    roomArea5 = models.CharField(max_length=255, blank=True)
-    roomArea6 = models.CharField(max_length=255, blank=True)
-    roomArea7 = models.CharField(max_length=255, blank=True)
-    roomArea8 = models.CharField(max_length=255, blank=True)
-    roomArea9 = models.CharField(max_length=255, blank=True)
-    roomArea10 = models.CharField(max_length=255, blank=True)
-    roomArea11 = models.CharField(max_length=255, blank=True)
-    roomArea12 = models.CharField(max_length=255, blank=True)
-    roomArea13 = models.CharField(max_length=255, blank=True)
-    roomArea14 = models.CharField(max_length=255, blank=True)
-    roomArea15 = models.CharField(max_length=255, blank=True)
-    roomArea16 = models.CharField(max_length=255, blank=True)
-    roomArea17 = models.CharField(max_length=255, blank=True)
-    roomArea18 = models.CharField(max_length=255, blank=True)
-    roomArea19 = models.CharField(max_length=255, blank=True)
-    roomArea20 = models.CharField(max_length=255, blank=True)
-    roomArea21 = models.CharField(max_length=255, blank=True)
-    roomArea22 = models.CharField(max_length=255, blank=True)
-    roomArea23 = models.CharField(max_length=255, blank=True)
-    roomArea24 = models.CharField(max_length=255, blank=True)
-    roomArea25 = models.CharField(max_length=255, blank=True)
 
     #Mortgage
     mortgageCo = models.CharField(max_length=255, blank=True)
@@ -258,6 +234,21 @@ class Client(models.Model):
         }
         self.save()
     
+
+       def get_rooms_data(self):
+            """Get all rooms with their work type values"""
+            rooms_data = []
+            for room in self.rooms.all().prefetch_related('work_type_values__work_type'):
+                room_info = {
+                    'room_name': room.room_name,
+                    'sequence': room.sequence,
+                    'work_types': {}
+                }
+                for wt_value in room.work_type_values.all():
+                    room_info['work_types'][wt_value.work_type.work_type_id] = wt_value.value_type
+                rooms_data.append(room_info)
+            return rooms_data
+
     def _calculate_category_completion(self, category):
         items = self.checklist_items.filter(document_category=category)
         total = items.count()
@@ -271,6 +262,67 @@ class Client(models.Model):
         super().save(*args, **kwargs)
         from .signals import create_checklist_items_for_client
         create_checklist_items_for_client(self)
+
+class WorkType(models.Model):
+    """Definition of work types (100, 200, 300, 400, 500, 800)"""
+    WORK_TYPE_CHOICES = [
+        (100, 'Work Type 100'),
+        (200, 'Work Type 200'), 
+        (300, 'Work Type 300'),
+        (400, 'Work Type 400'),
+        (500, 'Work Type 500'),
+        (800, 'Work Type 800'),
+        (6100, 'DAY 1'),
+        (6200, 'DAY 2'),
+        (6300, 'DAY 3'),
+        (6400, 'DAY 4'),
+    ]
+    
+    work_type_id = models.IntegerField(choices=WORK_TYPE_CHOICES, unique=True)
+    name = models.CharField(max_length=100)
+    description = models.TextField(blank=True)
+
+    def __str__(self):
+        return f"{self.work_type_id} - {self.name}"
+
+class Room(models.Model):
+    """Model for individual rooms - replaces roomArea1-25 fields"""
+    LOS_TRAVEL_CHOICES = [
+        ('LOS', 'Length of Stay'),
+        ('TRAVEL', 'Travel Area'), 
+        ('NA', 'Not Applicable'),
+    ]
+    
+    client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='rooms')
+    room_name = models.CharField(max_length=255)
+    sequence = models.IntegerField(default=0)  # Maintains room order
+    
+    class Meta:
+        ordering = ['sequence', 'room_name']
+        unique_together = ['client', 'room_name']
+
+    def __str__(self):
+        return f"{self.room_name} ({self.client.pOwner})"
+
+
+class RoomWorkTypeValue(models.Model):
+    """LOS/TRAVEL values for each room and work type combination"""
+    room = models.ForeignKey(Room, on_delete=models.CASCADE, related_name='work_type_values')
+    work_type = models.ForeignKey(WorkType, on_delete=models.CASCADE)
+    value_type = models.CharField(
+        max_length=10, 
+        choices=Room.LOS_TRAVEL_CHOICES,
+        default='NA'
+    )
+    
+    class Meta:
+        unique_together = ['room', 'work_type']
+
+    def __str__(self):
+        return f"{self.room.room_name} - {self.work_type.work_type_id}: {self.value_type}"
+
+
+
 
 # each file is linked to a customer ID, and it provides a path to the file on the server
 class File(models.Model):
@@ -297,6 +349,123 @@ class File(models.Model):
     
     def get_file_size_display(self):
         """Returns human-readable file size"""
+        size = self.size
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024.0:
+                return f"{size:.1f} {unit}"
+            size /= 1024.0
+        return f"{size:.1f} TB"
+
+class ReadingImage(models.Model):
+    filename = models.CharField(max_length=255)
+    size = models.IntegerField()
+    file = models.FileField(upload_to="readings/%Y/%m/%d/")
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    # Extracted values for sorting
+    rh_value = models.FloatField(null=True, blank=True)
+    t_value = models.FloatField(null=True, blank=True)
+    gpp_value = models.FloatField(null=True, blank=True)
+    mc_value = models.FloatField(null=True, blank=True)
+    
+    class Meta:
+        ordering = ['-created_at']
+    
+    def __str__(self):
+        return self.filename
+    
+    def save(self, *args, **kwargs):
+        # Extract values from filename when saving
+        if self.filename and not self.rh_value:
+            self.extract_values_from_filename()
+        super().save(*args, **kwargs)
+
+    def extract_values_from_filename(self):
+        """Extract RH, T, GPP, and MC values from filename"""
+        # Try RH_T_GPP pattern first
+        rh_t_gpp_patterns = [
+            r'RH_([\d.]+|NA\d+)_T_([\d.]+|NA\d+)_GPP_([\d.]+|NA\d+)',
+            r'RH_([\d.]+)_T_([\d.]+)_GPP_([\d.]+)'
+        ]
+        
+        for pattern in rh_t_gpp_patterns:
+            match = re.search(pattern, self.filename)
+            if match:
+                try:
+                    # Handle RH value
+                    rh_val = match.group(1)
+                    if rh_val.startswith('NA'):
+                        self.rh_value = None
+                    else:
+                        self.rh_value = float(rh_val)
+                    
+                    # Handle T value
+                    t_val = match.group(2)
+                    if t_val.startswith('NA'):
+                        self.t_value = None
+                    else:
+                        self.t_value = float(t_val)
+                    
+                    # Handle GPP value
+                    gpp_val = match.group(3)
+                    if gpp_val.startswith('NA'):
+                        self.gpp_value = None
+                    else:
+                        self.gpp_value = float(gpp_val)
+                    
+                    # Clear MC value for RH_T_GPP files
+                    self.mc_value = None
+                    return
+                    
+                except (ValueError, TypeError) as e:
+                    print(f"Error parsing RH_T_GPP values from {self.filename}: {e}")
+                    continue
+        
+        # Try MC pattern: "91. MC4.5" or "12. MC14.7" or "MC4.5"
+        mc_patterns = [
+            r'(\d+)\.\s*MC([\d.]+)',  # "91. MC4.5"
+            r'MC([\d.]+)',            # "MC4.5"
+            r'(\d+)\.\s*([\d.]+)\s*MC' # "91. 4.5 MC" (alternative format)
+        ]
+        
+        for pattern in mc_patterns:
+            match = re.search(pattern, self.filename, re.IGNORECASE)
+            if match:
+                try:
+                    # If pattern has two groups, first is usually the number, second is MC value
+                    if len(match.groups()) == 2:
+                        mc_val = match.group(2)
+                    else:
+                        mc_val = match.group(1)
+                    
+                    self.mc_value = float(mc_val)
+                    # Clear RH/T/GPP values for MC files
+                    self.rh_value = None
+                    self.t_value = None
+                    self.gpp_value = None
+                    return
+                    
+                except (ValueError, TypeError) as e:
+                    print(f"Error parsing MC value from {self.filename}: {e}")
+                    continue
+        
+        # If no pattern matched, it might be a room label or other format
+        print(f"Could not parse filename (may be room label): {self.filename}")
+        self.rh_value = None
+        self.t_value = None
+        self.gpp_value = None
+        self.mc_value = None
+        
+    def delete(self, *args, **kwargs):
+        if self.file:
+            if os.path.isfile(self.file.path):
+                os.remove(self.file.path)
+        super().delete(*args, **kwargs)
+    
+    def get_file_extension(self):
+        return os.path.splitext(self.filename)[1]
+    
+    def get_file_size_display(self):
         size = self.size
         for unit in ['B', 'KB', 'MB', 'GB']:
             if size < 1024.0:

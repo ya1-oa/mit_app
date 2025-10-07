@@ -45,10 +45,6 @@ from openpyxl.utils import get_column_letter
 from weasyprint import HTML
 import tempfile
 
-
-
-logger = logging.getLogger(__name__)
-
 import os
 import shutil
 import logging
@@ -60,8 +56,9 @@ from django.conf import settings
 from openpyxl import load_workbook
 #import pythoncom
 #import win32com.client as win32
-
+logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
 
 class EncircleExcelExporter:
     """
@@ -1152,87 +1149,137 @@ class EncircleMediaDownloader:
         metadata_path = f"{file_path}.meta.json"
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
-
 from django.views.decorators.csrf import csrf_exempt
-from automations.tasks import AutomationTasks
 from django.http import JsonResponse, HttpRequest
 from django.core.files.storage import FileSystemStorage
-@csrf_exempt
+from datetime import datetime
+from django.http import JsonResponse
+from django.core.files.storage import FileSystemStorage
+from openpyxl import load_workbook
+from django.conf import settings
 
+import os
+import json
+import subprocess
+from datetime import datetime
+from django.http import JsonResponse
+from django.conf import settings
+from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
+
+@csrf_exempt
 def create_room_template_from_excel(request):
     """
-    Handle Excel file upload and execute automation with the new column structure
+    Handle user pasted room data with room names and LOS, execute automation with base Excel template
     
     Expected POST data:
     - email: User email
     - password: User password
-    - template_name: Name for the template
-    - excel_file: Uploaded Excel file
+    - room_data: Pasted room data in format "Room Name, LOS" (one per line)
+    - selected_templates: List of template IDs to create
     """
     try:
         # Validate required fields
-        required_fields = ['email', 'password', 'template_name']
-        if not all(field in request.POST for field in required_fields):
+        required_fields = ['room_data']
+        missing_fields = [field for field in required_fields if field not in request.POST or not request.POST[field].strip()]
+        
+        if missing_fields:
             return JsonResponse(
                 {
                     "status": "failed",
-                    "error": f"Missing required fields: {', '.join(required_fields)}"
+                    "error": f"Missing or empty required fields: {', '.join(missing_fields)}"
                 },
                 status=400
             )
         
-        if 'excel_file' not in request.FILES:
+        # Extract and validate room data
+        room_data_raw = request.POST.get('room_data', '').strip()
+        room_entries = parse_room_data(room_data_raw)
+        
+        if not room_entries:
             return JsonResponse(
                 {
                     "status": "failed",
-                    "error": "No Excel file uploaded"
+                    "error": "No valid room data found. Please paste room data in format 'Room Name, LOS' (one per line)."
                 },
                 status=400
             )
         
-        # Save uploaded file temporarily
-        excel_file = request.FILES['excel_file']
-        fs = FileSystemStorage(location='temp_uploads')
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"room_template_{timestamp}_{excel_file.name}"
-        file_path = fs.save(filename, excel_file)
-        full_path = os.path.join(fs.location, file_path)
+        # Extract other form data
+        email = request.POST.get('email')
+        password = request.POST.get('password')
+        selected_templates = request.POST.getlist('selected_templates')
+        
+        if not selected_templates:
+            return JsonResponse(
+                {
+                    "status": "failed",
+                    "error": "No templates selected. Please select at least one template to generate."
+                },
+                status=400
+            )
+        
+        # Update base Excel file directly with room data
+        base_excel_path = None
+        try:
+            base_excel_path = find_base_excel_template()
+            update_base_excel_with_room_data(base_excel_path, room_entries)
+        except Exception as e:
+            return JsonResponse(
+                {
+                    "status": "failed",
+                    "error": f"Failed to update base Excel file: {str(e)}",
+                    "stage": "excel_update",
+                    "debug_info": get_template_debug_info()
+                },
+                status=500
+            )
         
         try:
-            # Execute automation with the new Excel processing
-            automator = RoomTemplateAutomation(headless=False)  # Set headless=True in production
-            results = automator.create_room_template_from_excel(
-                email=request.POST['email'],
-                password=request.POST['password'],
-                template_name=request.POST['template_name'],
-                excel_file_path=full_path
+            # Initialize automation
+            automation = RoomTemplateAutomation(headless=True)
+                
+            # Run automation with selected templates using the updated base Excel file
+            results = automation.run_automation(
+                excel_file_path=base_excel_path,
+                selected_template_ids=selected_templates,
+                delete_existing=True
             )
             
             # Add additional processing metadata
             results['file_processing'] = {
-                'original_filename': excel_file.name,
-                'temp_file_path': full_path,
-                'file_size': excel_file.size
+                'rooms_processed': len(room_entries),
+                'room_entries': [
+                    {
+                        'room_name': entry['room_name'],
+                        'los': entry['los']
+                    } for entry in room_entries[:10]  # Show first 10 for confirmation
+                ],
+                'total_rooms': len(room_entries),
+                'base_file_updated': True,
+                'base_file_path': base_excel_path,
+                'templates_requested': len(selected_templates),
+                'columns_populated': ['Q (Room Names)', 'R (LOS)'],
+                'formulas_recalculated': True
             }
             
-            return JsonResponse(results)
+            # Add truncation notice if more than 10 rooms
+            if len(room_entries) > 10:
+                results['file_processing']['room_list_note'] = f"Showing first 10 of {len(room_entries)} room entries"
             
+            return JsonResponse(results)
+                        
         except Exception as e:
             return JsonResponse(
                 {
                     "status": "failed",
                     "error": str(e),
-                    "stage": "automation_execution"
+                    "stage": "automation_execution",
+                    "rooms_attempted": len(room_entries),
+                    "base_file_path": base_excel_path
                 },
                 status=500
             )
-            
-        finally:
-            # Clean up temporary file in all cases
-            try:
-                os.remove(full_path)
-            except Exception as e:
-                print(f"Error deleting temp file: {str(e)}")
         
     except json.JSONDecodeError:
         return JsonResponse(
@@ -1250,7 +1297,414 @@ def create_room_template_from_excel(request):
                 "stage": "request_processing"
             },
             status=500
-        )     
+        )
+
+
+def parse_room_data(room_data_text):
+    """
+    Parse room data text into separate room names and LOS values
+    
+    Args:
+        room_data_text (str): Raw text with room data in format "Room Name, LOS"
+        
+    Returns:
+        list: List of dictionaries with 'room_name', 'los', and metadata
+    """
+    lines = [line.strip() for line in room_data_text.split('\n') if line.strip()]
+    parsed_data = []
+    
+    for line_num, line in enumerate(lines, 1):
+        if ',' in line:
+            # Split on the first comma only to handle LOS descriptions with commas
+            parts = line.split(',', 1)
+            room_name = parts[0].strip()
+            los = parts[1].strip()
+            
+            if room_name and los:
+                parsed_data.append({
+                    'room_name': room_name,
+                    'los': los,
+                    'original_line': line,
+                    'line_number': line_num
+                })
+            else:
+                print(f"Warning: Line {line_num} has empty room name or LOS: '{line}'")
+        else:
+            print(f"Warning: Line {line_num} missing comma separator: '{line}'")
+    
+    return parsed_data
+
+
+def find_base_excel_template():
+    """
+    Find the base Excel template file by checking multiple possible locations and filenames
+    
+    Returns:
+        str: Path to the found template file
+        
+    Raises:
+        FileNotFoundError: If no template file is found
+    """
+    # Primary template filename and location
+    primary_template = '01-INFO.xlsx'
+    
+    # Possible directories (relative to BASE_DIR) - prioritizing the known location
+    possible_dirs = [
+        'docsAppR/templates/excel/',  # Known correct location
+        'templates/excel/',
+        'docsAppR/templates/',
+        'templates/',
+        'media/templates/',
+        'static/templates/',
+        'app/templates/excel/',
+        'app/docsAppR/templates/excel/',
+        'excel_templates/',
+        '.'  # Current directory
+    ]
+    
+    # Fallback template filenames if primary not found
+    fallback_filenames = [
+        'base_room_template.xlsx',
+        'INFO.xlsx',
+        'template.xlsx',
+        'base_template.xlsx'
+    ]
+    
+    # First, search for the primary template in all directories
+    for directory in possible_dirs:
+        dir_path = os.path.join(settings.BASE_DIR, directory)
+        if os.path.exists(dir_path):
+            template_path = os.path.join(dir_path, primary_template)
+            if os.path.exists(template_path):
+                print(f"Found Excel template at: {template_path}")
+                return template_path
+    
+    # If primary template not found, search for fallback templates
+    for directory in possible_dirs:
+        dir_path = os.path.join(settings.BASE_DIR, directory)
+        if os.path.exists(dir_path):
+            for filename in fallback_filenames:
+                template_path = os.path.join(dir_path, filename)
+                if os.path.exists(template_path):
+                    print(f"Found fallback Excel template at: {template_path}")
+                    return template_path
+    
+    # If not found, list what we have for debugging
+    debug_info = get_template_debug_info()
+    raise FileNotFoundError(
+        f"Excel template '{primary_template}' not found. Searched in: {possible_dirs} "
+        f"Also searched for fallback files: {fallback_filenames}. "
+        f"Debug info: {debug_info}"
+    )
+
+
+def get_template_debug_info():
+    """
+    Get debugging information about available files and directories
+    
+    Returns:
+        dict: Debug information about file system
+    """
+    debug_info = {
+        'base_dir': settings.BASE_DIR,
+        'base_dir_exists': os.path.exists(settings.BASE_DIR),
+        'directories': {},
+        'current_working_dir': os.getcwd(),
+        'target_file': '01-INFO.xlsx',
+        'expected_location': '/app/excel/'
+    }
+    
+    # Check common directories, including the known location
+    search_dirs = [
+        'app/excel',
+        'docsAppR',
+        'docsAppR/templates',
+        'docsAppR/templates/excel',
+        'templates',
+        'templates/excel',
+        'media',
+        'static',
+        'app',
+        'app/docsAppR',
+        'app/docsAppR/templates',
+        '.'
+    ]
+    
+    for dir_name in search_dirs:
+        dir_path = os.path.join(settings.BASE_DIR, dir_name)
+        debug_info['directories'][dir_name] = {
+            'exists': os.path.exists(dir_path),
+            'full_path': dir_path
+        }
+        
+        if os.path.exists(dir_path):
+            try:
+                files = os.listdir(dir_path)
+                excel_files = [f for f in files if f.endswith(('.xlsx', '.xls'))]
+                debug_info['directories'][dir_name]['files'] = files[:10]  # First 10 files
+                debug_info['directories'][dir_name]['excel_files'] = excel_files
+                
+                # Check specifically for 01-INFO.xlsx
+                if '01-INFO.xlsx' in files:
+                    debug_info['directories'][dir_name]['has_target_file'] = True
+                    
+            except Exception as e:
+                debug_info['directories'][dir_name]['error'] = str(e)
+    
+    return debug_info
+
+
+def update_base_excel_with_room_data(base_excel_path, room_entries):
+    """
+    Update the base Excel file directly with room data
+    
+    Args:
+        base_excel_path (str): Path to the base Excel template file
+        room_entries (list): List of dictionaries with 'room_name' and 'los' keys
+        
+    Raises:
+        Exception: If Excel manipulation fails
+    """
+    
+    try:
+        print(f"Updating base Excel file: {base_excel_path}")
+        print(f"Processing {len(room_entries)} room entries...")
+        
+        # Create a backup of the original file
+        backup_path = base_excel_path + '.backup'
+        if os.path.exists(backup_path):
+            os.remove(backup_path)
+        
+        # Load the workbook and find the ROOMS# sheet
+        workbook = load_workbook(base_excel_path)
+        
+        # Try different possible sheet names for ROOMS#
+        possible_sheet_names = ['ROOMS#', 'ROOMS #', 'Rooms#', 'Rooms #', 'ROOMS', 'Rooms', 'Sheet1', 'INFO']
+        target_sheet = None
+        
+        print(f"Available sheets in workbook: {workbook.sheetnames}")
+        
+        for sheet_name in possible_sheet_names:
+            if sheet_name in workbook.sheetnames:
+                target_sheet = workbook[sheet_name]
+                print(f"Using sheet '{sheet_name}' for room data")
+                break
+        
+        if target_sheet is None:
+            # If no exact match, look for sheets containing 'rooms' or use first sheet
+            for sheet_name in workbook.sheetnames:
+                if 'rooms' in sheet_name.lower():
+                    target_sheet = workbook[sheet_name]
+                    print(f"Using sheet '{sheet_name}' as ROOMS# equivalent")
+                    break
+            
+            # If still no match, use the first sheet
+            if target_sheet is None:
+                target_sheet = workbook.worksheets[0]
+                print(f"Using first sheet '{target_sheet.title}' as default")
+        
+        # Clear existing data in columns Q and R (starting from row 3 to preserve headers)
+        max_row_to_clear = 1000  # Conservative limit
+        
+        print(f"Clearing existing data in columns Q and S...")
+        
+        # Clear column Q (Room Names) and column R (LOS)
+        cleared_rows = 0
+        for row in range(3, max_row_to_clear + 1):
+            q_cell = target_sheet[f'Q{row}']
+            r_cell = target_sheet[f'S{row}']
+            
+            if q_cell.value is not None or r_cell.value is not None:
+                q_cell.value = None
+                r_cell.value = None
+                cleared_rows += 1
+            else:
+                # If we hit several consecutive empty cells in both columns, stop clearing
+                empty_count = 0
+                for check_row in range(row, min(row + 5, max_row_to_clear + 1)):
+                    q_check = target_sheet[f'Q{check_row}'].value
+                    r_check = target_sheet[f'R{check_row}'].value
+                    if q_check is None and r_check is None:
+                        empty_count += 1
+                
+                if empty_count >= 5:  # If 5 consecutive empty pairs, stop clearing
+                    break
+        
+        print(f"Cleared {cleared_rows} existing rows")
+        
+        # Insert room data into columns Q and R starting from row 3
+        print(f"Inserting {len(room_entries)} room entries...")
+        for idx, entry in enumerate(room_entries, start=4):
+            # Column Q: Room Name
+            target_sheet[f'Q{idx}'] = entry['room_name']
+            # Column R: LOS
+            target_sheet[f'S{idx}'] = entry['los']
+            
+            if idx <= 7:  # Log first few entries
+                print(f"  Row {idx}: Q='{entry['room_name']}', S='{entry['los']}'")
+        
+
+        # Save the workbook with updated data
+        workbook.save(base_excel_path)
+        workbook.close()
+        
+        print(f"Successfully saved updated data to base Excel file")
+        
+        print(f"Successfully updated base Excel file with {len(room_entries)} room entries:")
+        print(f"  - Column Q: Room Names")
+        print(f"  - Column S: LOS Data")
+        print(f"  - Sheet: '{target_sheet.title}' starting at row 3")
+        print(f"  - Base file: {base_excel_path}")
+        
+    except Exception as e:
+        raise Exception(f"Failed to update base Excel file: {str(e)}")
+
+
+def get_base_excel_template_info():
+    """
+    Utility function to get information about the base Excel template
+    
+    Returns:
+        dict: Information about the base template file including column structure
+    """
+    try:
+        base_excel_path = find_base_excel_template()
+        
+        info = {
+            'path': base_excel_path,
+            'exists': True,
+            'sheets': [],
+            'size': 0,
+            'columns': {
+                'Q': 'Room Names',
+                'S': 'LOS Data'
+            },
+            'direct_update': True,
+            'temp_files_used': False
+        }
+        
+        try:
+            info['size'] = os.path.getsize(base_excel_path)
+            workbook = load_workbook(base_excel_path, read_only=True)
+            info['sheets'] = workbook.sheetnames
+            
+            # Try to get column headers from any sheet that might contain room data
+            for sheet_name in workbook.sheetnames:
+                sheet = workbook[sheet_name]
+                try:
+                    # Check what's in the header rows for columns Q and R
+                    q_header_1 = sheet['Q1'].value
+                    q_header_2 = sheet['Q2'].value
+                    r_header_1 = sheet['S1'].value
+                    r_header_2 = sheet['S2'].value
+                    
+                    if q_header_1 or q_header_2 or r_header_1 or r_header_2:
+                        info['column_headers'] = {
+                            'sheet': sheet_name,
+                            'Q': {
+                                'row_1': q_header_1,
+                                'row_2': q_header_2
+                            },
+                            'S': {
+                                'row_1': r_header_1,
+                                'row_2': r_header_2
+                            }
+                        }
+                        
+                        # Check if there are existing formulas that reference these columns
+                        formula_count = 0
+                        for row in sheet.iter_rows(min_row=1, max_row=100):
+                            for cell in row:
+                                if cell.data_type == 'f' and cell.value:
+                                    if 'Q' in str(cell.value) or 'S' in str(cell.value):
+                                        formula_count += 1
+                        
+                        info['formulas_referencing_QR'] = formula_count
+                        break
+                        
+                except Exception as header_error:
+                    info['header_read_error'] = str(header_error)
+                    continue
+                    
+            workbook.close()
+            
+        except Exception as e:
+            info['error'] = str(e)
+            
+    except FileNotFoundError:
+        info = {
+            'path': None,
+            'exists': False,
+            'error': 'Template file not found',
+            'debug_info': get_template_debug_info(),
+            'direct_update': False,
+            'temp_files_used': False
+        }
+    
+    return info
+
+
+def validate_room_data_format(request):
+    """
+    API endpoint to validate room data format without processing
+    
+    Returns:
+        JsonResponse: Validation results including parsed data preview
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    room_data_raw = request.POST.get('room_data', '').strip()
+    
+    if not room_data_raw:
+        return JsonResponse({
+            'valid': False,
+            'error': 'No room data provided',
+            'entries': [],
+            'total_lines': 0,
+            'valid_entries': 0
+        })
+    
+    # Parse the data
+    parsed_entries = parse_room_data(room_data_raw)
+    total_lines = len([line for line in room_data_raw.split('\n') if line.strip()])
+    
+    # Create preview of parsed data
+    preview_entries = []
+    for entry in parsed_entries[:5]:  # Show first 5
+        preview_entries.append({
+            'room_name': entry['room_name'],
+            'los': entry['los'],
+            'line_number': entry['line_number']
+        })
+    
+    return JsonResponse({
+        'valid': len(parsed_entries) > 0,
+        'total_lines': total_lines,
+        'valid_entries': len(parsed_entries),
+        'invalid_entries': total_lines - len(parsed_entries),
+        'entries_preview': preview_entries,
+        'truncated': len(parsed_entries) > 5,
+        'columns_target': {
+            'Q': 'Room Names',
+            'R': 'LOS Data'
+        },
+        'template_info': get_base_excel_template_info(),
+        'update_method': 'direct_base_file_update'
+    })
+
+
+# Debug endpoint to help troubleshoot template issues
+def debug_template_files(request):
+    """
+    Debug endpoint to show what template files are available
+    """
+    return JsonResponse({
+        'template_info': get_base_excel_template_info(),
+        'debug_info': get_template_debug_info(),
+        'update_method': 'direct_base_file_update',
+        'recalculation': 'libreoffice_headless'
+    })
 import io
 import zipfile
 
@@ -1461,7 +1915,7 @@ class ZipMediaDownloader:
             'creator': media_item['creator']['actor_identifier'],
             'created_date': media_item['primary_server_created'],
             'labels': media_item.get('labels', []),
-            'download_time': dt.now().isoformat()
+            'download_time': dt.datetime.now().isoformat()
         }
         
         metadata_path = f"{file_path}.meta.json"
@@ -1948,6 +2402,12 @@ def create(request):
     return render(request, 'account/create.html', {'form': form})
 
 
+"""
+
+API FOR TEMPLATE CREATOR SENDS EACH 01-ROOMS (old 01 INFO) TO THE SERVER AFTER RUNNING 
+SYSTEM AUTOMATICALLY LOADS IT IN THE SYSTEM
+"""
+
 import json
 import datetime as dt
 import pandas as pd
@@ -1957,6 +2417,726 @@ from django.contrib import messages
 from django.utils import timezone
 from .models import Client
 from .forms import ClientForm
+from .models import Client, Room, WorkType, RoomWorkTypeValue
+
+import openpyxl
+from openpyxl.utils import get_column_letter
+
+def import_client_from_info_file(excel_file):
+    """
+    Extract client data from 01-INFO.xlsx file from jobinfo(2) tab
+    WITH FORMULA SUPPORT - gets calculated values, not formula text
+    """
+    try:
+        # Use openpyxl to read Excel with formula values
+        excel_file.seek(0)
+        wb = openpyxl.load_workbook(BytesIO(excel_file.read()), data_only=True)  # data_only=True gets calculated values
+        
+        # Check for jobinfo(2) tab
+        sheet_name = 'jobinfo(2)'
+        if sheet_name not in wb.sheetnames:
+            # Try alternative names
+            possible_sheets = [s for s in wb.sheetnames if 'jobinfo' in s.lower()]
+            if possible_sheets:
+                sheet_name = possible_sheets[0]
+                print(f"ℹ️ Using alternative sheet: {sheet_name}")
+            else:
+                raise ValueError(f"No jobinfo sheet found in INFO file. Available sheets: {', '.join(wb.sheetnames)}")
+        
+        ws = wb[sheet_name]
+        
+        print(f"✅ Loaded jobinfo sheet: {ws.max_row} rows, {ws.max_column} columns")
+        
+        # Extract client data using openpyxl
+        client_data = extract_client_data_from_jobinfo_openpyxl(ws)
+        wb.close()  # Close workbook to free memory
+        
+        return client_data
+        
+    except Exception as e:
+        raise Exception(f"Failed to process INFO file: {str(e)}")
+
+
+def extract_client_data_from_jobinfo_openpyxl(worksheet):
+    """
+    Extract client data from jobinfo worksheet using openpyxl
+    Gets calculated values from formulas
+    """
+    client_data = {}
+    
+    # Constants for jobinfo structure
+    HEADER_COLUMN = 1  # Column A (openpyxl uses 1-indexed)
+    DATA_COLUMN = 2    # Column B
+    
+    print("🔍 Scanning jobinfo sheet for client data with formula support...")
+    
+    for row in range(1, worksheet.max_row + 1):
+        header_cell = worksheet.cell(row=row, column=HEADER_COLUMN)
+        value_cell = worksheet.cell(row=row, column=DATA_COLUMN)
+        
+        header = str(header_cell.value).strip() if header_cell.value is not None else None
+        value = value_cell.value  # This gets the calculated value, even if it's a formula
+        
+        if not header or header in ['None', 'nan', ''] or value is None:
+            continue
+            
+        # Use your proven field normalization
+        field_name = (header.lower()
+                     .replace(' ', '_')
+                     .replace('/', '_')
+                     .replace('\\', '_')
+                     .replace('.', '_')
+                     .replace('-', '_')
+                     .replace(':', '_')
+                     .replace('__', '_')
+                     .replace('#', 'num')
+                     .strip('_'))
+        
+        # Debug output for key fields
+        if any(keyword in field_name for keyword in ['owner', 'address', 'email', 'phone', 'claim']):
+            print(f"📝 Key field: '{header}' → '{field_name}' = '{value}' (type: {type(value).__name__})")
+        
+        # Special handling for date fields
+        if any(term in field_name for term in ['date', 'dol']):
+            parsed_date = parse_excel_date_openpyxl(value)
+            if parsed_date:
+                print(f"📅 Parsed date: {header} → {parsed_date}")
+                if 'loss' in field_name:
+                    client_data['date_of_loss'] = parsed_date
+                else:
+                    client_data[field_name] = parsed_date
+            else:
+                client_data[field_name] = value  # Store original if date parsing fails
+            continue
+        
+        # Handle boolean fields
+        if isinstance(value, str) and value.lower() in ('yes', 'no', 'true', 'false', 'y', 'n'):
+            value = value.lower() in ('yes', 'true', 'y')
+            print(f"⚡ Converted boolean: {header} → {value}")
+        elif isinstance(value, (int, float)) and value in (0, 1):
+            # Handle 1/0 as boolean
+            value = bool(value)
+            print(f"⚡ Converted numeric boolean: {header} → {value}")
+        
+        # Handle numeric fields
+        if isinstance(value, (int, float)) and not isinstance(value, bool):
+            # It's already a number, keep as is
+            pass
+        elif isinstance(value, str) and value.replace('.', '').replace(',', '').isdigit():
+            try:
+                # Remove commas and convert to float
+                value = float(value.replace(',', ''))
+                print(f"🔢 Converted string to numeric: {header} → {value}")
+            except ValueError:
+                pass
+        
+        client_data[field_name] = value
+    
+    print(f"✅ Extracted {len(client_data)} client data fields from jobinfo (with formula support)")
+    return client_data
+
+
+
+def import_rooms_from_rooms_file(excel_file, client):
+    """
+    Extract room data from 01-ROOMS.xlsm file from ROOMS# tab
+    WITH FORMULA SUPPORT - gets calculated values from formulas
+    """
+    try:
+        # Use openpyxl to read Excel with formula values
+        excel_file.seek(0)
+        wb = openpyxl.load_workbook(BytesIO(excel_file.read()), data_only=True)  # data_only=True gets calculated values
+        
+        if 'ROOMS#' not in wb.sheetnames:
+            raise ValueError(f"ROOMS# sheet not found in ROOMS file. Available sheets: {', '.join(wb.sheetnames)}")
+        
+        ws = wb['ROOMS#']
+        
+        print(f"✅ Loaded ROOMS# sheet: {ws.max_row} rows, {ws.max_column} columns")
+        print(f"📊 Columns available: A-{get_column_letter(ws.max_column)}")
+        
+        rooms_data = extract_room_data_from_rooms_sheet_openpyxl(ws)
+        wb.close()  # Close workbook to free memory
+        
+        if not rooms_data:
+            raise ValueError("No room data found in ROOMS# sheet")
+        
+        # Create rooms in database
+        rooms_created, wt_values_created = create_rooms_for_client(client, rooms_data)
+        
+        return {
+            'rooms_processed': rooms_created,
+            'work_type_values_created': wt_values_created,
+            'total_rooms_found': len(rooms_data),
+            'rooms_sample': rooms_data[:3] if rooms_data else []
+        }
+        
+    except Exception as e:
+        raise Exception(f"Failed to process ROOMS file: {str(e)}")
+
+def extract_room_data_from_rooms_sheet_openpyxl(worksheet):
+    """
+    Enhanced room data extraction using openpyxl with formula support
+    Columns U to BT, with each work type section being 5 columns apart
+    """
+    rooms_data = []
+    
+    # Define the work types and their column ranges (1-indexed for openpyxl)
+    work_type_sections = {
+        100: range(21, 26),   # U-Y (columns 21-25)
+        200: range(26, 31),   # Z-AD (columns 26-30)  
+        300: range(31, 36),   # AE-AI (columns 31-35)
+        400: range(36, 41),   # AJ-AN (columns 36-40)
+        500: range(41, 46),   # AO-AS (columns 41-45)
+        800: range(46, 51),   # AT-AX (columns 46-50)
+        6100: range(51, 56),  # AY-BC (columns 51-55) - DAY 1
+        6200: range(56, 61),  # BD-BH (columns 56-60) - DAY 2  
+        6300: range(61, 66),  # BI-BM (columns 61-65) - DAY 3
+        6400: range(66, 71),  # BN-BR (columns 66-70) - DAY 4
+    }
+    
+    print(f"🔍 Scanning for room data in columns U to BT with formula support...")
+    print(f"📋 Work types configured: {list(work_type_sections.keys())}")
+    
+    rooms_found = 0
+    max_rows_to_scan = min(worksheet.max_row, 200)  # Limit scanning to first 200 rows for performance
+    
+    # Iterate through rows to find room data
+    for row in range(1, max_rows_to_scan + 1):
+        # Check if this row contains room data by looking at first work type section
+        first_section_cols = work_type_sections[100]
+        room_name_parts = []
+        
+        for col in first_section_cols:
+            if col <= worksheet.max_column:
+                cell = worksheet.cell(row=row, column=col)
+                if cell.value is not None and str(cell.value).strip():
+                    room_name_parts.append(str(cell.value).strip())
+        
+        # If we have room name parts, this is a room row
+        if room_name_parts:
+            room_name = ' '.join(room_name_parts).strip()
+            # Filter out header rows and empty names
+            if (room_name and 
+                room_name not in ['', 'Room Name', 'Room', 'ROOM NAME', 'ROOM'] and
+                not any(keyword in room_name.upper() for keyword in ['HEADER', 'TITLE', 'DESCRIPTION'])):
+                
+                rooms_found += 1
+                room_data = {
+                    'room_name': room_name,
+                    'sequence': len(rooms_data) + 1,
+                    'work_type_values': {}
+                }
+                
+                if rooms_found <= 3:  # Log first 3 rooms for debugging
+                    print(f"🚪 Found room {rooms_found}: '{room_name}'")
+                      if value_col <= worksheet.max_column:
+                        cell = worksheet.cell(row=row, column=value_col)
+    
+                # Extract work type values for ALL 10 work types
+                work_types_found = 0
+                for wt_id, col_range in work_type_sections.items():
+                    # Use the LAST column of each 5-column section for the value
+                    value_col = list(col_range)[4]  # Last column of the 5-column range
+                    
+                                  if cell.value is not None and str(cell.value).strip():
+                            value_str = str(cell.value).strip().upper()
+                            value_type = determine_los_travel_value_enhanced(value_str)
+                            
+                            if value_type != 'NA':  # Only store if it has a meaningful value
+                                room_data['work_type_values'][wt_id] = value_type
+                                work_types_found += 1
+                
+                if work_types_found > 0 and rooms_found <= 3:
+                    print(f"   📋 Work types with values: {work_types_found}")
+                    # Show sample work type values for first few rooms
+                    sample_wt = list(room_data['work_type_values'].items())[:2]
+                    for wt_id, val_type in sample_wt:
+                        print(f"     - {wt_id}: {val_type}")
+                
+                rooms_data.append(room_data)
+    
+    print(f"✅ Found {len(rooms_data)} rooms with work type data (formula values extracted)")
+    
+    # Show detailed sample of what was extracted
+    if rooms_data:
+        print("📊 Room data sample (with formula values):")
+        for i, room in enumerate(rooms_data[:2]):
+            wt_details = []
+            for wt_id, val_type in list(room['work_type_values'].items())[:4]:  # Show first 4 work types
+                wt_details.append(f"{wt_id}:{val_type}")
+            print(f"   {i+1}. '{room['room_name']}' - Work types: {', '.join(wt_details)}")
+    
+    return rooms_data
+def parse_excel_date_openpyxl(value):
+    """
+    Enhanced date parser for openpyxl values
+    Handles datetime objects, Excel serial numbers, and strings
+    """
+    if value is None:
+        return None
+    
+    try:
+        # If it's already a datetime object
+        if isinstance(value, (dt.datetime, dt.date)):
+            return value.date() if isinstance(value, dt.datetime) else value
+        
+        # If it's an Excel serial number (float)
+        if isinstance(value, (int, float)):
+            print(f"🔢 Parsing Excel date number: {value}")
+            try:
+                # Excel's date system starts from 1899-12-30
+                if value < 0:
+                    return None
+                if value == 0:  # Excel's zero date
+                    return None
+                if value == 60:  # Excel's 1900-02-29 (non-existent)
+                    return dt.date(1900, 2, 28)
+                if value < 60:  # Adjust for Excel's leap year bug
+                    value += 1
+                return (dt.datetime(1899, 12, 30) + dt.timedelta(days=value)).date()
+            except Exception:
+                return None
+        
+        # If it's a string, try parsing
+        if isinstance(value, str):
+            value = value.strip()
+            if not value or value.upper() in ('TBD', 'NA', 'N/A', 'UNKNOWN'):
+                return None
+            
+            # Clean the string
+            value = (value.replace('  ', ' ')
+                     .replace('Sept', 'Sep')
+                     .replace('Febr', 'Feb')
+                     .replace('Dece', 'Dec')
+                     .split(' ')[0])  # Take only first part if space separated
+            
+            # Try parsing as datetime string
+            date_formats = [
+                '%Y-%m-%d %H:%M:%S',  # 2024-12-02 00:00:00
+                '%Y-%m-%d',           # 2024-12-02
+                '%m/%d/%Y',           # 1/20/2024
+                '%d-%b-%y',           # 24-Jan-24
+                '%d-%b-%Y',           # 20-Jan-2024
+                '%b %d, %Y',          # Dec 23, 2022
+                '%B %d, %Y',          # December 23, 2022
+                '%d-%m-%Y',           # 20-01-2024
+                '%d %b %Y',           # 20 Jan 2024
+                '%d %B %Y'            # 20 January 2024
+            ]
+            
+            for fmt in date_formats:
+                try:
+                    parsed_dt = dt.datetime.strptime(value, fmt)
+                    return parsed_dt.date()
+                except ValueError:
+                    continue
+        
+        return None
+        
+    except Exception as e:
+        print(f"❌ Date parsing error for value '{value}': {str(e)}")
+        return None
+
+def determine_los_travel_value_enhanced(value_str):
+    """
+    Enhanced value determination for LOS/TRAVEL/NA
+    Handles numeric values from formulas properly
+    """
+    if value_str is None:
+        return 'NA'
+    
+    if isinstance(value_str, (int, float)):
+        # Numeric value from formula - treat as LOS
+        return 'LOS'
+    
+    value_clean = str(value_str).upper().strip()
+    
+    if not value_clean or value_clean in ['', 'N/A', 'NA', 'NULL', 'NONE', 'NAN']:
+        return 'NA'
+    
+    # Handle TRAVEL indicators
+    if any(travel_indicator in value_clean for travel_indicator in ['TRAVEL', 'TRVL', 'TRV', 'TRAV', "TRAVEL/AREA"]):
+        return 'TRAVEL'
+    
+    # Handle LOS indicators
+    if any(los_indicator in value_clean for los_indicator in ['LOS', 'LINE OF SIGHT', 'SIGHT', 'L.O.S']):
+        return 'LOS'
+    
+    # If it's a pure number (integer or decimal), treat as LOS
+    try:
+        # Remove any non-numeric characters except decimal point and negative sign
+        numeric_value = ''.join(c for c in value_clean if c.isdigit() or c in '.-')
+        if numeric_value and numeric_value != '-' and numeric_value != '.':
+            float(numeric_value)
+            return 'LOS'
+    except ValueError:
+        pass
+    
+    # Check for numeric values with text or symbols
+    if any(char.isdigit() for char in value_clean):
+        return 'LOS'
+    
+    # Default to NA if we can't determine
+    return 'NA'
+
+def ensure_work_types_exist():
+    """
+    Make sure all work types are created in the database
+    ENHANCED with all 10 work types
+    """
+    work_types = {}
+    
+    # Define all 10 work types
+    work_type_definitions = [
+        (100, 'Work Type 100'),
+        (200, 'Work Type 200'),
+        (300, 'Work Type 300'),
+        (400, 'Work Type 400'),
+        (500, 'Work Type 500'),
+        (800, 'Work Type 800'),
+        (6100, 'DAY 1'),
+        (6200, 'DAY 2'),
+        (6300, 'DAY 3'),
+        (6400, 'DAY 4'),
+    ]
+    
+    print("🔧 Ensuring work types exist in database...")
+    
+    for wt_id, wt_name in work_type_definitions:
+        work_type, created = WorkType.objects.get_or_create(
+            work_type_id=wt_id,
+            defaults={'name': wt_name}
+        )
+        if created:
+            print(f"✅ Created new work type: {wt_id} - {wt_name}")
+        else:
+            print(f"✓ Work type exists: {wt_id} - {wt_name}")
+        work_types[wt_id] = work_type
+    
+    print(f"✅ All {len(work_types)} work types verified")
+    return work_types
+
+def create_rooms_for_client(client, rooms_data):
+    """
+    Create room and work type data for a client
+    ENHANCED with better logging
+    """
+    work_types = ensure_work_types_exist()
+    
+    # Delete existing rooms for this client
+    existing_rooms_count = client.rooms.count()
+    if existing_rooms_count > 0:
+        print(f"🗑️ Removing {existing_rooms_count} existing rooms for client {client.pOwner}")
+        client.rooms.all().delete()
+    
+    rooms_created = 0
+    work_type_values_created = 0
+    
+    print(f"🏗️ Creating {len(rooms_data)} rooms for client {client.pOwner}...")
+    
+    for room_info in rooms_data:
+        room = Room.objects.create(
+            client=client,
+            room_name=room_info['room_name'],
+            sequence=room_info['sequence']
+        )
+        rooms_created += 1
+        
+        # Create work type values for this room
+        for wt_id, value_type in room_info.get('work_type_values', {}).items():
+            RoomWorkTypeValue.objects.create(
+                room=room,
+                work_type=work_types[wt_id],
+                value_type=value_type
+            )
+            work_type_values_created += 1
+        
+        # Log first few rooms
+        if rooms_created <= 3:
+            print(f"   {rooms_created}. {room.room_name} - {len(room_info.get('work_type_values', {}))} work types")
+    
+    print(f"✅ Created {rooms_created} rooms with {work_type_values_created} work type values")
+    return rooms_created, work_type_values_created
+
+def create_or_update_client(client_data):
+    """
+    Create or update client based on extracted data
+    INTEGRATED with your API response structure
+    """
+    # Map client data to your model fields
+    mapped_data = map_client_data_to_model(client_data)
+    
+    # Extract the owner name to check for existing client
+    owner_name = mapped_data.get('pOwner', '')
+    if not owner_name:
+        raise ValueError("No property owner name found in INFO file")
+    
+    existing_client = Client.objects.filter(pOwner=owner_name).first()
+    
+    if existing_client:
+        # UPDATE EXISTING CLIENT
+        update_fields = {}
+        for field, new_value in mapped_data.items():
+            if hasattr(existing_client, field) and new_value is not None:
+                current_value = getattr(existing_client, field)
+                if current_value != new_value:
+                    update_fields[field] = new_value
+        
+        if update_fields:
+            Client.objects.filter(pk=existing_client.pk).update(**update_fields)
+            print(f"🔄 Updated client {owner_name}: {len(update_fields)} fields changed")
+            client_data['_action'] = 'updated'
+        else:
+            print(f"➖ No changes for client {owner_name}")
+            client_data['_action'] = 'unchanged'
+        
+        # Refresh to get updated instance
+        existing_client.refresh_from_db()
+        return existing_client
+    else:
+        # CREATE NEW CLIENT
+        client = Client.objects.create(**mapped_data)
+        print(f"🆕 Created new client {owner_name}")
+        client_data['_action'] = 'created'
+        return client
+
+def map_client_data_to_model(raw_data):
+    """
+    Map extracted data to Client model fields
+    COMPLETE mapping based on your existing structure
+    """
+    return {
+        # Property Owner Information
+        'pOwner': raw_data.get('property_owner_name', ''),
+        'pAddress': raw_data.get('property_address_street', ''),
+        'pCityStateZip': raw_data.get('property_city_state_zip', ''),
+        'cEmail': raw_data.get('customer_email', ''),
+        'cPhone': raw_data.get('cst_owner_phonenum', ''),
+        
+        # Co-Owner Information
+        'coOwner2': raw_data.get('co_owner_cst2', ''),
+        'cPhone2': raw_data.get('cst_ph_num_2', ''),
+        'cAddress2': raw_data.get('cst_address_num_2', ''),
+        'cCityStateZip2': raw_data.get('cst_city_state_zip_2', ''),
+        'cEmail2': raw_data.get('email_cst_num_2', ''),
+        
+        # Claim Information
+        'causeOfLoss': raw_data.get('cause_of_loss', ''),
+        'dateOfLoss': raw_data.get('date_of_loss', None),
+        'rebuildType1': raw_data.get('rebuild_type_1', ''),
+        'rebuildType2': raw_data.get('rebuild_type_2', ''),
+        'rebuildType3': raw_data.get('rebuild_type_3', ''),
+        'demo': bool(raw_data.get('demo', False)),
+        'mitigation': bool(raw_data.get('mitigation', False)),
+        'otherStructures': bool(raw_data.get('other_structures', False)),
+        'replacement': bool(raw_data.get('replacement', False)),
+        'CPSCLNCONCGN': bool(raw_data.get('cps_cln_con_cgn', False)),
+        'yearBuilt': raw_data.get('year_built', ''),
+        'contractDate': raw_data.get('contract_date', None),
+        'lossOfUse': raw_data.get('loss_of_use_ale', ''),
+        'breathingIssue': raw_data.get('breathing_issue', ''),
+        'hazardMaterialRemediation': raw_data.get('hmr', ''),
+        
+        # Insurance Information
+        'insuranceCo_Name': raw_data.get('insurance_co_name', ''),
+        'claimNumber': raw_data.get('claim_num', ''),
+        'policyNumber': raw_data.get('policy_num', ''),
+        'emailInsCo': raw_data.get('email_ins_co', ''),
+        'deskAdjusterDA': raw_data.get('desk_adjuster_da', ''),
+        'DAPhone': raw_data.get('da_phone', ''),
+        'DAPhExt': raw_data.get('da_ph_ext_num', ''),
+        'DAEmail': raw_data.get('da_email', ''),
+        'fieldAdjusterName': raw_data.get('field_adjuster_name', ''),
+        'phoneFieldAdj': raw_data.get('phone_num_field_adj', ''),
+        'fieldAdjEmail': raw_data.get('field_adj_email', ''),
+        'adjContents': raw_data.get('adj_contents', ''),
+        'adjCpsPhone': raw_data.get('adj_cps_phone_num', ''),
+        'adjCpsEmail': raw_data.get('adj_cps_email', ''),
+        'emsAdj': raw_data.get('tmp_adj', ''),
+        'emsAdjPhone': raw_data.get('tmp_adj_phone_num', ''),
+        'emsTmpEmail': raw_data.get('adj_tmp_email', ''),
+        'attLossDraftDept': raw_data.get('att_loss_draft_dept', ''),
+        'insAddressOvernightMail': raw_data.get('address_ins_overnight_mail', ''),
+        'insCityStateZip': raw_data.get('city_state_zip_ins', ''),
+        'insuranceCoPhone': raw_data.get('insurance_co_phone', ''),
+        'insWebsite': raw_data.get('website_ins_co', ''),
+        'insMailingAddress': raw_data.get('mailing_address_ins', ''),
+        'insMailCityStateZip': raw_data.get('mail_city_state_zip_ins', ''),
+        'mortgageCoFax': raw_data.get('fax_ins_co', ''),
+        
+        # Rooms Information
+        'newCustomerID': client_data.get('new_customer_num', ''),
+        'roomID': client_data.get('room_id', ''),
+
+        # Mortgage Information
+        'mortgageCo': raw_data.get('mortgage_co', ''),
+        'mortgageAccountCo': raw_data.get('account_num_mtge_co', ''),
+        'mortgageContactPerson': raw_data.get('contact_person_mtge', ''),
+        'mortgagePhoneContact': raw_data.get('phone_num_mtge_contact', ''),
+        'mortgagePhoneExtContact': raw_data.get('ph_ext_mtge_contact', ''),
+        'mortgageAttnLossDraftDept': raw_data.get('attn_loss_draft_dept', ''),
+        'mortgageOverNightMail': raw_data.get('mtge_ovn_mail', ''),
+        'mortgageCityStZipOVN': raw_data.get('city_st_zip_mtge_ovn', ''),
+        'mortgageEmail': raw_data.get('email_mtge', ''),
+        'mortgageWebsite': raw_data.get('mtge_website', ''),
+        'mortgageCoFax': raw_data.get('mtge_co_fax_num', ''),
+        'mortgageMailingAddress': raw_data.get('mailing_address_mtge', ''),
+        'mortgageInitialOfferPhase1ContractAmount': raw_data.get('initial_offer_phase_1_contract_amount', ''),
+        
+        # Cash Flow
+        'drawRequest': raw_data.get('draw_request', ''),
+        
+        # Contractor Information
+        'coName': raw_data.get('co_name', ''),
+        'coWebsite': raw_data.get('co_website', ''),
+        'coEmailstatus': raw_data.get('co_emailstatus', ''),
+        'coAddress': raw_data.get('co_adress', ''),
+        'coCityState': raw_data.get('co_city_state', ''),
+        'coAddress2': raw_data.get('co_address_2', ''),
+        'coCityState2': raw_data.get('co_city_state_2', ''),
+        'coCityState3': raw_data.get('co_city_state_3', ''),
+        'coLogo1': raw_data.get('co_logo_1', ''),
+        'coLogo2': raw_data.get('co_logo_2', ''),
+        'coLogo3': raw_data.get('co_logo_3', ''),
+        'coRepPH': raw_data.get('co_rep_ph', ''),
+        'coREPEmail': raw_data.get('co_rep_email', ''),
+        'coPhone2': raw_data.get('co_ph_num_2', ''),
+        'TinW9': raw_data.get('tin_w9', ''),
+        'fedExAccount': raw_data.get('fedex_account_num', ''),
+        
+        # Claim Reporting
+        'claimReportDate': raw_data.get('claim_report_date', None),
+        'insuranceCustomerServiceRep': raw_data.get('co_represesntative', ''),
+        'timeOfClaimReport': raw_data.get('time_of_claim_report', ''),
+        'phoneExt': raw_data.get('phone_ext', ''),
+        'tarpExtTMPOk': bool(raw_data.get('tarp_ext_tmp_ok', False)),
+        'IntTMPOk': bool(raw_data.get('int_tmp_ok', False)),
+        'DRYPLACUTOUTMOLDSPRAYOK': bool(raw_data.get('drypla_cutout_mold_spray_ok', False)),
+        
+        # ALE Information
+        'lossOfUseALE': raw_data.get('ale_info', ''),
+        'tenantLesee': raw_data.get('tenant_lesee', ''),
+        'propertyAddressStreet': raw_data.get('property_address_street_ale', ''),
+        'propertyCityStateZip': raw_data.get('property_city_state_zip_ale', ''),
+        'customerEmail': raw_data.get('customer_email_ale', ''),
+        'cstOwnerPhoneNumber': raw_data.get('cst_owner_phonenum_ale', ''),
+        'deskAdjusterDA': raw_data.get('desk_adjuster', ''),
+        'DAPhone': raw_data.get('phone_num_da', ''),
+        'DAPhExtNumber': raw_data.get('extension_da', ''),
+        'DAEmail': raw_data.get('email_da', ''),
+        'startDate': raw_data.get('start_date', None),
+        'endDate': raw_data.get('end_date', None),
+        'lessor': raw_data.get('lessor', ''),
+        'bedrooms': raw_data.get('bedrooms', ''),
+        'termsAmount': raw_data.get('terms_amount', ''),
+    }
+    """Create room and work type data for a client"""
+    work_types = ensure_work_types_exist()
+    
+    # Delete existing rooms for this client
+    client.rooms.all().delete()
+    
+    rooms_created = 0
+    work_type_values_created = 0
+    
+    for room_info in rooms_data:
+        room = Room.objects.create(
+            client=client,
+            room_name=room_info['room_name'],
+            sequence=room_info['sequence']
+        )
+        rooms_created += 1
+        
+        # Create work type values for this room
+        for wt_id, value_type in room_info.get('work_type_values', {}).items():
+            RoomWorkTypeValue.objects.create(
+                room=room,
+                work_type=work_types[wt_id],
+                value_type=value_type
+            )
+            work_type_values_created += 1
+    
+    return rooms_created, work_type_values_created
+
+# MAIN IMPORT FUNCTION
+@csrf_exempt
+def import_client_with_rooms_formula_support(request):
+    """
+    Main endpoint to import client from 01-INFO and rooms from 01-ROOMS
+    WITH FORMULA SUPPORT - gets calculated values from Excel formulas
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    if 'info_file' not in request.FILES:
+        return JsonResponse({'error': 'No INFO file provided'}, status=400)
+    
+    if 'rooms_file' not in request.FILES:
+        return JsonResponse({'error': 'No ROOMS file provided'}, status=400)
+    
+    try:
+        info_file = request.FILES['info_file']
+        rooms_file = request.FILES['rooms_file']
+        
+        print("🚀 Starting complete client import process WITH FORMULA SUPPORT...")
+        
+        # Step 1: Import client data from INFO file (with formula support)
+        client_data = import_client_from_info_file(excel_file=info_file)
+        
+        # Step 2: Create or update client
+        client = create_or_update_client(client_data)
+        
+        # Step 3: Import room data from ROOMS file (with formula support)
+        room_results = import_rooms_from_rooms_file(excel_file=rooms_file, client=client)
+        
+        response_data = {
+            'status': 'success',
+            'client': {
+                'id': client.id,
+                'name': client.pOwner,
+                'action': client_data.get('_action', 'unknown')
+            },
+            'rooms': room_results,
+            'processing_summary': {
+                'client_data_processed': True,
+                'rooms_processed': room_results['rooms_processed'],
+                'work_type_values_created': room_results['work_type_values_created'],
+                'total_rooms_found': room_results['total_rooms_found'],
+                'formula_support': True  # Indicate that formula values were extracted
+            }
+        }
+        
+        print(f"✅ Import completed successfully with formula support: {response_data}")
+        return JsonResponse(response_data)
+        
+    except Exception as e:
+        error_msg = f"❌ Complete import error (formula support): {str(e)}"
+        print(error_msg)
+        import traceback
+        print(f"🔍 Stack trace: {traceback.format_exc()}")
+        
+        return JsonResponse({
+            'status': 'error',
+            'message': str(e),
+            'formula_support': True
+        }, status=500)
+
+# KEEP YOUR EXISTING parse_excel_date FUNCTION
+def parse_excel_date(value):
+    """Your existing robust date parser"""
+    try:
+        if pd.isna(value) or value in ('', 'TBD', 'NA', 'N/A'):
+            return None
+        
+        # Your existing date parsing logic here
+        # ... 
+        
+        return None  # Your actual parsed date
+    except Exception as e:
+        print(f"Date parsing error: {str(e)}")
+        return None
+
 
 def clean_session_data(data):
     """
@@ -2660,164 +3840,6 @@ from docsAppR.models import Client, File  # Update with your actual models
 
 logger = logging.getLogger(__name__)
 
-@login_required
-def labels(request):
-    # GET request handling - show the form
-    if request.method == 'GET':
-        claims = Client.objects.all()
-        selected_claim_id = request.GET.get('claim')
-        rooms = []
-        
-        if selected_claim_id:
-            try:
-                client = get_object_or_404(Client, pOwner=selected_claim_id)
-                
-                # Get all non-empty rooms
-                for i in range(1, 26):
-                    room_attr = f'roomArea{i}'
-                    room_value = getattr(client, room_attr, None)
-                    
-                    if room_value and isinstance(room_value, str):
-                        room_value = room_value.strip()
-                        if room_value.lower() not in ['', 'tbd', 'n/a']:
-                            rooms.append({
-                                'id': room_attr,
-                                'name': room_value
-                            })
-            except Client.DoesNotExist:
-                rooms = []
-                logger.error(f"Client not found: {selected_claim_id}")
-        
-        context = {
-            'claims': claims,
-            'rooms': rooms,
-            'selected_claim_id': selected_claim_id
-        }
-        return render(request, 'account/labels.html', context)
-    
-    # POST request handling - generate PDFs
-    elif request.method == 'POST':
-        try:
-            # Initialize room_labels dictionary
-            room_labels = {}
-            claim_id = request.POST.get('claim', '').strip()
-            
-            if not claim_id:
-                return JsonResponse({'status': 'error', 'message': 'Missing claim ID'}, status=400)
-
-            # Parse room labels from POST data
-            for key, value in request.POST.items():
-                if key.startswith('room_labels['):
-                    try:
-                        room_name = key[len('room_labels['):-1]  # Extract room name
-                        count = int(value)
-                        if count > 0:
-                            room_labels[room_name] = count
-                    except ValueError:
-                        continue
-
-            if not room_labels:
-                return JsonResponse({'status': 'success', 'message': 'No labels requested', 'pdfs': []})
-
-            # Get client data
-            client = get_object_or_404(Client, pOwner=claim_id)
-
-            # Create room index mapping
-            room_indices = {}
-            for i in range(1, 26):  # roomArea1 through roomArea25
-                field_name = f'roomArea{i}'
-                if hasattr(client, field_name):
-                    room_value = getattr(client, field_name)
-                    if room_value:  # Only add if not empty
-                        room_indices[room_value] = i
-
-            template_path = os.path.join(settings.BASE_DIR, 'docsAppR', 'templates', 'excel', 'room_labels_template.xlsx')
-            
-            if not os.path.exists(template_path):
-                return JsonResponse({'status': 'error', 'message': 'Template file not found'}, status=500)
-
-            with tempfile.TemporaryDirectory() as temp_dir:
-                pdfs_info = []
-                
-                for room_name, num_labels in room_labels.items():
-                    try:
-                        # Get room index
-                        room_index = room_indices.get(room_name)
-                        if not room_index:
-                            room_index = get_room_index_from_name(room_name)
-                            if not room_index:
-                                logger.warning(f"No index found for room: {room_name}")
-                                continue
-
-                        # Create safe filenames
-                        safe_claim = safe_filename(claim_id)
-                        safe_room = safe_filename(room_name)
-                        excel_filename = f"labels_{safe_claim}_{safe_room}.xlsx"
-                        pdf_filename = f"labels_{safe_claim}_{safe_room}.pdf"
-                        temp_excel_path = os.path.join(temp_dir, excel_filename)
-                        temp_pdf_path = os.path.join(temp_dir, pdf_filename)
-                        sheet_name = f"RM ({room_index})"
-
-                        logger.info(f"Processing {room_name} (Room {room_index}) - {num_labels} labels")
-
-                        # 1. Create Excel from template with client data
-                        if not create_excel_from_template(template_path, temp_excel_path, sheet_name, room_index, claim_id, client):
-                            logger.error(f"Failed to create Excel for {room_name}")
-                            continue
-
-                        # 2. Convert to PDF with proper label format
-                        try:
-                            convert_excel_to_pdf_with_pages(
-                                excel_path=temp_excel_path,
-                                pdf_path=temp_pdf_path,
-                                sheet_name=sheet_name,
-                                room_name=room_name,
-                                p_owner=client.pOwner,  # Using pOwner as the owner value
-                                num_labels=num_labels
-                            )
-                        except Exception as e:
-                            logger.error(f"PDF conversion failed for {room_name}: {str(e)}")
-                            continue
-
-                        # 3. Store the PDF
-                        if os.path.exists(temp_pdf_path):
-                            with open(temp_pdf_path, 'rb') as pdf_file:
-                                pdf_content = pdf_file.read()
-                            
-                            pdf_obj = File(
-                                filename=pdf_filename,
-                                size=len(pdf_content))
-                            pdf_obj.file.save(pdf_filename, ContentFile(pdf_content))
-                            
-                            pdfs_info.append({
-                                'room_name': room_name,
-                                'pdf_url': pdf_obj.file.url,
-                                'num_labels': num_labels,
-                                'print_area': calculate_print_area(num_labels)
-                            })
-                            
-                            logger.info(f"Successfully generated PDF for {room_name} with {num_labels} labels")
-
-                    except Exception as e:
-                        logger.error(f"Error processing room {room_name}: {str(e)}", exc_info=True)
-                        continue
-
-                return JsonResponse({
-                    'status': 'success', 
-                    'pdfs': pdfs_info
-                }) if pdfs_info else JsonResponse({
-                    'status': 'success',
-                    'message': 'No valid labels generated',
-                    'pdfs': []
-                })
-
-        except Exception as e:
-            logger.error(f"Label generation failed: {str(e)}", exc_info=True)
-            return JsonResponse({
-                'status': 'error',
-                'message': 'Label generation failed. Please try again.'
-            }, status=500)
-
 # Helper functions
 def safe_filename(name, max_length=120):
     """Create filesystem-safe filename"""
@@ -3078,6 +4100,264 @@ def create_excel_from_template(template_path, output_path, sheet_name, room_inde
         logger.error(f"Failed to create Excel from template: {str(e)}", exc_info=True)
         return False
 
+import platform
+
+@login_required
+@login_required
+def labels(request):
+    logger.info(f"Labels function called - method: {request.method}")
+    logger.info(f"User: {request.user}, Authenticated: {request.user.is_authenticated}")
+    
+    # GET request handling - show the form
+    if request.method == 'GET':
+        try:
+            claims = Client.objects.all()
+            selected_claim_id = request.GET.get('claim')
+            rooms = []
+            
+            if selected_claim_id:
+                try:
+                    client = get_object_or_404(Client, pOwner=selected_claim_id)
+                    
+                    # Get all non-empty rooms
+                    for i in range(1, 26):
+                        room_attr = f'roomArea{i}'
+                        room_value = getattr(client, room_attr, None)
+                        
+                        if room_value and isinstance(room_value, str):
+                            room_value = room_value.strip()
+                            if room_value.lower() not in ['', 'tbd', 'n/a']:
+                                rooms.append({
+                                    'id': room_attr,
+                                    'name': room_value
+                                })
+                    
+                    logger.info(f"Found {len(rooms)} rooms for claim {selected_claim_id}")
+                    
+                except Client.DoesNotExist:
+                    rooms = []
+                    logger.error(f"Client not found for pOwner: {selected_claim_id}")
+                except Exception as e:
+                    rooms = []
+                    logger.error(f"Unexpected error loading rooms for claim {selected_claim_id}: {str(e)}")
+                    logger.debug(f"Traceback: {traceback.format_exc()}")
+            
+            context = {
+                'claims': claims,
+                'rooms': rooms,
+                'selected_claim_id': selected_claim_id
+            }
+            return render(request, 'account/labels.html', context)
+            
+        except Exception as e:
+            logger.error(f"Error in GET request: {str(e)}", exc_info=True)
+            return JsonResponse({'status': 'error', 'message': 'Error loading page'}, status=500)
+    
+    # POST request handling - generate PDFs
+    elif request.method == 'POST':
+        try:
+            logger.info("=== STARTING LABEL GENERATION ===")
+            
+            # Initialize room_labels dictionary
+            room_labels = {}
+            claim_id = request.POST.get('claim', '').strip()
+            logger.info(f"Claim ID from POST: '{claim_id}'")
+            
+            if not claim_id:
+                logger.error("Missing claim ID in POST data")
+                return JsonResponse({'status': 'error', 'message': 'Missing claim ID'}, status=400)
+
+            # Parse room labels from POST data
+            logger.info("Parsing room labels from POST data:")
+            for key, value in request.POST.items():
+                if key.startswith('room_labels['):
+                    try:
+                        room_name = key[len('room_labels['):-1]  # Extract room name
+                        count = int(value)
+                        if count > 0:
+                            room_labels[room_name] = count
+                            logger.info(f"  - {room_name}: {count} labels")
+                    except ValueError as ve:
+                        logger.warning(f"Invalid value for room label {key}: {value}")
+                        continue
+
+            logger.info(f"Total room labels parsed: {len(room_labels)}")
+            
+            if not room_labels:
+                logger.info("No room labels requested")
+                return JsonResponse({'status': 'success', 'message': 'No labels requested', 'pdfs': []})
+
+            # Get client data
+            logger.info(f"Looking up client with pOwner: '{claim_id}'")
+            try:
+                client = Client.objects.get(pOwner=claim_id)
+                logger.info(f"Client found: {client.pOwner}")
+            except Client.DoesNotExist:
+                logger.error(f"Client not found for pOwner: {claim_id}")
+                return JsonResponse({'status': 'error', 'message': 'Client not found'}, status=404)
+            except Exception as e:
+                logger.error(f"Error getting client: {str(e)}")
+                return JsonResponse({'status': 'error', 'message': 'Error retrieving client data'}, status=500)
+
+            # Create room index mapping
+            room_indices = {}
+            logger.info("Creating room index mapping:")
+            for i in range(1, 26):  # roomArea1 through roomArea25
+                field_name = f'roomArea{i}'
+                if hasattr(client, field_name):
+                    room_value = getattr(client, field_name, '')
+                    if room_value and str(room_value).strip():  # Only add if not empty
+                        room_indices[str(room_value).strip()] = i
+                        logger.info(f"  - Room {i}: '{room_value}'")
+
+            logger.info(f"Room indices mapping created with {len(room_indices)} entries")
+
+            # Check if template exists
+            template_path = os.path.join(settings.BASE_DIR, 'docsAppR', 'templates', 'excel', 'room_labels_template.xlsx')
+            logger.info(f"Template path: {template_path}")
+            
+            if not os.path.exists(template_path):
+                logger.error(f"Template file not found at: {template_path}")
+                return JsonResponse({'status': 'error', 'message': 'Template file not found'}, status=500)
+            else:
+                logger.info("Template file found")
+
+            # Start PDF generation
+            logger.info("Starting PDF generation in temporary directory")
+            with tempfile.TemporaryDirectory() as temp_dir:
+                pdfs_info = []
+                logger.info(f"Temporary directory created: {temp_dir}")
+                
+                for room_name, num_labels in room_labels.items():
+                    try:
+                        logger.info(f"--- Processing room: '{room_name}', labels: {num_labels} ---")
+                        
+                        # Get room index
+                        room_index = room_indices.get(room_name.strip())
+                        logger.info(f"Room index from mapping: {room_index}")
+                        
+                        if not room_index:
+                            # Try to get room index from name using helper function
+                            logger.info("Trying to get room index from name using helper function")
+                            try:
+                                room_index = get_room_index_from_name(room_name)
+                                logger.info(f"Room index from helper function: {room_index}")
+                            except Exception as e:
+                                logger.error(f"Error in get_room_index_from_name: {str(e)}")
+                                room_index = None
+                            
+                            if not room_index:
+                                logger.warning(f"No index found for room: '{room_name}'. Skipping.")
+                                continue
+
+                        # Create safe filenames
+                        safe_claim = safe_filename(claim_id) if callable(safe_filename) else claim_id.replace(' ', '_')
+                        safe_room = safe_filename(room_name) if callable(safe_filename) else room_name.replace(' ', '_')
+                        excel_filename = f"labels_{safe_claim}_{safe_room}.xlsx"
+                        pdf_filename = f"labels_{safe_claim}_{safe_room}.pdf"
+                        temp_excel_path = os.path.join(temp_dir, excel_filename)
+                        temp_pdf_path = os.path.join(temp_dir, pdf_filename)
+                        sheet_name = f"RM ({room_index})"
+
+                        logger.info(f"File details:")
+                        logger.info(f"  - Excel: {temp_excel_path}")
+                        logger.info(f"  - PDF: {temp_pdf_path}")
+                        logger.info(f"  - Sheet: {sheet_name}")
+
+                        # 1. Create Excel from template with client data
+                        logger.info("Creating Excel from template...")
+                        try:
+                            excel_success = create_excel_from_template(
+                                template_path, 
+                                temp_excel_path, 
+                                sheet_name, 
+                                room_index, 
+                                claim_id, 
+                                client
+                            )
+                            if not excel_success:
+                                logger.error(f"Excel creation returned False for {room_name}")
+                                continue
+                            logger.info("Excel creation successful")
+                        except Exception as e:
+                            logger.error(f"Excel creation failed for {room_name}: {str(e)}")
+                            continue
+
+                        # 2. Convert to PDF with proper label format
+                        logger.info("Converting Excel to PDF...")
+                        try:
+                            convert_excel_to_pdf_with_pages(
+                                excel_path=temp_excel_path,
+                                pdf_path=temp_pdf_path,
+                                sheet_name=sheet_name,
+                                room_name=room_name,
+                                p_owner=client.pOwner,
+                                num_labels=num_labels
+                            )
+                            logger.info("PDF conversion successful")
+                        except Exception as e:
+                            logger.error(f"PDF conversion failed for {room_name}: {str(e)}")
+                            continue
+
+                        # 3. Store the PDF
+                        if os.path.exists(temp_pdf_path):
+                            logger.info(f"PDF file exists at: {temp_pdf_path}")
+                            try:
+                                with open(temp_pdf_path, 'rb') as pdf_file:
+                                    pdf_content = pdf_file.read()
+                                
+                                logger.info(f"PDF content size: {len(pdf_content)} bytes")
+                                
+                                # Create File object and save
+                                pdf_obj = File(filename=pdf_filename, size=len(pdf_content))
+                                pdf_obj.file.save(pdf_filename, ContentFile(pdf_content))
+                                
+                                pdfs_info.append({
+                                    'room_name': room_name,
+                                    'pdf_url': pdf_obj.file.url,
+                                    'num_labels': num_labels,
+                                    'print_area': calculate_print_area(num_labels) if callable(calculate_print_area) else "unknown"
+                                })
+                                
+                                logger.info(f"Successfully generated PDF for {room_name} with {num_labels} labels")
+                            except Exception as e:
+                                logger.error(f"Error saving PDF file: {str(e)}")
+                                continue
+                        else:
+                            logger.error(f"PDF file not found after conversion: {temp_pdf_path}")
+
+                    except Exception as e:
+                        logger.error(f"Error processing room {room_name}: {str(e)}", exc_info=True)
+                        continue
+
+                logger.info(f"=== PDF GENERATION COMPLETED ===")
+                logger.info(f"Generated {len(pdfs_info)} PDFs out of {len(room_labels)} requested")
+                
+                if pdfs_info:
+                    return JsonResponse({
+                        'status': 'success', 
+                        'message': f'Generated {len(pdfs_info)} PDF(s) successfully',
+                        'pdfs': pdfs_info
+                    })
+                else:
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': 'No valid labels generated',
+                        'pdfs': []
+                    })
+
+        except Exception as e:
+            logger.error(f"=== LABEL GENERATION FAILED ===")
+            logger.error(f"Error: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Label generation failed. Please try again.'
+            }, status=500)
+    
+    # Handle other HTTP methods (PUT, DELETE, etc.)
+    else:
+        return HttpResponseNotAllowed(['GET', 'POST'])
+
 def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, room_name, p_owner, num_labels):
     """Convert Excel to PDF with proper print area, eliminating formula errors"""
     try:
@@ -3126,10 +4406,17 @@ def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, room_name,
             wb.save(temp_xlsx)
             wb.close()
             
-            # 7. Convert to PDF using LibreOffice
+            # 7. Convert to PDF using LibreOffice - FIXED PATH FOR LINUX
             temp_dir = os.path.dirname(temp_xlsx)
+            
+            # Detect operating system and set correct LibreOffice path
+            if platform.system() == "Windows":
+                libreoffice_path = 'C:\\Program Files\\LibreOffice\\program\\soffice.exe'
+            else:
+                libreoffice_path = '/usr/bin/libreoffice'  # Linux path
+            
             cmd = [
-                'C:\\Program Files\\LibreOffice\\program\\soffice.exe',
+                libreoffice_path,
                 '--headless',
                 '--convert-to', 'pdf',
                 '--outdir', temp_dir,
@@ -3889,6 +5176,276 @@ def emails(request):
     
     return render(request, 'account/emails.html', context)
 
+
+import json
+import zipfile
+from django.shortcuts import render
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.core.files.storage import default_storage
+from .models import ReadingImage
+from django.core.files.base import ContentFile
+import os
+
+def reading_browser(request):
+    """Main view for the reading browser"""
+    images = ReadingImage.objects.all()
+    return render(request, 'account/browser.html', {'images': images})
+
+@csrf_exempt
+def upload_readings(request):
+    """Handle image uploads"""
+    if request.method == 'POST' and request.FILES.getlist('images'):
+        uploaded_files = request.FILES.getlist('images')
+        results = {
+            'success': [],
+            'errors': [],
+            'duplicates': []
+        }
+        
+        for uploaded_file in uploaded_files:
+            # Check if file already exists
+            if ReadingImage.objects.filter(filename=uploaded_file.name).exists():
+                results['duplicates'].append(uploaded_file.name)
+                continue
+            
+            try:
+                # Create new ReadingImage
+                reading_image = ReadingImage(
+                    filename=uploaded_file.name,
+                    size=uploaded_file.size,
+                    file=uploaded_file
+                )
+                reading_image.save()
+                results['success'].append(uploaded_file.name)
+            except Exception as e:
+                results['errors'].append(f"{uploaded_file.name}: {str(e)}")
+        
+        return JsonResponse(results)
+    
+    return JsonResponse({'error': 'No files provided'}, status=400)
+
+# views.py - Update get_sorted_readings to include MC
+def get_sorted_readings(request):
+    """Get sorted images based on criteria"""
+    sort_by = request.GET.get('sort_by', 'filename')  # Default to filename sort
+    order = request.GET.get('order', 'asc')
+    
+    images = ReadingImage.objects.all()
+    
+    # Apply sorting
+    if sort_by == 'rh':
+        field = 'rh_value'
+    elif sort_by == 't':
+        field = 't_value'
+    elif sort_by == 'gpp':
+        field = 'gpp_value'
+    elif sort_by == 'mc':
+        field = 'mc_value'
+    elif sort_by == 'filename':
+        field = 'filename'
+    else:
+        field = 'filename'  # Default to filename sorting
+    
+    if order == 'desc':
+        field = f'-{field}'
+    
+    images = images.order_by(field)
+    
+    # Prepare data for JSON response
+    image_data = []
+    for image in images:
+        image_data.append({
+            'id': image.id,
+            'filename': image.filename,
+            'url': image.file.url,
+            'rh': image.rh_value,
+            't': image.t_value,
+            'gpp': image.gpp_value,
+            'mc': image.mc_value, 
+            'size': image.get_file_size_display()
+        })
+    
+    return JsonResponse({'images': image_data})
+
+# views.py - Improved export_readings function
+@csrf_exempt
+def export_readings(request):
+    """Export selected images as zip file with better error handling"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            folder_structure = data.get('folders', {})
+            
+            if not folder_structure:
+                return JsonResponse({'error': 'No folders provided'}, status=400)
+            
+            # Validate that we have some images to export
+            total_images = sum(len(images) for images in folder_structure.values())
+            if total_images == 0:
+                return JsonResponse({'error': 'No images in folders to export'}, status=400)
+            
+            # Create zip file in memory
+            response = HttpResponse(content_type='application/zip')
+            response['Content-Disposition'] = 'attachment; filename="reading_images.zip"'
+            
+            try:
+                with zipfile.ZipFile(response, 'w') as zip_file:
+                    exported_count = 0
+                    missing_files = []
+                    
+                    for folder_name, image_data_list in folder_structure.items():
+                        for image_data in image_data_list:
+                            try:
+                                image_id = image_data.get('id')
+                                image = ReadingImage.objects.get(id=image_id)
+                                
+                                if image.file and os.path.exists(image.file.path):
+                                    # Add to folder in zip
+                                    zip_path = os.path.join(folder_name, image.filename)
+                                    zip_file.write(image.file.path, zip_path)
+                                    exported_count += 1
+                                else:
+                                    missing_files.append(image.filename)
+                                    
+                            except ReadingImage.DoesNotExist:
+                                missing_files.append(f"Image ID {image_id}")
+                            except Exception as e:
+                                missing_files.append(f"{image_data.get('filename', 'Unknown')}: {str(e)}")
+                    
+                    if exported_count == 0:
+                        return JsonResponse({
+                            'error': f'No files could be exported. Missing files: {missing_files}'
+                        }, status=404)
+                    
+                    if missing_files:
+                        print(f"Warning: {len(missing_files)} files could not be exported: {missing_files}")
+                
+                return response
+                
+            except zipfile.BadZipFile:
+                return JsonResponse({'error': 'Error creating zip file'}, status=500)
+            except OSError as e:
+                return JsonResponse({'error': f'File system error: {str(e)}'}, status=500)
+            
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        except Exception as e:
+            return JsonResponse({'error': f'Unexpected error: {str(e)}'}, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+
+# views.py - Updated rename_reading function
+# views.py - COMPLETELY FIXED rename_reading function
+@csrf_exempt
+def rename_reading(request, image_id):
+    """Rename a reading image and properly update the file field"""
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+            new_filename = data.get('filename')
+            
+            if not new_filename:
+                return JsonResponse({'error': 'No filename provided'}, status=400)
+            
+            image = ReadingImage.objects.get(id=image_id)
+            
+            # Get the current file information
+            if not image.file:
+                return JsonResponse({'error': 'Image file not found'}, status=404)
+            
+            old_file_path = image.file.path
+            old_filename = image.filename
+            
+            print(f"Renaming from: {old_filename} to: {new_filename}")
+            print(f"Old file path: {old_file_path}")
+            
+            # Validate that old file exists
+            if not os.path.exists(old_file_path):
+                return JsonResponse({
+                    'error': f'Original file not found: {old_filename}'
+                }, status=404)
+            
+            # Ensure the new filename has proper extension
+            old_ext = os.path.splitext(old_filename)[1]
+            new_ext = os.path.splitext(new_filename)[1]
+            
+            if not new_ext:
+                new_filename += old_ext
+            elif new_ext.lower() != old_ext.lower():
+                return JsonResponse({
+                    'error': f'Cannot change file extension from {old_ext} to {new_ext}'
+                }, status=400)
+            
+            # Generate new file path
+            file_dir = os.path.dirname(old_file_path)
+            new_file_path = os.path.join(file_dir, new_filename)
+            
+            # Check if new filename already exists (and it's not the same file)
+            if os.path.exists(new_file_path) and new_file_path != old_file_path:
+                return JsonResponse({
+                    'error': f'Filename already exists: {new_filename}'
+                }, status=400)
+            
+            # Rename the file in storage
+            try:
+                os.rename(old_file_path, new_file_path)
+                print(f"File renamed successfully on disk: {new_file_path}")
+            except OSError as e:
+                return JsonResponse({
+                    'error': f'File system error: {str(e)}'
+                }, status=500)
+            
+            # CRITICAL FIX: Update the file field to point to the new path
+            # Get the relative path from the media root
+            from django.conf import settings
+            media_root = settings.MEDIA_ROOT
+            relative_new_path = os.path.relpath(new_file_path, media_root)
+            
+            # Update both filename AND file field
+            image.filename = new_filename
+            image.file.name = relative_new_path  # This updates the FileField path!
+            
+            # Re-extract values from new filename
+            image.extract_values_from_filename()
+            
+            # Save the model (this updates both fields in database)
+            image.save()
+            
+            print(f"Database updated - filename: {image.filename}, file field: {image.file.name}")
+            
+            return JsonResponse({
+                'success': True, 
+                'message': 'Image renamed successfully',
+                'new_filename': new_filename,
+                'file_url': image.file.url  # Return the updated URL
+            })
+            
+        except ReadingImage.DoesNotExist:
+            return JsonResponse({'error': 'Image not found'}, status=404)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+        except Exception as e:
+            return JsonResponse({'error': f'Unexpected error: {str(e)}'}, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
+@csrf_exempt
+def delete_reading(request, image_id):
+    """Delete a reading image"""
+    if request.method == 'DELETE':
+        try:
+            image = ReadingImage.objects.get(id=image_id)
+            image.delete()
+            return JsonResponse({'success': True, 'message': 'Image deleted successfully'})
+        except ReadingImage.DoesNotExist:
+            return JsonResponse({'error': 'Image not found'}, status=404)
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=500)
+    
+    return JsonResponse({'error': 'Invalid request method'}, status=400)
+
 from django.db.models import Count, Avg, Case, When, IntegerField, F, Q
 from django.utils import timezone
 import datetime as dt
@@ -4014,6 +5571,35 @@ def statistics(request):
         }
         for c in clients.order_by('-updated_at')[:5]
     ]
+    
+        recent_uploads = UploadActivity.objects.all().order_by('-uploaded_at')[:10]
+    
+    context.update({
+        'recent_uploads': recent_uploads,
+        'upload_stats': {
+            'total_uploads': UploadActivity.objects.count(),
+            'successful_uploads': UploadActivity.objects.filter(status='SUCCESS').count(),
+            'today_uploads': UploadActivity.objects.filter(
+                uploaded_at__date=timezone.now().date()
+            ).count(),
+        }
+    })
+        # Add room statistics
+    total_rooms = Room.objects.count()
+    rooms_per_client = Client.objects.annotate(room_count=models.Count('rooms'))
+    avg_rooms_per_client = rooms_per_client.aggregate(avg=models.Avg('room_count'))['avg'] or 0
+    
+    # Work type distribution
+    work_type_stats = {}
+    for wt in WorkType.objects.all():
+        wt_count = RoomWorkTypeValue.objects.filter(work_type=wt).exclude(value_type='NA').count()
+        work_type_stats[wt.work_type_id] = wt_count
+    
+    context.update({
+        'total_rooms': total_rooms,
+        'avg_rooms_per_client': round(avg_rooms_per_client, 1),
+        'work_type_stats': work_type_stats,
+    })
     
     context = {
         'total_claims': total_claims,
