@@ -17,7 +17,7 @@ from .models import Client, Room, WorkType, RoomWorkTypeValue, ChecklistItem
 # OneDrive models removed: OneDriveFolder, OneDriveFile, SyncLog
 from .forms import OneDriveClientForm, RoomSelectionForm, BulkWorkTypeForm
 # UPDATED: Use server-side tasks instead of OneDrive tasks
-from .tasks import create_server_folder_structure_task, copy_templates_to_server_task
+from .tasks import create_server_folder_structure_task, copy_templates_to_server_task, push_claim_to_encircle_task, generate_and_email_labels_task
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -364,26 +364,55 @@ def create_claim_step3(request):
     rooms = Room.objects.filter(client=client).prefetch_related('work_type_values__work_type').order_by('sequence')
 
     if request.method == 'POST':
-        # Create server folder structure
+        is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         try:
             client.save()
 
-            # UPDATED: Trigger server-side background tasks (replaces OneDrive)
-            create_server_folder_structure_task.delay(client.id)
-            copy_templates_to_server_task.delay(client.id)
+            # Trigger server-side background tasks
+            folder_task = create_server_folder_structure_task.delay(client.id)
+            templates_task = copy_templates_to_server_task.delay(client.id)
+
+            # Push claim + rooms to Encircle with selected templates
+            encircle_templates = request.POST.getlist('encircle_templates')
+            encircle_task = push_claim_to_encircle_task.delay(str(client.id), encircle_templates)
+
+            # Auto-generate and email labels for all rooms
+            labels_task = generate_and_email_labels_task.delay(str(client.id))
+
+            # Auto-send room list email to default recipients (synchronous)
+            email_ok, email_err = _auto_send_room_list(client)
 
             # Clear session
             request.session.pop('creating_claim_id', None)
 
-            messages.success(
-                request,
-                f'Claim created successfully! Server folder structure is being created in the background for {client.pOwner}.'
-            )
+            from django.urls import reverse
+            detail_url = reverse('claim_detail', kwargs={'claim_id': client.id})
 
+            if is_ajax:
+                return JsonResponse({
+                    'success': True,
+                    'redirect_url': detail_url,
+                    'claim_id': str(client.id),
+                    'task_ids': {
+                        'folder': folder_task.id,
+                        'templates': templates_task.id,
+                        'encircle': encircle_task.id,
+                        'labels': labels_task.id,
+                    },
+                    'sync_status': {
+                        'db': True,
+                        'email': email_ok,
+                        'email_error': email_err,
+                    },
+                })
+
+            messages.success(request, f'Claim created for {client.pOwner}!')
             return redirect('claim_detail', claim_id=client.id)
 
         except Exception as e:
-            messages.error(request, f'Error creating server folder structure: {str(e)}')
+            if is_ajax:
+                return JsonResponse({'success': False, 'error': str(e)}, status=500)
+            messages.error(request, f'Error creating claim: {str(e)}')
 
     context = {
         'client': client,
@@ -462,6 +491,12 @@ def create_claim_combined(request):
             create_server_folder_structure_task.delay(client.id)
             copy_templates_to_server_task.delay(client.id)
 
+            # Push claim + rooms to Encircle in the background (basic always included)
+            push_claim_to_encircle_task.delay(str(client.id), ['basic'])
+
+            # Auto-generate and email labels for all rooms
+            generate_and_email_labels_task.delay(str(client.id))
+
             messages.success(request, f'Claim created! Server folder structure is being created for {client.pOwner}.')
             return redirect('dashboard')
         else:
@@ -491,6 +526,168 @@ def cancel_claim_creation(request):
         messages.info(request, 'Claim creation cancelled.')
 
     return redirect('claim_list')
+
+
+def _auto_send_room_list(client, recipients=None):
+    """
+    Synchronously send a room list email for `client`.
+    Called automatically after claim creation. Non-fatal if it fails.
+    """
+    from django.core.mail import EmailMessage
+    from django.conf import settings
+    from .views import generate_room_list_email_html, generate_room_list_pdf
+
+    if recipients is None:
+        recipients = ['wsbjoe9@gmail.com', 'galaxielsaga@gmail.com']
+
+    try:
+        rooms = []
+        configs = {}
+        for room in client.rooms.all().order_by('sequence'):
+            rooms.append(room.room_name)
+            room_config = {}
+            for rtv in room.work_type_values.select_related('work_type'):
+                room_config[str(rtv.work_type.work_type_id)] = rtv.value_type
+            configs[room.room_name] = room_config
+
+        if not rooms:
+            return True, None  # nothing to send, not an error
+
+        room_data = {'rooms': rooms, 'configs': configs}
+        html_content = generate_room_list_email_html(client.pOwner, client.pAddress or '', room_data)
+        pdf_buffer = generate_room_list_pdf(client.pOwner, client.pAddress or '', room_data)
+
+        email = EmailMessage(
+            subject=f'[ROOM LIST] {client.pOwner} — Worktype Documentation',
+            body=html_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=recipients,
+        )
+        email.content_subtype = 'html'
+        pdf_filename = f"{client.pOwner.replace(' ', '_')}_Room_List.pdf"
+        email.attach(pdf_filename, pdf_buffer.getvalue(), 'application/pdf')
+        email.send()
+        logger.info(f'Auto-sent room list for {client.pOwner} to {recipients}')
+    except Exception as exc:
+        logger.warning(f'_auto_send_room_list failed for {client.pOwner}: {exc}', exc_info=True)
+        return False, str(exc)
+    return True, None
+
+
+@login_required
+def claim_task_status(request):
+    """
+    Poll status of background Celery tasks by ID.
+    GET params: folder=<id>&templates=<id>&labels=<id>&encircle=<id>
+    Returns JSON with state (PENDING/STARTED/SUCCESS/FAILURE) per key.
+    """
+    from celery.result import AsyncResult
+    keys = ['folder', 'templates', 'labels', 'encircle']
+    statuses = {}
+    for key in keys:
+        task_id = request.GET.get(key)
+        if task_id:
+            r = AsyncResult(task_id)
+            statuses[key] = {
+                'state': r.state,
+                'error': str(r.result) if r.state == 'FAILURE' else None,
+            }
+    return JsonResponse({'statuses': statuses})
+
+
+# ==================== Encircle Push ====================
+
+@login_required
+@require_POST
+def send_room_list_from_claim(request):
+    """
+    Send room list email for a claim that is in the process of being created (step 3).
+    Reads the claim from session's 'creating_claim_id', builds room_data from its rooms
+    and work-type values, then emails a PDF attachment to the requested recipients.
+    """
+    import json as _json
+    from django.core.mail import EmailMessage
+    from django.conf import settings
+    from .views import generate_room_list_email_html, generate_room_list_pdf
+
+    try:
+        body = _json.loads(request.body)
+    except _json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    recipients = body.get('recipients', [])
+    if not recipients:
+        return JsonResponse({'error': 'No recipients provided'}, status=400)
+
+    claim_id = request.session.get('creating_claim_id')
+    if not claim_id:
+        return JsonResponse({'error': 'No claim in progress'}, status=400)
+
+    client = get_object_or_404(Client, id=claim_id)
+
+    # Build room_data
+    rooms = []
+    configs = {}
+    for room in client.rooms.all().order_by('sequence'):
+        rooms.append(room.room_name)
+        room_config = {}
+        for rtv in room.work_type_values.select_related('work_type'):
+            # Use work_type_id (100, 200, ...) as key — matches generate_room_list_pdf expectations
+            room_config[str(rtv.work_type.work_type_id)] = rtv.value_type
+        configs[room.room_name] = room_config
+
+    if not rooms:
+        return JsonResponse({'error': 'No rooms found for this claim'}, status=400)
+
+    room_data = {'rooms': rooms, 'configs': configs}
+
+    try:
+        html_content = generate_room_list_email_html(client.pOwner, client.pAddress, room_data)
+        pdf_buffer = generate_room_list_pdf(client.pOwner, client.pAddress, room_data)
+
+        email = EmailMessage(
+            subject=f'[ROOM LIST] {client.pOwner} — Worktype Documentation',
+            body=html_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=recipients,
+        )
+        email.content_subtype = 'html'
+        pdf_filename = f"{client.pOwner.replace(' ', '_')}_Room_List.pdf"
+        email.attach(pdf_filename, pdf_buffer.getvalue(), 'application/pdf')
+        email.send()
+
+        return JsonResponse({
+            'success': True,
+            'recipients_count': len(recipients),
+            'message': f'Room list sent to {len(recipients)} recipient(s)',
+        })
+    except Exception as exc:
+        logger.error(f'send_room_list_from_claim error: {exc}', exc_info=True)
+        return JsonResponse({'error': str(exc)}, status=500)
+
+
+@login_required
+@require_POST
+def push_to_encircle(request, claim_id):
+    """
+    Manually (re-)push a claim and its rooms to Encircle.
+    Called via the 'Sync to Encircle' button on claim_detail.html.
+    Returns JSON so the front-end can display the result without a page reload.
+    """
+    client = get_object_or_404(Client, id=claim_id)
+
+    try:
+        task = push_claim_to_encircle_task.delay(str(client.id))
+        return JsonResponse({
+            'success': True,
+            'message': f'Encircle sync queued for {client.pOwner}. '
+                       f'The claim and all rooms will appear in Encircle shortly.',
+            'task_id': task.id,
+            'existing_encircle_id': client.encircle_claim_id or None,
+        })
+    except Exception as exc:
+        logger.error(f"push_to_encircle view error for claim {claim_id}: {exc}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
 
 
 # ==================== Update Claim API ====================
@@ -980,10 +1177,21 @@ def regenerate_templates(request, claim_id):
     Clears Column C in jobinfo(2) for each file, then repopulates with current data.
     """
     import os
+    import json as json_mod
 
     try:
         client = get_object_or_404(Client, id=claim_id)
         folder_path = client.get_server_folder_path()
+
+        # Read optional method override from JSON body
+        populate_method = None
+        try:
+            body = json_mod.loads(request.body or '{}')
+            populate_method = body.get('method') or None  # 'auto'|'uno'|'xml'|None
+            if populate_method not in (None, 'auto', 'uno', 'xml'):
+                populate_method = None  # ignore unknown values
+        except Exception:
+            pass
 
         # Ensure folder structure exists
         if not os.path.exists(folder_path):
@@ -1015,7 +1223,7 @@ def regenerate_templates(request, claim_id):
             logger.info(f"Copied {len(copied)} base templates for regeneration")
 
         # Populate all templates with the latest client data
-        result = populate_excel_templates(client, templates_folder)
+        result = populate_excel_templates(client, templates_folder, method=populate_method)
 
         # Also update the JSON data files
         try:
@@ -1025,11 +1233,13 @@ def regenerate_templates(request, claim_id):
             logger.warning(f"Error saving JSON data: {json_err}")
 
         if result.get('success'):
+            method_label = result.get('method') or populate_method or 'auto'
             return JsonResponse({
                 'success': True,
-                'message': f'Regenerated {result.get("total_processed", 0)} templates with latest claim data.',
+                'message': f'Regenerated {result.get("total_processed", 0)} templates with latest claim data. [{method_label}]',
                 'populated_files': result.get('populated_files', []),
                 'errors': result.get('errors', []),
+                'method_used': result.get('method'),
             })
         else:
             return JsonResponse({

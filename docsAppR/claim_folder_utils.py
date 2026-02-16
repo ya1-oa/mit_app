@@ -603,7 +603,7 @@ def get_templates_folder(client):
     return os.path.join(claim_folder, f"Templates {safe_folder_name}")
 
 
-def populate_excel_templates(client, templates_folder=None):
+def populate_excel_templates(client, templates_folder=None, method=None):
     """
     Populate ALL Excel templates with raw client data via pure XML/ZIP surgery.
     Every template with a jobinfo(2) sheet gets raw values in Column C.
@@ -612,11 +612,12 @@ def populate_excel_templates(client, templates_folder=None):
     Args:
         client: Client model instance
         templates_folder: Optional templates folder path
+        method: Optional populate method override ('auto'|'uno'|'xml')
 
     Returns:
         dict: Results with populated files list and any errors
     """
     from .tasks import populate_excel_templates as tasks_populate
-    return tasks_populate(client, templates_folder)
+    return tasks_populate(client, templates_folder, method=method)
 
 

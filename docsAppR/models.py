@@ -236,6 +236,17 @@ class Client(models.Model):
     ale_re_owner_broker_name = models.CharField(max_length=255, blank=True, help_text="Owner/Broker Name")
     ale_re_owner_broker_phone = models.CharField(max_length=255, blank=True, help_text="Owner/Broker Phone")
     ale_re_owner_broker_email = models.CharField(max_length=255, blank=True, help_text="Owner/Broker Email")
+
+    # Encircle integration
+    encircle_claim_id = models.CharField(
+        max_length=100, blank=True, null=True,
+        help_text="Encircle property claim ID (set after push to Encircle)"
+    )
+    encircle_synced_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Last time this claim was pushed to Encircle"
+    )
+
     completion_percent = models.IntegerField(
         default=0,
         validators=[MinValueValidator(0), MaxValueValidator(100)]

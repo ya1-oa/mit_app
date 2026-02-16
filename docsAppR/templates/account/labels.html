@@ -99,15 +99,37 @@
                     <!-- Hidden claim field -->
                     <input type="hidden" name="claim" value="{{ selected_claim_id }}">
 
-                    <!-- Submit Button -->
-                    <div class="mt-8">
-                        <button 
+                    <!-- Action Buttons -->
+                    <div class="mt-8 flex flex-wrap gap-4 items-center">
+                        <button
                             type="submit"
                             id="generate-labels-btn"
-                            class="w-full sm:w-auto px-6 py-3 bg-gray-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
+                            class="px-6 py-3 bg-gray-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 transition-colors"
                         >
-                            Generate Room Labels
+                            Generate &amp; Save Labels
                         </button>
+
+                        <!-- Single combined-PDF download button -->
+                        {% if selected_claim_id %}
+                        <a
+                            id="download-all-btn"
+                            href="{% url 'generate_combined_labels' claim_id=selected_claim_id %}"
+                            class="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download All Labels PDF
+                        </a>
+                        {% endif %}
+                    </div>
+
+                    <!-- Success banner shown after generation -->
+                    <div id="generation-success" class="hidden mt-6 p-4 bg-green-50 border border-green-300 rounded-lg">
+                        <p class="text-green-800 font-medium">
+                            ✓ Labels generated and saved to the claim folder.
+                            <a id="download-all-after-gen" href="#" class="underline ml-2">Download All Labels PDF</a>
+                        </p>
                     </div>
                 {% else %}
                     <div class="text-center py-8">
@@ -166,41 +188,20 @@
                 const responseData = await response.json();
                 
                 if (responseData.status === 'success') {
-                    // Process each PDF in the response
-                    const pdfs = responseData.pdfs || [];
-                    
-                    // Update UI for each room
+                    // Hide all per-room spinners/statuses — we use a single combined download
                     roomInputs.forEach(input => {
-                        const roomName = input.name.match(/\[(.*?)\]/)[1];
                         const roomEntry = input.closest('.room-entry');
                         const pdfStatus = roomEntry.querySelector('.pdf-status');
-                        const spinner = roomEntry.querySelector('.spinner');
-                        const statusText = roomEntry.querySelector('.status-text');
-                        const downloadLink = roomEntry.querySelector('.download-link');
-                        
-                        // Find matching PDF from response
-                        const pdfData = pdfs.find(pdf => pdf.room_name === roomName);
-                        
-                        if (pdfData) {
-                            // Update UI with success information
-                            spinner.classList.add('hidden');
-                            statusText.textContent = `${pdfData.num_labels} labels generated successfully`;
-                            downloadLink.classList.remove('hidden');
-                            
-                            // Set the correct download link
-                            const link = downloadLink.querySelector('a');
-                            link.href = pdfData.pdf_url;
-                            link.download = `${roomName}-labels.pdf`;
-                            
-                            // Remove the onclick handler (use the actual href instead)
-                            link.onclick = null;
-                        } else if (parseInt(input.value) > 0) {
-                            // This room was requested but no PDF was returned
-                            spinner.classList.add('hidden');
-                            statusText.textContent = 'Failed to generate labels';
-                            statusText.classList.add('text-red-500');
-                        }
+                        if (pdfStatus) pdfStatus.classList.add('hidden');
                     });
+
+                    // Show the combined success banner + set the download link
+                    const successBanner = document.getElementById('generation-success');
+                    const dlAfter = document.getElementById('download-all-after-gen');
+                    const dlAll = document.getElementById('download-all-btn');
+                    if (successBanner) successBanner.classList.remove('hidden');
+                    const combinedUrl = responseData.combined_pdf_url || (dlAll && dlAll.href);
+                    if (dlAfter && combinedUrl) dlAfter.href = combinedUrl;
                 } else {
                     // Handle error response
                     alert(`Error: ${responseData.message || 'Unknown error occurred'}`);

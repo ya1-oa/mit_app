@@ -75,7 +75,8 @@ RUN echo "=== Installing ChromeDriver using Chrome for Testing ===" \
 ENV CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \
     CHROME_BIN=/usr/bin/google-chrome \
     LIBREOFFICE_PATH=/usr/bin/libreoffice \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    PYTHONPATH="/usr/lib/python3/dist-packages"
 
 # Create and set working directory
 WORKDIR /app

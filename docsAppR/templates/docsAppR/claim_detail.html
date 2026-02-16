@@ -955,9 +955,23 @@
                             <h5 class="mb-0">
                                 <i class="fas fa-folder-open"></i> Claim Folder Structure
                             </h5>
-                            <div class="d-flex gap-2">
+                            <div class="d-flex gap-2 align-items-center flex-wrap">
+                                <!-- Populate method selector -->
+                                <div class="btn-group btn-group-sm" role="group" aria-label="Populate method">
+                                    <input type="radio" class="btn-check" name="populateMethod" id="methodXml" value="xml" autocomplete="off" checked>
+                                    <label class="btn btn-outline-secondary" for="methodXml" title="Fast XML rewrite (default)">XML</label>
+                                    <input type="radio" class="btn-check" name="populateMethod" id="methodAuto" value="auto" autocomplete="off">
+                                    <label class="btn btn-outline-secondary" for="methodAuto" title="Auto: UNO → LO subprocess → XML">Auto</label>
+                                    <input type="radio" class="btn-check" name="populateMethod" id="methodUno" value="uno" autocomplete="off">
+                                    <label class="btn btn-outline-secondary" for="methodUno" title="LibreOffice UNO (slowest, zero corruption)">UNO</label>
+                                </div>
                                 <button class="btn btn-sm btn-outline-warning" id="regenerateBtn" onclick="regenerateTemplates()">
                                     <i class="fas fa-sync-alt"></i> Regenerate Files
+                                </button>
+                                <button class="btn btn-sm btn-outline-info" id="encircleSyncBtn" onclick="pushToEncircle()"
+                                        title="{% if client.encircle_claim_id %}Last synced: {{ client.encircle_synced_at|date:'M d Y H:i' }} · Encircle ID: {{ client.encircle_claim_id }}{% else %}Push this claim and all rooms to Encircle{% endif %}">
+                                    <i class="fas fa-cloud-upload-alt"></i>
+                                    {% if client.encircle_claim_id %}Re-sync Encircle{% else %}Sync to Encircle{% endif %}
                                 </button>
                                 <button class="btn btn-sm btn-success" onclick="openUploadModal('', 'Root Folder')">
                                     <i class="fas fa-upload"></i> Upload
@@ -1211,6 +1225,46 @@ function cancelReplace(fileName) {
     if (prompt) prompt.remove();
 }
 
+// Push / re-sync this claim (+ rooms) to Encircle
+function pushToEncircle() {
+    const btn = document.getElementById('encircleSyncBtn');
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Syncing…';
+
+    fetch(`/claims/${claimId}/push-to-encircle/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        if (data.success) {
+            const folderBrowser = document.getElementById('folder-browser');
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-info alert-dismissible fade show mb-2';
+            alert.innerHTML = `
+                <i class="fas fa-check-circle"></i> ${data.message}
+                ${data.existing_encircle_id ? '<br><small class="text-muted">Encircle ID: ' + data.existing_encircle_id + '</small>' : ''}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            folderBrowser.parentNode.insertBefore(alert, folderBrowser);
+        } else {
+            alert('Encircle sync failed: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        console.error('Encircle sync error:', err);
+        alert('Error syncing to Encircle. Please try again.');
+    });
+}
+
 // Regenerate all templates from latest claim data
 function regenerateTemplates() {
     const btn = document.getElementById('regenerateBtn');
@@ -1218,12 +1272,17 @@ function regenerateTemplates() {
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Regenerating...';
 
+    // Read the selected populate method from the radio group
+    const methodInput = document.querySelector('input[name="populateMethod"]:checked');
+    const method = methodInput ? methodInput.value : 'xml';
+
     fetch(`/claims/${claimId}/regenerate-templates/`, {
         method: 'POST',
         headers: {
             'X-CSRFToken': getCookie('csrftoken'),
             'Content-Type': 'application/json',
         },
+        body: JSON.stringify({ method }),
     })
     .then(response => response.json())
     .then(data => {

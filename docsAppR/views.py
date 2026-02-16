@@ -762,6 +762,111 @@ class EncircleAPIClient:
 
         return self._make_v2_request(f"property_claims/{claim_id}/floor_plan_dimensions")
 
+    # ── Write methods (GreenField / create) ───────────────────────────────────
+
+    def _make_post_request(self, endpoint, payload):
+        """Generic POST to v1 API."""
+        try:
+            url = f"{self.base_url}/{endpoint}"
+            headers = {**self.headers, "Content-Type": "application/json"}
+            response = requests.post(url, headers=headers, json=payload)
+            if not response.ok:
+                try:
+                    body = response.json()
+                except Exception:
+                    body = response.text
+                logger.error(f"POST request failed for {endpoint}: {response.status_code} — {body}")
+                logger.error(f"POST payload was: {payload}")
+                response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"POST request failed for {endpoint}: {str(e)}")
+            raise Exception(f"POST request failed: {str(e)}")
+
+    def get_account_ids(self):
+        """
+        Fetch organization_id and brand_id from the first existing claim.
+        Both are per-organization constants required when creating new claims.
+        Returns dict with 'organization_id' and 'brand_id' (both may be None).
+        """
+        result = {'organization_id': None, 'brand_id': None}
+        try:
+            resp = self._make_request("property_claims", params={"limit": 1})
+            claims = resp.get("list", []) if isinstance(resp, dict) else []
+            if claims:
+                c = claims[0]
+                result['organization_id'] = str(c['organization_id']) if c.get('organization_id') else None
+                result['brand_id'] = str(c['brand_id']) if c.get('brand_id') else None
+                logger.info(f"get_account_ids: organization_id={result['organization_id']}, brand_id={result['brand_id']}")
+            else:
+                logger.warning("get_account_ids: no existing claims to extract IDs from")
+        except Exception as exc:
+            logger.warning(f"get_account_ids: failed — {exc}", exc_info=True)
+        return result
+
+    def _make_patch_request(self, endpoint, payload):
+        """Generic PATCH to v1 API."""
+        try:
+            url = f"{self.base_url}/{endpoint}"
+            headers = {**self.headers, "Content-Type": "application/json"}
+            response = requests.patch(url, headers=headers, json=payload)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.RequestException as e:
+            logger.error(f"PATCH request failed for {endpoint}: {str(e)}")
+            raise Exception(f"PATCH request failed: {str(e)}")
+
+    def create_claim(self, claim_data):
+        """
+        Create a new property claim in Encircle.
+        Automatically injects brand_id (required by API) and ensures
+        type_of_loss is set (required by API).
+        Returns the newly created claim dict (includes 'id').
+        """
+        payload = dict(claim_data)
+        # organization_id and brand_id are required — fetch from an existing claim
+        if not payload.get('organization_id') or not payload.get('brand_id'):
+            ids = self.get_account_ids()
+            if ids['organization_id'] and not payload.get('organization_id'):
+                payload['organization_id'] = ids['organization_id']
+            if ids['brand_id'] and not payload.get('brand_id'):
+                payload['brand_id'] = ids['brand_id']
+            if not payload.get('organization_id'):
+                logger.error("create_claim: organization_id could not be resolved — request will likely fail")
+        # type_of_loss is required — default to 'Other' if not provided
+        if not payload.get('type_of_loss'):
+            payload['type_of_loss'] = 'Other'
+        logger.info(f"create_claim: final payload = {payload}")
+        return self._make_post_request("property_claims", payload)
+
+    def get_or_create_default_structure(self, encircle_claim_id):
+        """
+        Return the first structure on a claim (Encircle always creates a
+        'Main Building' structure by default).  Falls back to creating one
+        if none exist.
+        Returns a structure dict (includes 'id').
+        """
+        structures_resp = self.get_claim_structures(encircle_claim_id)
+        structures = structures_resp.get("list", structures_resp) if isinstance(structures_resp, dict) else structures_resp
+        if structures:
+            return structures[0]
+        # No structures yet – create one
+        return self._make_post_request(
+            f"property_claims/{encircle_claim_id}/structures",
+            {"name": "Main Building"}
+        )
+
+    def create_room(self, encircle_claim_id, structure_id, room_payload):
+        """
+        Create a room inside a structure.
+        room_payload keys: name (required), description (optional)
+        Returns the newly created room dict.
+        """
+        return self._make_post_request(
+            f"property_claims/{encircle_claim_id}/structures/{structure_id}/rooms",
+            room_payload
+        )
+
 class EncircleDataProcessor:
     """
     Data processing utilities for Encircle API responses
@@ -4876,6 +4981,62 @@ def create_excel_from_template(template_path, output_path, sheet_name, room_inde
 import platform
 
 @login_required
+def generate_combined_labels(request, claim_id):
+    """
+    Return a single combined PDF containing wall labels + box labels for every
+    room in the given claim.  Used by the 'Download All Labels' button on the
+    labels page.
+    """
+    import io
+    from django.http import HttpResponse, Http404
+    from .tasks import _create_combined_wall_labels_pdf, _create_combined_box_labels_pdf
+
+    try:
+        client = Client.objects.get(id=claim_id)
+    except Client.DoesNotExist:
+        raise Http404
+
+    rooms = client.rooms.all().order_by('sequence')
+    if not rooms.exists():
+        from django.http import HttpResponse
+        return HttpResponse("No rooms configured for this claim.", status=400)
+
+    # ── Build wall-labels PDF ──────────────────────────────────────────────
+    wall_buf = io.BytesIO()
+    _create_combined_wall_labels_pdf(wall_buf, client, rooms)
+    wall_buf.seek(0)
+
+    # ── Build box-labels PDF ──────────────────────────────────────────────
+    box_buf = io.BytesIO()
+    _create_combined_box_labels_pdf(box_buf, client, rooms)
+    box_buf.seek(0)
+
+    # ── Merge into one PDF using PyPDF or simple concatenation ────────────
+    try:
+        from pypdf import PdfWriter, PdfReader
+        writer = PdfWriter()
+        for buf in (wall_buf, box_buf):
+            reader = PdfReader(buf)
+            for page in reader.pages:
+                writer.add_page(page)
+        merged_buf = io.BytesIO()
+        writer.write(merged_buf)
+        merged_buf.seek(0)
+        combined_bytes = merged_buf.read()
+    except ImportError:
+        # pypdf not installed – fall back to returning just wall labels
+        combined_bytes = wall_buf.read()
+
+    safe_name = "".join(
+        c for c in (client.pOwner or 'Claim') if c.isalnum() or c in (' ', '-', '_')
+    ).strip().replace(' ', '_')
+
+    response = HttpResponse(combined_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_All_Labels.pdf"'
+    return response
+
+
+@login_required
 @login_required
 def labels(request):
     logger.info(f"Labels function called - method: {request.method}")
@@ -5099,17 +5260,21 @@ def labels(request):
                 logger.info(f"=== PDF GENERATION COMPLETED ===")
                 logger.info(f"Generated {len(pdfs_info)} PDFs out of {len(room_labels)} requested")
                 
+                from django.urls import reverse
+                combined_url = reverse('generate_combined_labels', args=[claim_id])
                 if pdfs_info:
                     return JsonResponse({
-                        'status': 'success', 
+                        'status': 'success',
                         'message': f'Generated {len(pdfs_info)} PDF(s) successfully',
-                        'pdfs': pdfs_info
+                        'pdfs': pdfs_info,
+                        'combined_pdf_url': combined_url,
                     })
                 else:
                     return JsonResponse({
                         'status': 'success',
                         'message': 'No valid labels generated',
-                        'pdfs': []
+                        'pdfs': [],
+                        'combined_pdf_url': combined_url,
                     })
 
         except Exception as e:
@@ -9625,14 +9790,19 @@ def generate_room_list_pdf(claim_name, claim_address, room_data, format_type='li
     styles = getSampleStyleSheet()
     
     if format_type == 'list':
-        return _generate_list_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements)
+        return _generate_list_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements, buffer)
     else:
-        return _generate_table_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements)
+        return _generate_table_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements, buffer)
 
 
-def _generate_list_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements):
+def _generate_list_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements, buffer):
     """Generate compact list format PDF"""
-    
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.units import inch
+
     # Title style - smaller and compact
     title_style = ParagraphStyle(
         'CustomTitle',
@@ -9822,8 +9992,13 @@ def _generate_list_pdf(claim_name, claim_address, rooms, configs, doc, styles, e
     return buffer
 
 
-def _generate_table_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements):
+def _generate_table_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements, buffer):
     """Generate table format PDF (existing functionality)"""
+    from reportlab.lib import colors
+    from reportlab.lib.styles import ParagraphStyle
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from reportlab.platypus import Paragraph, Spacer, Table, TableStyle
+    from reportlab.lib.units import inch
     # Keep your existing table PDF generation code but make it more compact
     title_style = ParagraphStyle(
         'CustomTitle',

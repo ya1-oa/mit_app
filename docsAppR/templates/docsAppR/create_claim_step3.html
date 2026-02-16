@@ -184,29 +184,270 @@
                             <h4 class="text-success mb-3">
                                 <i class="fas fa-check-circle"></i> Ready to Create
                             </h4>
-                            <p class="lead">
-                                Click "Create Claim" to:
-                            </p>
-                            <ul class="text-start d-inline-block">
+                            <p class="text-muted mb-3">Clicking "Create Claim" will automatically:</p>
+                            <ul class="text-start d-inline-block mb-4">
                                 <li>Save all claim information to database</li>
                                 <li>Create complete server folder structure</li>
-                                <li>Generate Excel templates with populated data</li>
-                                <li>Create JSON data files for rooms and client info</li>
+                                <li>Generate all Excel templates with populated data</li>
+                                <li>Generate room labels PDF &amp; email to team</li>
+                                <li>Send room list email to team</li>
+                                <li>Push claim &amp; room lists to Encircle</li>
                             </ul>
 
-                            <form method="post" class="mt-4">
+                            <form method="post" id="create-claim-form" class="mt-2">
                                 {% csrf_token %}
+
+                                <!-- Encircle Room List Selection -->
+                                <div class="text-start d-inline-block mb-4 p-3 border rounded bg-light" style="min-width:340px;">
+                                    <p class="fw-semibold mb-2 text-primary small">
+                                        <i class="fas fa-list-ul me-1"></i> Encircle Room Lists to Generate
+                                    </p>
+                                    <div class="form-check mb-1">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="encircle_templates" value="basic"
+                                               id="tpl-basic">
+                                        <label class="form-check-label small" for="tpl-basic">
+                                            <strong>100-700s Complete Room List</strong>
+                                            <span class="text-muted d-block" style="font-size:0.78rem;">Overview, source, CPS, PPR, demo, mitigation, HMR</span>
+                                        </label>
+                                    </div>
+                                    <div class="form-check mb-1">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="encircle_templates" value="readings"
+                                               id="tpl-readings">
+                                        <label class="form-check-label small" for="tpl-readings">
+                                            8000-9000s MC Day Readings
+                                            <span class="text-muted d-block" style="font-size:0.78rem;">Day 1-4 MC Readings + Dry Chambers</span>
+                                        </label>
+                                    </div>
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="encircle_templates" value="readings default"
+                                               id="tpl-readings-default">
+                                        <label class="form-check-label small" for="tpl-readings-default">
+                                            70000s Stabilization Readings
+                                            <span class="text-muted d-block" style="font-size:0.78rem;">Day 0 MC Readings</span>
+                                        </label>
+                                    </div>
+                                </div>
+
                                 <div class="d-flex justify-content-center gap-3">
-                                    <a href="{% url 'create_claim_step2' %}" class="btn btn-secondary btn-lg">
+                                    <a href="{% url 'create_claim_step2' %}" class="btn btn-secondary btn-lg" id="back-btn">
                                         <i class="fas fa-arrow-left"></i> Back
                                     </a>
-                                    <button type="submit" class="btn btn-success btn-lg">
+                                    <button type="submit" class="btn btn-success btn-lg" id="create-btn">
                                         <i class="fas fa-rocket"></i> Create Claim
                                     </button>
                                 </div>
                             </form>
                         </div>
                     </div>
+
+                    <!-- Loading overlay (shown on submit) -->
+                    <div id="creating-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:9999; align-items:center; justify-content:center;">
+                        <div style="background:#fff; border-radius:16px; padding:36px 40px; max-width:480px; width:92%; box-shadow:0 8px 40px rgba(0,0,0,0.3);">
+                            <h4 class="text-center mb-4" style="color:#1e88e5;">
+                                <i class="fas fa-rocket me-2"></i> Creating Claim…
+                            </h4>
+                            <ul class="list-unstyled mb-0" id="task-list">
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="db">
+                                    <span class="task-icon"><div class="spinner-border spinner-border-sm text-primary" role="status"></div></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Saving claim to database</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="email">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Sending room list email to team</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="folder">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Creating server folder structure</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="templates">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Generating Excel templates</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="labels">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Generating room labels</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2" data-key="encircle">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Pushing to Encircle</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                            </ul>
+                            <p id="overlay-status" class="text-center mt-4 text-muted small"></p>
+                        </div>
+                    </div>
+
+                    <style>
+                    .task-item .task-icon { width: 24px; text-align:center; flex-shrink:0; }
+                    </style>
+                    <script>
+                    (function() {
+                        const form = document.getElementById('create-claim-form');
+                        const overlay = document.getElementById('creating-overlay');
+                        const createBtn = document.getElementById('create-btn');
+                        const backBtn = document.getElementById('back-btn');
+                        const statusP = document.getElementById('overlay-status');
+
+                        function getItem(key) {
+                            return document.querySelector(`.task-item[data-key="${key}"]`);
+                        }
+                        function setSpinner(key) {
+                            const el = getItem(key);
+                            if (!el) return;
+                            el.querySelector('.task-icon').innerHTML =
+                                '<div class="spinner-border spinner-border-sm text-primary" role="status"></div>';
+                        }
+                        function setDone(key) {
+                            const el = getItem(key);
+                            if (!el) return;
+                            el.querySelector('.task-icon').innerHTML =
+                                '<i class="fas fa-check-circle text-success"></i>';
+                        }
+                        function setError(key, msg) {
+                            const el = getItem(key);
+                            if (!el) return;
+                            el.querySelector('.task-icon').innerHTML =
+                                '<i class="fas fa-times-circle text-danger"></i>';
+                            const errDiv = el.querySelector('.task-error');
+                            errDiv.textContent = msg || 'Failed';
+                            errDiv.style.display = '';
+                        }
+
+                        form.addEventListener('submit', async function(e) {
+                            e.preventDefault();
+
+                            overlay.style.display = 'flex';
+                            createBtn.disabled = true;
+                            backBtn.style.pointerEvents = 'none';
+                            backBtn.style.opacity = '0.5';
+
+                            const fd = new FormData(form);
+
+                            let data;
+                            try {
+                                const resp = await fetch(window.location.href, {
+                                    method: 'POST',
+                                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                                    body: fd,
+                                });
+                                data = await resp.json();
+                            } catch (err) {
+                                overlay.style.display = 'none';
+                                createBtn.disabled = false;
+                                backBtn.style.pointerEvents = '';
+                                backBtn.style.opacity = '';
+                                alert('Network error: ' + err.message);
+                                return;
+                            }
+
+                            if (!data.success) {
+                                overlay.style.display = 'none';
+                                createBtn.disabled = false;
+                                backBtn.style.pointerEvents = '';
+                                backBtn.style.opacity = '';
+                                alert('Error creating claim: ' + (data.error || 'Unknown error'));
+                                return;
+                            }
+
+                            // ── Sync results (instant) ──
+                            const sync = data.sync_status || {};
+                            setDone('db');
+                            setSpinner('email');
+                            setTimeout(() => {
+                                if (sync.email) {
+                                    setDone('email');
+                                } else {
+                                    setError('email', sync.email_error || 'Email send failed');
+                                }
+                            }, 400);
+
+                            // ── Background task polling ──
+                            const taskIds = data.task_ids || {};
+                            const bgKeys = ['folder', 'templates', 'labels', 'encircle'];
+                            const taskStatusUrl = '{% url "claim_task_status" %}';
+                            const done = {};
+
+                            // Start spinners for background tasks after a short delay
+                            setTimeout(() => setSpinner('folder'), 600);
+                            setTimeout(() => setSpinner('templates'), 800);
+                            setTimeout(() => setSpinner('labels'), 1000);
+                            setTimeout(() => setSpinner('encircle'), 1200);
+
+                            function allBgDone() {
+                                return bgKeys.every(k => done[k]);
+                            }
+
+                            async function pollTasks() {
+                                const remaining = bgKeys.filter(k => !done[k] && taskIds[k]);
+                                if (!remaining.length) return;
+
+                                const params = new URLSearchParams();
+                                remaining.forEach(k => params.set(k, taskIds[k]));
+
+                                try {
+                                    const r = await fetch(taskStatusUrl + '?' + params.toString(), {
+                                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                                    });
+                                    const j = await r.json();
+                                    const statuses = j.statuses || {};
+                                    for (const key of remaining) {
+                                        const s = statuses[key];
+                                        if (!s) continue;
+                                        if (s.state === 'SUCCESS') {
+                                            setDone(key);
+                                            done[key] = true;
+                                        } else if (s.state === 'FAILURE') {
+                                            setError(key, s.error);
+                                            done[key] = true;
+                                        }
+                                        // PENDING / STARTED / RETRY → keep spinner, keep polling
+                                    }
+                                } catch (_) { /* network hiccup — keep polling */ }
+
+                                if (allBgDone()) {
+                                    const hasErrors = bgKeys.some(k => {
+                                        const el = getItem(k);
+                                        return el && el.querySelector('.task-error').style.display !== 'none';
+                                    });
+                                    if (hasErrors) {
+                                        statusP.innerHTML = '<span class="text-danger">Some tasks had errors. Claim saved — check details on the claim page.</span>';
+                                    } else {
+                                        statusP.textContent = 'All done! Opening claim…';
+                                    }
+                                    setTimeout(() => { window.location.href = data.redirect_url; }, 2000);
+                                } else {
+                                    setTimeout(pollTasks, 3000);
+                                }
+                            }
+
+                            // Mark any tasks with no task ID as skipped
+                            bgKeys.forEach(k => { if (!taskIds[k]) done[k] = true; });
+
+                            statusP.textContent = 'Waiting for background tasks…';
+                            setTimeout(pollTasks, 2000);
+                        });
+                    })();
+                    </script>
 
                 </div>
             </div>
