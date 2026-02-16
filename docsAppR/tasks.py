@@ -2328,49 +2328,55 @@ def _create_combined_wall_labels_pdf(buffer, client, rooms):
     LABEL_WIDTH = 4 * INCH
     LABEL_HEIGHT = 3 * INCH
 
+    WALL_COPIES = 2
+
     c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
 
-    for idx, room in enumerate(rooms):
+    total_labels = len(rooms) * WALL_COPIES
+    label_count = 0
+
+    for room in rooms:
         room_name = room.room_name
+        for _ in range(WALL_COPIES):
+            c.setFont("Helvetica-Bold", 28)
+            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 0.5 * INCH, room_name)
 
-        c.setFont("Helvetica-Bold", 28)
-        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 0.5 * INCH, room_name)
+            center_y = LABEL_HEIGHT / 2 - 0.1 * INCH
+            center_x = LABEL_WIDTH / 2
 
-        center_y = LABEL_HEIGHT / 2 - 0.1 * INCH
-        center_x = LABEL_WIDTH / 2
+            c.setFont("Helvetica", 10)
+            c.drawCentredString(center_x - 1.2 * INCH, center_y, "W=1")
 
-        c.setFont("Helvetica", 10)
-        c.drawCentredString(center_x - 1.2 * INCH, center_y, "W=1")
+            c.setFont("Helvetica-Bold", 12)
+            c.drawCentredString(center_x, center_y + 0.3 * INCH, "CENTER")
+            c.line(center_x, center_y, center_x, center_y + 0.2 * INCH)
+            c.line(center_x - 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
+            c.line(center_x + 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
 
-        c.setFont("Helvetica-Bold", 12)
-        c.drawCentredString(center_x, center_y + 0.3 * INCH, "CENTER")
-        c.line(center_x, center_y, center_x, center_y + 0.2 * INCH)
-        c.line(center_x - 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
-        c.line(center_x + 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
+            c.setFont("Helvetica", 10)
+            c.drawCentredString(center_x + 1.2 * INCH, center_y, "W=3")
+            c.drawCentredString(center_x, center_y - 0.5 * INCH, "W=4")
 
-        c.setFont("Helvetica", 10)
-        c.drawCentredString(center_x + 1.2 * INCH, center_y, "W=3")
-        c.drawCentredString(center_x, center_y - 0.5 * INCH, "W=4")
+            c.setStrokeColor(colors.blue)
+            c.setLineWidth(2)
+            c.arc(center_x - 1.5 * INCH, center_y - 0.15 * INCH,
+                  center_x - 0.9 * INCH, center_y + 0.15 * INCH,
+                  startAng=30, extent=120)
+            c.arc(center_x + 0.9 * INCH, center_y - 0.15 * INCH,
+                  center_x + 1.5 * INCH, center_y + 0.15 * INCH,
+                  startAng=30, extent=120)
 
-        c.setStrokeColor(colors.blue)
-        c.setLineWidth(2)
-        c.arc(center_x - 1.5 * INCH, center_y - 0.15 * INCH,
-              center_x - 0.9 * INCH, center_y + 0.15 * INCH,
-              startAng=30, extent=120)
-        c.arc(center_x + 0.9 * INCH, center_y - 0.15 * INCH,
-              center_x + 1.5 * INCH, center_y + 0.15 * INCH,
-              startAng=30, extent=120)
+            c.setStrokeColor(colors.black)
+            c.setLineWidth(1)
 
-        c.setStrokeColor(colors.black)
-        c.setLineWidth(1)
+            c.setDash(3, 3)
+            c.line(0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH,
+                   LABEL_WIDTH - 0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH)
+            c.setDash()
 
-        c.setDash(3, 3)
-        c.line(0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH,
-               LABEL_WIDTH - 0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH)
-        c.setDash()
-
-        if idx < len(rooms) - 1:
-            c.showPage()
+            label_count += 1
+            if label_count < total_labels:
+                c.showPage()
 
     c.save()
 
@@ -2384,24 +2390,30 @@ def _create_combined_box_labels_pdf(buffer, client, rooms):
     LABEL_WIDTH = 4 * INCH
     LABEL_HEIGHT = 3 * INCH
 
+    BOX_COPIES = 20
+
     c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
     claim_name = client.pOwner or 'Unknown'
 
-    for idx, room in enumerate(rooms):
+    total_labels = len(rooms) * BOX_COPIES
+    label_count = 0
+
+    for room in rooms:
         room_name = room.room_name
+        for _ in range(BOX_COPIES):
+            c.setFont("Helvetica-Bold", 36)
+            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 + 0.2 * INCH, room_name.upper())
 
-        c.setFont("Helvetica-Bold", 36)
-        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 + 0.2 * INCH, room_name.upper())
+            c.setFont("Helvetica", 14)
+            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 - 0.4 * INCH, claim_name)
 
-        c.setFont("Helvetica", 14)
-        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 - 0.4 * INCH, claim_name)
+            c.setStrokeColor(colors.black)
+            c.setLineWidth(2)
+            c.rect(0.2 * INCH, 0.2 * INCH, LABEL_WIDTH - 0.4 * INCH, LABEL_HEIGHT - 0.4 * INCH)
 
-        c.setStrokeColor(colors.black)
-        c.setLineWidth(2)
-        c.rect(0.2 * INCH, 0.2 * INCH, LABEL_WIDTH - 0.4 * INCH, LABEL_HEIGHT - 0.4 * INCH)
-
-        if idx < len(rooms) - 1:
-            c.showPage()
+            label_count += 1
+            if label_count < total_labels:
+                c.showPage()
 
     c.save()
 
@@ -2587,11 +2599,15 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None):
                 raise ValueError(f"Encircle did not return a claim id. Response: {result}")
             logger.info(f"Created Encircle claim {encircle_claim_id} for client {client_id}")
             # Persist the Encircle claim id back to our DB so we don't duplicate on retry
+            # Use .update() instead of .save() to bypass the post_save signal and avoid
+            # triggering a spurious third concurrent regenerate_client_excel_files task.
             try:
-                from django.utils import timezone
-                client.encircle_claim_id = encircle_claim_id
-                client.encircle_synced_at = timezone.now()
-                client.save(update_fields=['encircle_claim_id', 'encircle_synced_at'])
+                from django.utils import timezone as _tz
+                Client.objects.filter(id=client_id).update(
+                    encircle_claim_id=encircle_claim_id,
+                    encircle_synced_at=_tz.now(),
+                )
+                client.encircle_claim_id = encircle_claim_id  # keep in-memory copy current
             except Exception as save_exc:
                 logger.warning(f"Could not save encircle_claim_id to client {client_id} (migration pending?): {save_exc}")
     except Exception as exc:

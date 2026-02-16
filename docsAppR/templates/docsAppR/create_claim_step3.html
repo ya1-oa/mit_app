@@ -386,6 +386,7 @@
                             const bgKeys = ['folder', 'templates', 'labels', 'encircle'];
                             const taskStatusUrl = '{% url "claim_task_status" %}';
                             const done = {};
+                            let redirected = false;
 
                             // Start spinners for background tasks after a short delay
                             setTimeout(() => setSpinner('folder'), 600);
@@ -393,11 +394,38 @@
                             setTimeout(() => setSpinner('labels'), 1000);
                             setTimeout(() => setSpinner('encircle'), 1200);
 
+                            function doRedirect(msg) {
+                                if (redirected) return;
+                                redirected = true;
+                                statusP.textContent = msg;
+                                setTimeout(() => { window.location.href = data.redirect_url; }, 1500);
+                            }
+
+                            function setRunningInBg(key) {
+                                const el = getItem(key);
+                                if (!el || done[key]) return;
+                                // Replace spinner with a clock icon and note
+                                el.querySelector('.task-icon').innerHTML =
+                                    '<i class="fas fa-clock text-warning"></i>';
+                                const errDiv = el.querySelector('.task-error');
+                                errDiv.style.color = '#856404';
+                                errDiv.textContent = 'Still running in background…';
+                                errDiv.style.display = '';
+                                done[key] = true;
+                            }
+
                             function allBgDone() {
                                 return bgKeys.every(k => done[k]);
                             }
 
+                            // Hard timeout — redirect after 40s no matter what
+                            const hardTimeout = setTimeout(() => {
+                                bgKeys.forEach(k => setRunningInBg(k));
+                                doRedirect('Claim saved! Slow tasks still running in background — opening claim…');
+                            }, 40000);
+
                             async function pollTasks() {
+                                if (redirected) return;
                                 const remaining = bgKeys.filter(k => !done[k] && taskIds[k]);
                                 if (!remaining.length) return;
 
@@ -425,16 +453,16 @@
                                 } catch (_) { /* network hiccup — keep polling */ }
 
                                 if (allBgDone()) {
+                                    clearTimeout(hardTimeout);
                                     const hasErrors = bgKeys.some(k => {
                                         const el = getItem(k);
                                         return el && el.querySelector('.task-error').style.display !== 'none';
                                     });
                                     if (hasErrors) {
-                                        statusP.innerHTML = '<span class="text-danger">Some tasks had errors. Claim saved — check details on the claim page.</span>';
+                                        doRedirect('Some tasks had errors — opening claim page for details…');
                                     } else {
-                                        statusP.textContent = 'All done! Opening claim…';
+                                        doRedirect('All done! Opening claim…');
                                     }
-                                    setTimeout(() => { window.location.href = data.redirect_url; }, 2000);
                                 } else {
                                     setTimeout(pollTasks, 3000);
                                 }
