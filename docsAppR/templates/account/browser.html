@@ -1,4 +1,3 @@
-<!-- templates/readings/browser.html -->
 {% extends "account/base.html" %}
 {% load static %}
 
@@ -6,14 +5,17 @@
 <div class="reading-browser">
     <!-- Header Section -->
     <div class="browser-header">
-        <h1>Reading Images Browser</h1>
+        <div class="header-content">
+            <h1 class="page-title">Reading Images Browser</h1>
+            <p class="page-subtitle">Manage and organize your reading images with advanced sorting and filtering</p>
+        </div>
         <div class="header-controls">
             <div class="upload-section">
                 <input type="file" id="image-upload" multiple accept="image/*" style="display: none;">
-                <button onclick="document.getElementById('image-upload').click()" class="upload-btn">
+                <button onclick="document.getElementById('image-upload').click()" class="btn btn-primary upload-btn">
                     <i class="fa fa-upload"></i> Upload Images
                 </button>
-                <div id="upload-results"></div>
+                <div id="upload-results" class="upload-results"></div>
             </div>
         </div>
     </div>
@@ -22,744 +24,665 @@
     <div class="browser-content">
         <!-- Sidebar for folders, selected images, and detail view -->
         <div class="sidebar" id="sidebar">
-            <div class="sidebar-header">
-                <h3>Image Details & Folders</h3>
-                <button class="export-btn" onclick="exportImages()">
-                    <i class="fa fa-download"></i> Export
-                </button>
-            </div>
-            
-            <!-- Selection Status -->
-            <div class="selection-status" id="selection-status">
-                <p><strong id="selected-count">0</strong> images selected</p>
-                <div style="display: flex; gap: 8px; flex-wrap: wrap;">
-                    <button onclick="showSequentialNumbering()" class="sequential-number-btn" style="display: none;" id="sequential-number-btn">
-                        <i class="fa fa-sort-numeric-asc"></i> Sequential Number
-                    </button>
-                    <button onclick="clearSelection()" class="clear-selection-btn">
-                        <i class="fa fa-times"></i> Clear Selection
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Sequential Numbering Panel -->
-            <div class="numbering-panel" id="numbering-panel" style="display: none;">
-                <h4>Sequential Numbering</h4>
-                <p style="font-size: 12px; color: #666; margin-bottom: 10px;">
-                    Selected images will be numbered in the order you clicked them
-                </p>
-                <div class="numbering-controls">
-                    <label>Start from number:</label>
-                    <input type="number" id="start-number" value="1" step="1" style="width: 80px;">
-                    <label>Increment by:</label>
-                    <input type="number" id="increment-number" value="4" step="0.1" style="width: 80px;">
-                </div>
-                <div class="numbering-preview" id="numbering-preview"></div>
-                <div class="numbering-actions">
-                    <button onclick="applySequentialNumbering()" class="apply-numbering-btn">
-                        <i class="fa fa-check"></i> Apply Numbering
-                    </button>
-                    <button onclick="hideNumberingPanel()" class="cancel-btn">
-                        <i class="fa fa-times"></i> Cancel
-                    </button>
-                </div>
-            </div>
-            
-            <!-- Image Detail View -->
-            <div class="image-detail-view" id="image-detail-view">
-                <div class="detail-image-container">
-                    <img id="detail-image-preview" src="" alt="Selected Image" class="detail-image">
-                </div>
-                <div class="image-details">
-                    <h4>Image Properties</h4>
-                    <div class="detail-item">
-                        <label>Filename:</label>
-                        <span id="detail-filename"></span>
-                    </div>
-                    <div class="detail-item">
-                        <label>RH:</label>
-                        <span id="detail-rh"></span>
-                    </div>
-                    <div class="detail-item">
-                        <label>T:</label>
-                        <span id="detail-t"></span>
-                    </div>
-                    <div class="detail-item">
-                        <label>GPP:</label>
-                        <span id="detail-gpp"></span>
-                    </div>
-                    <div class="detail-item">
-                        <label>MC:</label>
-                        <span id="detail-mc"></span>
-                    </div>
-                    <div class="detail-item">
-                        <label>Size:</label>
-                        <span id="detail-size"></span>
-                    </div>
-                </div>
-                                
-                <!-- Rename Section -->
-                <div class="rename-section">
-                    <h4>Rename Image</h4>
-                    <input type="text" id="new-filename" placeholder="New filename (with extension)">
-                    <button onclick="renameImage()" class="rename-btn">
-                        <i class="fa fa-edit"></i> Rename
+            <div class="sidebar-section">
+                <div class="sidebar-header">
+                    <h3>Image Details & Folders</h3>
+                    <button class="btn btn-secondary export-btn" onclick="exportImages()">
+                        <i class="fa fa-download"></i> Export
                     </button>
                 </div>
                 
-                <!-- Action Buttons -->
-                <div class="detail-actions">
-                    <button onclick="deleteCurrentImage()" class="delete-btn">
-                        <i class="fa fa-trash"></i> Delete Image
-                    </button>
+                <!-- Selection Status -->
+                <div class="selection-status" id="selection-status">
+                    <div class="selection-info">
+                        <span class="selected-count" id="selected-count">0</span>
+                        <span class="selected-text">images selected</span>
+                    </div>
+                    <div class="selection-actions">
+                        <button onclick="showSequentialNumbering()" class="btn btn-warning sequential-number-btn" style="display: none;" id="sequential-number-btn">
+                            <i class="fa fa-sort-numeric-asc"></i> Number
+                        </button>
+                        <button onclick="clearSelection()" class="btn btn-outline clear-selection-btn">
+                            <i class="fa fa-times"></i> Clear
+                        </button>
+                    </div>
                 </div>
-            </div>
+                
+                <!-- Sequential Numbering Panel -->
+                <div class="numbering-panel card" id="numbering-panel" style="display: none;">
+                    <div class="card-header">
+                        <h4>Sequential Numbering</h4>
+                    </div>
+                    <div class="card-body">
+                        <p class="helper-text">
+                            Selected images will be numbered in the order you clicked them
+                        </p>
+                        <div class="numbering-controls">
+                            <div class="form-group">
+                                <label>Start from number:</label>
+                                <input type="number" id="start-number" value="1" step="1" class="form-input">
+                            </div>
+                            <div class="form-group">
+                                <label>Increment by:</label>
+                                <input type="number" id="increment-number" value="4" step="0.1" class="form-input">
+                            </div>
+                        </div>
+                        <div class="numbering-preview" id="numbering-preview"></div>
+                        <div class="numbering-actions">
+                            <button onclick="applySequentialNumbering()" class="btn btn-primary apply-numbering-btn">
+                                <i class="fa fa-check"></i> Apply Numbering
+                            </button>
+                            <button onclick="hideNumberingPanel()" class="btn btn-outline cancel-btn">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Image Detail View -->
+                <div class="image-detail-view card" id="image-detail-view">
+                    <div class="card-header">
+                        <h4>Image Details</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="detail-image-container">
+                            <img id="detail-image-preview" src="" alt="Selected Image" class="detail-image">
+                        </div>
+                        <div class="image-details">
+                            <div class="detail-grid">
+                                <div class="detail-item">
+                                    <label>Filename:</label>
+                                    <span id="detail-filename" class="detail-value"></span>
+                                </div>
+                                <div class="detail-item">
+                                    <label>RH:</label>
+                                    <span id="detail-rh" class="detail-value"></span>
+                                </div>
+                                <div class="detail-item">
+                                    <label>T:</label>
+                                    <span id="detail-t" class="detail-value"></span>
+                                </div>
+                                <div class="detail-item">
+                                    <label>GPP:</label>
+                                    <span id="detail-gpp" class="detail-value"></span>
+                                </div>
+                                <div class="detail-item">
+                                    <label>MC:</label>
+                                    <span id="detail-mc" class="detail-value"></span>
+                                </div>
+                                <div class="detail-item">
+                                    <label>Size:</label>
+                                    <span id="detail-size" class="detail-value"></span>
+                                </div>
+                            </div>
+                        </div>
+                                        
+                        <!-- Rename Section -->
+                        <div class="rename-section">
+                            <h5>Rename Image</h5>
+                            <div class="rename-controls">
+                                <input type="text" id="new-filename" placeholder="New filename (with extension)" class="form-input">
+                                <button onclick="renameImage()" class="btn btn-success rename-btn">
+                                    <i class="fa fa-edit"></i> Rename
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Action Buttons -->
+                        <div class="detail-actions">
+                            <button onclick="deleteCurrentImage()" class="btn btn-danger delete-btn">
+                                <i class="fa fa-trash"></i> Delete Image
+                            </button>
+                        </div>
+                    </div>
+                </div>
 
-            <!-- Folder Management -->
-            <div class="folder-management">
-                <div class="folder-controls">
-                    <input type="text" id="new-folder-name" placeholder="New folder name">
-                    <button onclick="createFolder()" class="add-folder-btn">
-                        <i class="fa fa-folder"></i> Add Folder
-                    </button>
-                </div>
-                <div class="folders-list" id="folders-list">
-                    <!-- Folders will be dynamically added here -->
+                <!-- Folder Management -->
+                <div class="folder-management card">
+                    <div class="card-header">
+                        <h4>Folder Management</h4>
+                    </div>
+                    <div class="card-body">
+                        <div class="folder-controls">
+                            <input type="text" id="new-folder-name" placeholder="New folder name" class="form-input">
+                            <button onclick="createFolder()" class="btn btn-primary add-folder-btn">
+                                <i class="fa fa-folder-plus"></i> Add
+                            </button>
+                        </div>
+                        <div class="folders-list" id="folders-list">
+                            <!-- Folders will be dynamically added here -->
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
 
         <!-- Main Image Browser -->
         <div class="image-browser">
-        <div class="sorting-controls">
-            <div class="sort-option">
-                <label>Sort by:</label>
-                <select id="sort-by" onchange="loadSortedImages()">
-                    <option value="filename">Filename</option>
-                    <option value="rh">RH</option>
-                    <option value="t">T</option>
-                    <option value="gpp">GPP</option>
-                    <option value="mc">MC</option>
-                </select>
+            <!-- Controls Bar -->
+            <div class="controls-bar">
+                <div class="controls-group">
+                    <div class="sort-option">
+                        <label class="control-label">Sort by:</label>
+                        <select id="sort-by" onchange="loadSortedImages()" class="form-select">
+                            <option value="filename">Filename</option>
+                            <option value="rh">RH</option>
+                            <option value="t">T</option>
+                            <option value="gpp">GPP</option>
+                            <option value="mc">MC</option>
+                        </select>
+                    </div>
+                    <div class="sort-order">
+                        <label class="control-label">Order:</label>
+                        <select id="sort-order" onchange="loadSortedImages()" class="form-select">
+                            <option value="asc">Ascending</option>
+                            <option value="desc">Descending</option>
+                        </select>
+                    </div>
+                </div>
+                
+                <div class="controls-group">
+                    <div class="search-by-name">
+                        <div class="search-input-wrapper">
+                            <i class="fa fa-search search-icon"></i>
+                            <input type="text" id="name-search" placeholder="Search by filename..." 
+                                   onkeyup="handleNameSearch(event)" class="form-input search-input">
+                            <button onclick="clearNameSearch()" class="clear-search-btn" id="clear-search-btn" style="display: none;">
+                                <i class="fa fa-times"></i>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="controls-group">
+                    <div class="zoom-controls">
+                        <button onclick="changeZoom(-0.1)" class="btn btn-outline zoom-btn">
+                            <i class="fa fa-search-minus"></i>
+                        </button>
+                        <span id="zoom-level" class="zoom-level">100%</span>
+                        <button onclick="changeZoom(0.1)" class="btn btn-outline zoom-btn">
+                            <i class="fa fa-search-plus"></i>
+                        </button>
+                    </div>
+                </div>
             </div>
-            <div class="sort-order">
-                <label>Order:</label>
-                <select id="sort-order" onchange="loadSortedImages()">
-                    <option value="asc">Ascending</option>
-                    <option value="desc">Descending</option>
-                </select>
-            </div>
-            
-            <div class="search-by-name">
-                <input type="text" id="name-search" placeholder="Search by filename..." 
-                       onkeyup="handleNameSearch(event)">
-                <button onclick="clearNameSearch()" class="clear-search-btn" id="clear-search-btn" style="display: none;">
-                    <i class="fa fa-times"></i>
-                </button>
-            </div>
-            
-            <div class="zoom-controls">
-                <button onclick="changeZoom(-0.1)" class="zoom-btn">
-                    <i class="fa fa-search-minus"></i>
-                </button>
-                <span id="zoom-level">100%</span>
-                <button onclick="changeZoom(0.1)" class="zoom-btn">
-                    <i class="fa fa-search-plus"></i>
-                </button>
-            </div>
-        </div>
 
-        <div class="search-panel" id="search-panel" style="display: none;">
-            <h4>Search Similar Images</h4>
-            <div class="search-criteria">
-                <div class="criteria-group" id="rh-criteria">
-                    <label>RH:</label>
-                    <select id="rh-operator">
-                        <option value="eq">=</option>
-                        <option value="gt">></option>
-                        <option value="lt"><</option>
-                        <option value="gte">>=</option>
-                        <option value="lte"><=</option>
-                    </select>
-                    <input type="number" id="rh-diff" placeholder="Value" step="0.1">
+            <!-- Search Panel -->
+            <div class="search-panel card" id="search-panel" style="display: none;">
+                <div class="card-header">
+                    <h4>Search Similar Images</h4>
                 </div>
-                <div class="criteria-group" id="t-criteria">
-                    <label>T:</label>
-                    <select id="t-operator">
-                        <option value="eq">=</option>
-                        <option value="gt">></option>
-                        <option value="lt"><</option>
-                        <option value="gte">>=</option>
-                        <option value="lte"><=</option>
-                    </select>
-                    <input type="number" id="t-diff" placeholder="Value" step="0.1">
-                </div>
-                <div class="criteria-group" id="gpp-criteria">
-                    <label>GPP:</label>
-                    <select id="gpp-operator">
-                        <option value="eq">=</option>
-                        <option value="gt">></option>
-                        <option value="lt"><</option>
-                        <option value="gte">>=</option>
-                        <option value="lte"><=</option>
-                    </select>
-                    <input type="number" id="gpp-diff" placeholder="Value" step="0.1">
-                </div>
-                <div class="criteria-group" id="mc-criteria">
-                    <label>MC:</label>
-                    <select id="mc-operator">
-                        <option value="eq">=</option>
-                        <option value="gt">></option>
-                        <option value="lt"><</option>
-                        <option value="gte">>=</option>
-                        <option value="lte"><=</option>
-                    </select>
-                    <input type="number" id="mc-diff" placeholder="Value" step="0.1">
+                <div class="card-body">
+                    <div class="search-criteria">
+                        <div class="criteria-group" id="rh-criteria">
+                            <label class="criteria-label">RH:</label>
+                            <select id="rh-operator" class="form-select operator-select">
+                                <option value="eq">=</option>
+                                <option value="gt">></option>
+                                <option value="lt"><</option>
+                                <option value="gte">>=</option>
+                                <option value="lte"><=</option>
+                            </select>
+                            <input type="number" id="rh-diff" placeholder="Value" step="0.1" class="form-input value-input">
+                        </div>
+                        <div class="criteria-group" id="t-criteria">
+                            <label class="criteria-label">T:</label>
+                            <select id="t-operator" class="form-select operator-select">
+                                <option value="eq">=</option>
+                                <option value="gt">></option>
+                                <option value="lt"><</option>
+                                <option value="gte">>=</option>
+                                <option value="lte"><=</option>
+                            </select>
+                            <input type="number" id="t-diff" placeholder="Value" step="0.1" class="form-input value-input">
+                        </div>
+                        <div class="criteria-group" id="gpp-criteria">
+                            <label class="criteria-label">GPP:</label>
+                            <select id="gpp-operator" class="form-select operator-select">
+                                <option value="eq">=</option>
+                                <option value="gt">></option>
+                                <option value="lt"><</option>
+                                <option value="gte">>=</option>
+                                <option value="lte"><=</option>
+                            </select>
+                            <input type="number" id="gpp-diff" placeholder="Value" step="0.1" class="form-input value-input">
+                        </div>
+                        <div class="criteria-group" id="mc-criteria">
+                            <label class="criteria-label">MC:</label>
+                            <select id="mc-operator" class="form-select operator-select">
+                                <option value="eq">=</option>
+                                <option value="gt">></option>
+                                <option value="lt"><</option>
+                                <option value="gte">>=</option>
+                                <option value="lte"><=</option>
+                            </select>
+                            <input type="number" id="mc-diff" placeholder="Value" step="0.1" class="form-input value-input">
+                        </div>
+                    </div>
+                    <div class="search-actions">
+                        <button onclick="performSearch()" class="btn btn-primary search-action-btn">
+                            <i class="fa fa-search"></i> Search
+                        </button>
+                        <button onclick="hideSearchPanel()" class="btn btn-outline cancel-btn">
+                            Cancel
+                        </button>
+                    </div>
                 </div>
             </div>
-            <div class="search-actions">
-                <button onclick="performSearch()" class="search-action-btn">
-                    <i class="fa fa-search"></i> Search
-                </button>
-                <button onclick="hideSearchPanel()" class="cancel-btn">
-                    <i class="fa fa-times"></i> Cancel
-                </button>
-            </div>
-        </div>
 
             <!-- Images Grid -->
-            <div class="images-grid" id="images-grid">
-                <!-- Images will be dynamically loaded here -->
-            </div>
+            <div class="images-container">
+                <div class="images-grid" id="images-grid">
+                    <!-- Images will be dynamically loaded here -->
+                </div>
 
-            <!-- Loading Indicator -->
-            <div id="loading-indicator" style="display: none;">
-                <div class="loading-spinner"></div>
-                <p>Loading images...</p>
+                <!-- Empty State -->
+                <div class="empty-state" id="empty-state" style="display: none;">
+                    <div class="empty-state-icon">
+                        <i class="fa fa-images"></i>
+                    </div>
+                    <h3>No Images Found</h3>
+                    <p>Upload some images to get started or adjust your search criteria.</p>
+                    <button onclick="document.getElementById('image-upload').click()" class="btn btn-primary">
+                        <i class="fa fa-upload"></i> Upload Images
+                    </button>
+                </div>
+
+                <!-- Loading Indicator -->
+                <div id="loading-indicator" class="loading-indicator" style="display: none;">
+                    <div class="loading-spinner"></div>
+                    <p>Loading images...</p>
+                </div>
             </div>
         </div>
     </div>
 </div>
 
 <style>
+/* CSS Reset and Base Styles */
 .reading-browser {
     height: 100vh;
     display: flex;
     flex-direction: column;
+    background: #f8f9fa;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+/* Header Styles */
 .browser-header {
     background: #fff;
-    padding: 20px;
-    border-bottom: 1px solid #ddd;
+    padding: 1.5rem 2rem;
+    border-bottom: 1px solid #e9ecef;
     display: flex;
     justify-content: space-between;
-    align-items: center;
+    align-items: flex-start;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    flex-shrink: 0;
 }
 
+.header-content {
+    flex: 1;
+}
+
+.page-title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #2c3e50;
+    margin: 0 0 0.25rem 0;
+}
+
+.page-subtitle {
+    color: #6c757d;
+    font-size: 0.95rem;
+    margin: 0;
+    font-weight: 400;
+}
+
+/* Main Content Layout */
 .browser-content {
     display: flex;
     flex: 1;
     overflow: hidden;
+    min-height: 0;
 }
 
+/* Sidebar Styles */
 .sidebar {
-    width: 350px;
-    background: #f8f9fa;
-    border-right: 1px solid #ddd;
-    padding: 20px;
-    overflow-y: auto;
+    width: 380px;
+    background: #fff;
+    border-right: 1px solid #e9ecef;
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+}
+
+.sidebar-section {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .sidebar-header {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    margin-bottom: 20px;
+    padding: 1.25rem 1.5rem;
+    border-bottom: 1px solid #e9ecef;
+    background: #f8f9fa;
 }
 
-.folder-header button:first-child {
-    background: #4CC790;
-    color: white;
-    opacity: 1;
-    cursor: pointer;
+.sidebar-header h3 {
+    margin: 0;
+    font-size: 1.1rem;
+    font-weight: 600;
+    color: #2c3e50;
 }
 
-.folder-header button:first-child:hover {
-    background: #3daa7a;
+.sidebar-content {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1.5rem;
 }
 
-.folder-header button:disabled {
-    opacity: 1;
-    background: #4CC790 !important;
-    cursor: pointer;
+/* Card Component */
+.card {
+    background: #fff;
+    border-radius: 8px;
+    border: 1px solid #e9ecef;
+    margin-bottom: 1rem;
+    overflow: hidden;
 }
 
-/* Icon positioning */
-.fa {
-    display: inline-flex !important;
-    align-items: center;
-    justify-content: center;
-    text-rendering: auto;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    line-height: 1;
-    position: relative;
-    top: 0;
+.card-header {
+    padding: 0.875rem 1rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
 }
 
-.upload-btn, .export-btn, .add-folder-btn {
-    background: #5f4bfd;
-    color: white;
-    border: none;
-    padding: 10px 15px 10px 12px;
-    border-radius: 4px;
-    cursor: pointer;
-    transition: background 0.3s;
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 14px;
-    font-weight: 500;
-    position: relative;
+.card-header h4 {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #2c3e50;
 }
 
-.upload-btn:hover, .export-btn:hover, .add-folder-btn:hover {
-    background: #4a3ac4;
+.card-body {
+    padding: 1rem;
 }
 
-.upload-btn .fa, 
-.export-btn .fa, 
-.add-folder-btn .fa {
-    width: 16px;
-    height: 16px;
-    font-size: 14px;
-}
-
-.zoom-controls {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.zoom-btn {
-    background: #6c757d;
-    color: white;
-    border: none;
-    padding: 0;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 36px;
-    height: 36px;
-    transition: background 0.3s;
-}
-
-.zoom-btn:hover {
-    background: #5a6268;
-}
-
-.zoom-btn .fa {
-    width: 16px;
-    height: 16px;
-    font-size: 14px;
-}
-
-.image-actions {
-    margin-top: 8px;
-    display: flex;
-    gap: 5px;
-}
-
-.action-btn {
-    padding: 6px 10px 6px 8px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 11px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 4px;
-    transition: background 0.3s;
-    position: relative;
-}
-
-.action-btn .fa {
-    width: 12px;
-    height: 12px;
-    font-size: 10px;
-}
-
-.select-btn {
-    background: #5f4bfd;
-    color: white;
-}
-
-.select-btn:hover {
-    background: #4a3ac4;
-}
-
-.search-btn-small {
-    background: #4CC790;
-    color: white;
-}
-
-.search-btn-small:hover {
-    background: #3daa7a;
-}
-
-.delete-btn-small {
-    background: #dc3545;
-    color: white;
-}
-
-.delete-btn-small:hover {
-    background: #c82333;
-}
-
-.search-action-btn, .cancel-btn {
-    padding: 8px 16px 8px 14px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 6px;
-    font-size: 14px;
-    transition: background 0.3s;
-    position: relative;
-}
-
-.search-action-btn .fa, 
-.cancel-btn .fa {
-    width: 14px;
-    height: 14px;
-    font-size: 13px;
-}
-
-.search-action-btn {
-    background: #4CC790;
-    color: white;
-}
-
-.search-action-btn:hover {
-    background: #3daa7a;
-}
-
-.cancel-btn {
-    background: #6c757d;
-    color: white;
-}
-
-.cancel-btn:hover {
-    background: #5a6268;
-}
-
-.rename-btn, .delete-btn {
-    padding: 8px 12px 8px 10px;
-    border: none;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 5px;
-    font-size: 14px;
-    transition: background 0.3s;
-    position: relative;
-}
-
-.rename-btn .fa, 
-.delete-btn .fa {
-    width: 14px;
-    height: 14px;
-    font-size: 13px;
-}
-
-.rename-btn {
-    background: #4CC790;
-    color: white;
-}
-
-.rename-btn:hover {
-    background: #3daa7a;
-}
-
-.delete-btn {
-    background: #dc3545;
-    color: white;
-}
-
-.delete-btn:hover {
-    background: #c82333;
-}
-
+/* Selection Status */
 .selection-status {
-    background: #e9f7fe;
-    border: 1px solid #b8e2f4;
-    border-radius: 6px;
-    padding: 12px;
-    margin-bottom: 20px;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border-radius: 8px;
+    padding: 1rem;
+    margin: 1rem;
     display: flex;
     justify-content: space-between;
     align-items: center;
     flex-wrap: wrap;
-    gap: 10px;
+    gap: 0.75rem;
 }
 
-.selection-status p {
-    margin: 0;
-    font-weight: 500;
-    color: #2c3e50;
-}
-
-.clear-selection-btn {
-    background: #6c757d;
-    color: white;
-    border: none;
-    padding: 6px 12px 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
+.selection-info {
     display: flex;
     align-items: center;
-    gap: 4px;
-    transition: background 0.3s;
+    gap: 0.5rem;
 }
 
-.clear-selection-btn:hover {
-    background: #5a6268;
+.selected-count {
+    font-size: 1.5rem;
+    font-weight: 700;
 }
 
-.clear-selection-btn .fa {
-    width: 10px;
-    height: 10px;
-    font-size: 10px;
-}
-
-.sequential-number-btn {
-    background: #ff6b6b;
-    color: white;
-    border: none;
-    padding: 6px 12px 6px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    font-size: 12px;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    transition: background 0.3s;
-    font-weight: 500;
-}
-
-.sequential-number-btn:hover {
-    background: #ee5a52;
-}
-
-.sequential-number-btn .fa {
-    width: 10px;
-    height: 10px;
-    font-size: 10px;
-}
-
-/* Numbering Panel */
-.numbering-panel {
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-    border-left: 4px solid #ff6b6b;
-}
-
-.numbering-panel h4 {
-    margin-top: 0;
-    margin-bottom: 10px;
-    color: #333;
-}
-
-.numbering-controls {
-    display: grid;
-    grid-template-columns: auto 1fr;
-    gap: 8px;
-    align-items: center;
-    margin-bottom: 15px;
-}
-
-.numbering-controls label {
-    font-size: 12px;
-    font-weight: 500;
-    color: #555;
-}
-
-.numbering-controls input {
-    padding: 6px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    font-size: 13px;
-}
-
-.numbering-preview {
-    background: #f8f9fa;
-    padding: 10px;
-    border-radius: 4px;
-    margin-bottom: 15px;
-    max-height: 200px;
-    overflow-y: auto;
-    font-size: 11px;
-}
-
-.numbering-preview-item {
-    padding: 4px 0;
-    border-bottom: 1px solid #e0e0e0;
-}
-
-.numbering-preview-item:last-child {
-    border-bottom: none;
-}
-
-.numbering-preview-item .old-name {
-    color: #999;
-}
-
-.numbering-preview-item .arrow {
-    color: #ff6b6b;
-    margin: 0 6px;
-}
-
-.numbering-preview-item .new-name {
-    color: #333;
-    font-weight: 500;
-}
-
-.numbering-actions {
-    display: flex;
-    gap: 8px;
-}
-
-.apply-numbering-btn {
-    background: #ff6b6b;
-    color: white;
-    border: none;
-    padding: 8px 12px 8px 10px;
-    border-radius: 4px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    font-size: 13px;
-    transition: background 0.3s;
-    flex: 1;
-}
-
-.apply-numbering-btn:hover {
-    background: #ee5a52;
-}
-
-.apply-numbering-btn .fa {
-    width: 12px;
-    height: 12px;
-    font-size: 12px;
-}
-
-.folder-header button {
-    border: none;
-    padding: 4px 8px 4px 6px;
-    border-radius: 3px;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    font-size: 11px;
-    transition: background 0.3s;
-    position: relative;
-}
-
-.folder-header button .fa {
-    width: 10px;
-    height: 10px;
-    font-size: 9px;
-}
-
-.folder-header button:first-child {
-    background: #4CC790;
-    color: white;
-}
-
-.folder-header button:first-child:disabled {
-    background: #ccc;
-    cursor: not-allowed;
-}
-
-.folder-header button:last-child {
-    background: #dc3545;
-    color: white;
-    margin-left: 5px;
-}
-
-.folder-header button:hover:not(:disabled) {
+.selected-text {
+    font-size: 0.9rem;
     opacity: 0.9;
 }
 
-.folder-image-item button {
+.selection-actions {
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Button System */
+.btn {
+    border: none;
+    padding: 0.625rem 1rem;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 500;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    transition: all 0.2s ease;
+    text-decoration: none;
+    line-height: 1;
+}
+
+.btn-primary {
+    background: #007bff;
+    color: white;
+}
+
+.btn-primary:hover {
+    background: #0056b3;
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,123,255,0.3);
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.btn-secondary:hover {
+    background: #545b62;
+}
+
+.btn-success {
+    background: #28a745;
+    color: white;
+}
+
+.btn-success:hover {
+    background: #1e7e34;
+}
+
+.btn-warning {
+    background: #ffc107;
+    color: #212529;
+}
+
+.btn-warning:hover {
+    background: #e0a800;
+}
+
+.btn-danger {
     background: #dc3545;
     color: white;
-    border: none;
-    padding: 2px 6px 2px 4px;
-    border-radius: 2px;
-    cursor: pointer;
-    font-size: 10px;
-    transition: background 0.3s;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    gap: 2px;
 }
 
-.folder-image-item button .fa {
-    width: 8px;
-    height: 8px;
-    font-size: 8px;
-}
-
-.folder-image-item button:hover {
+.btn-danger:hover {
     background: #c82333;
 }
 
-/* Selection styling */
+.btn-outline {
+    background: transparent;
+    border: 1px solid #6c757d;
+    color: #6c757d;
+}
+
+.btn-outline:hover {
+    background: #6c757d;
+    color: white;
+}
+
+/* Form Controls */
+.form-input {
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    transition: border-color 0.2s ease;
+    width: 100%;
+}
+
+.form-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 2px rgba(0,123,255,0.25);
+}
+
+.form-select {
+    padding: 0.625rem 0.75rem;
+    border: 1px solid #ced4da;
+    border-radius: 6px;
+    font-size: 0.875rem;
+    background: white;
+    cursor: pointer;
+}
+
+.form-group {
+    margin-bottom: 0.75rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.25rem;
+    font-size: 0.8rem;
+    font-weight: 500;
+    color: #495057;
+}
+
+/* Image Browser */
+.image-browser {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    background: #fff;
+}
+
+.controls-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: #f8f9fa;
+    border-bottom: 1px solid #e9ecef;
+    gap: 1.5rem;
+    flex-wrap: wrap;
+}
+
+.controls-group {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+}
+
+.control-label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #495057;
+    margin: 0;
+}
+
+/* Search Input */
+.search-input-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.search-icon {
+    position: absolute;
+    left: 0.75rem;
+    color: #6c757d;
+    font-size: 0.875rem;
+}
+
+.search-input {
+    padding-left: 2.25rem;
+    padding-right: 2.25rem;
+    width: 280px;
+}
+
+.clear-search-btn {
+    position: absolute;
+    right: 0.5rem;
+    background: transparent;
+    border: none;
+    color: #6c757d;
+    cursor: pointer;
+    padding: 0.25rem;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.clear-search-btn:hover {
+    background: #e9ecef;
+    color: #495057;
+}
+
+/* Images Grid */
+.images-container {
+    flex: 1;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.images-grid {
+    flex: 1;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 1rem;
+    padding: 1.5rem;
+    overflow-y: auto;
+    align-content: start;
+}
+
+/* Image Card */
 .image-card {
     background: #fff;
     border-radius: 8px;
-    padding: 10px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    padding: 1rem;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
     cursor: pointer;
     transition: all 0.3s ease;
     border: 2px solid transparent;
     position: relative;
+    overflow: hidden;
 }
 
 .image-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.12);
 }
 
 .image-card.selected {
-    border-color: #5f4bfd;
-    background: #f8f9ff;
-    box-shadow: 0 4px 12px rgba(95, 75, 253, 0.2);
+    border-color: #007bff;
+    background: #f8fbff;
+    box-shadow: 0 4px 16px rgba(0,123,255,0.15);
+}
+
+.image-card.multi-selected {
+    border-color: #ffc107;
+    background: #fffdf4;
 }
 
 .image-card.selected::before {
     content: '✓';
     position: absolute;
-    top: -8px;
-    right: -8px;
-    background: #5f4bfd;
+    top: -6px;
+    right: -6px;
+    background: #007bff;
     color: white;
     width: 20px;
     height: 20px;
@@ -767,38 +690,21 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 0.75rem;
     font-weight: bold;
     z-index: 2;
-}
-
-.image-card.multi-selected {
-    border-color: #ff6b6b;
-    background: #fff5f5;
 }
 
 .image-card.multi-selected::before {
     content: attr(data-selection-order);
-    position: absolute;
-    top: -8px;
-    right: -8px;
-    background: #ff6b6b;
-    color: white;
-    width: 24px;
-    height: 24px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 12px;
-    font-weight: bold;
-    z-index: 2;
+    background: #ffc107;
+    color: #212529;
 }
 
 .image-checkbox {
     position: absolute;
-    top: 8px;
-    left: 8px;
+    top: 0.75rem;
+    left: 0.75rem;
     width: 18px;
     height: 18px;
     z-index: 3;
@@ -807,237 +713,78 @@
 
 .image-preview {
     width: 100%;
-    height: 150px;
+    height: 160px;
     object-fit: cover;
-    border-radius: 4px;
+    border-radius: 6px;
     transition: all 0.3s ease;
 }
 
-.image-card.selected .image-preview,
-.image-card.multi-selected .image-preview {
-    transform: scale(0.95);
-}
-
 .image-info {
-    margin-top: 8px;
-    font-size: 12px;
-    color: #666;
+    margin-top: 0.75rem;
 }
 
-.image-detail-view {
-    background: white;
-    padding: 15px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+.image-info strong {
+    display: block;
+    font-size: 0.875rem;
+    color: #2c3e50;
+    margin-bottom: 0.5rem;
+    word-break: break-word;
 }
 
-.detail-image-container {
+.image-actions {
+    margin-top: 0.75rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+.action-btn {
+    padding: 0.375rem 0.75rem;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.75rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    transition: background 0.2s ease;
+    flex: 1;
+    justify-content: center;
+}
+
+/* Empty State */
+.empty-state {
     text-align: center;
-    margin-bottom: 15px;
+    padding: 3rem 2rem;
+    color: #6c757d;
 }
 
-.detail-image {
-    max-width: 100%;
-    max-height: 200px;
-    border-radius: 4px;
-    box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+.empty-state-icon {
+    font-size: 3rem;
+    color: #dee2e6;
+    margin-bottom: 1rem;
 }
 
-.image-details {
-    margin-bottom: 15px;
+.empty-state h3 {
+    color: #495057;
+    margin-bottom: 0.5rem;
 }
 
-.detail-item {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 8px;
-    padding: 5px 0;
-    border-bottom: 1px solid #eee;
-}
-
-.detail-item label {
-    font-weight: bold;
-    color: #555;
-}
-
-.rename-section {
-    margin-bottom: 15px;
-    padding: 15px;
-    background: #f8f9fa;
-    border-radius: 4px;
-}
-
-.rename-section h4 {
-    margin-bottom: 10px;
-}
-
-#new-filename {
-    width: 100%;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    margin-bottom: 8px;
-}
-
-.detail-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.image-browser {
-    flex: 1;
-    padding: 20px;
-    overflow-y: auto;
-}
-
-.search-panel {
-    background: #fff;
-    padding: 20px;
-    border-radius: 8px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    margin-bottom: 20px;
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
-
-.search-criteria {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 15px;
-}
-
-.criteria-group {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 10px;
-}
-
-.criteria-group select {
-    padding: 4px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    width: 60px;
-}
-
-.criteria-group input {
-    padding: 4px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    width: 80px;
-}
-
-.search-actions {
-    display: flex;
-    gap: 10px;
-}
-
-.sorting-controls {
-    display: flex;
-    gap: 20px;
-    align-items: center;
-    margin-bottom: 20px;
-    padding: 15px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.sort-option, .sort-order {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.images-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 15px;
-    padding: 10px;
-}
-
-.folder-image-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px;
-    margin: 4px 0;
-    background: #f8f9fa;
-    border-radius: 4px;
-    border-left: 3px solid #5f4bfd;
-}
-
-.folder-image-info {
-    flex: 1;
-    font-size: 11px;
-    color: #555;
-}
-
-.folder-image-info .filename {
-    font-weight: 600;
-    color: #333;
-}
-
-.folder-image-info .values {
-    font-size: 10px;
-    color: #666;
-    margin-top: 2px;
-}
-
-.folder-management {
-    margin-top: 20px;
-}
-
-.folder-controls {
-    display: flex;
-    gap: 10px;
-    margin-bottom: 15px;
-}
-
-#new-folder-name {
-    flex: 1;
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-.folder-item {
-    background: #fff;
-    padding: 12px;
-    margin: 8px 0;
-    border-radius: 6px;
-    border: 1px solid #e0e0e0;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-}
-
-.folder-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 8px;
-}
-
-.folder-header strong {
-    color: #333;
-    font-size: 14px;
-}
-
-.folder-images {
-    margin-top: 10px;
-    max-height: 300px;
-    overflow-y: auto;
+/* Loading Indicator */
+.loading-indicator {
+    text-align: center;
+    padding: 2rem;
+    color: #6c757d;
 }
 
 .loading-spinner {
-    border: 4px solid #f3f3f3;
-    border-top: 4px solid #5f4bfd;
+    border: 3px solid #f3f3f3;
+    border-top: 3px solid #007bff;
     border-radius: 50%;
     width: 40px;
     height: 40px;
     animation: spin 1s linear infinite;
-    margin: 0 auto;
+    margin: 0 auto 1rem;
 }
 
 @keyframes spin {
@@ -1045,611 +792,856 @@
     100% { transform: rotate(360deg); }
 }
 
-.search-by-name {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    position: relative;
+/* Helper Classes */
+.helper-text {
+    font-size: 0.8rem;
+    color: #6c757d;
+    margin-bottom: 1rem;
+    line-height: 1.4;
 }
 
-#name-search {
-    padding: 8px 35px 8px 12px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    width: 200px;
-    font-size: 14px;
+/* Scrollbar Styling */
+.sidebar-content::-webkit-scrollbar,
+.images-grid::-webkit-scrollbar {
+    width: 6px;
 }
 
-.clear-search-btn {
-    position: absolute;
-    right: 8px;
-    background: transparent;
-    border: none;
-    color: #666;
-    cursor: pointer;
-    padding: 4px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+.sidebar-content::-webkit-scrollbar-track,
+.images-grid::-webkit-scrollbar-track {
+    background: #f1f1f1;
 }
 
-.clear-search-btn:hover {
-    background: #f0f0f0;
-    color: #333;
+.sidebar-content::-webkit-scrollbar-thumb,
+.images-grid::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
 }
 
-.clear-search-btn .fa {
-    width: 12px;
-    height: 12px;
-    font-size: 12px;
+.sidebar-content::-webkit-scrollbar-thumb:hover,
+.images-grid::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
 }
 
-@media (max-width: 768px) {
+/* Responsive Design */
+@media (max-width: 1024px) {
     .browser-content {
         flex-direction: column;
     }
     
     .sidebar {
         width: 100%;
-        height: 300px;
+        height: auto;
+        max-height: 40vh;
     }
     
-    .sorting-controls {
+    .controls-bar {
         flex-direction: column;
-        align-items: flex-start;
-        gap: 10px;
+        align-items: stretch;
+        gap: 1rem;
     }
     
-    .search-criteria {
+    .controls-group {
+        justify-content: space-between;
+    }
+    
+    .search-input {
+        width: 100%;
+    }
+}
+
+@media (max-width: 768px) {
+    .browser-header {
         flex-direction: column;
-        gap: 10px;
+        gap: 1rem;
+        align-items: stretch;
     }
     
-    .image-actions {
+    .images-grid {
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 0.75rem;
+        padding: 1rem;
+    }
+    
+    .sidebar-header {
+        padding: 1rem;
+    }
+    
+    .sidebar-content {
+        padding: 1rem;
+    }
+}
+
+@media (max-width: 480px) {
+    .images-grid {
+        grid-template-columns: 1fr;
+    }
+    
+    .selection-status {
         flex-direction: column;
+        align-items: stretch;
+        text-align: center;
     }
     
-    .action-btn {
+    .selection-actions {
         justify-content: center;
+    }
+}
+
+/* Dark mode support */
+@media (prefers-color-scheme: dark) {
+    .reading-browser {
+        background: #1a1d23;
+        color: #e9ecef;
+    }
+    
+    .browser-header,
+    .sidebar,
+    .image-browser,
+    .card {
+        background: #2d333b;
+        border-color: #444c56;
+    }
+    
+    .page-title,
+    .sidebar-header h3,
+    .card-header h4 {
+        color: #e9ecef;
+    }
+    
+    .page-subtitle {
+        color: #8b949e;
+    }
+    
+    .form-input,
+    .form-select {
+        background: #22272e;
+        border-color: #444c56;
+        color: #e9ecef;
+    }
+    
+    .form-input:focus {
+        border-color: #007bff;
     }
 }
 </style>
 
-<script>
-// Global variables
-let currentZoom = 1;
-let selectedImages = new Set();
-let selectedImagesOrder = []; // Track order of selection
-let currentImageData = null;
-let allImagesData = [];
-let folders = JSON.parse(localStorage.getItem('readingFolders')) || {};
-let currentSearchQuery = '';
-let isSearching = false;
-let lastSelectedImage = null;
-let shiftKeyPressed = false;
+    <script>
+    // Global variables
+    let currentZoom = 1;
+    let selectedImages = new Set();
+    let selectedImagesOrder = []; // Track order of selection
+    let currentImageData = null;
+    let allImagesData = [];
+    let folders = JSON.parse(localStorage.getItem('readingFolders')) || {};
+    let currentSearchQuery = '';
+    let isSearching = false;
+    let lastSelectedImage = null;
+    let shiftKeyPressed = false;
 
-// Initialize the browser
-document.addEventListener('DOMContentLoaded', function() {
-    loadSortedImages();
-    renderFolders();
-    setupUploadHandler();
-    updateSelectionStatus();
-});
+    // Initialize the browser
+    document.addEventListener('DOMContentLoaded', function() {
+        loadSortedImages();
+        renderFolders();
+        setupUploadHandler();
+        updateSelectionStatus();
+    });
 
-// Enhanced selection handling with order tracking
-function handleImageClick(imageId, event) {
-    const wasShiftPressed = event.shiftKey;
-    const wasCtrlPressed = event.ctrlKey || event.metaKey;
-    
-    // Show detail view
-    showImageDetail(imageId);
-    
-    // Handle selection based on modifier keys
-    if (wasShiftPressed && lastSelectedImage) {
-        handleShiftClickSelection(imageId);
-    } else if (wasCtrlPressed) {
-        toggleImageSelection(imageId, event);
-    } else {
-        selectSingleImage(imageId);
+    // Enhanced selection handling with order tracking
+    function handleImageClick(imageId, event) {
+        const wasShiftPressed = event.shiftKey;
+        const wasCtrlPressed = event.ctrlKey || event.metaKey;
+        
+        // Show detail view
+        showImageDetail(imageId);
+        
+        // Handle selection based on modifier keys
+        if (wasShiftPressed && lastSelectedImage) {
+            handleShiftClickSelection(imageId);
+        } else if (wasCtrlPressed) {
+            toggleImageSelection(imageId, event);
+        } else {
+            selectSingleImage(imageId);
+        }
+        
+        lastSelectedImage = imageId;
+        updateSelectionStatus();
     }
-    
-    lastSelectedImage = imageId;
-    updateSelectionStatus();
-}
 
-function handleNameSearch(event) {
-    const searchTerm = event.target.value.trim().toLowerCase();
-    const clearBtn = document.getElementById('clear-search-btn');
-    
-    if (searchTerm) {
-        clearBtn.style.display = 'flex';
-        currentSearchQuery = searchTerm;
-        isSearching = true;
-        performNameSearch();
-    } else {
-        clearBtn.style.display = 'none';
+    function handleNameSearch(event) {
+        const searchTerm = event.target.value.trim().toLowerCase();
+        const clearBtn = document.getElementById('clear-search-btn');
+        
+        if (searchTerm) {
+            clearBtn.style.display = 'flex';
+            currentSearchQuery = searchTerm;
+            isSearching = true;
+            performNameSearch();
+        } else {
+            clearBtn.style.display = 'none';
+            currentSearchQuery = '';
+            isSearching = false;
+            loadSortedImages();
+        }
+        
+        if (event.key === 'Escape') {
+            clearNameSearch();
+        }
+    }
+
+    function handleShiftClickSelection(imageId) {
+        const imageIds = allImagesData.map(img => img.id);
+        const startIndex = imageIds.indexOf(lastSelectedImage);
+        const endIndex = imageIds.indexOf(imageId);
+        
+        if (startIndex === -1 || endIndex === -1) return;
+        
+        const start = Math.min(startIndex, endIndex);
+        const end = Math.max(startIndex, endIndex);
+        
+        if (!shiftKeyPressed) {
+            selectedImages.clear();
+            selectedImagesOrder = [];
+        }
+        
+        for (let i = start; i <= end; i++) {
+            if (!selectedImages.has(imageIds[i])) {
+                selectedImages.add(imageIds[i]);
+                selectedImagesOrder.push(imageIds[i]);
+            }
+            updateImageSelectionUI(imageIds[i]);
+        }
+    }
+
+    function selectSingleImage(imageId) {
+        selectedImages.clear();
+        selectedImagesOrder = [];
+        selectedImages.add(imageId);
+        selectedImagesOrder.push(imageId);
+        
+        document.querySelectorAll('.image-card').forEach(card => {
+            card.classList.remove('multi-selected', 'selected');
+            card.removeAttribute('data-selection-order');
+            const checkbox = card.querySelector('.image-checkbox');
+            if (checkbox) checkbox.checked = false;
+        });
+        
+        updateImageSelectionUI(imageId);
+    }
+
+    document.addEventListener('keydown', function(event) {
+        if (event.key === 'Shift') {
+            shiftKeyPressed = true;
+        }
+    });
+
+    document.addEventListener('keyup', function(event) {
+        if (event.key === 'Shift') {
+            shiftKeyPressed = false;
+        }
+    });
+
+    function naturalSort(a, b) {
+        const regex = /(\d+\.\s*)?(.*)/;
+        const aMatch = a.filename.match(regex);
+        const bMatch = b.filename.match(regex);
+        
+        const aNum = aMatch[1] ? parseFloat(aMatch[1]) : -1;
+        const bNum = bMatch[1] ? parseFloat(bMatch[1]) : -1;
+        
+        if (aNum !== -1 && bNum !== -1) {
+            if (aNum !== bNum) {
+                return aNum - bNum;
+            }
+        }
+        
+        if (aNum !== -1 && bNum === -1) return -1;
+        if (aNum === -1 && bNum !== -1) return 1;
+        
+        return a.filename.localeCompare(b.filename);
+    }
+
+    function renderFolderImages(images, folderName) {
+        const sortedImages = [...images].sort(naturalSort);
+        
+        return sortedImages.map(image => `
+            <div class="folder-image-item">
+                <div class="folder-image-info">
+                    <div class="filename">${image.filename}</div>
+                    <div class="values">
+                        ${image.rh !== null ? `RH: ${image.rh} | ` : ''}
+                        ${image.t !== null ? `T: ${image.t} | ` : ''}
+                        ${image.gpp !== null ? `GPP: ${image.gpp} | ` : ''}
+                        ${image.mc !== null ? `MC: ${image.mc}` : ''}
+                        ${image.rh === null && image.mc === null ? 'Room label or other format' : ''}
+                    </div>
+                </div>
+                <button onclick="removeImageFromFolder(${image.id}, '${folderName}')">
+                    <i class="fa fa-times"></i> Remove
+                </button>
+            </div>
+        `).join('');
+    }
+
+    function renderFolders() {
+        const foldersList = document.getElementById('folders-list');
+        
+        if (Object.keys(folders).length === 0) {
+            foldersList.innerHTML = '<p>No folders yet. Create a folder to organize your images.</p>';
+            return;
+        }
+        
+        foldersList.innerHTML = Object.entries(folders).map(([folderName, images]) => `
+            <div class="folder-item">
+                <div class="folder-header">
+                    <strong>${folderName}</strong>
+                    <div>
+                        <button onclick="addSelectedToFolder('${folderName}')">
+                            <i class="fa fa-plus"></i> Add Selected
+                        </button>
+                        <button onclick="deleteFolder('${folderName}')">
+                            <i class="fa fa-trash"></i> Delete
+                        </button>
+                    </div>
+                </div>
+                <div class="folder-images">
+                    ${renderFolderImages(images, folderName)}
+                    ${images.length === 0 ? '<p style="color: #666; font-size: 12px; text-align: center; padding: 10px;">No images in folder</p>' : ''}
+                </div>
+            </div>
+        `).join('');
+    }
+
+    function createFolder() {
+        const folderNameInput = document.getElementById('new-folder-name');
+        const folderName = folderNameInput.value.trim();
+        
+        if (!folderName) {
+            alert('Please enter a folder name');
+            return;
+        }
+        
+        if (folders[folderName]) {
+            alert('Folder already exists');
+            return;
+        }
+        
+        folders[folderName] = [];
+        saveFolders();
+        renderFolders();
+        
+        folderNameInput.value = '';
+        
+        if (selectedImages.size > 0) {
+            showNotification(`Folder "${folderName}" created. Use "Add Selected" to add ${selectedImages.size} selected images.`);
+        } else {
+            showNotification(`Folder "${folderName}" created. Select images and use "Add Selected" to organize them.`);
+        }
+    }
+
+    function clearNameSearch() {
+        document.getElementById('name-search').value = '';
+        document.getElementById('clear-search-btn').style.display = 'none';
         currentSearchQuery = '';
         isSearching = false;
         loadSortedImages();
     }
-    
-    if (event.key === 'Escape') {
-        clearNameSearch();
-    }
-}
 
-function handleShiftClickSelection(imageId) {
-    const imageIds = allImagesData.map(img => img.id);
-    const startIndex = imageIds.indexOf(lastSelectedImage);
-    const endIndex = imageIds.indexOf(imageId);
-    
-    if (startIndex === -1 || endIndex === -1) return;
-    
-    const start = Math.min(startIndex, endIndex);
-    const end = Math.max(startIndex, endIndex);
-    
-    if (!shiftKeyPressed) {
-        selectedImages.clear();
-        selectedImagesOrder = [];
-    }
-    
-    for (let i = start; i <= end; i++) {
-        if (!selectedImages.has(imageIds[i])) {
-            selectedImages.add(imageIds[i]);
-            selectedImagesOrder.push(imageIds[i]);
+    function performNameSearch() {
+        if (!currentSearchQuery) {
+            loadSortedImages();
+            return;
         }
-        updateImageSelectionUI(imageIds[i]);
+        
+        const filteredImages = allImagesData.filter(image => 
+            image.filename.toLowerCase().includes(currentSearchQuery)
+        );
+        
+        renderImages(filteredImages);
     }
-}
 
-function selectSingleImage(imageId) {
-    selectedImages.clear();
-    selectedImagesOrder = [];
-    selectedImages.add(imageId);
-    selectedImagesOrder.push(imageId);
-    
-    document.querySelectorAll('.image-card').forEach(card => {
-        card.classList.remove('multi-selected', 'selected');
-        card.removeAttribute('data-selection-order');
-        const checkbox = card.querySelector('.image-checkbox');
-        if (checkbox) checkbox.checked = false;
-    });
-    
-    updateImageSelectionUI(imageId);
-}
-
-document.addEventListener('keydown', function(event) {
-    if (event.key === 'Shift') {
-        shiftKeyPressed = true;
+    function setupUploadHandler() {
+        const uploadInput = document.getElementById('image-upload');
+        uploadInput.addEventListener('change', handleFileUpload);
     }
-});
 
-document.addEventListener('keyup', function(event) {
-    if (event.key === 'Shift') {
-        shiftKeyPressed = false;
-    }
-});
+    async function handleFileUpload(event) {
+        const files = event.target.files;
+        if (files.length === 0) return;
 
-function naturalSort(a, b) {
-    const regex = /(\d+\.\s*)?(.*)/;
-    const aMatch = a.filename.match(regex);
-    const bMatch = b.filename.match(regex);
-    
-    const aNum = aMatch[1] ? parseFloat(aMatch[1]) : -1;
-    const bNum = bMatch[1] ? parseFloat(bMatch[1]) : -1;
-    
-    if (aNum !== -1 && bNum !== -1) {
-        if (aNum !== bNum) {
-            return aNum - bNum;
+        const formData = new FormData();
+        for (let file of files) {
+            formData.append('images', file);
+        }
+
+        showLoading(true);
+        
+        try {
+            const response = await fetch('/readings/upload/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-CSRFToken': getCSRFToken()
+                }
+            });
+            
+            const result = await response.json();
+            displayUploadResults(result);
+            
+            if (result.success.length > 0 || result.parse_errors.length > 0) {
+                loadSortedImages();
+            }
+        } catch (error) {
+            console.error('Upload error:', error);
+            displayUploadResults({errors: ['Upload failed: ' + error.message]});
+        } finally {
+            showLoading(false);
+            event.target.value = '';
         }
     }
-    
-    if (aNum !== -1 && bNum === -1) return -1;
-    if (aNum === -1 && bNum !== -1) return 1;
-    
-    return a.filename.localeCompare(b.filename);
-}
 
-function renderFolderImages(images, folderName) {
-    const sortedImages = [...images].sort(naturalSort);
-    
-    return sortedImages.map(image => `
-        <div class="folder-image-item">
-            <div class="folder-image-info">
-                <div class="filename">${image.filename}</div>
-                <div class="values">
-                    ${image.rh !== null ? `RH: ${image.rh} | ` : ''}
-                    ${image.t !== null ? `T: ${image.t} | ` : ''}
-                    ${image.gpp !== null ? `GPP: ${image.gpp} | ` : ''}
-                    ${image.mc !== null ? `MC: ${image.mc}` : ''}
-                    ${image.rh === null && image.mc === null ? 'Room label or other format' : ''}
+    function displayUploadResults(results) {
+        const resultsDiv = document.getElementById('upload-results');
+        let html = '';
+        
+        if (results.success && results.success.length > 0) {
+            html += `<div style="color: green; margin-top: 10px;">
+                        ✅ Successfully uploaded: ${results.success.length} files
+                     </div>`;
+        }
+        
+        if (results.parse_errors && results.parse_errors.length > 0) {
+            html += `<div style="color: orange; margin-top: 10px;">
+                        ⚠️ Uploaded but couldn't parse values: ${results.parse_errors.length} files
+                     </div>`;
+        }
+        
+        if (results.duplicates && results.duplicates.length > 0) {
+            html += `<div style="color: orange; margin-top: 10px;">
+                        ⚠️ Skipped duplicates: ${results.duplicates.length} files
+                     </div>`;
+        }
+        
+        if (results.errors && results.errors.length > 0) {
+            html += `<div style="color: red; margin-top: 10px;">
+                        ❌ Errors: ${results.errors.join(', ')}
+                     </div>`;
+        }
+        
+        resultsDiv.innerHTML = html;
+        
+        setTimeout(() => {
+            resultsDiv.innerHTML = '';
+        }, 8000);
+    }
+
+    function renderImages(images) {
+        const grid = document.getElementById('images-grid');
+        
+        if (images.length === 0) {
+            if (isSearching) {
+                grid.innerHTML = '<p>No images match your search criteria. <a href="javascript:clearNameSearch()">Clear search</a> to show all images.</p>';
+            } else {
+                grid.innerHTML = '<p>No images found. Upload some images to get started.</p>';
+            }
+            return;
+        }
+        
+        grid.innerHTML = images.map(image => {
+            const isSelected = selectedImages.has(image.id);
+            const selectionOrder = selectedImagesOrder.indexOf(image.id) + 1;
+            const selectionClass = isSelected ? 'multi-selected' : '';
+            
+            const hasRH = image.rh !== null;
+            const hasMC = image.mc !== null;
+            
+            let valuesHtml = '';
+            
+            if (hasRH) {
+                valuesHtml = `
+                    <div>RH: ${image.rh}</div>
+                    <div>T: ${image.t !== null ? image.t : 'N/A'}</div>
+                    <div>GPP: ${image.gpp !== null ? image.gpp : 'N/A'}</div>
+                `;
+            } else if (hasMC) {
+                valuesHtml = `<div>MC: ${image.mc}</div>`;
+            } else {
+                valuesHtml = '<div><em>Room label or other format</em></div>';
+            }
+            
+            return `
+            <div class="image-card ${selectionClass}" data-image-id="${image.id}" 
+                 ${isSelected ? `data-selection-order="${selectionOrder}"` : ''}
+                 onclick="handleImageClick(${image.id}, event)">
+                <input type="checkbox" class="image-checkbox" ${isSelected ? 'checked' : ''}
+                       onclick="event.stopPropagation(); toggleImageSelection(${image.id}, event)">
+                <img src="${image.url}" alt="${image.filename}" 
+                     class="image-preview" style="transform: scale(${currentZoom})">
+                <div class="image-info">
+                    <div><strong>${image.filename}</strong></div>
+                    ${valuesHtml}
+                    <div>Size: ${image.size}</div>
                 </div>
-            </div>
-            <button onclick="removeImageFromFolder(${image.id}, '${folderName}')">
-                <i class="fa fa-times"></i> Remove
-            </button>
-        </div>
-    `).join('');
-}
-
-function renderFolders() {
-    const foldersList = document.getElementById('folders-list');
-    
-    if (Object.keys(folders).length === 0) {
-        foldersList.innerHTML = '<p>No folders yet. Create a folder to organize your images.</p>';
-        return;
-    }
-    
-    foldersList.innerHTML = Object.entries(folders).map(([folderName, images]) => `
-        <div class="folder-item">
-            <div class="folder-header">
-                <strong>${folderName}</strong>
-                <div>
-                    <button onclick="addSelectedToFolder('${folderName}')">
-                        <i class="fa fa-plus"></i> Add Selected
+                <div class="image-actions">
+                    <button class="action-btn select-btn" onclick="event.stopPropagation(); selectImageForFolder(${image.id})">
+                        <i class="fa fa-folder"></i> Select
                     </button>
-                    <button onclick="deleteFolder('${folderName}')">
+                    <button class="action-btn search-btn-small" onclick="event.stopPropagation(); showSearchPanel(${image.id})">
+                        <i class="fa fa-search"></i> Search
+                    </button>
+                    <button class="action-btn delete-btn-small" onclick="event.stopPropagation(); deleteImage(${image.id})">
                         <i class="fa fa-trash"></i> Delete
                     </button>
                 </div>
             </div>
-            <div class="folder-images">
-                ${renderFolderImages(images, folderName)}
-                ${images.length === 0 ? '<p style="color: #666; font-size: 12px; text-align: center; padding: 10px;">No images in folder</p>' : ''}
-            </div>
-        </div>
-    `).join('');
-}
-
-function createFolder() {
-    const folderNameInput = document.getElementById('new-folder-name');
-    const folderName = folderNameInput.value.trim();
-    
-    if (!folderName) {
-        alert('Please enter a folder name');
-        return;
-    }
-    
-    if (folders[folderName]) {
-        alert('Folder already exists');
-        return;
-    }
-    
-    folders[folderName] = [];
-    saveFolders();
-    renderFolders();
-    
-    folderNameInput.value = '';
-    
-    if (selectedImages.size > 0) {
-        showNotification(`Folder "${folderName}" created. Use "Add Selected" to add ${selectedImages.size} selected images.`);
-    } else {
-        showNotification(`Folder "${folderName}" created. Select images and use "Add Selected" to organize them.`);
-    }
-}
-
-function clearNameSearch() {
-    document.getElementById('name-search').value = '';
-    document.getElementById('clear-search-btn').style.display = 'none';
-    currentSearchQuery = '';
-    isSearching = false;
-    loadSortedImages();
-}
-
-function performNameSearch() {
-    if (!currentSearchQuery) {
-        loadSortedImages();
-        return;
-    }
-    
-    const filteredImages = allImagesData.filter(image => 
-        image.filename.toLowerCase().includes(currentSearchQuery)
-    );
-    
-    renderImages(filteredImages);
-}
-
-function setupUploadHandler() {
-    const uploadInput = document.getElementById('image-upload');
-    uploadInput.addEventListener('change', handleFileUpload);
-}
-
-async function handleFileUpload(event) {
-    const files = event.target.files;
-    if (files.length === 0) return;
-
-    const formData = new FormData();
-    for (let file of files) {
-        formData.append('images', file);
+            `;
+        }).join('');
     }
 
-    showLoading(true);
-    
-    try {
-        const response = await fetch('/readings/upload/', {
-            method: 'POST',
-            body: formData,
-            headers: {
-                'X-CSRFToken': getCSRFToken()
+    function toggleImageSelection(imageId, event) {
+        if (selectedImages.has(imageId)) {
+            selectedImages.delete(imageId);
+            const index = selectedImagesOrder.indexOf(imageId);
+            if (index > -1) {
+                selectedImagesOrder.splice(index, 1);
+            }
+        } else {
+            selectedImages.add(imageId);
+            selectedImagesOrder.push(imageId);
+        }
+        
+        updateImageSelectionUI(imageId);
+        updateSelectionStatus();
+    }
+
+    function updateImageSelectionUI(imageId) {
+        const imageCard = document.querySelector(`[data-image-id="${imageId}"]`);
+        const checkbox = imageCard?.querySelector('.image-checkbox');
+        
+        if (imageCard && checkbox) {
+            if (selectedImages.has(imageId)) {
+                imageCard.classList.add('multi-selected');
+                imageCard.classList.remove('selected');
+                const selectionOrder = selectedImagesOrder.indexOf(imageId) + 1;
+                imageCard.setAttribute('data-selection-order', selectionOrder);
+                checkbox.checked = true;
+            } else {
+                imageCard.classList.remove('multi-selected', 'selected');
+                imageCard.removeAttribute('data-selection-order');
+                checkbox.checked = false;
+            }
+        }
+    }
+
+    function selectImageForFolder(imageId) {
+        selectedImages.clear();
+        selectedImagesOrder = [];
+        selectedImages.add(imageId);
+        selectedImagesOrder.push(imageId);
+        
+        document.querySelectorAll('.image-card').forEach(card => {
+            card.classList.remove('multi-selected', 'selected');
+            card.removeAttribute('data-selection-order');
+            const checkbox = card.querySelector('.image-checkbox');
+            if (checkbox) checkbox.checked = false;
+        });
+        
+        updateImageSelectionUI(imageId);
+        updateSelectionStatus();
+        
+        showNotification('Image selected. Choose a folder to place it in.');
+    }
+
+    function clearSelection() {
+        selectedImages.clear();
+        selectedImagesOrder = [];
+        
+        document.querySelectorAll('.image-card').forEach(card => {
+            card.classList.remove('multi-selected', 'selected');
+            card.removeAttribute('data-selection-order');
+            const checkbox = card.querySelector('.image-checkbox');
+            if (checkbox) checkbox.checked = false;
+        });
+        
+        updateSelectionStatus();
+    }
+
+    function updateSelectionStatus() {
+        const selectedCount = document.getElementById('selected-count');
+        const sequentialBtn = document.getElementById('sequential-number-btn');
+        selectedCount.textContent = selectedImages.size;
+        
+        const clearBtn = document.querySelector('.clear-selection-btn');
+        if (clearBtn) {
+            clearBtn.style.display = selectedImages.size > 0 ? 'flex' : 'none';
+        }
+        
+        if (sequentialBtn) {
+            sequentialBtn.style.display = selectedImages.size > 0 ? 'flex' : 'none';
+        }
+    }
+
+    // Sequential Numbering Functions
+    function showSequentialNumbering() {
+        if (selectedImages.size === 0) {
+            showNotification('No images selected', 'error');
+            return;
+        }
+        
+        document.getElementById('numbering-panel').style.display = 'block';
+        updateNumberingPreview();
+        
+        // Add event listeners for live preview
+        document.getElementById('start-number').addEventListener('input', updateNumberingPreview);
+        document.getElementById('increment-number').addEventListener('input', updateNumberingPreview);
+    }
+
+    function hideNumberingPanel() {
+        document.getElementById('numbering-panel').style.display = 'none';
+    }
+
+    function updateNumberingPreview() {
+        const startNum = parseFloat(document.getElementById('start-number').value) || 1;
+        const increment = parseFloat(document.getElementById('increment-number').value) || 4;
+        const previewDiv = document.getElementById('numbering-preview');
+        
+        const selectedImagesData = selectedImagesOrder.map(id => 
+            allImagesData.find(img => img.id === id)
+        ).filter(img => img !== undefined);
+        
+        if (selectedImagesData.length === 0) {
+            previewDiv.innerHTML = '<p style="color: #999;">No images selected</p>';
+            return;
+        }
+        
+        let currentNumber = startNum;
+        const previewHtml = selectedImagesData.map((image, index) => {
+            const labelNumber = currentNumber - 0.1;
+            const newFilename = generateLabelFilename(image.filename, labelNumber);
+            const html = `
+                <div class="numbering-preview-item">
+                    <span class="old-name">${image.filename}</span>
+                    <span class="arrow">→</span>
+                    <span class="new-name">${newFilename}</span>
+                </div>
+            `;
+            currentNumber += increment;
+            return html;
+        }).join('');
+        
+        previewDiv.innerHTML = previewHtml;
+    }
+
+    async function applySequentialNumbering() {
+        const startNum = parseFloat(document.getElementById('start-number').value) || 1;
+        const increment = parseFloat(document.getElementById('increment-number').value) || 4;
+        
+        if (selectedImagesOrder.length === 0) {
+            showNotification('No images selected', 'error');
+            return;
+        }
+        
+        const selectedImagesData = selectedImagesOrder.map(id => 
+            allImagesData.find(img => img.id === id)
+        ).filter(img => img !== undefined);
+        
+        if (!confirm(`Apply sequential numbering to ${selectedImagesData.length} images?`)) {
+            return;
+        }
+        
+        showLoading(true);
+        let currentNumber = startNum;
+        let successCount = 0;
+        let errorCount = 0;
+        
+        for (const image of selectedImagesData) {
+            const labelNumber = currentNumber - 0.1;
+            const newFilename = generateLabelFilename(image.filename, labelNumber);
+            
+            try {
+                const response = await fetch(`/readings/rename/${image.id}/`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRFToken': getCSRFToken()
+                    },
+                    body: JSON.stringify({ filename: newFilename })
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    successCount++;
+                } else {
+                    errorCount++;
+                    console.error(`Failed to rename ${image.filename}:`, result.error);
+                }
+            } catch (error) {
+                errorCount++;
+                console.error(`Error renaming ${image.filename}:`, error);
+            }
+            
+            currentNumber += increment;
+        }
+        
+        showLoading(false);
+        hideNumberingPanel();
+        
+        if (successCount > 0) {
+            showNotification(`Successfully numbered ${successCount} image(s)`, 'success');
+            clearSelection();
+            await loadSortedImages();
+        }
+        
+        if (errorCount > 0) {
+            showNotification(`${errorCount} image(s) failed to rename`, 'error');
+        }
+    }
+
+    function generateLabelFilename(originalFilename, labelNumber) {
+        const withoutNumber = originalFilename.replace(/^[\d.]+\s*/, '');
+        return `${labelNumber} ${withoutNumber}`;
+    }
+
+    function showImageDetail(imageId) {
+        const images = document.querySelectorAll('.image-card');
+        images.forEach(img => {
+            img.classList.remove('selected');
+            if (parseInt(img.dataset.imageId) === imageId) {
+                img.classList.add('selected');
             }
         });
         
-        const result = await response.json();
-        displayUploadResults(result);
+        getImageData(imageId).then(image => {
+            if (image) {
+                currentImageData = image;
+                showDetailView(image);
+            }
+        });
+    }
+
+    async function getImageData(imageId) {
+        return allImagesData.find(img => img.id === imageId) || null;
+    }
+
+    function showDetailView(image) {
+        const detailView = document.getElementById('image-detail-view');
+        detailView.style.display = 'block';
         
-        if (result.success.length > 0 || result.parse_errors.length > 0) {
-            loadSortedImages();
-        }
-    } catch (error) {
-        console.error('Upload error:', error);
-        displayUploadResults({errors: ['Upload failed: ' + error.message]});
-    } finally {
-        showLoading(false);
-        event.target.value = '';
-    }
-}
-
-function displayUploadResults(results) {
-    const resultsDiv = document.getElementById('upload-results');
-    let html = '';
-    
-    if (results.success && results.success.length > 0) {
-        html += `<div style="color: green; margin-top: 10px;">
-                    ✅ Successfully uploaded: ${results.success.length} files
-                 </div>`;
-    }
-    
-    if (results.parse_errors && results.parse_errors.length > 0) {
-        html += `<div style="color: orange; margin-top: 10px;">
-                    ⚠️ Uploaded but couldn't parse values: ${results.parse_errors.length} files
-                 </div>`;
-    }
-    
-    if (results.duplicates && results.duplicates.length > 0) {
-        html += `<div style="color: orange; margin-top: 10px;">
-                    ⚠️ Skipped duplicates: ${results.duplicates.length} files
-                 </div>`;
-    }
-    
-    if (results.errors && results.errors.length > 0) {
-        html += `<div style="color: red; margin-top: 10px;">
-                    ❌ Errors: ${results.errors.join(', ')}
-                 </div>`;
-    }
-    
-    resultsDiv.innerHTML = html;
-    
-    setTimeout(() => {
-        resultsDiv.innerHTML = '';
-    }, 8000);
-}
-
-function renderImages(images) {
-    const grid = document.getElementById('images-grid');
-    
-    if (images.length === 0) {
-        if (isSearching) {
-            grid.innerHTML = '<p>No images match your search criteria. <a href="javascript:clearNameSearch()">Clear search</a> to show all images.</p>';
-        } else {
-            grid.innerHTML = '<p>No images found. Upload some images to get started.</p>';
-        }
-        return;
-    }
-    
-    grid.innerHTML = images.map(image => {
-        const isSelected = selectedImages.has(image.id);
-        const selectionOrder = selectedImagesOrder.indexOf(image.id) + 1;
-        const selectionClass = isSelected ? 'multi-selected' : '';
+        document.getElementById('detail-image-preview').src = image.url;
+        document.getElementById('detail-filename').textContent = image.filename;
+        document.getElementById('new-filename').value = image.filename;
+        document.getElementById('detail-size').textContent = image.size;
         
         const hasRH = image.rh !== null;
         const hasMC = image.mc !== null;
         
-        let valuesHtml = '';
+        const rhItem = document.getElementById('detail-rh').closest('.detail-item');
+        const tItem = document.getElementById('detail-t').closest('.detail-item');
+        const gppItem = document.getElementById('detail-gpp').closest('.detail-item');
+        const mcItem = document.getElementById('detail-mc').closest('.detail-item');
         
         if (hasRH) {
-            valuesHtml = `
-                <div>RH: ${image.rh}</div>
-                <div>T: ${image.t !== null ? image.t : 'N/A'}</div>
-                <div>GPP: ${image.gpp !== null ? image.gpp : 'N/A'}</div>
-            `;
+            rhItem.style.display = 'flex';
+            tItem.style.display = 'flex';
+            gppItem.style.display = 'flex';
+            mcItem.style.display = 'none';
+            
+            document.getElementById('detail-rh').textContent = image.rh;
+            document.getElementById('detail-t').textContent = image.t !== null ? image.t : 'N/A';
+            document.getElementById('detail-gpp').textContent = image.gpp !== null ? image.gpp : 'N/A';
         } else if (hasMC) {
-            valuesHtml = `<div>MC: ${image.mc}</div>`;
+            rhItem.style.display = 'none';
+            tItem.style.display = 'none';
+            gppItem.style.display = 'none';
+            mcItem.style.display = 'flex';
+            
+            document.getElementById('detail-mc').textContent = image.mc;
         } else {
-            valuesHtml = '<div><em>Room label or other format</em></div>';
+            rhItem.style.display = 'none';
+            tItem.style.display = 'none';
+            gppItem.style.display = 'none';
+            mcItem.style.display = 'none';
+        }
+    }
+
+    function addImageToFolder(imageId, folderName) {
+        if (!folders[folderName]) {
+            folders[folderName] = [];
         }
         
-        return `
-        <div class="image-card ${selectionClass}" data-image-id="${image.id}" 
-             ${isSelected ? `data-selection-order="${selectionOrder}"` : ''}
-             onclick="handleImageClick(${image.id}, event)">
-            <input type="checkbox" class="image-checkbox" ${isSelected ? 'checked' : ''}
-                   onclick="event.stopPropagation(); toggleImageSelection(${image.id}, event)">
-            <img src="${image.url}" alt="${image.filename}" 
-                 class="image-preview" style="transform: scale(${currentZoom})">
-            <div class="image-info">
-                <div><strong>${image.filename}</strong></div>
-                ${valuesHtml}
-                <div>Size: ${image.size}</div>
-            </div>
-            <div class="image-actions">
-                <button class="action-btn select-btn" onclick="event.stopPropagation(); selectImageForFolder(${image.id})">
-                    <i class="fa fa-folder"></i> Select
-                </button>
-                <button class="action-btn search-btn-small" onclick="event.stopPropagation(); showSearchPanel(${image.id})">
-                    <i class="fa fa-search"></i> Search
-                </button>
-                <button class="action-btn delete-btn-small" onclick="event.stopPropagation(); deleteImage(${image.id})">
-                    <i class="fa fa-trash"></i> Delete
-                </button>
-            </div>
-        </div>
-        `;
-    }).join('');
-}
-
-function toggleImageSelection(imageId, event) {
-    if (selectedImages.has(imageId)) {
-        selectedImages.delete(imageId);
-        const index = selectedImagesOrder.indexOf(imageId);
-        if (index > -1) {
-            selectedImagesOrder.splice(index, 1);
+        const imageData = allImagesData.find(img => img.id === imageId);
+        if (!imageData) return false;
+        
+        const isAlreadyInFolder = folders[folderName].some(item => item.id === imageId);
+        
+        if (!isAlreadyInFolder) {
+            folders[folderName].push({
+                id: imageId,
+                filename: imageData.filename,
+                rh: imageData.rh,
+                t: imageData.t,
+                gpp: imageData.gpp,
+                mc: imageData.mc
+            });
+            saveFolders();
+            renderFolders();
+            return true;
         }
-    } else {
-        selectedImages.add(imageId);
-        selectedImagesOrder.push(imageId);
+        return false;
     }
-    
-    updateImageSelectionUI(imageId);
-    updateSelectionStatus();
-}
 
-function updateImageSelectionUI(imageId) {
-    const imageCard = document.querySelector(`[data-image-id="${imageId}"]`);
-    const checkbox = imageCard?.querySelector('.image-checkbox');
-    
-    if (imageCard && checkbox) {
-        if (selectedImages.has(imageId)) {
-            imageCard.classList.add('multi-selected');
-            imageCard.classList.remove('selected');
-            const selectionOrder = selectedImagesOrder.indexOf(imageId) + 1;
-            imageCard.setAttribute('data-selection-order', selectionOrder);
-            checkbox.checked = true;
+    function addSelectedToFolder(folderName) {
+        if (selectedImages.size === 0) {
+            showNotification('No images selected');
+            return;
+        }
+        
+        let addedCount = 0;
+        selectedImages.forEach(imageId => {
+            if (addImageToFolder(imageId, folderName)) {
+                addedCount++;
+            }
+        });
+        
+        if (addedCount > 0) {
+            showNotification(`Added ${addedCount} images to folder: ${folderName}`);
         } else {
-            imageCard.classList.remove('multi-selected', 'selected');
-            imageCard.removeAttribute('data-selection-order');
-            checkbox.checked = false;
+            showNotification('All selected images were already in the folder');
         }
     }
-}
 
-function selectImageForFolder(imageId) {
-    selectedImages.clear();
-    selectedImagesOrder = [];
-    selectedImages.add(imageId);
-    selectedImagesOrder.push(imageId);
-    
-    document.querySelectorAll('.image-card').forEach(card => {
-        card.classList.remove('multi-selected', 'selected');
-        card.removeAttribute('data-selection-order');
-        const checkbox = card.querySelector('.image-checkbox');
-        if (checkbox) checkbox.checked = false;
-    });
-    
-    updateImageSelectionUI(imageId);
-    updateSelectionStatus();
-    
-    showNotification('Image selected. Choose a folder to place it in.');
-}
-
-function clearSelection() {
-    selectedImages.clear();
-    selectedImagesOrder = [];
-    
-    document.querySelectorAll('.image-card').forEach(card => {
-        card.classList.remove('multi-selected', 'selected');
-        card.removeAttribute('data-selection-order');
-        const checkbox = card.querySelector('.image-checkbox');
-        if (checkbox) checkbox.checked = false;
-    });
-    
-    updateSelectionStatus();
-}
-
-function updateSelectionStatus() {
-    const selectedCount = document.getElementById('selected-count');
-    const sequentialBtn = document.getElementById('sequential-number-btn');
-    selectedCount.textContent = selectedImages.size;
-    
-    const clearBtn = document.querySelector('.clear-selection-btn');
-    if (clearBtn) {
-        clearBtn.style.display = selectedImages.size > 0 ? 'flex' : 'none';
+    function removeImageFromFolder(imageId, folderName) {
+        if (folders[folderName]) {
+            folders[folderName] = folders[folderName].filter(item => item.id !== imageId);
+            saveFolders();
+            renderFolders();
+        }
     }
-    
-    if (sequentialBtn) {
-        sequentialBtn.style.display = selectedImages.size > 0 ? 'flex' : 'none';
-    }
-}
 
-// Sequential Numbering Functions
-function showSequentialNumbering() {
-    if (selectedImages.size === 0) {
-        showNotification('No images selected', 'error');
-        return;
+    function deleteFolder(folderName) {
+        if (confirm(`Delete folder "${folderName}" and all its contents?`)) {
+            delete folders[folderName];
+            saveFolders();
+            renderFolders();
+        }
     }
-    
-    document.getElementById('numbering-panel').style.display = 'block';
-    updateNumberingPreview();
-    
-    // Add event listeners for live preview
-    document.getElementById('start-number').addEventListener('input', updateNumberingPreview);
-    document.getElementById('increment-number').addEventListener('input', updateNumberingPreview);
-}
 
-function hideNumberingPanel() {
-    document.getElementById('numbering-panel').style.display = 'none';
-}
-
-function updateNumberingPreview() {
-    const startNum = parseFloat(document.getElementById('start-number').value) || 1;
-    const increment = parseFloat(document.getElementById('increment-number').value) || 4;
-    const previewDiv = document.getElementById('numbering-preview');
-    
-    const selectedImagesData = selectedImagesOrder.map(id => 
-        allImagesData.find(img => img.id === id)
-    ).filter(img => img !== undefined);
-    
-    if (selectedImagesData.length === 0) {
-        previewDiv.innerHTML = '<p style="color: #999;">No images selected</p>';
-        return;
-    }
-    
-    let currentNumber = startNum;
-    const previewHtml = selectedImagesData.map((image, index) => {
-        const labelNumber = currentNumber - 0.1;
-        const newFilename = generateLabelFilename(image.filename, labelNumber);
-        const html = `
-            <div class="numbering-preview-item">
-                <span class="old-name">${image.filename}</span>
-                <span class="arrow">→</span>
-                <span class="new-name">${newFilename}</span>
-            </div>
-        `;
-        currentNumber += increment;
-        return html;
-    }).join('');
-    
-    previewDiv.innerHTML = previewHtml;
-}
-
-async function applySequentialNumbering() {
-    const startNum = parseFloat(document.getElementById('start-number').value) || 1;
-    const increment = parseFloat(document.getElementById('increment-number').value) || 4;
-    
-    if (selectedImagesOrder.length === 0) {
-        showNotification('No images selected', 'error');
-        return;
-    }
-    
-    const selectedImagesData = selectedImagesOrder.map(id => 
-        allImagesData.find(img => img.id === id)
-    ).filter(img => img !== undefined);
-    
-    if (!confirm(`Apply sequential numbering to ${selectedImagesData.length} images?`)) {
-        return;
-    }
-    
-    showLoading(true);
-    let currentNumber = startNum;
-    let successCount = 0;
-    let errorCount = 0;
-    
-    for (const image of selectedImagesData) {
-        const labelNumber = currentNumber - 0.1;
-        const newFilename = generateLabelFilename(image.filename, labelNumber);
+    async function renameImage() {
+        if (!currentImageData) {
+            showNotification('No image selected for renaming', 'error');
+            return;
+        }
+        
+        const newFilename = document.getElementById('new-filename').value.trim();
+        if (!newFilename) {
+            alert('Please enter a new filename');
+            return;
+        }
+        
+        showLoading(true);
         
         try {
-            const response = await fetch(`/readings/rename/${image.id}/`, {
+            const response = await fetch(`/readings/rename/${currentImageData.id}/`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
@@ -1661,482 +1653,299 @@ async function applySequentialNumbering() {
             const result = await response.json();
             
             if (result.success) {
-                successCount++;
+                showNotification('Image renamed successfully', 'success');
+                currentImageData.filename = newFilename;
+                await loadSortedImages();
+                setTimeout(() => {
+                    showImageDetail(currentImageData.id);
+                }, 500);
             } else {
-                errorCount++;
-                console.error(`Failed to rename ${image.filename}:`, result.error);
+                showNotification(`Error renaming image: ${result.error}`, 'error');
             }
         } catch (error) {
-            errorCount++;
-            console.error(`Error renaming ${image.filename}:`, error);
+            console.error('Error renaming image:', error);
+            showNotification(`Error renaming image: ${error.message}`, 'error');
+        } finally {
+            showLoading(false);
         }
+    }
+
+    async function loadSortedImages() {
+        const sortBy = document.getElementById('sort-by').value;
+        const order = document.getElementById('sort-order').value;
         
-        currentNumber += increment;
-    }
-    
-    showLoading(false);
-    hideNumberingPanel();
-    
-    if (successCount > 0) {
-        showNotification(`Successfully numbered ${successCount} image(s)`, 'success');
-        clearSelection();
-        await loadSortedImages();
-    }
-    
-    if (errorCount > 0) {
-        showNotification(`${errorCount} image(s) failed to rename`, 'error');
-    }
-}
-
-function generateLabelFilename(originalFilename, labelNumber) {
-    const withoutNumber = originalFilename.replace(/^[\d.]+\s*/, '');
-    return `${labelNumber} ${withoutNumber}`;
-}
-
-function showImageDetail(imageId) {
-    const images = document.querySelectorAll('.image-card');
-    images.forEach(img => {
-        img.classList.remove('selected');
-        if (parseInt(img.dataset.imageId) === imageId) {
-            img.classList.add('selected');
+        showLoading(true);
+        
+        try {
+            const response = await fetch(`/readings/sorted/?sort_by=${sortBy}&order=${order}&t=${Date.now()}`);
+            const data = await response.json();
+            allImagesData = data.images;
+            
+            selectedImages.clear();
+            selectedImagesOrder = [];
+            updateSelectionStatus();
+            
+            renderImages(data.images);
+        } catch (error) {
+            console.error('Error loading images:', error);
+            showNotification('Error loading images', 'error');
+        } finally {
+            showLoading(false);
         }
-    });
-    
-    getImageData(imageId).then(image => {
+    }
+
+    async function deleteImage(imageId) {
+        if (!confirm('Delete this image?')) return;
+        
+        showLoading(true);
+        
+        try {
+            const response = await fetch(`/readings/delete/${imageId}/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCSRFToken()
+                }
+            });
+            
+            const result = await response.json();
+            
+            if (result.success) {
+                showNotification('Image deleted successfully', 'success');
+                await loadSortedImages();
+            } else {
+                showNotification(`Error deleting image: ${result.error}`, 'error');
+            }
+        } catch (error) {
+            console.error('Error deleting image:', error);
+            showNotification(`Error deleting image: ${error.message}`, 'error');
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function deleteCurrentImage() {
+        if (currentImageData) {
+            deleteImage(currentImageData.id);
+        }
+    }
+
+    function hideDetailView() {
+        document.getElementById('image-detail-view').style.display = 'none';
+        currentImageData = null;
+    }
+
+    async function performSearch() {
+        if (!selectedImage) return;
+        
+        const rhOperator = document.getElementById('rh-operator').value;
+        const rhValue = parseFloat(document.getElementById('rh-diff').value) || 0;
+        const tOperator = document.getElementById('t-operator').value;
+        const tValue = parseFloat(document.getElementById('t-diff').value) || 0;
+        const gppOperator = document.getElementById('gpp-operator').value;
+        const gppValue = parseFloat(document.getElementById('gpp-diff').value) || 0;
+        const mcOperator = document.getElementById('mc-operator').value;
+        const mcValue = parseFloat(document.getElementById('mc-diff').value) || 0;
+        
+        const currentImage = allImagesData.find(img => img.id === selectedImage);
+        if (!currentImage) return;
+        
+        const filteredImages = allImagesData.filter(image => {
+            if (image.id === selectedImage) return false;
+            
+            let rhMatch = true, tMatch = true, gppMatch = true, mcMatch = true;
+            
+            if (currentImage.rh !== null && image.rh !== null) {
+                rhMatch = compareValues(currentImage.rh, image.rh, rhOperator, rhValue);
+            } else if (currentImage.rh !== null) {
+                rhMatch = false;
+            }
+            
+            if (currentImage.t !== null && image.t !== null) {
+                tMatch = compareValues(currentImage.t, image.t, tOperator, tValue);
+            } else if (currentImage.t !== null) {
+                tMatch = false;
+            }
+            
+            if (currentImage.gpp !== null && image.gpp !== null) {
+                gppMatch = compareValues(currentImage.gpp, image.gpp, gppOperator, gppValue);
+            } else if (currentImage.gpp !== null) {
+                gppMatch = false;
+            }
+            
+            if (currentImage.mc !== null && image.mc !== null) {
+                mcMatch = compareValues(currentImage.mc, image.mc, mcOperator, mcValue);
+            } else if (currentImage.mc !== null) {
+                mcMatch = false;
+            }
+            
+            return rhMatch && tMatch && gppMatch && mcMatch;
+        });
+        
+        renderImages(filteredImages);
+        hideSearchPanel();
+    }
+
+    function compareValues(currentVal, targetVal, operator, diff) {
+        switch (operator) {
+            case 'eq': return Math.abs(currentVal - targetVal) === diff;
+            case 'gt': return targetVal > currentVal + diff;
+            case 'lt': return targetVal < currentVal + diff;
+            case 'gte': return targetVal >= currentVal + diff;
+            case 'lte': return targetVal <= currentVal + diff;
+            default: return true;
+        }
+    }
+
+    function showSearchPanel(imageId) {
+        selectedImage = imageId;
+        const image = allImagesData.find(img => img.id === imageId);
+        
         if (image) {
-            currentImageData = image;
-            showDetailView(image);
+            const hasRH = image.rh !== null;
+            const hasMC = image.mc !== null;
+            
+            document.getElementById('rh-criteria').style.display = hasRH ? 'flex' : 'none';
+            document.getElementById('t-criteria').style.display = hasRH ? 'flex' : 'none';
+            document.getElementById('gpp-criteria').style.display = hasRH ? 'flex' : 'none';
+            document.getElementById('mc-criteria').style.display = hasMC ? 'flex' : 'none';
+            
+            if (!hasRH && !hasMC) {
+                document.querySelector('.search-criteria').innerHTML = 
+                    '<p>This image type cannot be searched by values (room label or other format).</p>';
+            }
         }
-    });
-}
-
-async function getImageData(imageId) {
-    return allImagesData.find(img => img.id === imageId) || null;
-}
-
-function showDetailView(image) {
-    const detailView = document.getElementById('image-detail-view');
-    detailView.style.display = 'block';
-    
-    document.getElementById('detail-image-preview').src = image.url;
-    document.getElementById('detail-filename').textContent = image.filename;
-    document.getElementById('new-filename').value = image.filename;
-    document.getElementById('detail-size').textContent = image.size;
-    
-    const hasRH = image.rh !== null;
-    const hasMC = image.mc !== null;
-    
-    const rhItem = document.getElementById('detail-rh').closest('.detail-item');
-    const tItem = document.getElementById('detail-t').closest('.detail-item');
-    const gppItem = document.getElementById('detail-gpp').closest('.detail-item');
-    const mcItem = document.getElementById('detail-mc').closest('.detail-item');
-    
-    if (hasRH) {
-        rhItem.style.display = 'flex';
-        tItem.style.display = 'flex';
-        gppItem.style.display = 'flex';
-        mcItem.style.display = 'none';
         
-        document.getElementById('detail-rh').textContent = image.rh;
-        document.getElementById('detail-t').textContent = image.t !== null ? image.t : 'N/A';
-        document.getElementById('detail-gpp').textContent = image.gpp !== null ? image.gpp : 'N/A';
-    } else if (hasMC) {
-        rhItem.style.display = 'none';
-        tItem.style.display = 'none';
-        gppItem.style.display = 'none';
-        mcItem.style.display = 'flex';
-        
-        document.getElementById('detail-mc').textContent = image.mc;
-    } else {
-        rhItem.style.display = 'none';
-        tItem.style.display = 'none';
-        gppItem.style.display = 'none';
-        mcItem.style.display = 'none';
+        document.getElementById('search-panel').style.display = 'block';
+        document.getElementById('search-panel').scrollIntoView({ behavior: 'smooth' });
     }
-}
 
-function addImageToFolder(imageId, folderName) {
-    if (!folders[folderName]) {
-        folders[folderName] = [];
+    function hideSearchPanel() {
+        document.getElementById('search-panel').style.display = 'none';
     }
-    
-    const imageData = allImagesData.find(img => img.id === imageId);
-    if (!imageData) return false;
-    
-    const isAlreadyInFolder = folders[folderName].some(item => item.id === imageId);
-    
-    if (!isAlreadyInFolder) {
-        folders[folderName].push({
-            id: imageId,
-            filename: imageData.filename,
-            rh: imageData.rh,
-            t: imageData.t,
-            gpp: imageData.gpp,
-            mc: imageData.mc
+
+    async function exportImages() {
+        if (Object.keys(folders).length === 0) {
+            alert('No folders to export');
+            return;
+        }
+        
+        let hasImages = false;
+        for (const folderName in folders) {
+            if (folders[folderName].length > 0) {
+                hasImages = true;
+                break;
+            }
+        }
+        
+        if (!hasImages) {
+            alert('No images in folders to export');
+            return;
+        }
+        
+        showLoading(true);
+        
+        try {
+            console.log('Starting export with folders:', folders);
+            
+            const response = await fetch('/readings/export/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': getCSRFToken()
+                },
+                body: JSON.stringify({ folders: folders })
+            });
+            
+            console.log('Export response status:', response.status);
+            
+            if (response.ok) {
+                const blob = await response.blob();
+                
+                if (blob.size === 0) {
+                    throw new Error('Export failed: Empty file received');
+                }
+                
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'reading_images.zip';
+                document.body.appendChild(a);
+                a.click();
+                window.URL.revokeObjectURL(url);
+                document.body.removeChild(a);
+                
+                showNotification('Export completed successfully!');
+            } else {
+                let errorMessage = 'Export failed';
+                try {
+                    const errorData = await response.json();
+                    errorMessage = errorData.error || errorMessage;
+                } catch (e) {
+                    errorMessage = `Server error: ${response.status} ${response.statusText}`;
+                }
+                throw new Error(errorMessage);
+            }
+        } catch (error) {
+            console.error('Export error:', error);
+            showNotification(`Export failed: ${error.message}`, 'error');
+        } finally {
+            showLoading(false);
+        }
+    }
+
+    function changeZoom(delta) {
+        currentZoom = Math.max(0.1, Math.min(3, currentZoom + delta));
+        document.getElementById('zoom-level').textContent = Math.round(currentZoom * 100) + '%';
+        
+        document.querySelectorAll('.image-preview').forEach(img => {
+            img.style.transform = `scale(${currentZoom})`;
         });
-        saveFolders();
-        renderFolders();
-        return true;
     }
-    return false;
-}
 
-function addSelectedToFolder(folderName) {
-    if (selectedImages.size === 0) {
-        showNotification('No images selected');
-        return;
+    function saveFolders() {
+        localStorage.setItem('readingFolders', JSON.stringify(folders));
     }
-    
-    let addedCount = 0;
-    selectedImages.forEach(imageId => {
-        if (addImageToFolder(imageId, folderName)) {
-            addedCount++;
-        }
-    });
-    
-    if (addedCount > 0) {
-        showNotification(`Added ${addedCount} images to folder: ${folderName}`);
-    } else {
-        showNotification('All selected images were already in the folder');
-    }
-}
 
-function removeImageFromFolder(imageId, folderName) {
-    if (folders[folderName]) {
-        folders[folderName] = folders[folderName].filter(item => item.id !== imageId);
-        saveFolders();
-        renderFolders();
+    function showLoading(show) {
+        document.getElementById('loading-indicator').style.display = show ? 'block' : 'none';
     }
-}
 
-function deleteFolder(folderName) {
-    if (confirm(`Delete folder "${folderName}" and all its contents?`)) {
-        delete folders[folderName];
-        saveFolders();
-        renderFolders();
-    }
-}
-
-async function renameImage() {
-    if (!currentImageData) {
-        showNotification('No image selected for renaming', 'error');
-        return;
-    }
-    
-    const newFilename = document.getElementById('new-filename').value.trim();
-    if (!newFilename) {
-        alert('Please enter a new filename');
-        return;
-    }
-    
-    showLoading(true);
-    
-    try {
-        const response = await fetch(`/readings/rename/${currentImageData.id}/`, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCSRFToken()
-            },
-            body: JSON.stringify({ filename: newFilename })
-        });
+    function showNotification(message, type = 'info') {
+        const notification = document.createElement('div');
+        const bgColor = type === 'error' ? '#dc3545' : type === 'success' ? '#4CC790' : '#333';
         
-        const result = await response.json();
+        notification.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: ${bgColor};
+            color: white;
+            padding: 12px 18px;
+            border-radius: 6px;
+            z-index: 10000;
+            font-weight: 500;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+            max-width: 400px;
+            word-wrap: break-word;
+        `;
+        notification.textContent = message;
+        document.body.appendChild(notification);
         
-        if (result.success) {
-            showNotification('Image renamed successfully', 'success');
-            currentImageData.filename = newFilename;
-            await loadSortedImages();
-            setTimeout(() => {
-                showImageDetail(currentImageData.id);
-            }, 500);
-        } else {
-            showNotification(`Error renaming image: ${result.error}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error renaming image:', error);
-        showNotification(`Error renaming image: ${error.message}`, 'error');
-    } finally {
-        showLoading(false);
-    }
-}
-
-async function loadSortedImages() {
-    const sortBy = document.getElementById('sort-by').value;
-    const order = document.getElementById('sort-order').value;
-    
-    showLoading(true);
-    
-    try {
-        const response = await fetch(`/readings/sorted/?sort_by=${sortBy}&order=${order}&t=${Date.now()}`);
-        const data = await response.json();
-        allImagesData = data.images;
+        setTimeout(() => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
+            }
+        }, 5000);
         
-        selectedImages.clear();
-        selectedImagesOrder = [];
-        updateSelectionStatus();
-        
-        renderImages(data.images);
-    } catch (error) {
-        console.error('Error loading images:', error);
-        showNotification('Error loading images', 'error');
-    } finally {
-        showLoading(false);
-    }
-}
-
-async function deleteImage(imageId) {
-    if (!confirm('Delete this image?')) return;
-    
-    showLoading(true);
-    
-    try {
-        const response = await fetch(`/readings/delete/${imageId}/`, {
-            method: 'DELETE',
-            headers: {
-                'X-CSRFToken': getCSRFToken()
+        notification.addEventListener('click', () => {
+            if (document.body.contains(notification)) {
+                document.body.removeChild(notification);
             }
         });
-        
-        const result = await response.json();
-        
-        if (result.success) {
-            showNotification('Image deleted successfully', 'success');
-            await loadSortedImages();
-        } else {
-            showNotification(`Error deleting image: ${result.error}`, 'error');
-        }
-    } catch (error) {
-        console.error('Error deleting image:', error);
-        showNotification(`Error deleting image: ${error.message}`, 'error');
-    } finally {
-        showLoading(false);
     }
-}
 
-function deleteCurrentImage() {
-    if (currentImageData) {
-        deleteImage(currentImageData.id);
+    function getCSRFToken() {
+        return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
     }
-}
-
-function hideDetailView() {
-    document.getElementById('image-detail-view').style.display = 'none';
-    currentImageData = null;
-}
-
-async function performSearch() {
-    if (!selectedImage) return;
-    
-    const rhOperator = document.getElementById('rh-operator').value;
-    const rhValue = parseFloat(document.getElementById('rh-diff').value) || 0;
-    const tOperator = document.getElementById('t-operator').value;
-    const tValue = parseFloat(document.getElementById('t-diff').value) || 0;
-    const gppOperator = document.getElementById('gpp-operator').value;
-    const gppValue = parseFloat(document.getElementById('gpp-diff').value) || 0;
-    const mcOperator = document.getElementById('mc-operator').value;
-    const mcValue = parseFloat(document.getElementById('mc-diff').value) || 0;
-    
-    const currentImage = allImagesData.find(img => img.id === selectedImage);
-    if (!currentImage) return;
-    
-    const filteredImages = allImagesData.filter(image => {
-        if (image.id === selectedImage) return false;
-        
-        let rhMatch = true, tMatch = true, gppMatch = true, mcMatch = true;
-        
-        if (currentImage.rh !== null && image.rh !== null) {
-            rhMatch = compareValues(currentImage.rh, image.rh, rhOperator, rhValue);
-        } else if (currentImage.rh !== null) {
-            rhMatch = false;
-        }
-        
-        if (currentImage.t !== null && image.t !== null) {
-            tMatch = compareValues(currentImage.t, image.t, tOperator, tValue);
-        } else if (currentImage.t !== null) {
-            tMatch = false;
-        }
-        
-        if (currentImage.gpp !== null && image.gpp !== null) {
-            gppMatch = compareValues(currentImage.gpp, image.gpp, gppOperator, gppValue);
-        } else if (currentImage.gpp !== null) {
-            gppMatch = false;
-        }
-        
-        if (currentImage.mc !== null && image.mc !== null) {
-            mcMatch = compareValues(currentImage.mc, image.mc, mcOperator, mcValue);
-        } else if (currentImage.mc !== null) {
-            mcMatch = false;
-        }
-        
-        return rhMatch && tMatch && gppMatch && mcMatch;
-    });
-    
-    renderImages(filteredImages);
-    hideSearchPanel();
-}
-
-function compareValues(currentVal, targetVal, operator, diff) {
-    switch (operator) {
-        case 'eq': return Math.abs(currentVal - targetVal) === diff;
-        case 'gt': return targetVal > currentVal + diff;
-        case 'lt': return targetVal < currentVal + diff;
-        case 'gte': return targetVal >= currentVal + diff;
-        case 'lte': return targetVal <= currentVal + diff;
-        default: return true;
-    }
-}
-
-function showSearchPanel(imageId) {
-    selectedImage = imageId;
-    const image = allImagesData.find(img => img.id === imageId);
-    
-    if (image) {
-        const hasRH = image.rh !== null;
-        const hasMC = image.mc !== null;
-        
-        document.getElementById('rh-criteria').style.display = hasRH ? 'flex' : 'none';
-        document.getElementById('t-criteria').style.display = hasRH ? 'flex' : 'none';
-        document.getElementById('gpp-criteria').style.display = hasRH ? 'flex' : 'none';
-        document.getElementById('mc-criteria').style.display = hasMC ? 'flex' : 'none';
-        
-        if (!hasRH && !hasMC) {
-            document.querySelector('.search-criteria').innerHTML = 
-                '<p>This image type cannot be searched by values (room label or other format).</p>';
-        }
-    }
-    
-    document.getElementById('search-panel').style.display = 'block';
-    document.getElementById('search-panel').scrollIntoView({ behavior: 'smooth' });
-}
-
-function hideSearchPanel() {
-    document.getElementById('search-panel').style.display = 'none';
-}
-
-async function exportImages() {
-    if (Object.keys(folders).length === 0) {
-        alert('No folders to export');
-        return;
-    }
-    
-    let hasImages = false;
-    for (const folderName in folders) {
-        if (folders[folderName].length > 0) {
-            hasImages = true;
-            break;
-        }
-    }
-    
-    if (!hasImages) {
-        alert('No images in folders to export');
-        return;
-    }
-    
-    showLoading(true);
-    
-    try {
-        console.log('Starting export with folders:', folders);
-        
-        const response = await fetch('/readings/export/', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRFToken': getCSRFToken()
-            },
-            body: JSON.stringify({ folders: folders })
-        });
-        
-        console.log('Export response status:', response.status);
-        
-        if (response.ok) {
-            const blob = await response.blob();
-            
-            if (blob.size === 0) {
-                throw new Error('Export failed: Empty file received');
-            }
-            
-            const url = window.URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'reading_images.zip';
-            document.body.appendChild(a);
-            a.click();
-            window.URL.revokeObjectURL(url);
-            document.body.removeChild(a);
-            
-            showNotification('Export completed successfully!');
-        } else {
-            let errorMessage = 'Export failed';
-            try {
-                const errorData = await response.json();
-                errorMessage = errorData.error || errorMessage;
-            } catch (e) {
-                errorMessage = `Server error: ${response.status} ${response.statusText}`;
-            }
-            throw new Error(errorMessage);
-        }
-    } catch (error) {
-        console.error('Export error:', error);
-        showNotification(`Export failed: ${error.message}`, 'error');
-    } finally {
-        showLoading(false);
-    }
-}
-
-function changeZoom(delta) {
-    currentZoom = Math.max(0.1, Math.min(3, currentZoom + delta));
-    document.getElementById('zoom-level').textContent = Math.round(currentZoom * 100) + '%';
-    
-    document.querySelectorAll('.image-preview').forEach(img => {
-        img.style.transform = `scale(${currentZoom})`;
-    });
-}
-
-function saveFolders() {
-    localStorage.setItem('readingFolders', JSON.stringify(folders));
-}
-
-function showLoading(show) {
-    document.getElementById('loading-indicator').style.display = show ? 'block' : 'none';
-}
-
-function showNotification(message, type = 'info') {
-    const notification = document.createElement('div');
-    const bgColor = type === 'error' ? '#dc3545' : type === 'success' ? '#4CC790' : '#333';
-    
-    notification.style.cssText = `
-        position: fixed;
-        top: 20px;
-        right: 20px;
-        background: ${bgColor};
-        color: white;
-        padding: 12px 18px;
-        border-radius: 6px;
-        z-index: 10000;
-        font-weight: 500;
-        box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-        max-width: 400px;
-        word-wrap: break-word;
-    `;
-    notification.textContent = message;
-    document.body.appendChild(notification);
-    
-    setTimeout(() => {
-        if (document.body.contains(notification)) {
-            document.body.removeChild(notification);
-        }
-    }, 5000);
-    
-    notification.addEventListener('click', () => {
-        if (document.body.contains(notification)) {
-            document.body.removeChild(notification);
-        }
-    });
-}
-
-function getCSRFToken() {
-    return document.querySelector('[name=csrfmiddlewaretoken]')?.value || '';
-}
-</script>
-{% endblock %}
+    </script>
+    {% endblock %}

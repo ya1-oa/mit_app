@@ -10,7 +10,7 @@ cryptography==45.0.5
 cssselect2==0.8.0
 distlib==0.3.9
 dj-database-url==3.0.1
-Django==5.2.4
+Django==4.2.16
 django-allauth==65.9.0
 et_xmlfile==2.0.0
 filelock==3.18.0
@@ -57,3 +57,13 @@ webdriver-manager==4.0.2
 selenium-wire==5.1.0
 pyvirtualdisplay==3.0
 Xvfbwrapper==0.2.9
+
+# OneDrive & Background Task Dependencies
+celery==5.3.4
+redis==5.0.1
+django-celery-beat==2.5.0
+django-celery-results==2.5.1
+python-dotenv==1.0.0
+
+# PostgreSQL Database Adapter
+psycopg2-binary==2.9.9

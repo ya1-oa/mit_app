@@ -199,7 +199,7 @@
         <span class="header-title">PROPERTY</span>
         <span class="header-content"><span class="bold-underline">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</span></span>
     </h2>
-        <p>Landlord owns property and improvements located at <span class="bold">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</span> (hereinafter referred to as the "Property"). Landlord desires to lease the Property to Tenant upon the terms and conditions contained herein. Tenant desires to lease the Property from Landlord upon the terms and conditions contained herein.</p>
+        <p>Landlord owns property and improvements located at <span class="bold">{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }}</span> (hereinafter referred to as the "Property"). Landlord desires to lease the Property to Tenant upon the terms and conditions contained herein. Tenant desires to lease the Property from Landlord upon the terms and conditions contained herein.{% if landlord.lease_special_notes %} <span class="bold">{{ landlord.lease_special_notes }}</span>{% endif %}</p>
 
 
         <h2 class="header-container">
@@ -216,9 +216,19 @@
 
         <h2 class="header-container">
             <span class="header-title">SECURITY DEPOSIT</span>
-            <span class="header-content"><span class="bold-underline">${{ landlord.default_security_deposit|floatformat:2|intcomma }}</span></span>
+            <span class="header-content"><span class="bold-underline">
+                {% if exclude_security_deposit %}
+                $0.00
+                {% else %}
+                ${{ landlord.default_security_deposit|floatformat:2|intcomma }}
+                {% endif %}</span></span>
         </h2>
-        <p>At the signing of this Agreement, Tenant shall deposit with Landlord, in trust, a security deposit of $<span class="bold underline">{{ landlord.default_security_deposit|floatformat:2|intcomma }}</span> as security for the performance by Tenant of the terms under this Agreement and for any damages caused by Tenant, Tenant's family, and visitors to the Property during the term of this Agreement. The Landlord may use part or all of the security deposit to repair any damage to the Property caused by Tenant, Tenant's family, and visitors to the Property. However, the Landlord is not just limited to the security deposit amount and Tenant remains liable for any balance. Tenant shall not apply or deduct any portion of any security deposit from the last or any month's rent. Tenant shall not use or apply any such security deposit at any time in lieu of payment of rent. If Tenant breaches any terms or conditions of this Agreement, Tenant shall forfeit any deposit, as permitted by law.</p>
+        <p>At the signing of this Agreement, Tenant shall deposit with Landlord, in trust, a security deposit of $<span class="bold underline">{% if exclude_security_deposit %}
+            0.00
+            {% else %}
+            {{ landlord.default_security_deposit|floatformat:2|intcomma }}
+            {% endif %}
+        </span> as security for the performance by Tenant of the terms under this Agreement and for any damages caused by Tenant, Tenant's family, and visitors to the Property during the term of this Agreement. The Landlord may use part or all of the security deposit to repair any damage to the Property caused by Tenant, Tenant's family, and visitors to the Property. However, the Landlord is not just limited to the security deposit amount and Tenant remains liable for any balance. Tenant shall not apply or deduct any portion of any security deposit from the last or any month's rent. Tenant shall not use or apply any such security deposit at any time in lieu of payment of rent. If Tenant breaches any terms or conditions of this Agreement, Tenant shall forfeit any deposit, as permitted by law.</p>
 
         <h2>LATE CHARGES</h2>
         <p>Rent is due on the <span class="bold">{{ landlord.default_rent_due_day }}</span><sup><span class="bold">{% if landlord.default_rent_due_day == "1" or landlord.default_rent_due_day == "21" or landlord.default_rent_due_day == "31" %}st{% elif landlord.default_rent_due_day == "2" or landlord.default_rent_due_day == "22" %}nd{% elif landlord.default_rent_due_day == "3" or landlord.default_rent_due_day == "23" %}rd{% else %}th{% endif %}</sup></span> Day of each month, if any or all of the rent is not received by the <span class="bold">{{ landlord.default_late_fee_start_day }}<sup>{% if landlord.default_late_fee_start_day == "1" or landlord.default_late_fee_start_day == "21" or landlord.default_late_fee_start_day == "31" %}st{% elif landlord.default_late_fee_start_day == "2" or landlord.default_late_fee_start_day == "22" %}nd{% elif landlord.default_late_fee_start_day == "3" or landlord.default_late_fee_start_day == "23" %}rd{% else %}th{% endif %}</sup></span> day of the month, $<span class="bold underline">{{ landlord.default_late_fee|floatformat:2|intcomma }}</span> per-day will be charged as late fees until full rental payment is received. If rent is not received by the {{ landlord.default_eviction_day }}<sup>{% if landlord.default_eviction_day == "1" or landlord.default_eviction_day == "21" or landlord.default_eviction_day == "31" %}st{% elif landlord.default_eviction_day == "2" or landlord.default_eviction_day == "22" %}nd{% elif landlord.default_eviction_day == "3" or landlord.default_eviction_day == "23" %}rd{% else %}th{% endif %}</sup> day of the month, Tenant will be considered in breach of the Agreement and eviction proceedings will be initiated.</p>

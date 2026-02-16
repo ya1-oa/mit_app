@@ -2,688 +2,1413 @@
 {% load static %}
 
 {% block content %}
-<div class="container-fluid">
-    <div class="row">
-        <!-- Left Column - Media Downloader -->
-        <div class="col-6">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h2>Download Encircle Media/Images</h2>
-                </div>
+<div class="full-page-room-generator">
+    <div class="page-header">
+        <h1>Create Room Lists</h1>
+        <p class="subtitle">Generate comprehensive room lists for all work types</p>
+    </div>
+
+    <div class="main-content-area">
+        <!-- Left Column - Input and Configuration -->
+        <div class="input-section">
+            <form id="templateForm" method="post" action="{% url 'automate' %}">
+                {% csrf_token %}
                 
-                <div class="card-body">
-                    {% if messages %}
-                    <div class="scroll-cards">
-                        {% for message in messages %}
-                        <div class="alert alert-{% if message.tags %}{{ message.tags }}{% endif %}">
-                            {{ message }}
-                        </div>
-                        {% endfor %}
+                <!-- Step 1: Paste Room Names -->
+                <div class="step-section">
+                    <div class="step-header">
+                        <span class="step-number">1</span>
+                        Paste Room Names
                     </div>
-                    {% endif %}
-                    
-                    <form method="post">
-                        {% csrf_token %}
-                        <div class="form-group">
-                            <label for="claim_id" class="form-label">Property Claim ID</label>
-                            <input type="text" class="form-control form-control-styled" id="claim_id" name="claim_id" 
-                                   placeholder="Enter claim ID (e.g. 123456)" required>
-                        </div>
-                        
-                        <div class="form-group">
-                            <label for="room_filter" class="form-label">Room Filter (optional)</label>
-                            <input type="text" class="form-control form-control-styled" id="room_filter" name="room_filter"
-                                   placeholder="Comma-separated rooms (e.g. 'Living Room, Kitchen')">
-                            <small class="form-text text-muted">Leave blank to download all rooms</small>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary btn-styled">Download Images</button>
-                    </form>
-                    
-                    <div class="mail-info mt-3">
-                        <p><strong>How it works:</strong></p>
-                        <p>Media files will be downloaded directly to a zip file with the following structure:</p>
-                        <div class="file-structure">
-                            <pre><code>claim_[ID]_media.zip
-                            ├── Room_Name_1/
-                            │   ├── 01_filename.jpg
-                            │   ├── 02_filename.png
-                            │   └── ...
-                            ├── Room_Name_2/
-                            │   ├── 03_filename.pdf
-                            │   └── ...
-                            └── ...</code></pre>
-                        </div>
-                        <p>Each file includes a metadata file with additional information.</p>
+                    <textarea 
+                        id="roomInput" 
+                        class="room-input-textarea"
+                        placeholder="Paste your room names here (one per line, max 25)&#10;&#10;Example:&#10;Living Room&#10;Kitchen&#10;Master Bedroom&#10;Bathroom&#10;..."></textarea>
+                    <div class="room-count" id="roomCount">0 rooms detected</div>
+                    <div class="help-text">
+                        Paste room names, one per line (maximum 25 rooms).
+                    </div>
+
+                    <!-- Scroll Down Indicator -->
+                    <div class="scroll-indicator" id="scrollIndicator" style="display: none;">
+                        <div class="scroll-text">Scroll down to continue</div>
+                        <div class="scroll-arrow">↓</div>
                     </div>
                 </div>
-            </div>
+
+                <!-- Step 1.5: Claim Information (for email) -->
+                <div class="step-section" id="claimInfoSection">
+                    <div class="step-header">
+                        <span class="step-number">📧</span>
+                        Import Claim Info
+                    </div>
+                    <div style="margin-bottom: 15px; padding: 12px; background: #e3f2fd; border-left: 4px solid #007bff; border-radius: 4px;">
+                        <small style="color: #0d47a1; display: block;">Tip: Select a claim to automatically import its rooms, or enter them manually below.</small>
+                    </div>
+                    <div style="margin-bottom: 20px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 8px;">
+                            <input type="radio" name="claimInputMode" value="dropdown" checked onchange="toggleClaimInputMode()">
+                            Select Existing Claim
+                        </label>
+                        <select id="claimDropdown" style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; font-size: 14px; margin-bottom: 15px;">
+                            <option value="">Loading claims...</option>
+                        </select>
+                    </div>
+                    <div style="margin-bottom: 15px;">
+                        <label style="font-weight: 600; display: block; margin-bottom: 8px;">
+                            <input type="radio" name="claimInputMode" value="manual" onchange="toggleClaimInputMode()">
+                            Enter Manually
+                        </label>
+                        <div id="manualClaimInput" style="display: none;">
+                            <input type="text" id="manualClaimName" placeholder="e.g., OH25 BROWNLEE"
+                                   style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; margin-bottom: 10px;">
+                            <input type="text" id="manualClaimAddress" placeholder="e.g., 3922 E 189 St, Cleveland, OH 44128"
+                                   style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px;">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Step 2: Template Selection -->
+                <div class="step-section" id="templateSection" style="display: none;">
+                    <div class="step-header">
+                        <span class="step-number">2</span>
+                        Select Room Lists to Generate
+                    </div>
+
+                    <div class="template-selection">
+                        <!-- Basic Room List with Work Type Selection (now includes job types) -->
+                        <div class="template-option-with-worktypes">
+                            <div class="template-option">
+                                <input type="checkbox" id="template_basic" name="selected_templates" value="basic" checked>
+                                <label for="template_basic" class="template-label">
+                                    <strong>100-700s Complete Room List</strong>
+                                    <p>Includes: Job verification, Overview, Source, CPS, PPR, Demo, Mitigation, HMR, Rebuild</p>
+                                </label>
+                            </div>
+
+                            <!-- Work Type Deselection (shown when basic is checked) -->
+                            <div class="work-type-deselection" id="workTypeDeselection">
+                                <div class="help-text mb-2">
+                                    <small>Deselect work types you don't need:</small>
+                                </div>
+                                <div class="work-type-checkboxes">
+                                    <label class="work-type-checkbox-label">
+                                        <input type="checkbox" name="selected_work_types" value="100" checked>
+                                        <span class="wt-badge wt-100">100</span> Overview
+                                    </label>
+                                    <label class="work-type-checkbox-label">
+                                        <input type="checkbox" name="selected_work_types" value="200" checked>
+                                        <span class="wt-badge wt-200">200</span> Source
+                                    </label>
+                                    <label class="work-type-checkbox-label">
+                                        <input type="checkbox" name="selected_work_types" value="300" checked>
+                                        <span class="wt-badge wt-300">300</span> CPS
+                                    </label>
+                                    <label class="work-type-checkbox-label">
+                                        <input type="checkbox" name="selected_work_types" value="400" checked>
+                                        <span class="wt-badge wt-400">400</span> PPR
+                                    </label>
+                                    <label class="work-type-checkbox-label">
+                                        <input type="checkbox" name="selected_work_types" value="500" checked>
+                                        <span class="wt-badge wt-500">500</span> Demo
+                                    </label>
+                                    <label class="work-type-checkbox-label">
+                                        <input type="checkbox" name="selected_work_types" value="600" checked>
+                                        <span class="wt-badge wt-600">600</span> Mitigation
+                                    </label>
+                                    <label class="work-type-checkbox-label">
+                                        <input type="checkbox" name="selected_work_types" value="700" checked>
+                                        <span class="wt-badge wt-700">700</span> HMR
+                                    </label>
+                                </div>
+                                <div class="work-type-actions mt-2">
+                                    <button type="button" class="btn-link" onclick="selectAllWorkTypes()">Select All</button>
+                                    <span class="separator">|</span>
+                                    <button type="button" class="btn-link" onclick="deselectAllWorkTypes()">Deselect All</button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="template-option">
+                            <input type="checkbox" id="template_readings" name="selected_templates" value="readings">
+                            <label for="template_readings" class="template-label">
+                                <strong>8000-9000s MC Day Readings</strong>
+                                <p>Day 1-4 MC Readings + Dry Chambers (static entries)</p>
+                            </label>
+                        </div>
+
+                        <div class="template-option">
+                            <input type="checkbox" id="readings_default" name="selected_templates" value="readings default">
+                            <label for="readings_default" class="template-label">
+                                <strong>70000s Stabilization Readings</strong>
+                                <p>Day 0 MC Readings</p>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+
+                <input type="hidden" id="room_data_json" name="room_data_json">
+                
+                <button type="submit" class="btn btn-primary btn-styled" id="submitBtn" style="display: none;">
+                    Create Selected Room Lists
+                </button>
+            </form>
+            
+            <div id="status" class="mt-3"></div>
         </div>
 
-        <!-- Right Column - List Creation -->
-        <div class="col-6">
-            <div class="card mb-4">
-                <div class="card-header">
-                    <h2>Create Room Lists</h2>
-                </div>
-                
-                <div class="card-body">
-                    <form id="templateForm" method="post" action="{% url 'automate' %}">
-                        {% csrf_token %}
-                       <div class="form-group textarea-with-numbers">
-                            <label for="room_data" class="form-label">Room Data (Room Name, LOS)</label>
-                            <div class="line-numbers-container">
-                                <div id="line-numbers" class="line-numbers"></div>
-                                <textarea 
-                                    class="form-control form-textarea-styled line-numbered-textarea" 
-                                    id="room_data" 
-                                    name="room_data" 
-                                    rows="8" 
-                                    placeholder="Paste your room data here (Room Name, LOS per line)&#10;&#10;Example:&#10;Living Room, LOS&#10;Kitchen, LOS&#10;Master Bedroom, .&#10;Bathroom, .&#10;..."
-                                    required></textarea>
-                            </div>
-                            <small class="form-text text-muted">
-                                Paste room data from Excel with format: "Room Name, LOS" (one per line). Be careful when copying room data, do not copy blank rows! Erroneous rows will be flagged invalid below.
-                            </small>
-                            <div class="data-preview mt-2">
-                                <small class="text-muted">
-                                    <span id="line-count">0</span> rooms detected
-                                </small>
-                                <div id="data-validation-details" class="mt-1"></div>
-                            </div>
-                        </div>
-
-                        <!-- Template Selection Section -->
-                        <div class="form-group">
-                            <label class="form-label">Select Room Lists to Generate</label>
-                            <div class="template-selection">
-
-                                <div class="template-option">
-                                    <input type="checkbox" id="readings_default" name="selected_templates" value="readings default">
-                                    <label for="readings_default" class="template-label">
-                                        <strong>Stabilization Readings List</strong>
-                                        <p>Generates readings template with room names and LOS data (Columns Q & R)</p>
-                                    </label>
-                                </div>
-
-                                <div class="template-option">
-                                    <input type="checkbox" id="template_default" name="selected_templates" value="default">
-                                    <label for="template_default" class="template-label">
-                                        <strong>Default Jobsite List</strong>
-                                        <p>Generates room data from room names and LOS data</p>
-                                    </label>
-                                </div>
-
-                                <div class="template-option">
-                                    <input type="checkbox" id="template_basic" name="selected_templates" value="basic">
-                                    <label for="template_basic" class="template-label">
-                                        <strong>100-800s Basic Room List</strong>
-                                        <p>Generates basic room structure with room names and LOS data (Columns Q & R)</p>
-                                    </label>
-                                </div>
-                                
-                                <div class="template-option">
-                                    <input type="checkbox" id="template_extended" name="selected_templates" value="extended">
-                                    <label for="template_extended" class="template-label">
-                                        <strong>400s Extended Room List</strong>
-                                        <p>Generates extended room data with room names and LOS in separate columns (Q & R)</p>
-                                    </label>
-                                </div>
-                                
-                                <div class="template-option">
-                                    <input type="checkbox" id="template_readings" name="selected_templates" value="readings">
-                                    <label for="template_readings" class="template-label">
-                                        <strong>6000-7000s Readings List</strong>
-                                        <p>Generates readings template with room names and LOS data (Columns Q & R)</p>
-                                    </label>
-                                </div>
-
-                            </div>
-                            <small class="form-text text-muted">Select which templates you want to create. Templates will be generated in the order shown above. The template at the top will ALWAYS be the default, so if you deselect the top template, the NEXT in line will be the new default.</small>
-                        </div>
-                        
-                        <button type="submit" class="btn btn-primary btn-styled">Create Selected Room Lists</button>
-                    </form>
-                    
-                    <div id="status" class="mt-3"></div>
-                    
-                    <div class="instructions mt-4">
-                        <h5>This Apps Automation Process:</h5>
-                        <ol>
-                            <li>App logs in to Encircle platform</li>
-                            <li>App Navigates to Organization Settings → Manage Lists</li>
-                            <li>App Deletes existing templates</li>
-                            <li>App Creates selected templates in priority order</li>
-                            <li>Each room list template gets room names and LOS data from the pasted data</li>
-                        </ol>
-                        
-                        <div class="data-input-help mt-3">
-                            <h6>How to paste room and LOS data:</h6>
-                            <ul>
-                                <li>Copy data from Excel columns that contain both room names and LOS information</li>
-                                <li>Format should be: "Room Name, LOS" on each line</li>
-                                <li>Example: "Living Room, LOS"</li>
-                                <li>System will automatically split into Column Q (Room Name) and Column R (LOS)</li>
-                                <li>The system will validate and count your data entries</li>
-                                <li>Empty lines and malformed entries will be flagged as invalid and their index in the data shown.</li>
-                            </ul>
-                            
-                            <div class="data-format-examples mt-3">
-                                <h6>Supported Formats:</h6>
-                                <div class="format-example">
-                                    <strong>✅ Correct:</strong><br>
-                                    <code>Living Room, LOS<br>
-                                    Kitchen, LOS<br>
-                                    Master Bedroom, ...</code>
-                                </div>
-                                <div class="format-example mt-2">
-                                    <strong>❌ Incorrect:</strong><br>
-                                    <code>Living Room<br>
-                                    LOS<br>
-                                    Master Bedroom,
-                                    LOS<br>
-                                    Foyer<br></code>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <!-- Right Column - Preview -->
+        <div class="preview-section" id="previewSection" style="display: none;">
+            <div class="preview-header">
+                <h3>📋 Preview (100s)</h3>
+                <span class="preview-count" id="previewCount"></span>
+            </div>
+            <div class="preview-content" id="previewContent">
+                <div class="preview-empty">Configure rooms to see preview</div>
+            </div>
+            <div class="help-text mt-2">
+                <em>Same configuration will be applied to all work types (100s, 200s, 300s, 400s, 500s, 600s, 700s)</em>
             </div>
         </div>
     </div>
 </div>
 
+<!-- Loading Modal -->
+<div id="loadingModal" class="loading-modal" style="display: none;">
+    <div class="loading-modal-content">
+        <div class="clock-container">
+            <svg class="clock-svg" viewBox="0 0 100 100" width="120" height="120">
+                <circle cx="50" cy="50" r="45" fill="#fff" stroke="#007bff" stroke-width="3"/>
+                <line id="hourHand" x1="50" y1="50" x2="50" y2="30" stroke="#333" stroke-width="3" stroke-linecap="round"/>
+                <line id="minuteHand" x1="50" y1="50" x2="50" y2="20" stroke="#007bff" stroke-width="2" stroke-linecap="round"/>
+                <circle cx="50" cy="50" r="3" fill="#333"/>
+            </svg>
+        </div>
+        <h3 class="loading-title">Generating Room Templates...</h3>
+        <p class="loading-subtitle">This may take a moment. Please don't close this page.</p>
+        <div class="loading-progress">
+            <div class="loading-progress-bar"></div>
+        </div>
+    </div>
+</div>
+
+<!-- LOS/Travel Selection Modal -->
+<div id="losModal" class="success-modal" style="display: none;">
+    <div class="success-modal-content">
+        <div class="success-modal-header" style="background: linear-gradient(135deg, #007bff 0%, #0056b3 100%);">
+            <h2>Configure LOS/Travel Values</h2>
+            <button class="success-modal-close" onclick="closeLosModal()">&times;</button>
+        </div>
+        <div class="success-modal-body" id="losModalBody">
+            <div style="margin-bottom: 20px;">
+                <p style="color: #666; margin-bottom: 15px;">
+                    Select values for each room. Options: No Value (empty), TBD, NA, LOS, or TRAVEL. All rooms are set to empty by default. Values are imported from the claim if available.
+                </p>
+            </div>
+            <div id="losRoomsList" class="los-rooms-list">
+                <!-- Room configs will be populated here -->
+            </div>
+        </div>
+        <div class="success-modal-footer">
+            <button class="btn btn-secondary" onclick="closeLosModal()" style="margin-right: 10px;">Cancel</button>
+            <button class="btn btn-primary btn-styled" onclick="confirmLosSelection()">Continue</button>
+        </div>
+    </div>
+</div>
+
+<!-- Email Modal -->
+<div id="emailModal" class="success-modal" style="display: none;">
+    <div class="success-modal-content">
+        <div class="success-modal-header" style="background: linear-gradient(135deg, #28a745 0%, #20c997 100%);">
+            <h2>📧 Send Room List via Email</h2>
+            <button class="success-modal-close" onclick="closeEmailModal()">&times;</button>
+        </div>
+        <div class="success-modal-body" id="emailModalBody">
+            <div style="margin-bottom: 20px;">
+                <!-- Email Format Selection -->
+                <div style="margin-bottom: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd;">
+                    <label style="font-weight: 600; display: block; margin-bottom: 10px;">Email Format:</label>
+                    <div style="display: flex; gap: 20px;">
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="radio" name="emailFormat" value="table" checked>
+                            <span>Table Format (Original)</span>
+                        </label>
+                        <label style="display: flex; align-items: center; gap: 8px; cursor: pointer;">
+                            <input type="radio" name="emailFormat" value="list">
+                            <span>List Format (Sequential)</span>
+                        </label>
+                    </div>
+                    <small style="color: #666; display: block; margin-top: 8px;">
+                        Table format shows all work types in columns. List format shows all codes sequentially.
+                    </small>
+                </div>
+
+                <label style="font-weight: 600; display: block; margin-bottom: 10px;">Select Recipients:</label>
+
+                <!-- Preset Groups -->
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px;">
+                        <input type="checkbox" id="georgiaGroup" onchange="toggleRecipientGroup('georgia')">
+                        <strong>Georgia Team</strong>
+                    </label>
+                    <div id="georgiaRecipients" style="margin-left: 25px; display: none;">
+                        <small style="color: #666;">Recipients will be displayed here (configure in settings)</small>
+                    </div>
+                </div>
+
+                <div style="margin-bottom: 15px;">
+                    <label style="display: block; margin-bottom: 8px;">
+                        <input type="checkbox" id="ohioGroup" onchange="toggleRecipientGroup('ohio')">
+                        <strong>Ohio Team</strong>
+                    </label>
+                    <div id="ohioRecipients" style="margin-left: 25px; display: none;">
+                        <small style="color: #666;">Recipients will be displayed here (configure in settings)</small>
+                    </div>
+                </div>
+
+                <!-- Custom Recipients -->
+                <div style="margin-bottom: 15px;">
+                    <label style="font-weight: 600; display: block; margin-bottom: 8px;">Custom Recipients:</label>
+                    <textarea id="customRecipients"
+                              placeholder="Enter email addresses separated by commas"
+                              style="width: 100%; padding: 10px; border: 1px solid #ddd; border-radius: 6px; min-height: 80px; font-family: inherit; font-size: 14px;"></textarea>
+                    <small style="color: #666;">Example: email1@example.com, email2@example.com</small>
+                </div>
+
+                <!-- Email Preview -->
+                <div style="margin-top: 25px; padding: 15px; background: #f8f9fa; border-radius: 8px; border: 1px solid #ddd;">
+                    <h4 style="margin-top: 0; color: #007bff; font-size: 16px;">Email Preview:</h4>
+                    <div id="emailPreview" style="font-size: 13px; line-height: 1.6;">
+                        <!-- Preview will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="success-modal-footer">
+            <button class="btn btn-secondary" onclick="closeEmailModal()" style="margin-right: 10px;">Cancel</button>
+            <button class="btn btn-primary btn-styled" onclick="sendEmail()">Send Email</button>
+        </div>
+    </div>
+</div>
+
+<!-- Success Instructions Modal -->
+<div id="successModal" class="success-modal" style="display: none;">
+    <div class="success-modal-content">
+        <div class="success-modal-header">
+            <h2>✅ Success!</h2>
+            <button class="success-modal-close" onclick="closeSuccessModal()">&times;</button>
+        </div>
+        <div class="success-modal-body" id="successModalBody">
+            <!-- Content will be populated dynamically -->
+        </div>
+        <div class="success-modal-footer">
+            <button class="btn btn-primary btn-styled" onclick="closeSuccessModal()">Got it!</button>
+        </div>
+    </div>
+</div>
+
 <script>
+const roomInput = document.getElementById('roomInput');
+const roomCount = document.getElementById('roomCount');
+const claimInfoSection = document.getElementById('claimInfoSection');
+const templateSection = document.getElementById('templateSection');
+const previewSection = document.getElementById('previewSection');
+const previewContent = document.getElementById('previewContent');
+const previewCount = document.getElementById('previewCount');
+const submitBtn = document.getElementById('submitBtn');
+const roomDataJson = document.getElementById('room_data_json');
+const scrollIndicator = document.getElementById('scrollIndicator');
 
-function updateLineNumbers() {
-    const textarea = document.getElementById('room_data');
-    const lineNumbers = document.getElementById('line-numbers');
-    
-    if (!textarea || !lineNumbers) return;
-    
-    const lines = textarea.value.split('\n').length;
-    const visibleLines = Math.max(textarea.rows, lines, 8); // Minimum 8 lines
-    
-    let numbersHtml = '';
-    for (let i = 1; i <= visibleLines; i++) {
-        numbersHtml += `<div style="height: 1.5em; line-height: 1.5em;">${i}</div>`;
-    }
-    lineNumbers.innerHTML = numbersHtml;
-    
-    // Sync scrolling
-    lineNumbers.scrollTop = textarea.scrollTop;
-}
+const workTypeDesc = '= … JOB/ROOMS OVERVIEW PICS ..';
 
-// Initialize line numbers and set up event listeners
-function initializeLineNumbers() {
-    const textarea = document.getElementById('room_data');
-    if (!textarea) return;
-    
-    // Update on various events
-    textarea.addEventListener('input', function() {
-        updateLineNumbers();
-    });
-    
-    textarea.addEventListener('scroll', function() {
-        const lineNumbers = document.getElementById('line-numbers');
-        if (lineNumbers) {
-            lineNumbers.scrollTop = textarea.scrollTop;
+// Load claims for dropdown (using Claims Manager system)
+async function loadClaims() {
+    try {
+        const response = await fetch('/api/claims/for-room-generator/');
+        const data = await response.json();
+        const dropdown = document.getElementById('claimDropdown');
+        dropdown.innerHTML = '<option value="">-- Select a claim --</option>';
+
+        if (data.success && data.claims) {
+            data.claims.forEach(claim => {
+                const option = document.createElement('option');
+                option.value = claim.id;  // Store claim ID for loading rooms
+                option.dataset.claimInfo = JSON.stringify({
+                    name: claim.pOwner || 'Unknown',
+                    address: claim.pAddress || '',
+                    claimNumber: claim.claimNumber || '',
+                    insuranceCo: claim.insuranceCo_Name || ''
+                });
+                option.textContent = `${claim.pOwner || 'Unknown'} - ${claim.pAddress || 'No Address'}`;
+                dropdown.appendChild(option);
+            });
+
+            // Add change event listener to load rooms when claim is selected
+            dropdown.addEventListener('change', handleClaimSelection);
         }
-    });
-    
-    textarea.addEventListener('paste', function() {
-        setTimeout(updateLineNumbers, 10);
-    });
-    
-    // Initial update
-    updateLineNumbers();
+    } catch (error) {
+        console.error('Error loading claims:', error);
+        document.getElementById('claimDropdown').innerHTML = '<option value="">Error loading claims</option>';
+    }
 }
 
-// Call this when the DOM is loaded
-document.addEventListener('DOMContentLoaded', function() {
-    initializeLineNumbers();
-});
+// Handle claim selection and load rooms
+async function handleClaimSelection(event) {
+    const claimId = event.target.value;
 
-// Room data counter and validation with LOS support
-document.getElementById('room_data').addEventListener('input', function(e) {
+    if (!claimId) {
+        // Clear rooms if no claim selected
+        roomInput.value = '';
+        handleRoomInput();
+        return;
+    }
 
-    updateLineNumbers();
+    try {
+        const response = await fetch(`/api/claims/rooms/?claim_id=${claimId}`);
+        const data = await response.json();
 
-    const text = e.target.value.trim();
-    const lines = text ? text.split('\n').filter(line => line.trim() !== '') : [];
-    
-    // Parse and validate each line
-    let validEntries = [];
-    let invalidEntries = [];
-    
-    lines.forEach((line, index) => {
-        const trimmedLine = line.trim();
-        if (trimmedLine === '') return;
-        
-        // Check if line contains a comma
-        if (trimmedLine.includes(',')) {
-            const parts = trimmedLine.split(',');
-            if (parts.length >= 2) {
-                const roomName = parts[0].trim();
-                const los = parts.slice(1).join(',').trim(); // Handle commas in LOS description
-                
-                if (roomName && los) {
-                    validEntries.push({
-                        line: index + 1,
-                        roomName: roomName,
-                        los: los,
-                        original: trimmedLine
-                    });
-                } else {
-                    invalidEntries.push({
-                        line: index + 1,
-                        error: 'Empty room name or LOS',
-                        original: trimmedLine
+        if (data.success && data.rooms) {
+            // Load rooms into the textarea in the correct sequence order
+            const roomNames = data.rooms
+                .sort((a, b) => a.sequence - b.sequence)
+                .map(room => room.name);
+
+            roomInput.value = roomNames.join('\n');
+
+            // Trigger room input handler to update UI
+            handleRoomInput();
+
+            // Load room work type configurations
+            data.rooms.forEach(room => {
+                if (room.work_types && roomConfigs[room.name]) {
+                    // Map work type values from database to room config
+                    // Convert string keys to integers
+                    Object.keys(room.work_types).forEach(wtId => {
+                        const wtIdInt = parseInt(wtId);
+                        let value = room.work_types[wtId];
+                        // Keep empty string as empty (no value)
+                        if (value === null) {
+                            value = '';
+                        }
+                        roomConfigs[room.name][wtIdInt] = value;
                     });
                 }
-            } else {
-                invalidEntries.push({
-                    line: index + 1,
-                    error: 'Missing LOS data after comma',
-                    original: trimmedLine
-                });
-            }
-        } else {
-            invalidEntries.push({
-                line: index + 1,
-                error: 'Missing comma separator',
-                original: trimmedLine
             });
+
+            // Update preview with loaded room configs
+            updatePreview();
+
+            // Show success message
+            const roomCount = data.rooms.length;
+            alert(`Successfully loaded ${roomCount} room${roomCount !== 1 ? 's' : ''} from ${data.claim_info.pOwner}`);
+        } else {
+            alert('No rooms found for this claim. You can add rooms manually.');
+        }
+    } catch (error) {
+        console.error('Error loading rooms:', error);
+        alert('Error loading rooms from claim. Please try again or enter rooms manually.');
+    }
+}
+
+// Toggle between dropdown and manual input
+function toggleClaimInputMode() {
+    const mode = document.querySelector('input[name="claimInputMode"]:checked').value;
+    const manualInput = document.getElementById('manualClaimInput');
+    const dropdown = document.getElementById('claimDropdown');
+
+    if (mode === 'manual') {
+        manualInput.style.display = 'block';
+        dropdown.disabled = true;
+    } else {
+        manualInput.style.display = 'none';
+        dropdown.disabled = false;
+    }
+}
+
+// Load claims on page load
+loadClaims();
+
+let baseRooms = [];
+let roomConfigs = {};
+
+roomInput.addEventListener('input', handleRoomInput);
+
+function handleRoomInput() {
+    const text = roomInput.value.trim();
+    baseRooms = text ? text.split('\n').filter(line => line.trim() !== '').map(line => line.trim()).slice(0, 25) : [];
+
+    const count = baseRooms.length;
+    roomCount.textContent = `${count} room${count !== 1 ? 's' : ''} detected${count >= 25 ? ' (max 25)' : ''}`;
+    roomCount.classList.toggle('active', count > 0);
+
+    if (count > 0) {
+        initializeRoomConfigs();
+        templateSection.style.display = 'block';
+        previewSection.style.display = 'block';
+        submitBtn.style.display = 'block';
+        scrollIndicator.style.display = 'block';
+    } else {
+        templateSection.style.display = 'none';
+        previewSection.style.display = 'none';
+        submitBtn.style.display = 'none';
+        scrollIndicator.style.display = 'none';
+        roomConfigs = {};
+    }
+
+    updatePreview();
+}
+
+function initializeRoomConfigs() {
+    baseRooms.forEach(room => {
+        if (!roomConfigs[room]) {
+            roomConfigs[room] = {
+                100: '',
+                200: '',
+                300: '',
+                400: '',
+                500: '',
+                600: '',
+                700: ''
+            };
         }
     });
-    
-    // Update count display
-    document.getElementById('line-count').textContent = validEntries.length;
-    
-    // Update validation details
-    const detailsDiv = document.getElementById('data-validation-details');
-    const preview = document.querySelector('.data-preview small');
-    
-    if (validEntries.length === 0 && lines.length === 0) {
-        preview.className = 'text-muted';
-        detailsDiv.innerHTML = '';
-    } else if (validEntries.length === 0 && lines.length > 0) {
-        preview.className = 'text-danger';
-        detailsDiv.innerHTML = `<small class="text-danger">❌ No valid entries found. Please check format: "Room Name, LOS"</small>`;
-    } else if (invalidEntries.length > 0) {
-        preview.className = 'text-warning';
-        let detailsHtml = `<small class="text-success">✅ ${validEntries.length} valid entries</small>`;
-        if (invalidEntries.length <= 3) {
-            detailsHtml += `<br><small class="text-warning">⚠️ ${invalidEntries.length} invalid entries:</small>`;
-            invalidEntries.forEach(entry => {
-                detailsHtml += `<br><small class="text-muted">Line ${entry.line}: ${entry.error}</small>`;
-            });
-        } else {
-            detailsHtml += `<br><small class="text-warning">⚠️ ${invalidEntries.length} invalid entries (check format)</small>`;
-        }
-        detailsDiv.innerHTML = detailsHtml;
-    } else if (validEntries.length < 5) {
-        preview.className = 'text-warning';
-        detailsDiv.innerHTML = `<small class="text-warning">Consider adding more room entries for better coverage</small>`;
-    } else {
-        preview.className = 'text-success';
-        detailsDiv.innerHTML = `<small class="text-success">✅ All entries valid - Ready for Import to Encircle</small>`;
+}
+
+// Room config UI is now handled in the LOS modal (showLosModal function)
+
+function handleConfigChange(room, value) {
+    let internalValue = value;
+    if (value === 'empty') {
+        internalValue = '';
     }
-});
+
+    // Apply to ALL work types
+    roomConfigs[room][100] = internalValue;
+    roomConfigs[room][200] = internalValue;
+    roomConfigs[room][300] = internalValue;
+    roomConfigs[room][400] = internalValue;
+    roomConfigs[room][500] = internalValue;
+    roomConfigs[room][600] = internalValue;
+    roomConfigs[room][700] = internalValue;
+
+    updatePreview();
+}
+
+function updatePreview() {
+    if (baseRooms.length === 0) {
+        previewContent.innerHTML = '<div class="preview-empty">Configure rooms to see preview</div>';
+        previewCount.textContent = '';
+        roomDataJson.value = '';
+        return;
+    }
+
+    let previewHTML = `<div class="preview-work-type-header">100s Overview</div>`;
+    
+    baseRooms.forEach((room, index) => {
+        const roomNum = 100 + index + 1;
+        const value = roomConfigs[room][100];
+        const displayValue = (value === '.' || value === '') ? '' : value;
+
+        previewHTML += `<div class="preview-line">${roomNum} …. ${room} ${workTypeDesc} ${displayValue}</div>`;
+    });
+
+    previewContent.innerHTML = previewHTML;
+    previewCount.textContent = `(${baseRooms.length} entries - applies to all work types)`;
+    
+    roomDataJson.value = JSON.stringify({
+        rooms: baseRooms,
+        configs: roomConfigs
+    });
+}
+
+// Select/Deselect all work types
+function selectAllWorkTypes() {
+    document.querySelectorAll('input[name="selected_work_types"]').forEach(cb => {
+        cb.checked = true;
+    });
+}
+
+function deselectAllWorkTypes() {
+    document.querySelectorAll('input[name="selected_work_types"]').forEach(cb => {
+        cb.checked = false;
+    });
+}
+
+// Store data globally for later use
+let globalRoomData = null;
+let globalFormData = null;
 
 document.getElementById('templateForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+
     const statusDiv = document.getElementById('status');
-    
-    // Check if at least one template is selected
+
+    // Check for selected templates
     const selectedTemplates = document.querySelectorAll('input[name="selected_templates"]:checked');
+
     if (selectedTemplates.length === 0) {
-        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> Please select at least one template to generate.</div>';
+        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> Select at least one template.</div>';
         return;
     }
-    
-    // Validate room data
-    const roomData = document.getElementById('room_data').value.trim();
-    if (!roomData) {
-        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> Please paste room data before proceeding.</div>';
+
+    if (baseRooms.length === 0) {
+        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> Add room names first.</div>';
         return;
     }
-    
-    // Validate format and get valid entries
-    const lines = roomData.split('\n').filter(line => line.trim() !== '');
-    const validEntries = lines.filter(line => {
-        const parts = line.trim().split(',');
-        return parts.length >= 2 && parts[0].trim() && parts[1].trim();
-    });
-    
-    if (validEntries.length === 0) {
-        statusDiv.innerHTML = '<div class="alert alert-warning"><strong>Warning:</strong> No valid room data found. Please ensure format is "Room Name, LOS" per line.</div>';
-        return;
-    }
-    
-    // Show processing status - with null checks to prevent the error
-    const templateNames = Array.from(selectedTemplates).map(cb => {
-        const labelElement = document.querySelector(`label[for="${cb.id}"]`);
-        if (!labelElement) {
-            console.warn(`Label not found for checkbox: ${cb.id}`);
-            return cb.value; // Fallback to checkbox value
-        }
-        
-        const strongElement = labelElement.querySelector('strong');
-        return strongElement ? strongElement.textContent : cb.value;
-    });
-    
-    statusDiv.innerHTML = `
-        <div class="alert alert-info">
-            <strong>Processing ${validEntries.length} room entries...</strong><br>
-            Selected templates: ${templateNames.join(', ')}<br>
-            Data format: Room Names → Column Q, LOS → Column S<br>
-            <div class="progress-steps">
-                <div class="step active">🔄 Logging in...</div>
-                <div class="step">📋 Navigating to settings...</div>
-                <div class="step">🗑️ Deleting existing templates...</div>
-                <div class="step">✨ Creating templates with Q & R data...</div>
-            </div>
-        </div>
-    `;
-    
-    try {
-        const formData = new FormData(e.target);
-        const response = await fetch(e.target.action, {
-            method: 'POST',
-            body: formData
-        });
-        
-        const data = await response.json();
-        
-        if (data.overall_status === 'completed') {
-            let successHtml = '<div class="alert alert-success"><strong>Success!</strong><br>';
-            successHtml += `Generated ${data.templates_successful} template(s) successfully.<br>`;
-            successHtml += `Processed ${validEntries.length} room entries with LOS data.<br>`;
-            successHtml += `Data populated in Encircle.<br>`;
-            
-            if (data.deletion_status && data.deletion_status.templates_deleted > 0) {
-                successHtml += `Deleted ${data.deletion_status.templates_deleted} existing template(s).<br>`;
-            }
-            
-            // Show details for each template
-            successHtml += '<div class="template-results mt-2">';
-            data.templates_processed.forEach(template => {
-                if (template.status === 'completed') {
-                    successHtml += `<div class="template-result success">
-                        <strong>${template.config.name}:</strong> ${template.rooms_added || template.rooms_extracted} entries added to Encircle Room List
-                    </div>`;
-                }
-            });
-            successHtml += '</div></div>';
-            statusDiv.innerHTML = successHtml;
-            
-        } else if (data.overall_status === 'partially_completed') {
-            let partialHtml = '<div class="alert alert-warning"><strong>Partially Completed</strong><br>';
-            partialHtml += `${data.templates_successful} template(s) successful, ${data.templates_failed} failed.<br>`;
-            
-            partialHtml += '<div class="template-results mt-2">';
-            data.templates_processed.forEach(template => {
-                const statusClass = template.status === 'completed' ? 'success' : 'failed';
-                const statusIcon = template.status === 'completed' ? '✅' : '❌';
-                partialHtml += `<div class="template-result ${statusClass}">
-                    ${statusIcon} <strong>${template.config.name}:</strong> ${template.status}
-                    ${template.error ? ` - ${template.error}` : ''}
-                </div>`;
-            });
-            partialHtml += '</div></div>';
-            statusDiv.innerHTML = partialHtml;
-            
-        } else {
-            let errorHtml = '<div class="alert alert-danger"><strong>Error:</strong> ';
-            errorHtml += data.overall_error || data.error || 'Unknown error occurred during processing';
-            
-            // Show template-specific errors if available
-            if (data.templates_processed && data.templates_processed.length > 0) {
-                errorHtml += '<div class="template-results mt-2">';
-                data.templates_processed.forEach(template => {
-                    if (template.error) {
-                        errorHtml += `<div class="template-result failed">
-                            ❌ <strong>${template.config.name}:</strong> ${template.error}
-                        </div>`;
-                    }
-                });
-                errorHtml += '</div>';
-            }
-            errorHtml += '</div>';
-            statusDiv.innerHTML = errorHtml;
-        }
-    } catch (error) {
-        statusDiv.innerHTML = `
-            <div class="alert alert-danger">
-                <strong>Error:</strong> ${error.message || 'Failed to submit form'}
-            </div>
-        `;
-    }
+
+    // Store form data for later
+    globalFormData = new FormData(e.target);
+
+    // Show LOS/Travel modal for configuration
+    showLosModal();
 });
 
-// Update progress steps based on status updates (you can extend this for real-time updates)
-function updateProgressSteps(currentStep) {
-    const steps = document.querySelectorAll('.progress-steps .step');
-    steps.forEach((step, index) => {
-        step.classList.remove('active', 'completed');
-        if (index < currentStep) {
-            step.classList.add('completed');
-        } else if (index === currentStep) {
-            step.classList.add('active');
-        }
+// Actually submit the form after LOS configuration
+async function submitRoomListGeneration() {
+    const statusDiv = document.getElementById('status');
+
+    // Update room_data_json with current configs
+    roomDataJson.value = JSON.stringify({
+        rooms: baseRooms,
+        configs: roomConfigs
     });
+
+    // Update the form data
+    globalFormData.set('room_data_json', roomDataJson.value);
+
+    // Show loading modal
+    showLoadingModal();
+
+    try {
+        const response = await fetch(document.getElementById('templateForm').action, {
+            method: 'POST',
+            body: globalFormData
+        });
+
+        const data = await response.json();
+
+        if (data.overall_status === 'completed') {
+            // Hide loading modal
+            closeLoadingModal();
+
+            // Store the result data for email modal
+            globalRoomData = {
+                templates_successful: data.templates_successful,
+                rooms_processed: baseRooms.length,
+                deletion_results: data.deletion_results,
+                rooms: baseRooms,
+                configs: roomConfigs
+            };
+
+            // Build enhanced success modal content
+            let modalContent = `<div style="margin-bottom: 25px;">`;
+            modalContent += `<div style="text-align: center; padding: 20px; background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%); border-radius: 12px; margin-bottom: 20px;">`;
+            modalContent += `<div style="font-size: 48px; margin-bottom: 10px;">🎉</div>`;
+            modalContent += `<p style="font-size: 20px; color: #155724; margin: 0; font-weight: 600;">Templates Generated Successfully!</p>`;
+            modalContent += `</div>`;
+
+            modalContent += `<div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 20px;">`;
+            modalContent += `<p style="margin: 5px 0; color: #333;"><strong>✅ ${data.templates_successful}</strong> template(s) created</p>`;
+            modalContent += `<p style="margin: 5px 0; color: #333;"><strong>📝 ${baseRooms.length}</strong> rooms processed</p>`;
+            if (data.deletion_results && data.deletion_results.templates_deleted > 0) {
+                modalContent += `<p style="margin: 5px 0; color: #333;"><strong>🗑️ ${data.deletion_results.templates_deleted}</strong> old template(s) removed</p>`;
+            }
+            modalContent += `</div></div>`;
+
+            // Add detailed step-by-step instructions
+            modalContent += '<div style="background: #fff3cd; padding: 20px; border-radius: 10px; border-left: 4px solid #ffc107; margin-bottom: 20px;">';
+            modalContent += '<h5 style="color: #856404; margin-top: 0; font-size: 18px; display: flex; align-items: center; gap: 8px;"><span style="font-size: 24px;">📋</span> Next Steps</h5>';
+            modalContent += '<p style="color: #856404; margin: 0 0 15px 0; font-size: 14px;">Follow these steps to use your room templates in Encircle:</p>';
+            modalContent += '</div>';
+
+            modalContent += '<ol style="padding-left: 20px; line-height: 2; font-size: 15px;">';
+            modalContent += '<li><strong style="color: #007bff;">Login to Encircle</strong><br><span style="color: #666; font-size: 14px;">Open your Encircle account in your browser</span></li>';
+            modalContent += '<li><strong style="color: #007bff;">Create a New Claim</strong><br><span style="color: #666; font-size: 14px;">Click the "New Claim" button to start a new project</span></li>';
+            modalContent += '<li><strong style="color: #007bff;">Find Your Room Templates</strong><br><span style="color: #666; font-size: 14px;">Your room lists will appear under <strong>Room Templates</strong> in the dropdown menu</span></li>';
+            modalContent += '<li><strong style="color: #007bff;">Default Template Already Loaded</strong><br><span style="color: #666; font-size: 14px;">The default room list is automatically loaded into the claim</span></li>';
+            modalContent += '<li><strong style="color: #007bff;">Add Additional Templates</strong><br><span style="color: #666; font-size: 14px;">Select any additional room templates from the dropdown to include them</span></li>';
+            modalContent += '<li><strong style="color: #007bff;">Rooms Are Auto-Organized</strong><br><span style="color: #666; font-size: 14px;">All selected templates will create rooms already organized and ready to use!</span></li>';
+            modalContent += '</ol>';
+
+            modalContent += '<div style="margin-top: 25px; padding: 20px; background: linear-gradient(135deg, #007bff 0%, #0056b3 100%); border-radius: 12px; text-align: center;">';
+            modalContent += '<p style="color: white; margin: 0; font-size: 18px; font-weight: 600;">🚀 You\'re All Set!</p>';
+            modalContent += '<p style="color: rgba(255,255,255,0.9); margin: 8px 0 0 0; font-size: 14px;">Your templates are ready to streamline your workflow in Encircle</p>';
+            modalContent += '</div>';
+
+            // Show modal
+            showSuccessModal(modalContent);
+
+            // Also show brief success message in status div
+            statusDiv.innerHTML = '<div class="alert alert-success"><strong>Success!</strong> Templates generated. See details in the popup above.</div>';
+
+        } else if (data.overall_status === 'partially_completed') {
+            closeLoadingModal();
+            statusDiv.innerHTML = `<div class="alert alert-warning"><strong>Partially Completed</strong><br>${data.templates_successful} successful, ${data.templates_failed} failed.</div>`;
+
+        } else {
+            closeLoadingModal();
+            statusDiv.innerHTML = `<div class="alert alert-danger"><strong>Error:</strong> ${data.overall_error || data.error || 'Unknown error'}</div>`;
+        }
+    } catch (error) {
+        closeLoadingModal();
+        statusDiv.innerHTML = `<div class="alert alert-danger"><strong>Error:</strong> ${error.message || 'Failed to submit'}</div>`;
+    }
+}
+
+// Modal functions
+function showLoadingModal() {
+    const modal = document.getElementById('loadingModal');
+    modal.style.display = 'block';
+}
+
+function closeLoadingModal() {
+    const modal = document.getElementById('loadingModal');
+    modal.style.display = 'none';
+}
+
+function showSuccessModal(content) {
+    const modal = document.getElementById('successModal');
+    const modalBody = document.getElementById('successModalBody');
+    modalBody.innerHTML = content;
+    modal.style.display = 'block';
+
+    // Scroll modal into view
+    setTimeout(() => {
+        modal.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 100);
+}
+
+function closeSuccessModal() {
+    const modal = document.getElementById('successModal');
+    modal.style.display = 'none';
+
+    // After closing success modal, show email modal
+    if (globalRoomData) {
+        showEmailModal();
+    }
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const successModal = document.getElementById('successModal');
+    const losModal = document.getElementById('losModal');
+    const emailModal = document.getElementById('emailModal');
+
+    if (event.target === successModal) {
+        closeSuccessModal();
+    }
+    if (event.target === losModal) {
+        closeLosModal();
+    }
+    if (event.target === emailModal) {
+        closeEmailModal();
+    }
+}
+
+// LOS Modal Functions
+function showLosModal() {
+    const losRoomsList = document.getElementById('losRoomsList');
+    losRoomsList.innerHTML = '';
+
+    // Create room config UI similar to the existing one
+    baseRooms.forEach((room, index) => {
+        const roomItem = document.createElement('div');
+        roomItem.className = 'room-config-item';
+        roomItem.style.marginBottom = '10px';
+
+        const currentConfig = roomConfigs[room] ? roomConfigs[room][100] : '';
+
+        roomItem.innerHTML = `
+            <span class="room-config-number">${index + 1}</span>
+            <span class="room-config-name">${room}</span>
+            <div class="room-config-input-wrapper">
+                <select class="room-config-select" data-room="${room}" onchange="handleLosChange('${room}', this)">
+                    <option value="empty" ${currentConfig === '' ? 'selected' : ''}>No Value</option>
+                    <option value="TBD" ${currentConfig === 'TBD' ? 'selected' : ''}>TBD</option>
+                    <option value="NA" ${currentConfig === 'NA' ? 'selected' : ''}>NA</option>
+                    <option value="LOS" ${currentConfig === 'LOS' ? 'selected' : ''}>LOS</option>
+                    <option value="TRAVEL" ${currentConfig === 'TRAVEL' ? 'selected' : ''}>TRAVEL</option>
+                    <option value="custom" ${!['', 'LOS', 'TRAVEL', 'TBD', 'NA'].includes(currentConfig) ? 'selected' : ''}>Custom...</option>
+                </select>
+                <input type="text"
+                       class="room-config-custom-input"
+                       data-room="${room}"
+                       placeholder="Enter custom value"
+                       value="${!['', 'LOS', 'TRAVEL', 'TBD', 'NA'].includes(currentConfig) ? currentConfig : ''}"
+                       style="display: ${!['', 'LOS', 'TRAVEL', 'TBD', 'NA'].includes(currentConfig) ? 'block' : 'none'}; margin-top: 6px;"
+                       oninput="handleLosCustomInput('${room}', this)">
+            </div>
+        `;
+
+        losRoomsList.appendChild(roomItem);
+    });
+
+    document.getElementById('losModal').style.display = 'block';
+}
+
+function handleLosChange(room, selectElement) {
+    const customInput = selectElement.parentElement.querySelector('.room-config-custom-input');
+
+    if (selectElement.value === 'custom') {
+        customInput.style.display = 'block';
+        customInput.focus();
+        if (customInput.value.trim()) {
+            handleConfigChange(room, customInput.value);
+        }
+    } else {
+        customInput.style.display = 'none';
+        customInput.value = '';
+        const value = selectElement.value === 'empty' ? '' : selectElement.value;
+        handleConfigChange(room, value);
+    }
+}
+
+function handleLosCustomInput(room, inputElement) {
+    handleConfigChange(room, inputElement.value);
+}
+
+function closeLosModal() {
+    document.getElementById('losModal').style.display = 'none';
+}
+
+function confirmLosSelection() {
+    closeLosModal();
+    // Submit the form with the configured LOS/Travel values
+    submitRoomListGeneration();
+}
+
+// Email Modal Functions
+function showEmailModal() {
+    updateEmailPreview();
+    document.getElementById('emailModal').style.display = 'block';
+}
+
+function closeEmailModal() {
+    document.getElementById('emailModal').style.display = 'none';
+}
+
+function toggleRecipientGroup(group) {
+    const checkbox = document.getElementById(group + 'Group');
+    const recipientsDiv = document.getElementById(group + 'Recipients');
+
+    if (checkbox.checked) {
+        recipientsDiv.style.display = 'block';
+    } else {
+        recipientsDiv.style.display = 'none';
+    }
+}
+
+function updateEmailPreview() {
+    if (!globalRoomData) return;
+
+    // Get claim info from dropdown or manual input
+    let claimName, claimAddress;
+    const mode = document.querySelector('input[name="claimInputMode"]:checked').value;
+
+    if (mode === 'manual') {
+        claimName = document.getElementById('manualClaimName').value || 'SAMPLE CLAIM';
+        claimAddress = document.getElementById('manualClaimAddress').value || 'No Address';
+    } else {
+        const dropdown = document.getElementById('claimDropdown');
+        const selectedOption = dropdown.options[dropdown.selectedIndex];
+        
+        if (dropdown.value && selectedOption.dataset.claimInfo) {
+            // FIX: Get data from dataset, not from value
+            const claimData = JSON.parse(selectedOption.dataset.claimInfo);
+            claimName = claimData.name;
+            claimAddress = claimData.address;
+        } else {
+            claimName = 'SAMPLE CLAIM';
+            claimAddress = 'No Address';
+        }
+    }
+
+
+    let previewHTML = '<div style="font-size: 13px;">';
+    previewHTML += '<strong>Subject:</strong> [ROOM LIST] ' + claimName + ' — Worktype Documentation<br><br>';
+    previewHTML += '<strong>Preview:</strong><br>';
+    previewHTML += '<div style="background: #f5f7fa; padding: 15px; border-radius: 6px; margin-top: 10px;">';
+    previewHTML += '<div style="background: linear-gradient(90deg, #1e88e5, #42a5f5); color:white; padding:15px; border-radius:6px; margin-bottom:15px;">';
+    previewHTML += claimName + ' — Worktype Documentation';
+    previewHTML += '</div>';
+    previewHTML += '<div style="background:white; padding:15px; border-radius:6px;">';
+    previewHTML += '<h4 style="margin-top:0; color:#1e88e5;">' + claimName + ' Worktype Room List</h4>';
+    previewHTML += '<p style="color:#555;">@ ' + claimAddress + '</p>';
+    previewHTML += '<table style="width:100%; border-collapse:collapse; font-size:11px; margin-top:10px; min-width:900px;">';
+    previewHTML += '<tr style="font-weight:bold;"><th style="background:#e3f2fd; padding:4px; border:1px solid #d0d0d0;">Room</th>';
+    previewHTML += '<th style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0;">100<br>Overview</th>';
+    previewHTML += '<th style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0;">LOS/<br>Travel</th>';
+    previewHTML += '<th style="background:#f0f4f8; padding:4px; border:1px solid #d0d0d0;">200<br>Source</th>';
+    previewHTML += '<th style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0;">LOS/<br>Travel</th>';
+    previewHTML += '<th style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0;">300<br>CPS</th>';
+    previewHTML += '<th style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0;">LOS/<br>Travel</th>';
+    previewHTML += '<th style="background:#f0f4f8; padding:4px; border:1px solid #d0d0d0;">400<br>PPR</th>';
+    previewHTML += '<th style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0;">LOS/<br>Travel</th>';
+    previewHTML += '<th style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0;">500<br>Demo</th>';
+    previewHTML += '<th style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0;">LOS/<br>Travel</th>';
+    previewHTML += '<th style="background:#f0f4f8; padding:4px; border:1px solid #d0d0d0;">600<br>WTR</th>';
+    previewHTML += '<th style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0;">LOS/<br>Travel</th>';
+    previewHTML += '<th style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0;">700<br>HMR</th>';
+    previewHTML += '<th style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0;">LOS/<br>Travel</th></tr>';
+
+    // Show rooms with their work type numbers
+    globalRoomData.rooms.forEach((room, idx) => {
+        const baseNum = idx + 1;
+        const config = globalRoomData.configs[room] ? globalRoomData.configs[room][100] : '';
+        const losCellValue = config;
+
+        previewHTML += `<tr>`;
+        previewHTML += `<td style="padding:4px; border:1px solid #d0d0d0;">${room}</td>`;
+        previewHTML += `<td style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0; text-align:center;">1${String(baseNum).padStart(2, '0')}</td>`;
+        previewHTML += `<td style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0; text-align:center; font-weight:bold;">${losCellValue}</td>`;
+        previewHTML += `<td style="background:#f0f4f8; padding:4px; border:1px solid #d0d0d0; text-align:center;">2${String(baseNum).padStart(2, '0')}</td>`;
+        previewHTML += `<td style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0; text-align:center; font-weight:bold;">${losCellValue}</td>`;
+        previewHTML += `<td style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0; text-align:center;">3${String(baseNum).padStart(2, '0')}</td>`;
+        previewHTML += `<td style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0; text-align:center; font-weight:bold;">${losCellValue}</td>`;
+        previewHTML += `<td style="background:#f0f4f8; padding:4px; border:1px solid #d0d0d0; text-align:center;">4${String(baseNum).padStart(2, '0')}</td>`;
+        previewHTML += `<td style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0; text-align:center; font-weight:bold;">${losCellValue}</td>`;
+        previewHTML += `<td style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0; text-align:center;">5${String(baseNum).padStart(2, '0')}</td>`;
+        previewHTML += `<td style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0; text-align:center; font-weight:bold;">${losCellValue}</td>`;
+        previewHTML += `<td style="background:#f0f4f8; padding:4px; border:1px solid #d0d0d0; text-align:center;">6${String(baseNum).padStart(2, '0')}</td>`;
+        previewHTML += `<td style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0; text-align:center; font-weight:bold;">${losCellValue}</td>`;
+        previewHTML += `<td style="background:#fff8c6; padding:4px; border:1px solid #d0d0d0; text-align:center;">7${String(baseNum).padStart(2, '0')}</td>`;
+        previewHTML += `<td style="background:#ffe6e6; padding:4px; border:1px solid #d0d0d0; text-align:center; font-weight:bold;">${losCellValue}</td>`;
+        previewHTML += `</tr>`;
+    });
+
+    previewHTML += '</table>';
+    previewHTML += '</div>';
+    previewHTML += '</div>';
+    previewHTML += '</div>';
+
+    document.getElementById('emailPreview').innerHTML = previewHTML;
+}
+
+async function sendEmail() {
+    const georgiaChecked = document.getElementById('georgiaGroup').checked;
+    const ohioChecked = document.getElementById('ohioGroup').checked;
+    const customRecipients = document.getElementById('customRecipients').value;
+
+
+    const georgiaTeamEmails = [
+    "galaxielsaga@gmail.com",
+    "wsbjoe9@gmail.com",
+    "natebrownlee6@gmail.com",
+    "ashleyabernathy3001@gmail.com",
+    "tonyjonesteam365@gmail.com",
+    "wejones729@yahoo.com",
+    "owen7768@att.net",
+    "jonesmlc5907@gmail.com",
+    "bryanworking4joe@gmail.com",
+    "calcompany.cle@gmail.com",
+    "lavernebrownlee107@gmail.com",
+    "tdeonte17@gmail.com",
+    "robbybrowniii@gmail.com",
+    "mcgheemarcellus@gmail.com",
+    "ihsaankhatim@gmail.com"
+    ];
+
+    const ohioTeamEmails = [
+    "galaxielsaga@gmail.com",
+    "wsbjoe9@gmail.com",
+    "wejones729@yahoo.com",
+    "owen7768@att.net",
+    "ihsaankhatim@gmail.com"
+    ];
+    // Collect recipients
+    let recipients = [];
+
+    // TODO: Add preset group emails when configured
+    if (georgiaChecked) {
+         recipients.push(...georgiaTeamEmails);
+    }
+    if (ohioChecked) {
+         recipients.push(...ohioTeamEmails);
+    }
+
+    if (customRecipients.trim()) {
+        const customEmails = customRecipients.split(',').map(e => e.trim()).filter(e => e);
+        recipients.push(...customEmails);
+    }
+
+    if (recipients.length === 0) {
+        alert('Please select at least one recipient or enter custom email addresses.');
+        return;
+    }
+
+    // Get claim info from dropdown or manual input
+    let claimName, claimAddress;
+    const mode = document.querySelector('input[name="claimInputMode"]:checked').value;
+
+    if (mode === 'manual') {
+        claimName = document.getElementById('manualClaimName').value || 'SAMPLE CLAIM';
+        claimAddress = document.getElementById('manualClaimAddress').value || 'No Address';
+    } else {
+        const dropdown = document.getElementById('claimDropdown');
+        const selectedOption = dropdown.options[dropdown.selectedIndex];
+        
+        if (dropdown.value && selectedOption.dataset.claimInfo) {
+            // FIX: Get data from dataset, not from value
+            const claimData = JSON.parse(selectedOption.dataset.claimInfo);
+            claimName = claimData.name;
+            claimAddress = claimData.address;
+        } else {
+            claimName = 'SAMPLE CLAIM';
+            claimAddress = 'No Address';
+        }
+    }
+
+
+    // Get selected email format
+    const emailFormat = document.querySelector('input[name="emailFormat"]:checked').value;
+
+    try {
+        const emailData = {
+            recipients: recipients,
+            room_data: globalRoomData,
+            claim_name: claimName,
+            claim_address: claimAddress,
+            email_version: emailFormat,
+        };
+
+        // Show loading
+        const sendButton = document.querySelector('#emailModal .btn-primary');
+        const originalText = sendButton.textContent;
+        sendButton.textContent = 'Sending...';
+        sendButton.disabled = true;
+
+        const response = await fetch('/api/send-room-list-email/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': document.querySelector('[name=csrfmiddlewaretoken]').value
+            },
+            body: JSON.stringify(emailData)
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Email sent successfully to ' + recipients.length + ' recipient(s)!');
+            closeEmailModal();
+        } else {
+            alert('Error sending email: ' + (data.error || 'Unknown error'));
+        }
+
+        sendButton.textContent = originalText;
+        sendButton.disabled = false;
+
+    } catch (error) {
+        alert('Error sending email: ' + error.message);
+        const sendButton = document.querySelector('#emailModal .btn-primary');
+        sendButton.textContent = 'Send Email';
+        sendButton.disabled = false;
+    }
 }
 </script>
 
 <style>
-.container-fluid {
+/* Full page layout - no cards */
+.full-page-room-generator {
     padding: 20px;
-}
-.row {
-    display: flex;
-    flex-wrap: nowrap;
-}
-.col-6 {
-    width: 50%;
-    padding-right: 15px;
-    padding-left: 15px;
-}
-.card {
-    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-}
-.card-header {
-    background-color: #f8f9fa;
-    padding: 15px 20px;
-    border-bottom: 1px solid #eee;
-}
-.mail-info, .instructions {
-    background-color: #f8f9fa;
-    padding: 15px;
-    border-radius: 5px;
-    margin-top: 20px;
-}
-.scroll-cards {
-    max-height: 200px;
-    overflow-y: auto;
-    margin-bottom: 15px;
+    max-width: 1400px;
+    margin: 0 auto;
+    min-height: 100vh;
 }
 
-/* File structure styling */
-.file-structure {
-    background-color: #f4f4f4;
-    padding: 10px;
-    border-radius: 4px;
-    border: 1px solid #ddd;
-    margin: 10px 0;
+.page-header {
+    margin-bottom: 30px;
+    border-bottom: 1px solid #eaeaea;
+    padding-bottom: 15px;
 }
 
-.file-structure pre {
+.page-header h1 {
+    font-size: 28px;
+    font-weight: 700;
+    color: #2c3e50;
     margin: 0;
+}
+
+.page-header .subtitle {
+    font-size: 16px;
+    color: #7f8c8d;
+    margin: 5px 0 0 0;
+}
+
+.main-content-area {
+    display: flex;
+    gap: 30px;
+    align-items: flex-start;
+}
+
+.input-section {
+    flex: 1;
+    min-width: 0; /* Allow shrinking */
+}
+
+.preview-section {
+    flex: 1;
+    min-width: 0; /* Allow shrinking */
+    background: #f9f9f9;
+    border-radius: 12px;
+    padding: 20px;
+    border: 2px solid #28a745;
+    position: sticky;
+    top: 20px;
+    max-height: calc(100vh - 100px);
+    overflow-y: auto;
+}
+
+.preview-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 15px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #ddd;
+}
+
+.preview-header h3 {
+    margin: 0;
+    font-size: 18px;
+    color: #28a745;
+}
+
+.preview-count {
+    font-size: 14px;
+    color: #666;
+    font-weight: normal;
+}
+
+.preview-content {
+    background: white;
+    padding: 15px;
+    border-radius: 8px;
+    border: 1px solid #ddd;
     font-family: 'Courier New', monospace;
     font-size: 12px;
-    line-height: 1.4;
-}
-
-.file-structure code {
-    background: none;
-    padding: 0;
+    line-height: 1.6;
     color: #333;
+    max-height: 400px;
+    overflow-y: auto;
 }
 
-/* Enhanced Form Styling */
-.form-group {
+.preview-work-type-header {
+    font-weight: bold;
+    color: #007bff;
+    margin-bottom: 10px;
+    padding-bottom: 5px;
+    border-bottom: 1px solid #ddd;
+}
+
+.preview-empty {
+    color: #999;
+    font-style: italic;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    text-align: center;
+    padding: 20px;
+}
+
+.preview-line {
+    padding: 3px 0;
+}
+
+.preview-line:nth-child(even) {
+    background: #f9f9f9;
+}
+
+/* Step sections styling */
+.step-section {
+    margin-bottom: 30px;
+    padding: 20px;
+    background: #f9f9f9;
+    border-radius: 12px;
+    border: 2px solid #e0e0e0;
+}
+
+.step-header {
+    font-size: 18px;
+    font-weight: 600;
+    color: #007bff;
+    margin-bottom: 15px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.step-number {
+    background: #007bff;
+    color: white;
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+}
+
+.room-input-textarea {
+    width: 100%;
+    padding: 15px;
+    border: 2px solid #e0e0e0;
+    border-radius: 8px;
+    font-size: 15px;
+    resize: vertical;
+    min-height: 150px;
+    line-height: 1.6;
+    font-family: inherit;
+}
+
+.room-input-textarea:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+}
+
+.room-count {
+    margin-top: 10px;
+    font-size: 14px;
+    color: #666;
+}
+
+.room-count.active {
+    color: #28a745;
+    font-weight: 600;
+}
+
+.help-text {
+    font-size: 13px;
+    color: #666;
+    margin-top: 10px;
+    line-height: 1.5;
+}
+
+/* Room configuration styling */
+.room-config-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.room-config-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: white;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+    transition: all 0.2s;
+}
+
+.room-config-item:hover {
+    border-color: #007bff;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.room-config-number {
+    font-weight: 600;
+    color: #007bff;
+    min-width: 25px;
+    font-size: 13px;
+}
+
+.room-config-name {
+    flex: 1;
+    color: #333;
+    font-size: 13px;
+}
+
+.room-config-input-wrapper {
+    min-width: 180px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+.room-config-select {
+    width: 100%;
+    padding: 6px 10px;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    font-size: 14px;
+    background: white;
+    cursor: pointer;
+    transition: all 0.3s;
+}
+
+.room-config-select:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 3px rgba(0,123,255,0.1);
+}
+
+.room-config-custom-input {
+    width: 100%;
+    padding: 6px 10px;
+    border: 2px solid #ffc107;
+    border-radius: 6px;
+    font-size: 13px;
+    background: #fffbf0;
+    transition: all 0.3s;
+}
+
+.room-config-custom-input:focus {
+    outline: none;
+    border-color: #ff9800;
+    box-shadow: 0 0 0 3px rgba(255,152,0,0.1);
+}
+
+.room-config-custom-input::placeholder {
+    color: #999;
+    font-style: italic;
+}
+
+/* Work Type Deselection Styling */
+.template-option-with-worktypes {
     margin-bottom: 20px;
 }
 
-.form-label {
-    font-weight: bold;
-    font-size: 14px;
-    color: #333;
-    margin-bottom: 8px;
-    display: block;
-}
-
-.form-control-styled {
-    height: 45px;
-    padding: 12px 15px;
-    font-size: 16px;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    width: 100%;
-    transition: all 0.3s ease;
-    box-sizing: border-box;
-}
-
-.form-control-styled:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-    outline: none;
-}
-
-/* New textarea styling */
-.form-textarea-styled {
-    padding: 12px 15px;
-    font-size: 14px;
-    border: 2px solid #e0e0e0;
-    border-radius: 8px;
-    width: 100%;
-    background-color: #fff;
-    transition: all 0.3s ease;
-    box-sizing: border-box;
-    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-    line-height: 1.5;
-    resize: vertical;
-    min-height: 120px;
-}
-
-.form-textarea-styled:focus {
-    border-color: #007bff;
-    box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
-    outline: none;
-}
-
-.form-textarea-styled::placeholder {
-    color: #999;
-    line-height: 1.5;
-}
-
-/* Data preview styling */
-.data-preview {
-    padding: 5px 0;
-}
-
-/* Enhanced data validation styling */
-#data-validation-details {
-    background-color: #f8f9fa;
-    padding: 8px 12px;
-    border-radius: 5px;
-    border-left: 3px solid #dee2e6;
-    margin-top: 5px;
-}
-
-#data-validation-details:empty {
-    display: none;
-}
-
-.data-input-help {
-    background-color: #e8f4f8;
+.work-type-deselection {
+    margin-top: 15px;
     padding: 15px;
-    border-radius: 8px;
-    border-left: 4px solid #17a2b8;
-}
-
-.data-input-help h6 {
-    color: #17a2b8;
-    margin-bottom: 10px;
-    font-weight: bold;
-}
-
-.data-input-help ul {
-    margin: 0;
-    padding-left: 20px;
-}
-
-.data-input-help li {
-    margin-bottom: 5px;
-    font-size: 13px;
-    line-height: 1.4;
-}
-
-/* Format examples styling */
-.data-format-examples {
-    background-color: #fff3cd;
-    padding: 12px;
+    background: #f8f9fa;
     border-radius: 6px;
-    border: 1px solid #ffeaa7;
+    border-left: 4px solid #007bff;
 }
 
-.format-example {
-    background-color: white;
-    padding: 10px;
+.work-type-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 10px;
+}
+
+.work-type-checkbox-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    background: white;
+    border: 2px solid #ddd;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: all 0.2s;
+}
+
+.work-type-checkbox-label:hover {
+    border-color: #007bff;
+    background: #f0f8ff;
+}
+
+.work-type-checkbox-label input[type="checkbox"] {
+    margin: 0;
+    cursor: pointer;
+}
+
+.work-type-checkbox-label input[type="checkbox"]:checked {
+    accent-color: #007bff;
+}
+
+.wt-badge {
+    display: inline-block;
+    padding: 2px 8px;
     border-radius: 4px;
-    border: 1px solid #ddd;
-    margin: 5px 0;
+    font-size: 11px;
+    font-weight: 700;
+    color: white;
 }
 
-.format-example code {
-    background-color: #f8f9fa;
-    padding: 8px;
-    border-radius: 3px;
-    display: block;
-    font-family: 'Courier New', monospace;
-    font-size: 12px;
-    line-height: 1.4;
-    margin-top: 5px;
-    white-space: pre-line;
+.wt-100 { background: #6c757d; }
+.wt-200 { background: #dc3545; }
+.wt-300 { background: #28a745; }
+.wt-400 { background: #ffc107; color: #333; }
+.wt-500 { background: #17a2b8; }
+.wt-600 { background: #fd7e14; }
+.wt-700 { background: #6f42c1; }
+
+.work-type-actions {
+    text-align: center;
+    padding-top: 8px;
 }
 
-.form-text {
-    margin-top: 5px;
-    font-size: 12px;
+.btn-link {
+    background: none;
+    border: none;
+    color: #007bff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 600;
+    padding: 0;
+    text-decoration: none;
+    transition: all 0.2s;
 }
 
-.btn-styled {
-    padding: 12px 30px;
-    font-size: 16px;
-    font-weight: bold;
-    border-radius: 8px;
-    width: 100%;
-    margin-top: 10px;
-    transition: all 0.3s ease;
+.btn-link:hover {
+    color: #0056b3;
+    text-decoration: underline;
 }
 
-.btn-styled:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+.work-type-actions .separator {
+    margin: 0 12px;
+    color: #ccc;
 }
 
-/* Template Selection Styling */
+/* Scroll Indicator Styling */
+.scroll-indicator {
+    text-align: center;
+    margin-top: 20px;
+    padding: 15px;
+    animation: fadeInBounce 1s ease-out;
+}
+
+@keyframes fadeInBounce {
+    0% {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    50% {
+        opacity: 0.7;
+    }
+    100% {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.scroll-text {
+    font-size: 14px;
+    color: #007bff;
+    font-weight: 600;
+    margin-bottom: 8px;
+}
+
+.scroll-arrow {
+    font-size: 32px;
+    color: #007bff;
+    animation: bounce 2s infinite;
+}
+
+@keyframes bounce {
+    0%, 20%, 50%, 80%, 100% {
+        transform: translateY(0);
+    }
+    40% {
+        transform: translateY(-10px);
+    }
+    60% {
+        transform: translateY(-5px);
+    }
+}
+
+/* Template selection styling */
 .template-selection {
     border: 1px solid #e0e0e0;
     border-radius: 8px;
     padding: 15px;
-    background-color: #f9f9f9;
+    background: #f9f9f9;
 }
 
 .template-option {
@@ -692,19 +1417,19 @@ function updateProgressSteps(currentStep) {
     margin-bottom: 15px;
     padding: 12px;
     border: 1px solid #ddd;
-    border-radius: 6px;
-    background-color: white;
-    transition: all 0.3s ease;
+    border-radius: 8px;
+    background: white;
+    transition: all 0.3s;
 }
 
 .template-option:hover {
-    background-color: #f0f8ff;
+    background: #f0f8ff;
     border-color: #007bff;
 }
 
 .template-option input[type="checkbox"] {
     margin-right: 12px;
-    margin-top: 2px;
+    margin-top: 3px;
     transform: scale(1.2);
 }
 
@@ -718,6 +1443,7 @@ function updateProgressSteps(currentStep) {
     color: #333;
     display: block;
     margin-bottom: 5px;
+    font-size: 15px;
 }
 
 .template-label p {
@@ -727,64 +1453,310 @@ function updateProgressSteps(currentStep) {
     line-height: 1.4;
 }
 
-/* Line numbering container */
-.textarea-with-numbers {
-    position: relative;
-}
-
-.line-numbers-container {
-    position: relative;
+/* Button styling */
+.btn-styled {
+    padding: 14px 30px;
+    font-size: 16px;
+    font-weight: bold;
+    border-radius: 8px;
     width: 100%;
+    margin-top: 20px;
+    transition: all 0.3s;
+    background: #007bff;
+    border: none;
+    color: white;
+    cursor: pointer;
 }
 
-.line-numbers {
-    position: absolute;
+.btn-styled:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,123,255,0.3);
+    background: #0069d9;
+}
+
+/* Status and alerts */
+#status {
+    margin-top: 20px;
+}
+
+.alert {
+    padding: 15px;
+    border-radius: 8px;
+    margin-bottom: 15px;
+}
+
+.alert-success {
+    background: #d4edda;
+    border: 1px solid #c3e6cb;
+    color: #155724;
+}
+
+.alert-info {
+    background: #d1ecf1;
+    border: 1px solid #bee5eb;
+    color: #0c5460;
+}
+
+/* Loading Modal Styling */
+.loading-modal {
+    display: none;
+    position: fixed;
+    z-index: 10000;
     left: 0;
     top: 0;
-    width: 40px;
+    width: 100%;
     height: 100%;
-    background-color: #f8f9fa;
-    border: 2px solid #e0e0e0;
-    border-right: 1px solid #ddd;
-    border-radius: 8px 0 0 8px;
-    padding: 12px 5px;
-    font-family: 'Courier New', monospace;
-    font-size: 14px;
-    line-height: 1.5;
-    color: #666;
-    text-align: right;
-    overflow: hidden;
-    z-index: 2;
-    pointer-events: none;
+    background-color: rgba(0, 0, 0, 0.7);
+    animation: fadeIn 0.3s ease;
 }
 
-.line-numbered-textarea {
-    padding-left: 50px !important;
-    position: relative;
-    z-index: 1;
+.loading-modal-content {
+    background-color: #ffffff;
+    margin: 10% auto;
+    padding: 40px;
+    border-radius: 20px;
+    width: 90%;
+    max-width: 400px;
+    text-align: center;
+    box-shadow: 0 10px 50px rgba(0, 0, 0, 0.4);
+    animation: slideDown 0.4s ease;
 }
 
-/* Form Check Styling */
-.form-check {
+.clock-container {
+    margin: 0 auto 20px;
     display: flex;
+    justify-content: center;
+}
+
+.clock-svg {
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.1));
+}
+
+#hourHand {
+    transform-origin: 50px 50px;
+    animation: rotateHourHand 3s linear infinite;
+}
+
+#minuteHand {
+    transform-origin: 50px 50px;
+    animation: rotateMinuteHand 2s linear infinite;
+}
+
+@keyframes rotateHourHand {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+@keyframes rotateMinuteHand {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
+.loading-title {
+    font-size: 22px;
+    color: #333;
+    margin: 0 0 10px 0;
+    font-weight: 600;
+}
+
+.loading-subtitle {
+    font-size: 14px;
+    color: #666;
+    margin: 0 0 20px 0;
+}
+
+.loading-progress {
+    width: 100%;
+    height: 6px;
+    background: #e0e0e0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+.loading-progress-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #007bff, #0056b3);
+    border-radius: 10px;
+    animation: progressBar 2s ease-in-out infinite;
+}
+
+@keyframes progressBar {
+    0% {
+        width: 0%;
+    }
+    50% {
+        width: 70%;
+    }
+    100% {
+        width: 100%;
+    }
+}
+
+/* Success Modal Styling */
+.success-modal {
+    display: none;
+    position: fixed;
+    z-index: 9999;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.6);
+    animation: fadeIn 0.3s ease;
+}
+
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+    }
+    to {
+        opacity: 1;
+    }
+}
+
+.success-modal-content {
+    background-color: #ffffff;
+    margin: 2% auto;
+    padding: 0;
+    border-radius: 16px;
+    width: 90%;
+    max-width: 700px;
+    max-height: 90vh;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    animation: slideDown 0.4s ease;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+}
+
+@keyframes slideDown {
+    from {
+        transform: translateY(-50px);
+        opacity: 0;
+    }
+    to {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+.success-modal-header {
+    background: linear-gradient(135deg, #28a745 0%, #20c997 100%);
+    color: white;
+    padding: 20px 25px;
+    border-radius: 16px 16px 0 0;
+    display: flex;
+    justify-content: space-between;
     align-items: center;
-    padding: 10px;
-    background-color: #f9f9f9;
-    border-radius: 6px;
+    flex-shrink: 0;
 }
 
-.form-check-input {
-    margin-right: 10px;
-    transform: scale(1.1);
-}
-
-.form-check-label {
-    cursor: pointer;
+.success-modal-header h2 {
     margin: 0;
-    font-weight: 500;
+    font-size: 28px;
+    font-weight: 700;
 }
 
-/* Progress Steps */
+.success-modal-close {
+    background: transparent;
+    border: none;
+    color: white;
+    font-size: 36px;
+    font-weight: 300;
+    cursor: pointer;
+    transition: transform 0.2s;
+    line-height: 1;
+    padding: 0;
+    width: 36px;
+    height: 36px;
+}
+
+.success-modal-close:hover {
+    transform: rotate(90deg);
+}
+
+.success-modal-body {
+    padding: 20px 25px;
+    font-size: 15px;
+    line-height: 1.6;
+    overflow-y: auto;
+    flex: 1;
+    min-height: 0;
+}
+
+.success-modal-body::-webkit-scrollbar {
+    width: 8px;
+}
+
+.success-modal-body::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.success-modal-body::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+.success-modal-body::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.success-modal-body h5 {
+    color: #28a745;
+    font-size: 20px;
+    margin-bottom: 15px;
+    font-weight: 600;
+}
+
+.success-modal-body ol {
+    margin-left: 0;
+    padding-left: 25px;
+}
+
+.success-modal-body ol li {
+    margin-bottom: 12px;
+    color: #333;
+}
+
+.success-modal-body strong {
+    color: #007bff;
+}
+
+.success-modal-footer {
+    padding: 15px 25px;
+    background: #f8f9fa;
+    border-radius: 0 0 16px 16px;
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.success-modal-footer .btn {
+    min-width: 150px;
+    padding: 12px 30px;
+    font-size: 16px;
+}
+
+.alert-warning {
+    background: #fff3cd;
+    border: 1px solid #ffeaa7;
+    color: #856404;
+}
+
+.alert-danger {
+    background: #f8d7da;
+    border: 1px solid #f5c6cb;
+    color: #721c24;
+}
+
 .progress-steps {
     margin-top: 10px;
 }
@@ -804,37 +1776,111 @@ function updateProgressSteps(currentStep) {
     color: #28a745;
 }
 
-/* Template Results */
-.template-results {
-    background-color: #f8f9fa;
-    padding: 10px;
-    border-radius: 5px;
-    border-left: 4px solid #007bff;
+/* Badge styling */
+.badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    font-weight: 600;
+    margin: 0 3px;
 }
 
-.template-result {
-    padding: 5px 0;
-    font-size: 14px;
+.badge-secondary {
+    background: #6c757d;
+    color: white;
 }
 
-.template-result.success {
-    color: #28a745;
+.badge-info {
+    background: #17a2b8;
+    color: white;
 }
 
-.template-result.failed {
-    color: #dc3545;
+.badge-success {
+    background: #28a745;
+    color: white;
 }
 
-/* Responsive adjustments */
-@media (max-width: 768px) {
-    .row {
+.badge-warning {
+    background: #ffc107;
+    color: #333;
+}
+
+.badge-primary {
+    background: #007bff;
+    color: white;
+}
+
+/* Responsive design */
+@media (max-width: 1024px) {
+    .main-content-area {
         flex-direction: column;
     }
     
-    .col-6 {
-        width: 100%;
-        margin-bottom: 20px;
+    .preview-section {
+        position: static;
+        max-height: none;
     }
+}
+
+@media (max-width: 768px) {
+    .full-page-room-generator {
+        padding: 15px;
+    }
+    
+    .room-config-item {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 10px;
+    }
+    
+    .room-config-input-wrapper {
+        width: 100%;
+    }
+    
+    .step-section {
+        padding: 15px;
+    }
+}
+
+/* LOS Modal Specific Styles */
+.los-rooms-list {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 10px;
+}
+
+.los-rooms-list::-webkit-scrollbar {
+    width: 8px;
+}
+
+.los-rooms-list::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 10px;
+}
+
+.los-rooms-list::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 10px;
+}
+
+.los-rooms-list::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+    border: none;
+    padding: 12px 24px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 15px;
+    transition: all 0.3s;
+}
+
+.btn-secondary:hover {
+    background: #5a6268;
 }
 </style>
 {% endblock %}

@@ -1,907 +1,399 @@
 {% load static %}
-<html>
+<!DOCTYPE html>
+<html lang="en">
 <head>
-    <link href="https://fonts.googleapis.com/css?family=Source+Sans+Pro" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <!-- Required meta tags -->
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>{% block title %}Claims Management{% endblock %} | Mitigation App</title>
+
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <!-- Font Awesome 6 -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+
     <style>
-
-@import "compass/css3";
-@import url('https://fonts.googleapis.com/css?family=Open+Sans');
-@import url('https://netdna.bootstrapcdn.com/font-awesome/4.0.3/css/font-awesome.css');
-
-*, *:before, *:after {
-	 margin: 0;
-	 padding: 0;
-	 box-sizing: border-box;
-}
- *:before, *:after {
-	 content: '';
-	 display: block;
-	 position: absolute;
-}
-html, body {
-	height: 100%;
-}
-body {
-    font: 15px 'Open Sans', sans-serif;
-    color: #777;
-}
-a {
-    cursor: pointer;
-}
-ul {
-    list-style: none;
-}
-.wrapper {
-    display: flex;
-    min-height: 100%;
-}
-nav {
-    width: 200px;
-    background: #404040;
-}
-nav header {
-    position: relative;
-    height: 80px;
-    padding: 20px 0 0 15px;
-    font-size: 16px;
-    color: #fff;
-    background: #333;
-}
-nav header span {
-    position: relative;
-    display: inline-block;
-    width: 36px;
-    height: 36px;
-    margin: 0 10px 0 0;
-    vertical-align: middle;
-    border: 1px solid #fff;
-}
-nav header span:before {
-    content: '\f007';
-    font: normal 20px fontawesome;
-    top: 7px;
-    left: 9px;
-}
-nav header a:before {
-    content: '\f08b';
-    font: normal 20px fontawesome;
-    top: 28px;
-    right: 15px;
-}
-nav ul span {
-    display: block;
-    padding: 15px;
-    color: rgba(255, 255, 255, .5);
-    text-transform: uppercase;
-    border-bottom: 1px solid #333;
-}
-nav ul a {
-    position: relative;
-    display: block;
-    padding: 15px 15px 17px 50px;
-    color: #fff;
-    border-bottom: 1px solid #333;
-}
-nav ul a:hover, nav ul a.active {
-    background: #535353;
-}
-nav ul a:before {
-    font: normal 16px fontawesome;
-    top: 15px;
-    left: 18px;
-}
-nav ul li:nth-child(2) a:before {
-    content: '\f00a';
-}
-nav ul li:nth-child(3) a:before {
-    	 content: '\f012';
-    }
-nav ul li:nth-child(4) a:before {
-    	 content: '\f018';
-    }
-nav ul li:nth-child(5) a:before {
-    	 content: '\f024';
-    }
-nav ul li:nth-child(6) a:before {
-    	 content: '\f0c3';
-    }
-nav ul li:nth-child(7) a:before {
-    	 content: '\f09b';
-    }
-nav ul li:nth-child(8) a:before {
-    	 content: '\f0fa';
-    }
-nav ul li:nth-child(10) a:before {
-    	 content: '\f002';
-    }
-nav ul li:nth-child(11) a:before {
-    	 content: '\f085';
-    }
-nav ul li:nth-child(12) a:before {
-    	 content: '\f08b';
-    }
-main {
-    	 flex: 1;
-    	 padding: 25px;
-    	 background: #f5f5f5;
-    }
-main h1 {
-    	 height: 80px;
-    	 margin: -25px -25px 25px -25px;
-    	 padding: 0 25px;
-    	 line-height: 76px;
-    	 font-size: 24px;
-    	 font-weight: 400;
-    	 background: #f9fafb;
-    }
-.flex-grid {
-	 display: flex;
-}
-.flex-grid > div {
-    flex: 1;
-    margin: 0 20px 20px 0;
-    padding: 15px;
-    border: 1px solid #ddd;
-    background: #fff;
-}
- .flex-grid > div:last-child {
-	 margin-right: 0;
-}
- .flex-grid h2 {
-	 margin: -15px -15px 15px -15px;
-	 padding: 12px 15px;
-	 font-size: 14px;
-	 font-weight: 400;
-	 border-bottom: 1px solid #ddd;
-}
- .flex-grid li {
-	 position: relative;
-	 margin: 0 0 10px;
-	 padding: 0 0 0 25px;
-}
- .flex-grid li:before {
-	 content: '\f00c';
-	 font: normal 16px fontawesome;
-	 top: 0;
-	 left: 0;
-	 color: #999;
-}
-/* ** Media Queries ***********************************************************/
- @media (max-width: 1000px) {
-	 .flex-grid {
-		 flex-direction: column;
-	}
-	 .flex-grid > div {
-		 margin-right: 0;
-	}
-}
-
-  .scroll-cards {
-  display: block;
-  height: 100%;
-  overflow: auto;
-
-  padding: 0px 0px 5px 0px;
-}
-.card {
-    background-color: white;
-    border-radius: 4px;
-    margin-top: 8px;
-    margin-bottom: 5px;
-    padding: 25px;
-    transition: 0.3s;
-}
-.card:hover {
-    box-shadow: 5px 1px 20px 1px #ddd;
-    transform: scale(0.96);
-}
-
-.card-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    font-weight: bold;
-}
-
-.options-btn {
-    background-color: #404040;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    cursor: pointer;
-    transition-duration: 0.4s;
-    border-radius: 4px;
-}
-
-.options-btn:hover {
-    background-color: #333;
-}
-
-.options-content {
-    display: none;
-    margin-top: 10px;
-}
-
-.options-content a {
-    display: block;
-    padding: 8px;
-    color: #333;
-    text-decoration: none;
-}
-
-.options-content a:hover {
-    background-color: #f5f5f5;
-}
-
-.mail-names {
-  color: grey;
-  font-weight: bold;
-  font-size: 15px;
-  margin-left: 10px;
-}
-
-.mails {
-  display: flex;
-  align-items: center;
-}
-.mails > img {
-  width: 35px;
-  border-radius: 10px;
-}
-.mail-info {
-  margin: 10px 65px;
-  margin-left: 0px;
-  line-height: 1.7;
-  font-weight: 600;
-}
-.check1 {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  width: 100px;
-}
-.bottom-info {
-  display: flex;
-  justify-content: space-between;
-}
-.date {
-  color: grey;
-}
-.person {
-  width: 25px;
-  height: 25px;
-  border-radius: 10px;
-  text-align: center;
-  color: white;
-  padding: 5px 3px 0px;
-}
-.person {
-  width: 25px;
-  height: 25px;
-  border-radius: 10px;
-  text-align: center;
-  color: white;
-  padding: 5px 3px 0px;
-}
-
-.border1 {
-  background-color: #5f4bfd;
-}
-.border2 {
-  background-color: #e32553;
-}
-.border3 {
-  background-color: #01c828;
-}
-button {
-  border-radius: 4px;
-  background-color: #404040; /* Green */
-  border: none;
-  color: white;
-  padding: 15px 32px;
-  text-align: center;
-  text-decoration: none;
-  transition-duration: 0.4s;
-  display: inline-block;
-  font-size: 16px;
-  cursor: pointer;
-}
-
-
-/* Styling the individual dropdown containers */
-.dropdown {
-    position: relative;
-    display: flex;
-    flex-direction: row;
-    width: 150px; /* Set a fixed width for each dropdown */
-    margin-bottom: 20px;
-}
-
-/* Style the button of the dropdown */
-.dropdown-btn {
-    background-color: #404040;
-    color: white;
-    border: none;
-    padding: 10px;
-    cursor: pointer;
-    font-size: 16px;
-    border-radius: 4px;
-    width: 100%;
-    text-align: center;
-    box-sizing: border-box;
-    transition: background-color 0.3s;
-}
-
-.dropdown-btn:hover {
-    background-color: #333;
-}
-
-/* Style the dropdown menu */
-.dropdown-content {
-    display: none;
-    position: relative;
-    right: 0;
-    background-color: #f9f9f9;
-    min-width: 160px;
-    max-width: 150px; /* Ensure dropdown doesn't exceed button width */
-    box-shadow: 0px 8px 16px rgba(0, 0, 0, 0.2);
-    z-index: 1;
-    margin-top: 5px;
-    border-radius: 4px;
-}
-
-.dropdown-content a {
-    color: black;
-    padding: 10px;
-    text-decoration: none;
-    display: block;
-    transition: background-color 0.3s;
-}
-
-.dropdown-content a:hover {
-    background-color: #ddd;
-}
-
-/* Show dropdown on hover */
-.dropdown:hover .dropdown-content {
-    display: block;
-}
-
-/* Dropdown for the Room section */
-.dropdown-room {
-    width: 150px;
-}
-
-/* Prevent overflow and make dropdowns fit better */
-.flex-grid > .dropdown {
-    flex: 1 1 150px; /* Allow dropdowns to shrink and grow, but keep at least 150px width */
-    max-width: 150px; /* Limit the maximum width */
-}
-
-/* To handle the structure of abbrList dropdowns properly */
-.flex-grid > .dropdown > div {
-    padding: 10px 0;
-    font-weight: bold;
-}
-
-  .menu-toggle {
-    visibility: hidden;
-  }
-
-  .menu-toggle span {
-    visibility: hidden;
-  }
-
-@media screen and (max-width: 768px) {
-  .wrapper {
-    position: relative;
-  }
-
-  nav {
-    position: fixed;
-    left: -200px;
-    height: 100%;
-    transition: 0.3s;
-    z-index: 1000;
-  }
-
-  nav.active {
-    left: 0;
-  }
-  main {
-    background: white;
-  }
-  main h1 {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding-right: 15px;
-    min-height: 80px;
-    white-space: nowrap;
-    overflow: visible;
-    background: #f9fafb;
-  }
-
-  .menu-toggle {
-    visibility: visible;
-    flex-shrink: 0;
-    width: 40px;
-    height: 40px;
-    background: #333;
-    border: none;
-    border-radius: 5px;
-    cursor: pointer;
-    padding: 8px;
-    alpha: 1;
-  }
-
-  .menu-toggle span {
-    visibility: visible;
-    display: block;
-    width: 24px;
-    height: 3px;
-    margin: 5px 0;
-    background: white;
-    transition: 0.3s;
-  }
-
-  main {
-    margin-left: 0;
-    width: 100%;
-  }
-
-  .flex-grid {
-    flex-direction: column;
-  }
-
-  .flex-grid > div {
-    margin-right: 0;
-    margin-bottom: 15px;
-  }
-
-  .filter-controls {
-    display: flex;
-    gap: 15px;
-    margin-bottom: 20px;
-}
-
-.claims-column {
-    flex: 2;
-}
-
-.checklist-column {
-    flex: 1;
-}
-
-.checklist-column.hidden {
-    display: none;
-}
-
-.claim-card {
-    cursor: pointer;
-    transition: all 0.3s ease;
-}
-
-.claim-card.active {
-    border-left: 4px solid #5f4bfd;
-    background-color: #f8f9fa;
-}
-
-.completion-badge {
-    position: absolute;
-    right: 20px;
-    top: 20px;
-}
-
-.completion-circle {
-    width: 50px;
-    height: 50px;
-}
-
-.circular-chart {
-    display: block;
-    margin: 10px auto;
-    max-width: 80%;
-    max-height: 80px;
-}
-
-.circle-bg {
-    fill: none;
-    stroke: #eee;
-    stroke-width: 3;
-}
-
-.circle-fill {
-    fill: none;
-    stroke: #4CC790;
-    stroke-width: 3;
-    stroke-linecap: round;
-    animation: progress 1s ease-out forwards;
-}
-
-@keyframes progress {
-    0% {
-        stroke-dasharray: 0, 100;
-    }
-}
-
-.percentage {
-    fill: #666;
-    font-size: 0.5em;
-    text-anchor: middle;
-}
-
-.checklist-items {
-    margin-top: 20px;
-}
-
-.checklist-item {
-    padding: 10px;
-    margin-bottom: 8px;
-    background: #fff;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-}
-
-.checklist-item.completed {
-    background: #f0fff0;
-    border-color: #d0f0d0;
-}
-
-.checkbox-container {
-    display: flex;
-    align-items: center;
-    position: relative;
-    padding-left: 30px;
-    cursor: pointer;
-    user-select: none;
-}
-
-.checkbox-container input {
-    position: absolute;
-    opacity: 0;
-    cursor: pointer;
-    height: 0;
-    width: 0;
-}
-
-.checkmark {
-    position: absolute;
-    top: 0;
-    left: 0;
-    height: 20px;
-    width: 20px;
-    background-color: #eee;
-    border-radius: 4px;
-}
-
-.checkbox-container:hover input ~ .checkmark {
-    background-color: #ccc;
-}
-
-.checkbox-container input:checked ~ .checkmark {
-    background-color: #5f4bfd;
-}
-
-.checkmark:after {
-    content: "";
-    position: absolute;
-    display: none;
-}
-
-.checkbox-container input:checked ~ .checkmark:after {
-    display: block;
-}
-
-.checkbox-container .checkmark:after {
-    left: 7px;
-    top: 3px;
-    width: 5px;
-    height: 10px;
-    border: solid white;
-    border-width: 0 2px 2px 0;
-    transform: rotate(45deg);
-}
-
-.document-type {
-    padding: 3px 8px;
-    border-radius: 12px;
-    font-size: 0.8em;
-    color: white;
-}
-
-.document-type.CPS {
-    background-color: #4CC790;
-}
-
-.document-type.MIT {
-    background-color: #FFA500;
-}
-
-.document-type.PPR {
-    background-color: #FF6B6B;
-}
-
-.checklist-progress {
-    margin-bottom: 20px;
-}
-
-.progress-bar {
-    width: 100%;
-    height: 10px;
-    background-color: #eee;
-    border-radius: 5px;
-    overflow: hidden;
-}
-
-.progress-fill {
-    height: 100%;
-    background-color: #5f4bfd;
-    transition: width 0.3s ease;
-}
-
-.progress-text {
-    text-align: right;
-    font-size: 0.9em;
-    color: #666;
-    margin-top: 5px;
-}
-
-.chart-container {
-    position: relative;
-    height: 200px;
-    width: 100%;
-}
-
-.client-id {
-    font-size: 0.8em;
-    color: #777;
-    font-weight: normal;
-}
-
-.checklist-category {
-    margin-bottom: 20px;
-    border: 1px solid #eee;
-    border-radius: 5px;
-    overflow: hidden;
-}
-
-.checklist-category h3 {
-    background-color: #f5f5f5;
-    padding: 10px 15px;
-    margin: 0;
-    font-size: 1em;
-    border-bottom: 1px solid #ddd;
-}
-
-.checklist-category .checklist-item {
-    border-radius: 0;
-    border-left: 0;
-    border-right: 0;
-    margin-bottom: 0;
-    border-bottom: 1px solid #eee;
-}
-
-.checklist-category .checklist-item:last-child {
-    border-bottom: none;
-}
-
-.category-completion {
-    margin: 20px 0;
-    padding: 15px;
-    background: #f9f9f9;
-    border-radius: 5px;
-}
-
-.category-completion h3 {
-    margin-top: 0;
-    margin-bottom: 15px;
-    font-size: 1em;
-    color: #555;
-}
-
-.category-bars {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-}
-
-.category-bar {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-}
-
-.category-label {
-    width: 50px;
-    font-weight: bold;
-    font-size: 0.9em;
-}
-
-.category-percent {
-    width: 40px;
-    text-align: right;
-    font-size: 0.9em;
-}
-
-.category-bar .progress-bar {
-    flex-grow: 1;
-    height: 8px;
-}
-
-.completion-text {
-    font-weight: bold;
-    color: #4CC790;
-    font-size: 0.9em;
-}
-
-.save-button {
-    background-color: #4CC790;
-    color: white;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    margin-top: 15px;
-    cursor: pointer;
-}
-
-.checklist-form {
-    margin-top: 20px;
-}
-
-.checklist-column {
-    flex: 1;
-    padding: 20px;
-    background: #fff;
-    border-radius: 8px;
-    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-}
-
-.checklist-column.hidden {
-    display: none;
-}
-
-/* Progress Bars */
-.progress-bar {
-    height: 10px;
-    background: #eee;
-    border-radius: 5px;
-    margin: 10px 0;
-}
-
-.progress-fill {
-    height: 100%;
-    background: #4CC790;
-    border-radius: 5px;
-    transition: width 0.3s ease;
-}
-
-/* Checklist Items */
-.checklist-items {
-    margin-top: 20px;
-}
-
-.checklist-category {
-    margin-bottom: 25px;
-}
-
-.checklist-category h3 {
-    color: #555;
-    border-bottom: 1px solid #eee;
-    padding-bottom: 5px;
-}
-
-.checklist-item {
-    padding: 10px;
-    margin: 5px 0;
-    background: #f9f9f9;
-    border-radius: 4px;
-    display: flex;
-    align-items: center;
-}
-
-.checklist-item.completed {
-    background: #f0fff0;
-}
-
-/* Checkbox Styles */
-.checkbox-container {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    width: 100%;
-}
-
-.checkbox-container input {
-    margin-right: 10px;
-}
-
-.save-button {
-    background: #4CC790;
-    color: white;
-    border: none;
-    padding: 10px 20px;
-    border-radius: 4px;
-    cursor: pointer;
-    margin-top: 20px;
-}
-
-}
+        :root {
+            --primary-color: #0066cc;
+            --sidebar-bg: #404040;
+            --sidebar-header-bg: #333;
+            --sidebar-hover: #535353;
+            --main-bg: #f5f7fa;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        html, body {
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        body {
+            color: #777;
+        }
+
+        .wrapper {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Sidebar Navigation */
+        nav.sidebar {
+            width: 220px;
+            background: var(--sidebar-bg);
+            flex-shrink: 0;
+        }
+
+        nav.sidebar header {
+            position: relative;
+            height: 80px;
+            padding: 20px 15px;
+            font-size: 14px;
+            color: #fff;
+            background: var(--sidebar-header-bg);
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        nav.sidebar header .user-icon {
+            width: 36px;
+            height: 36px;
+            border: 1px solid #fff;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        nav.sidebar ul {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+
+        nav.sidebar ul span.nav-section {
+            display: block;
+            padding: 12px 15px;
+            color: rgba(255, 255, 255, .5);
+            text-transform: uppercase;
+            font-size: 11px;
+            font-weight: 600;
+            letter-spacing: 1px;
+            border-bottom: 1px solid #333;
+        }
+
+        nav.sidebar ul a {
+            position: relative;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 14px 18px;
+            color: #fff;
+            text-decoration: none;
+            border-bottom: 1px solid #333;
+            transition: background 0.3s;
+        }
+
+        nav.sidebar ul a:hover,
+        nav.sidebar ul a.active {
+            background: var(--sidebar-hover);
+        }
+
+        nav.sidebar ul a i {
+            width: 20px;
+            text-align: center;
+            font-size: 16px;
+        }
+
+        /* Main Content Area */
+        main.main-content {
+            flex: 1;
+            padding: 25px;
+            background: var(--main-bg);
+            overflow-x: hidden;
+        }
+
+        main.main-content h1 {
+            height: 80px;
+            margin: -25px -25px 25px -25px;
+            padding: 0 25px;
+            line-height: 76px;
+            font-size: 24px;
+            font-weight: 400;
+            background: #fff;
+            box-shadow: 0 1px 3px rgba(0,0,0,.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        /* Cards */
+        .card {
+            background-color: white;
+            border: none;
+            box-shadow: 0 1px 3px rgba(0,0,0,.1);
+            margin-bottom: 20px;
+            transition: 0.3s;
+        }
+
+        .card:hover {
+            box-shadow: 0 4px 12px rgba(0,0,0,.15);
+        }
+
+        /* Mobile Menu Toggle */
+        .menu-toggle {
+            display: none;
+            width: 40px;
+            height: 40px;
+            background: var(--sidebar-header-bg);
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 5px;
+            padding: 8px;
+        }
+
+        .menu-toggle span {
+            display: block;
+            width: 24px;
+            height: 3px;
+            background: white;
+            transition: 0.3s;
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .wrapper {
+                position: relative;
+            }
+
+            nav.sidebar {
+                position: fixed;
+                left: -220px;
+                height: 100vh;
+                transition: left 0.3s;
+                z-index: 1000;
+            }
+
+            nav.sidebar.active {
+                left: 0;
+            }
+
+            .menu-toggle {
+                display: flex;
+            }
+
+            main.main-content {
+                margin-left: 0;
+                width: 100%;
+            }
+
+            main.main-content h1 {
+                white-space: normal;
+                height: auto;
+                min-height: 80px;
+            }
+        }
+
+        /* Bootstrap overrides */
+        .btn-primary {
+            background-color: var(--primary-color);
+            border-color: var(--primary-color);
+        }
+
+        .btn-primary:hover {
+            background-color: #0052a3;
+            border-color: #0052a3;
+        }
+
+        /* Stepper for multi-step forms */
+        .stepper {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 2rem;
+            position: relative;
+        }
+
+        .stepper::before {
+            content: '';
+            position: absolute;
+            top: 20px;
+            left: 10%;
+            right: 10%;
+            height: 2px;
+            background: #dee2e6;
+            z-index: 0;
+        }
+
+        .stepper-item {
+            flex: 1;
+            text-align: center;
+            position: relative;
+            z-index: 1;
+        }
+
+        .stepper-icon {
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            background: #e9ecef;
+            color: #6c757d;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .stepper-item.active .stepper-icon {
+            background: var(--primary-color);
+            color: white;
+        }
+
+        .stepper-item.completed .stepper-icon {
+            background: #28a745;
+            color: white;
+        }
+
+        .stepper-label {
+            font-size: 0.875rem;
+            color: #6c757d;
+        }
+
+        .stepper-item.active .stepper-label {
+            color: var(--primary-color);
+            font-weight: 600;
+        }
     </style>
-    
+
+    {% block extra_css %}{% endblock %}
 </head>
 <body>
-  <div class="wrapper">
-    <nav>
-      <header>
-        {% if user.is_authenticated %}
-        <span></span>
-        {{ user.email | truncatechars:9 }}
-        <a></a>
-        {% else %}
-        <p>Guest</p>
-        {% endif %}
-      </header>
-  
-      <ul>
-        <li><span>Navigation</span></li>
-        <li><a href="/" class="active">Dashboard</a></li>
-        <li><a href="/statistics">Statistics</a></li>
-        <li><a href="/create">Claims</a></li>
-        <li><a href="/checklist">Checklists</a></li>
-        <li><a href="/generate_documents">Documents</a></li>
-        <li><a href="/labels">Labels</a></li>
-        <li><a href="/readings/">Reading Browser</a></li>
-        <li><a href="/emails">Emails</a></li>
-        <li><a href="/encircle">Encircle</a></li>
-        <li><a href="/download-media/">APC Encircle</a></li>
-        <li><span>Other</span></li>
-        <li><a>Search</a></li>
-        <li><a>Settings</a></li>
-        <li><a href="/logout">Logout</a></li>
-      </ul>
-    </nav>
-    <script>
-        document.addEventListener('DOMContentLoaded', function() {
-        const menuToggle = document.createElement('button');
-        menuToggle.setAttribute('type', 'button');
-        menuToggle.classList.add('menu-toggle');
-        menuToggle.innerHTML = '<span></span><span></span><span></span>';
-        document.querySelector('main h1').prepend(menuToggle);
-    
-        // Toggle menu on button click
-        menuToggle.addEventListener('click', toggleMenu);
-    
-        // Toggle menu on navbar link click
-        const navbarLink = document.querySelector('nav header a');
-        navbarLink.addEventListener('click', toggleMenu);
-        });
-        
-        function toggleMenu(e) {
-            e.preventDefault();
-            document.querySelector('nav').classList.toggle('active');
-        }
-    </script>
-    {% block content%}
-    
-	  {% block messages %}
-    {% endblock %}
-    
-    {% endblock %}
-    
-    {% block content_extra %}
-    {% endblock %}
-    
-    {% block extra_body %}
-    {% endblock %}
-  </div>
+    <div class="wrapper">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar" id="sidebar">
+            <header>
+                <div class="user-icon">
+                    <i class="fas fa-user"></i>
+                </div>
+                <div>
+                    {% if user.is_authenticated %}
+                        {{ user.email|truncatechars:15 }}
+                    {% else %}
+                        Guest
+                    {% endif %}
+                </div>
+            </header>
 
+            <ul>
+                <li><span class="nav-section">Navigation</span></li>
+                <li><a href="/" class="{% if request.path == '/' %}active{% endif %}">
+                    <i class="fas fa-home"></i> Dashboard
+                </a></li>
+                <li><a href="/claims/" class="{% if '/claims' in request.path %}active{% endif %}">
+                    <i class="fas fa-folder-open"></i> Claims Manager
+                </a></li>
+                <li><a href="/create" class="{% if '/create' in request.path and '/claims' not in request.path %}active{% endif %}">
+                    <i class="fas fa-file-alt"></i> Old Claims (Legacy)
+                </a></li>
+                <li><a href="/download-media/" class="{% if '/download-media' in request.path %}active{% endif %}">
+                    <i class="fas fa-download"></i> Room Lists
+                </a></li>
+                <li><a href="/checklist" class="{% if '/checklist' in request.path and '/scope' not in request.path %}active{% endif %}">
+                    <i class="fas fa-tasks"></i> Checklists
+                </a></li>
+                <li><a href="/scope-checklist/" class="{% if '/scope-checklist' in request.path %}active{% endif %}">
+                    <i class="fas fa-clipboard-list"></i> Scope Checklist
+                </a></li>
+                <li><a href="/clients" class="{% if '/clients' in request.path %}active{% endif %}">
+                    <i class="fas fa-folder"></i> Documents
+                </a></li>
+                <li><a href="/lease-manager/" class="{% if '/lease-manager' in request.path %}active{% endif %}">
+                    <i class="fas fa-file-contract"></i> Lease Manager
+                </a></li>
+                <li><a href="/emails" class="{% if '/emails' in request.path %}active{% endif %}">
+                    <i class="fas fa-envelope"></i> Emails
+                </a></li>
+                <li><a href="/labels" class="{% if '/labels' in request.path and '/wall-labels' not in request.path %}active{% endif %}">
+                    <i class="fas fa-tags"></i> Box Labels
+                </a></li>
+                <li><a href="/wall-labels" class="{% if '/wall-labels' in request.path %}active{% endif %}">
+                    <i class="fas fa-compass"></i> Wall Labels
+                </a></li>
+                <li><a href="/readings/" class="{% if '/readings' in request.path %}active{% endif %}">
+                    <i class="fas fa-camera"></i> Reading Browser
+                </a></li>
+                <li><a href="/encircle" class="{% if '/encircle' in request.path %}active{% endif %}">
+                    <i class="fas fa-circle"></i> Encircle
+                </a></li>
+
+                <li><span class="nav-section">Other</span></li>
+                <li><a href="#"><i class="fas fa-search"></i> Search</a></li>
+                <li><a href="#"><i class="fas fa-cog"></i> Settings</a></li>
+                <li><a href="/logout"><i class="fas fa-sign-out-alt"></i> Logout</a></li>
+            </ul>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <h1>
+                <button class="menu-toggle" onclick="toggleSidebar()">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </button>
+                {% block page_title %}{% endblock %}
+            </h1>
+
+            <!-- Django Messages -->
+            {% if messages %}
+            <div class="container-fluid mt-3 px-0">
+                {% for message in messages %}
+                <div class="alert alert-{{ message.tags }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            </div>
+            {% endif %}
+
+            {% block messages %}{% endblock %}
+
+            <!-- Page Content -->
+            {% block content %}{% endblock %}
+        </main>
+    </div>
+
+    <!-- jQuery -->
+    <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+    <script>
+        function toggleSidebar() {
+            document.getElementById('sidebar').classList.toggle('active');
+        }
+
+        // Close sidebar when clicking outside on mobile
+        document.addEventListener('click', function(event) {
+            const sidebar = document.getElementById('sidebar');
+            const menuToggle = document.querySelector('.menu-toggle');
+
+            if (window.innerWidth <= 768) {
+                if (!sidebar.contains(event.target) && !menuToggle.contains(event.target)) {
+                    sidebar.classList.remove('active');
+                }
+            }
+        });
+    </script>
+
+    {% block extra_js %}{% endblock %}
 </body>
 </html>

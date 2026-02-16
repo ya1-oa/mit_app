@@ -3,7 +3,216 @@
 
 {% block content %}
 <style>
+
+/* doc styles */
+.document-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+    gap: 20px;
+    margin: 20px 0;
+}
+
+.document-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 20px;
+    border: 2px solid #e0e0e0;
+    transition: all 0.3s ease;
+}
+
+.document-card.selected {
+    border-color: #404040;
+    background-color: #f8f9fa;
+}
+
+.document-checkbox {
+    margin-right: 10px;
+}
+
+.document-actions {
+    display: flex;
+    gap: 10px;
+    margin-top: 15px;
+}
+
+.preview-iframe-container {
+    height: 100%;
+    width: 100%;
+    position: relative;
+}
+
+.preview-iframe {
+    width: 100%;
+    height: 100%;
+    border: none;
+    background: white;
+}
+
+/* Ensure modal body allows scrolling */
+.preview-modal-body {
+    flex: 1;
+    overflow: hidden;
+    position: relative;
+}
+
+/* Force iframe content to be scrollable */
+.preview-iframe {
+    display: block;
+}
+
+/* Keyboard scrolling support */
+.preview-iframe:focus {
+    outline: none;
+}
+
+/* Modal content sizing */
+.modal-content {
+    display: flex;
+    flex-direction: column;
+    max-height: 90vh;
+    height: 90vh;
+}
+
+/* Tab styling */
+.preview-tabs {
+    display: flex;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 0;
+    flex-shrink: 0;
+}
+
+.preview-tab {
+    padding: 12px 20px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.3s ease;
+    white-space: nowrap;
+}
+
+.preview-tab:hover {
+    color: #404040;
+    background-color: #f5f5f5;
+}
+
+.preview-tab.active {
+    color: #404040;
+    border-bottom-color: #404040;
+    background-color: #f8f9fa;
+}
+
+.preview-content {
+    min-height: 500px;
+}
+
+.batch-actions {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-top: 20px;
+    padding: 15px;
+    background: #f8f9fa;
+    border-radius: 8px;
+}
+
+.download-options {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+}
+
+/* Input Section Styles */
+.input-section {
+    background: #fff;
+    border-radius: 8px;
+    padding: 25px;
+    margin: 20px 0;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.input-tabs {
+    display: flex;
+    border-bottom: 1px solid #ddd;
+    margin-bottom: 20px;
+}
+
+.input-tab {
+    padding: 12px 24px;
+    border: none;
+    background: none;
+    cursor: pointer;
+    border-bottom: 3px solid transparent;
+    font-weight: 500;
+    color: #666;
+    transition: all 0.3s ease;
+}
+
+.input-tab:hover {
+    color: #404040;
+}
+
+.input-tab.active {
+    color: #404040;
+    border-bottom-color: #404040;
+}
+
+.input-tab-content {
+    display: none;
+}
+
+.input-tab-content.active {
+    display: block;
+}
+
+.form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 20px;
+}
+
+.form-group {
+    margin-bottom: 1rem;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+    color: #333;
+}
+
+.form-control {
+    width: 100%;
+    padding: 0.75rem;
+    border: 1px solid #ddd;
+    border-radius: 6px;
+    font-size: 0.95rem;
+    transition: all 0.3s ease;
+}
+
+.form-control:focus {
+    border-color: #404040;
+    box-shadow: 0 0 0 3px rgba(64, 64, 64, 0.1);
+    outline: none;
+}
+
+/* Full width for certain fields */
+.form-group.full-width {
+    grid-column: 1 / -1;
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .form-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
 /* Base Styles */
+
 body {
     background-color: #f0f2f5;
     font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -199,6 +408,7 @@ h1, h2, h3, h4 {
     display: inline-flex;
     align-items: center;
     justify-content: center;
+    gap: 8px;
     font-weight: 500;
     padding: 0.9rem 1.8rem;
     font-size: 1rem;
@@ -210,6 +420,7 @@ h1, h2, h3, h4 {
     border: none;
     box-shadow: 0 2px 6px rgba(0,0,0,0.1);
 }
+
 
 .btn-primary {
     background-color: #404040;
@@ -325,15 +536,23 @@ h1, h2, h3, h4 {
     text-align: center; /* Centers text inside the oval */
     }
 
-    .download-button i {
-        display: inline-flex;
-        padding-right: 12px;
-    }
 
-     .form-tabs {
-        display: flex;
-        padding: 0 15px;
-    }
+.download-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+}
+
+.download-button i {
+        position: relative;
+        top: -1px; /* Fine-tune vertical alignment */
+        margin-right: 0; /* Remove right margin since we're using gap */
+}
+    .form-tabs {
+       display: flex;
+       padding: 0 15px;
+}
     
     .tab-button {
         padding: 8px 15px;
@@ -405,30 +624,43 @@ h1, h2, h3, h4 {
         height: 38px;
         background-color: white;
     }
-</style>
 
+
+    /* Ensure consistent button styling */
+    .btn {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-weight: 500;
+        padding: 0.9rem 1.8rem;
+        font-size: 1rem;
+        line-height: 1.5;
+        border-radius: 8px;
+        transition: all 0.3s ease;
+        cursor: pointer;
+        min-width: 180px;
+        border: none;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+    }
+
+    /* Specific positioning for download icon */
+    #downloadSelected i {
+        position: relative;
+        top: -1px;
+        bottom: -1px;
+        font-size: 1.1em;
+    }
+
+</style>
 <div class="container">
     <div class="main-card-container">
         <h1 style="font-size: 2rem; margin-bottom: 30px;">Document Generator</h1>
         
-        <!-- Selection Row -->
+        <!-- Selection Row - Simplified, only client selection -->
         <div class="card-grid">
-            <form method="get" id="combined-form" class="mb-4">
-                <!-- Document Selection -->
-                <div class="form-group">
-                    <label for="document_id">Select Document Type:</label>
-                    <select name="document_name" id="document_id" class="form-control">
-                        <option value="">-- Select a Document --</option>
-                        {% for document in documents %}
-                            <option value="{{ document.name }}"
-                                    {% if document.name == selected_document %}selected{% endif %}>
-                                {{ document.name }}
-                            </option>
-                        {% endfor %}
-                    </select>
-                </div>
-    
-                <!-- Client Selection -->
+            <form method="get" id="client-form" class="mb-4">
+                <!-- Client Selection Only -->
                 <div class="form-group">
                     <label for="client_id">Select Claim by Customer Name:</label>
                     <select name="client_name" id="client_id" class="form-control">
@@ -444,616 +676,670 @@ h1, h2, h3, h4 {
             </form>
         </div>
 
-        {% if selected_client and selected_document %}
-        <!-- Details Row -->
-        <div class="card-grid">
-            <!-- Client Details -->
-            <div class="card">
-                <h3>Claim Details</h3>
-                <div class="client-details">
-                    <div>
-                        <h4>Customer Information</h4>
-                        <p><strong>Owner:</strong> {{ selected_client.pOwner }}</p>
-                        <p><strong>Address:</strong> {{ selected_client.pAddress }}</p>
-                        <p><strong>City/State/Zip:</strong> {{ selected_client.pCityStateZip }}</p>
-                        <p><strong>Phone:</strong> {{ selected_client.cPhone }}</p>
-                        <p><strong>Email:</strong> {{ selected_client.cEmail }}</p>
+        {% if selected_client and selected_documents %}
+        
+        <!-- Input Section with Tabs -->
+        <div class="input-section">
+            <h3 style="margin-bottom: 20px;">Document Information</h3>
+            
+            <!-- Tab Navigation -->
+            <div class="input-tabs">
+                <button class="input-tab active" data-tab="basic-info">Lessor Information</button>
+                <button class="input-tab" data-tab="property-info">Property Information</button>
+                <button class="input-tab" data-tab="rental-terms">Rental Terms</button>
+                <button class="input-tab" data-tab="company-info">Company Information</button>
+            </div>
+            
+            <!-- Tab Contents -->
+            <div class="input-tab-content active" id="basic-info-tab">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="full_name">Full Name</label>
+                        <input type="text" id="full_name" name="full_name" class="form-control" 
+                               value="{{ form.full_name.value|default_if_none:'' }}">
                     </div>
-                    <div>
-                        <h4>Claim Information</h4>
-                        <p><strong>Claim #:</strong> {{ selected_client.claimNumber }}</p>
-                        <p><strong>Policy #:</strong> {{ selected_client.policyNumber }}</p>
-                        <p><strong>Date of Loss:</strong> {{ selected_client.dateOfLoss|date:"Y-m-d" }}</p>
-                        <p><strong>Cause of Loss:</strong> {{ selected_client.causeOfLoss }}</p>
+                    <div class="form-group">
+                        <label for="phone">Phone</label>
+                        <input type="text" id="phone" name="phone" class="form-control" 
+                               value="{{ form.phone.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="address">Address</label>
+                        <input type="text" id="address" name="address" class="form-control" 
+                               value="{{ form.address.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="email">Email</label>
+                        <input type="email" id="email" name="email" class="form-control" 
+                               value="{{ form.email.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="city">City</label>
+                        <input type="text" id="city" name="city" class="form-control" 
+                               value="{{ form.city.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="state">State</label>
+                        <input type="text" id="state" name="state" class="form-control" 
+                               value="{{ form.state.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="zip_code">ZIP Code</label>
+                        <input type="text" id="zip_code" name="zip_code" class="form-control" 
+                               value="{{ form.zip_code.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="contact_person_1">Contact Person 1</label>
+                        <input type="text" id="contact_person_1" name="contact_person_1" class="form-control" 
+                               value="{{ form.contact_person_1.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="contact_person_2">Contact Person 2</label>
+                        <input type="text" id="contact_person_2" name="contact_person_2" class="form-control" 
+                               value="{{ form.contact_person_2.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="contact_phone">Contact Phone</label>
+                        <input type="text" id="contact_phone" name="contact_phone" class="form-control" 
+                               value="{{ form.contact_phone.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="contact_email">Contact Email</label>
+                        <input type="email" id="contact_email" name="contact_email" class="form-control" 
+                               value="{{ form.contact_email.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group full-width">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="is_renewal" name="is_renewal" 
+                                   {% if is_renewal %}checked{% endif %}>
+                            <span style="font-weight: bold;">This is a renewal document</span>
+                        </label>
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            When checked, documents will be marked as "Renewal" and real estate fees will be 50% of the first month's rent.
+                        </small>
+                    </div>
+
+                    <!-- ADDED EXCLUDE CHECKBOXES -->
+                    <div class="form-group full-width">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="exclude_security_deposit" name="exclude_security_deposit">
+                            <span style="font-weight: bold;">Exclude Security Deposit</span>
+                        </label>
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            When checked, documents will have the Security Deposit waived.
+                        </small>
+                    </div>
+
+                    <div class="form-group full-width">
+                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
+                            <input type="checkbox" id="exclude_inspection_fee" name="exclude_inspection_fee">
+                            <span style="font-weight: bold;">Exclude Inspection/Clean-up Fee</span>
+                        </label>
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            When checked, documents will have Inspection/Clean-up fee's waived.
+                        </small>
+                    </div>
+
+                    <!-- Special Lease Instructions/Notes -->
+                    <div class="form-group full-width">
+                        <label for="lease_special_notes">Special Lease Instructions/Notes</label>
+                        <textarea id="lease_special_notes" name="lease_special_notes" class="form-control"
+                                  rows="4"
+                                  placeholder="Enter any special instructions or notes for this lease...">{{ form.lease_special_notes.value|default_if_none:'' }}</textarea>
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            These notes will appear at the end of the Property section in the lease document.
+                        </small>
                     </div>
                 </div>
             </div>
             
-            <!-- Document Details -->
-            <div class="card">
-                <h3>Document Details</h3>
-                <p><strong>Document Name:</strong> {{ selected_document.name }}</p>
-                <p><strong>Type:</strong> <span class="document-type-badge">{{ selected_document.document_type|upper }}</span></p>
+            <div class="input-tab-content" id="property-info-tab">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="property_address">Property Address</label>
+                        <input type="text" id="property_address" name="property_address" class="form-control" 
+                               value="{{ form.property_address.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="property_city">Property City</label>
+                        <input type="text" id="property_city" name="property_city" class="form-control" 
+                               value="{{ form.property_city.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="property_state">Property State</label>
+                        <input type="text" id="property_state" name="property_state" class="form-control" 
+                               value="{{ form.property_state.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="property_zip">Property ZIP</label>
+                        <input type="text" id="property_zip" name="property_zip" class="form-control" 
+                               value="{{ form.property_zip.value|default_if_none:'' }}">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-tab-content" id="rental-terms-tab">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="default_rent_amount">Monthly Rent</label>
+                        <input type="number" id="default_rent_amount" name="default_rent_amount" class="form-control" 
+                               value="{{ form.default_rent_amount.value|default_if_none:'0' }}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_security_deposit">Security Deposit</label>
+                        <input type="number" id="default_security_deposit" name="default_security_deposit" class="form-control" 
+                               value="{{ form.default_security_deposit.value|default_if_none:'0' }}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_rent_due_day">Rent Due Day</label>
+                        <input type="number" id="default_rent_due_day" name="default_rent_due_day" class="form-control" 
+                               value="{{ form.default_rent_due_day.value|default_if_none:'1' }}" min="1" max="31">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_late_fee">Late Fee</label>
+                        <input type="number" id="default_late_fee" name="default_late_fee" class="form-control" 
+                               value="{{ form.default_late_fee.value|default_if_none:'50' }}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_late_fee_start_day">Late Fee Start Day</label>
+                        <input type="number" id="default_late_fee_start_day" name="default_late_fee_start_day" class="form-control" 
+                               value="{{ form.default_late_fee_start_day.value|default_if_none:'5' }}" min="1" max="31">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_eviction_day">Eviction Day</label>
+                        <input type="number" id="default_eviction_day" name="default_eviction_day" class="form-control" 
+                               value="{{ form.default_eviction_day.value|default_if_none:'10' }}" min="1" max="31">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_nsf_fee">NSF Fee</label>
+                        <input type="number" id="default_nsf_fee" name="default_nsf_fee" class="form-control" 
+                               value="{{ form.default_nsf_fee.value|default_if_none:'35' }}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_max_occupants">Max Occupants</label>
+                        <input type="number" id="default_max_occupants" name="default_max_occupants" class="form-control" 
+                               value="{{ form.default_max_occupants.value|default_if_none:'10' }}" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_parking_spaces">Parking Spaces</label>
+                        <input type="number" id="default_parking_spaces" name="default_parking_spaces" class="form-control" 
+                               value="{{ form.default_parking_spaces.value|default_if_none:'2' }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_parking_fee">Parking Fee</label>
+                        <input type="number" id="default_parking_fee" name="default_parking_fee" class="form-control" 
+                               value="{{ form.default_parking_fee.value|default_if_none:'0' }}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="default_inspection_fee">Inspection Fee</label>
+                        <input type="number" id="default_inspection_fee" name="default_inspection_fee" class="form-control" 
+                               value="{{ form.default_inspection_fee.value|default_if_none:'300.00' }}" step="0.01">
+                    </div>
+                    <div class="form-group">
+                        <label for="bedrooms">Bedrooms</label>
+                        <input type="number" id="bedrooms" name="bedrooms" class="form-control" 
+                               value="{{ form.bedrooms.value|default_if_none:'1' }}" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="rental_months">Rental Months</label>
+                        <input type="number" id="rental_months" name="rental_months" class="form-control" 
+                               value="{{ form.rental_months.value|default_if_none:'12' }}" min="1">
+                    </div>
+                    <div class="form-group">
+                        <label for="lease_agreement_date">Lease Agreement Date</label>
+                        <input type="date" id="lease_agreement_date" name="lease_agreement_date" class="form-control"
+                               value="{{ form.lease_agreement_date.value|default_if_none:'' }}">
+                        <small style="color: #666; display: block; margin-top: 5px;">
+                            The date the lease agreement is signed/executed (appears at top of lease document).
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label for="term_start_date">Lease Start Date</label>
+                        <input type="date" id="term_start_date" name="term_start_date" class="form-control"
+                               value="{{ form.term_start_date.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="term_end_date">Lease End Date</label>
+                        <input type="date" id="term_end_date" name="term_end_date" class="form-control"
+                               value="{{ form.term_end_date.value|default_if_none:'' }}">
+                    </div>
+                </div>
+            </div>
+            
+            <div class="input-tab-content" id="company-info-tab">
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="real_estate_company">Real Estate Company</label>
+                        <input type="text" id="real_estate_company" name="real_estate_company" class="form-control" 
+                               value="{{ form.real_estate_company.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group full-width">
+                        <label for="company_mailing_address">Company Mailing Address</label>
+                        <textarea id="company_mailing_address" name="company_mailing_address" class="form-control" rows="3">{{ form.company_mailing_address.value|default_if_none:'' }}</textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="company_city">Company City</label>
+                        <input type="text" id="company_city" name="company_city" class="form-control" 
+                               value="{{ form.company_city.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="company_state">Company State</label>
+                        <input type="text" id="company_state" name="company_state" class="form-control" 
+                               value="{{ form.company_state.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="company_zip">Company ZIP</label>
+                        <input type="text" id="company_zip" name="company_zip" class="form-control" 
+                               value="{{ form.company_zip.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="company_contact_person">Company Contact Person</label>
+                        <input type="text" id="company_contact_person" name="company_contact_person" class="form-control" 
+                               value="{{ form.company_contact_person.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="company_phone">Company Phone</label>
+                        <input type="text" id="company_phone" name="company_phone" class="form-control" 
+                               value="{{ form.company_phone.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="company_email">Company Email</label>
+                        <input type="email" id="company_email" name="company_email" class="form-control" 
+                               value="{{ form.company_email.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="broker_name">Broker Name</label>
+                        <input type="text" id="broker_name" name="broker_name" class="form-control" 
+                               value="{{ form.broker_name.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="broker_phone">Broker Phone</label>
+                        <input type="text" id="broker_phone" name="broker_phone" class="form-control" 
+                               value="{{ form.broker_phone.value|default_if_none:'' }}">
+                    </div>
+                    <div class="form-group">
+                        <label for="broker_email">Broker Email</label>
+                        <input type="email" id="broker_email" name="broker_email" class="form-control" 
+                               value="{{ form.broker_email.value|default_if_none:'' }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Documents Selection Grid -->
+        <div class="document-grid">
+            {% for document in selected_documents %}
+            <div class="document-card" id="document-{{ forloop.counter }}">
+                <label style="display: flex; align-items: center; cursor: pointer;">
+                    <input type="checkbox" class="document-checkbox" name="selected_documents" 
+                           value="{{ document.name }}" checked data-document-id="{{ document.name }}">
+                    <h4 style="margin: 0;">{{ document.name }}</h4>
+                </label>
+                <p style="margin: 10px 0 0 25px; color: #666; font-size: 0.9em;">
+                    {{ document.document_type|upper }}
+                </p>
                 
-                <!-- Preview Thumbnail -->
-                <div class="preview-thumbnail" id="previewThumbnail">
+                <!-- Individual document preview thumbnail -->
+                <div class="preview-thumbnail individual-preview" 
+                     data-document-name="{{ document.name }}"
+                     style="margin-top: 15px;">
                     <i class="fa fa-file-text-o"></i>
-                    <div class="preview-thumbnail-text">Click to preview document</div>
+                    <div class="preview-thumbnail-text">Preview {{ document.name }}</div>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Client Details Card -->
+        <div class="card" style="margin: 20px 0;">
+            <h3>Claim Details</h3>
+            <div class="client-details">
+                <div>
+                    <h4>Customer Information</h4>
+                    <p><strong>Owner:</strong> {{ selected_client.pOwner }}</p>
+                    <p><strong>Address:</strong> {{ selected_client.pAddress }}</p>
+                    <p><strong>City/State/Zip:</strong> {{ selected_client.pCityStateZip }}</p>
+                    <p><strong>Phone:</strong> {{ selected_client.cPhone }}</p>
+                    <p><strong>Email:</strong> {{ selected_client.cEmail }}</p>
+                </div>
+                <div>
+                    <h4>Claim Information</h4>
+                    <p><strong>Claim #:</strong> {{ selected_client.claimNumber }}</p>
+                    <p><strong>Policy #:</strong> {{ selected_client.policyNumber }}</p>
+                    <p><strong>Date of Loss:</strong> {{ selected_client.dateOfLoss|date:"Y-m-d" }}</p>
+                    <p><strong>Cause of Loss:</strong> {{ selected_client.causeOfLoss }}</p>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Batch Action Buttons -->
+        <div class="batch-actions">
+            <div class="download-options">
+                <button id="generateAllPreviews" class="btn btn-primary">
+                    <span class="spinner" id="previewSpinner" style="display:none;"></span>
+                    Generate All Previews
+                </button>
+                
+                <div style="margin-left: 20px;">
+                    <label style="margin-right: 10px;">
+                        <input type="checkbox" id="selectAllDocuments" checked> Select All
+                    </label>
                 </div>
             </div>
             
-
-<!-- Landlord Form Modal -->
-<!-- Landlord Form Modal -->
-{% if selected_document.document_type == 'lease' %}
-<div id="landlordModal" class="modal">
-    <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
-        <div class="modal-header">
-            <h3>Landlord Information</h3>
-            <span class="close">&times;</span>
-        </div>
-        
-        <!-- Tab Navigation -->
-        <div class="form-tabs" style="border-bottom: 1px solid #ddd; margin-bottom: 15px;">
-            <button class="tab-button active" data-tab="basic-info">Basic Info</button>
-            <button class="tab-button" data-tab="property-info">Property Info</button>
-            <button class="tab-button" data-tab="rental-terms">Rental Terms</button>
-            <button class="tab-button" data-tab="company-info">Company Info</button>
-        </div>
-        
-        <div class="modal-body" style="flex: 1; overflow: hidden; display: flex; flex-direction: column;">
-            <form id="landlord-form" autocomplete="on" style="display: flex; flex-direction: column; height: 100%;">
-                {% csrf_token %}
-                
-                <!-- Basic Information Tab -->
-                <div class="tab-content active" id="basic-info-tab">
-                    <div class="form-fields-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label for="{{ form.full_name.id_for_label }}">{{ form.full_name.label }}</label>
-                            {{ form.full_name }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.phone.id_for_label }}">{{ form.phone.label }}</label>
-                            {{ form.phone }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.address.id_for_label }}">{{ form.address.label }}</label>
-                            {{ form.address }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.email.id_for_label }}">{{ form.email.label }}</label>
-                            {{ form.email }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.city.id_for_label }}">{{ form.city.label }}</label>
-                            {{ form.city }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.state.id_for_label }}">{{ form.state.label }}</label>
-                            {{ form.state }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.zip_code.id_for_label }}">{{ form.zip_code.label }}</label>
-                            {{ form.zip_code }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.contact_person_1.id_for_label }}">{{ form.contact_person_1.label }}</label>
-                            {{ form.contact_person_1 }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.contact_person_2.id_for_label }}">{{ form.contact_person_2.label }}</label>
-                            {{ form.contact_person_2 }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.contact_phone.id_for_label }}">{{ form.contact_phone.label }}</label>
-                            {{ form.contact_phone }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.contact_email.id_for_label }}">{{ form.contact_email.label }}</label>
-                            {{ form.contact_email }}
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Property Information Tab -->
-                <div class="tab-content" id="property-info-tab">
-                    <div class="form-fields-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label for="{{ form.property_address.id_for_label }}">{{ form.property_address.label }}</label>
-                            {{ form.property_address }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.property_city.id_for_label }}">{{ form.property_city.label }}</label>
-                            {{ form.property_city }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.property_state.id_for_label }}">{{ form.property_state.label }}</label>
-                            {{ form.property_state }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.property_zip.id_for_label }}">{{ form.property_zip.label }}</label>
-                            {{ form.property_zip }}
-                        </div>
-
-                    </div>
-                </div>
-                
-                <!-- Rental Terms Tab -->
-                <div class="tab-content" id="rental-terms-tab">
-                    <div class="form-fields-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label for="{{ form.default_rent_amount.id_for_label }}">{{ form.default_rent_amount.label }}</label>
-                            {{ form.default_rent_amount }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_security_deposit.id_for_label }}">{{ form.default_security_deposit.label }}</label>
-                            {{ form.default_security_deposit }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_rent_due_day.id_for_label }}">{{ form.default_rent_due_day.label }}</label>
-                            {{ form.default_rent_due_day }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_late_fee.id_for_label }}">{{ form.default_late_fee.label }}</label>
-                            {{ form.default_late_fee }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_late_fee_start_day.id_for_label }}">{{ form.default_late_fee_start_day.label }}</label>
-                            {{ form.default_late_fee_start_day }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_eviction_day.id_for_label }}">{{ form.default_eviction_day.label }}</label>
-                            {{ form.default_eviction_day }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_nsf_fee.id_for_label }}">{{ form.default_nsf_fee.label }}</label>
-                            {{ form.default_nsf_fee }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_max_occupants.id_for_label }}">{{ form.default_max_occupants.label }}</label>
-                            {{ form.default_max_occupants }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_parking_spaces.id_for_label }}">{{ form.default_parking_spaces.label }}</label>
-                            {{ form.default_parking_spaces }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_parking_fee.id_for_label }}">{{ form.default_parking_fee.label }}</label>
-                            {{ form.default_parking_fee }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.default_inspection_fee.id_for_label }}">{{ form.default_inspection_fee.label }}</label>
-                            {{ form.default_inspection_fee }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.bedrooms.id_for_label }}">{{ form.bedrooms.label }}</label>
-                            {{ form.bedrooms }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.rental_months.id_for_label }}">{{ form.rental_months.label }}</label>
-                            {{ form.rental_months }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.term_start_date.id_for_label }}">{{ form.term_start_date.label }}</label>
-                            {{ form.term_start_date }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.term_end_date.id_for_label }}">{{ form.term_end_date.label }}</label>
-                            {{ form.term_end_date }}
-                        </div>
-                    </div>
-                </div>
-                
-                <!-- Company Information Tab -->
-                <div class="tab-content" id="company-info-tab">
-                    <div class="form-fields-container" style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
-                        <div class="form-group">
-                            <label for="{{ form.real_estate_company.id_for_label }}">{{ form.real_estate_company.label }}</label>
-                            {{ form.real_estate_company }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.company_mailing_address.id_for_label }}">{{ form.company_mailing_address.label }}</label>
-                            <textarea id="{{ form.company_mailing_address.id_for_label }}" 
-                                      name="{{ form.company_mailing_address.name }}" 
-                                      class="form-control" 
-                                      rows="2">{{ form.company_mailing_address.value|default_if_none:'' }}</textarea>
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.company_city.id_for_label }}">{{ form.company_city.label }}</label>
-                            {{ form.company_city }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.company_state.id_for_label }}">{{ form.company_state.label }}</label>
-                            {{ form.company_state }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.company_zip.id_for_label }}">{{ form.company_zip.label }}</label>
-                            {{ form.company_zip }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.company_contact_person.id_for_label }}">{{ form.company_contact_person.label }}</label>
-                            {{ form.company_contact_person }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.company_phone.id_for_label }}">{{ form.company_phone.label }}</label>
-                            {{ form.company_phone }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.company_email.id_for_label }}">{{ form.company_email.label }}</label>
-                            {{ form.company_email }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.broker_name.id_for_label }}">{{ form.broker_name.label }}</label>
-                            {{ form.broker_name }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.broker_phone.id_for_label }}">{{ form.broker_phone.label }}</label>
-                            {{ form.broker_phone }}
-                        </div>
-                        <div class="form-group">
-                            <label for="{{ form.broker_email.id_for_label }}">{{ form.broker_email.label }}</label>
-                            {{ form.broker_email }}
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="form-actions" style="padding: 15px 0; border-top: 1px solid #eee; margin-top: auto;">
-                    <button type="button" id="saveLandlordInfo" class="btn btn-primary" style="width: 100%; max-width: 200px; margin: 0 auto;">
-                        Save Information
-                    </button>
-                </div>
-            </form>
-        </div>
-    </div>
-</div>
-{% endif %}
-        
-        <!-- Action Buttons -->
-        <div class="action-buttons">
-            <!-- Landlord activate modal button -->
-            <p class="oval" id="landlordFormStatus"></p>
-
-            <button type="button" id="landlordFormButton" class="btn btn-primary">
-                    Lessor Info Form
-            </button>
-
-            <button id="previewButton" class="btn btn-primary">
-                <span class="spinner" id="previewSpinner" style="display:none;"></span>
-                Generate Preview
-            </button>
-            <button class="download-button" id="downloadButton" class="btn btn-outline" style="display:none;">
-                <i class="fa fa-download" style="margin-right: 8px;"></i>
-                Download PDF
-            </button>
+        <button id="downloadSelected" class="btn btn-outline download-button" style="display:none;">
+            <i class="fa fa-download"></i>
+            <span class="download-text">Download Selected PDFs</span>
+        </button>
         </div>
         {% endif %}
     </div>
 </div>
 
-<!-- Preview Modal -->
+<!-- Enhanced Preview Modal with Tabs -->
 <div id="previewModal" class="modal">
-    <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh;">
+    <div class="modal-content" style="display: flex; flex-direction: column; max-height: 90vh; height: 90vh;">
         <div class="modal-header">
-            <h3>Document Preview: {{ selected_document.name }}</h3>
+            <h3>Document Previews</h3>
             <span class="close">&times;</span>
         </div>
-        <div class="preview-modal-body" style="flex: 1; overflow: hidden; position: relative;">
-            <iframe id="documentPreview" class="modal-iframe" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; border: none;"></iframe>
-            <div id="modalLoading" style="text-align: center; padding: 50px;">
+        
+        <div class="preview-tabs" id="previewTabs">
+            <!-- Tabs will be dynamically added here -->
+        </div>
+        
+        <div class="preview-modal-body" style="flex: 1; overflow: hidden; position: relative; height: calc(100% - 120px);">
+            <div id="previewContents" style="height: 100%; position: relative;">
+                <!-- Preview contents will be loaded here as iframe containers -->
+            </div>
+            <div id="modalLoading" style="text-align: center; padding: 50px; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
                 <div class="spinner" style="width: 3rem; height: 3rem;"></div>
-                <p>Loading document preview...</p>
+                <p>Loading document previews...</p>
             </div>
         </div>
     </div>
 </div>
 
-
-<!-- PDF Generation Form (hidden) -->
-<form id="pdf-generation-form" action="{% url 'generate_pdf' %}" method="post" style="display:none;">
+<!-- Batch Generation Form -->
+<form id="batch-generation-form" action="{% url 'generate_all_documents' %}" method="post" style="display:none;">
     {% csrf_token %}
-    <input type="hidden" name="document_name" value="{{ selected_document.name }}">
     <input type="hidden" name="client_name" value="{{ selected_client.pOwner }}">
-    <input type="hidden" name="document_type" value="{{ selected_document.document_type }}">
+    <input type="hidden" name="preview" id="previewFlag" value="true">
     
-    {% for field in form %}
-        <input type="hidden" id="hidden_{{ field.name }}" name="{{ field.name }}">
-    {% endfor %}
+    <!-- Hidden fields for all form data -->
+    <input type="hidden" id="hidden_full_name" name="full_name">
+    <input type="hidden" id="hidden_phone" name="phone">
+    <input type="hidden" id="hidden_address" name="address">
+    <input type="hidden" id="hidden_email" name="email">
+    <input type="hidden" id="hidden_city" name="city">
+    <input type="hidden" id="hidden_state" name="state">
+    <input type="hidden" id="hidden_zip_code" name="zip_code">
+    <input type="hidden" id="hidden_contact_person_1" name="contact_person_1">
+    <input type="hidden" id="hidden_contact_person_2" name="contact_person_2">
+    <input type="hidden" id="hidden_contact_phone" name="contact_phone">
+    <input type="hidden" id="hidden_contact_email" name="contact_email">
+    <input type="hidden" id="hidden_property_address" name="property_address">
+    <input type="hidden" id="hidden_property_city" name="property_city">
+    <input type="hidden" id="hidden_property_state" name="property_state">
+    <input type="hidden" id="hidden_property_zip" name="property_zip">
+    <input type="hidden" id="hidden_default_rent_amount" name="default_rent_amount">
+    <input type="hidden" id="hidden_default_security_deposit" name="default_security_deposit">
+    <input type="hidden" id="hidden_default_rent_due_day" name="default_rent_due_day">
+    <input type="hidden" id="hidden_default_late_fee" name="default_late_fee">
+    <input type="hidden" id="hidden_default_late_fee_start_day" name="default_late_fee_start_day">
+    <input type="hidden" id="hidden_default_eviction_day" name="default_eviction_day">
+    <input type="hidden" id="hidden_default_nsf_fee" name="default_nsf_fee">
+    <input type="hidden" id="hidden_default_max_occupants" name="default_max_occupants">
+    <input type="hidden" id="hidden_default_parking_spaces" name="default_parking_spaces">
+    <input type="hidden" id="hidden_default_parking_fee" name="default_parking_fee">
+    <input type="hidden" id="hidden_default_inspection_fee" name="default_inspection_fee">
+    <input type="hidden" id="hidden_bedrooms" name="bedrooms">
+    <input type="hidden" id="hidden_rental_months" name="rental_months">
+    <input type="hidden" id="hidden_lease_agreement_date" name="lease_agreement_date">
+    <input type="hidden" id="hidden_term_start_date" name="term_start_date">
+    <input type="hidden" id="hidden_term_end_date" name="term_end_date">
+    <input type="hidden" id="hidden_real_estate_company" name="real_estate_company">
+    <input type="hidden" id="hidden_company_mailing_address" name="company_mailing_address">
+    <input type="hidden" id="hidden_company_city" name="company_city">
+    <input type="hidden" id="hidden_company_state" name="company_state">
+    <input type="hidden" id="hidden_company_zip" name="company_zip">
+    <input type="hidden" id="hidden_company_contact_person" name="company_contact_person">
+    <input type="hidden" id="hidden_company_phone" name="company_phone">
+    <input type="hidden" id="hidden_company_email" name="company_email">
+    <input type="hidden" id="hidden_broker_name" name="broker_name">
+    <input type="hidden" id="hidden_broker_phone" name="broker_phone">
+    <input type="hidden" id="hidden_broker_email" name="broker_email">
+    <input type="hidden" id="hidden_is_renewal" name="is_renewal">
+
+    <!-- ADDED HIDDEN FIELDS FOR EXCLUDE CHECKBOXES -->
+    <input type="hidden" id="hidden_exclude_security_deposit" name="exclude_security_deposit">
+    <input type="hidden" id="hidden_exclude_inspection_fee" name="exclude_inspection_fee">
+
+    <!-- HIDDEN FIELD FOR LEASE SPECIAL NOTES -->
+    <input type="hidden" id="hidden_lease_special_notes" name="lease_special_notes">
 </form>
 
 <script>
-
-
 document.addEventListener('DOMContentLoaded', function() {
-    // Clear form fields if they exist
-    const currentClaimId = "{{ current_client_id }}";
-    let previousClaimId = localStorage.getItem('lastClaimId');
+    // Tab functionality for input section
+    const inputTabs = document.querySelectorAll('.input-tab');
+    const inputTabContents = document.querySelectorAll('.input-tab-content');
     
-    // Function to save form data to sessionStorage
-    function saveLandlordFormData() {
-        const form = document.getElementById('landlord-form');
-        if (!form) return;
-        
-        const formData = {};
-        const inputs = form.querySelectorAll('input, select, textarea');
-        
-        inputs.forEach(input => {
-            if (input.name && input.type !== 'file') {
-                formData[input.name] = input.value;
-            }
+    inputTabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            // Remove active class from all tabs and contents
+            inputTabs.forEach(t => t.classList.remove('active'));
+            inputTabContents.forEach(content => content.classList.remove('active'));
+            
+            // Add active class to clicked tab
+            this.classList.add('active');
+            
+            // Show corresponding content
+            const tabId = this.getAttribute('data-tab') + '-tab';
+            document.getElementById(tabId).classList.add('active');
         });
-        
-        sessionStorage.setItem(`landlordForm_${previousClaimId}`, JSON.stringify(formData));
-    }
-    
-    // Function to restore form data from sessionStorage
-    function restoreLandlordFormData() {
-        // Only restore if we're still on the same claim
-        if (currentClaimId && currentClaimId === previousClaimId) {
-            const form = document.getElementById('landlord-form');
-            if (!form) return;
-            
-            const savedData = sessionStorage.getItem(`landlordForm_${currentClaimId}`);
-            if (!savedData) return;
-            
-            const formData = JSON.parse(savedData);
-            const inputs = form.querySelectorAll('input, select, textarea');
-            
-            inputs.forEach(input => {
-                if (input.name && input.type !== 'file' && formData[input.name] !== undefined) {
-                    input.value = formData[input.name];
-                }
-            });
-        }
-    }
-    
-    // Clear form data when claim changes
-    function handleClaimChange() {
-        if (currentClaimId && currentClaimId !== previousClaimId) {
-            sessionStorage.removeItem(`landlordForm_${previousClaimId}`);
-            localStorage.setItem('lastClaimId', currentClaimId);
-        }
-    }
-    
-    // Initialize
-    handleClaimChange(); // Check if claim changed
-    restoreLandlordFormData(); // Restore if same claim
-    
-    // Document selection handler - preserve form data
-    function handleDocumentChange() {
-        saveLandlordFormData(); // Save before submitting
-        localStorage.setItem('selectedDocument', documentSelect.value);
-        localStorage.setItem('selectedClient', clientSelect.value);
-        if (documentSelect.value && clientSelect.value) {
-            document.getElementById('combined-form').submit();
-        }
-    }
-    
-    // Client selection handler - clear form data
-    function handleClientChange() {
-        // Clear the saved form data for the previous claim
-        if (previousClaimId) {
-            sessionStorage.removeItem(`landlordForm_${previousClaimId}`);
-        }
-        localStorage.setItem('selectedDocument', documentSelect.value);
-        localStorage.setItem('selectedClient', clientSelect.value);
-        localStorage.setItem('lastClaimId', clientSelect.value);
-        if (documentSelect.value && clientSelect.value) {
-            document.getElementById('combined-form').submit();
-        }
-    }
-    
-        const tabButtons = document.querySelectorAll('.tab-button');
-        const tabContents = document.querySelectorAll('.tab-content');
-        
-        tabButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                // Remove active class from all buttons and contents
-                tabButtons.forEach(btn => btn.classList.remove('active'));
-                tabContents.forEach(content => content.classList.remove('active'));
-                
-                // Add active class to clicked button
-                this.classList.add('active');
-                
-                // Show corresponding content
-                const tabId = this.getAttribute('data-tab') + '-tab';
-                document.getElementById(tabId).classList.add('active');
-            });
-        });
+    });
 
     // DOM Elements
-    const documentSelect = document.getElementById('document_id');
     const clientSelect = document.getElementById('client_id');
-
-        // Restore selections
-    const savedDocument = localStorage.getItem('selectedDocument');
-    const savedClient = localStorage.getItem('selectedClient');
-    if (savedDocument) documentSelect.value = savedDocument;
-    if (savedClient) clientSelect.value = savedClient;
-
-    
-    documentSelect.addEventListener('change', handleDocumentChange);
-    clientSelect.addEventListener('change', handleClientChange);
-
-    const previewButton = document.getElementById('previewButton');
-    const downloadButton = document.getElementById('downloadButton');
-    const previewThumbnail = document.getElementById('previewThumbnail');
+    const generateAllPreviews = document.getElementById('generateAllPreviews');
+    const downloadSelected = document.getElementById('downloadSelected');
+    const selectAllCheckbox = document.getElementById('selectAllDocuments');
+    const documentCheckboxes = document.querySelectorAll('.document-checkbox');
+    const individualPreviews = document.querySelectorAll('.individual-preview');
     const previewModal = document.getElementById('previewModal');
-    const modalIframe = document.getElementById('documentPreview');
-    const closeModal = document.querySelector('.close');
-    const previewSpinner = document.getElementById('previewSpinner');
+    const previewTabs = document.getElementById('previewTabs');
+    const previewContents = document.getElementById('previewContents');
     const modalLoading = document.getElementById('modalLoading');
 
-    // Landlord Form Modal Handling
-    const landlordModal = document.getElementById('landlordModal');
-    const landlordFormButton = document.getElementById('landlordFormButton');
-    const saveLandlordInfo = document.getElementById('saveLandlordInfo');
-    const landlordFormStatus = document.getElementById('landlordFormStatus');
-    const closeButtons = document.querySelectorAll('.close');
-    
-    if (landlordFormButton) {
-        landlordFormButton.addEventListener('click', function() {
-            landlordModal.style.display = 'block';
+    // Function to update hidden form fields
+    function updateHiddenFormFields() {
+        const fields = [
+            'full_name', 'phone', 'address', 'email', 'city', 'state', 'zip_code',
+            'contact_person_1', 'contact_person_2', 'contact_phone', 'contact_email',
+            'property_address', 'property_city', 'property_state', 'property_zip',
+            'default_rent_amount', 'default_security_deposit', 'default_rent_due_day',
+            'default_late_fee', 'default_late_fee_start_day', 'default_eviction_day',
+            'default_nsf_fee', 'default_max_occupants', 'default_parking_spaces',
+            'default_parking_fee', 'default_inspection_fee', 'bedrooms', 'rental_months',
+            'lease_agreement_date', 'term_start_date', 'term_end_date', 'real_estate_company', 'company_mailing_address',
+            'company_city', 'company_state', 'company_zip', 'company_contact_person',
+            'company_phone', 'company_email', 'broker_name', 'broker_phone', 'broker_email',
+            'is_renewal', 'lease_special_notes'
+        ];
+        
+        fields.forEach(field => {
+            const input = document.getElementById(field);
+            const hiddenInput = document.getElementById(`hidden_${field}`);
+            if (input && hiddenInput) {
+                if (input.type === 'checkbox') {
+                    hiddenInput.value = input.checked ? 'true' : 'false';
+                } else {
+                    hiddenInput.value = input.value;
+                }
+            }
         });
-    }
-    
 
-    // Close modal when clicking X
-    closeButtons.forEach(button => {
-        button.addEventListener('click', function() {
-            landlordModal.style.display = 'none';
-        });
-    });
-    
-    // Close modal when clicking outside
-    window.addEventListener('click', function(event) {
-        if (event.target === landlordModal) {
-            landlordModal.style.display = 'none';
+        // Handle exclude checkboxes separately
+        const excludeSecurity = document.getElementById('exclude_security_deposit');
+        const excludeInspection = document.getElementById('exclude_inspection_fee');
+        const hiddenExcludeSecurity = document.getElementById('hidden_exclude_security_deposit');
+        const hiddenExcludeInspection = document.getElementById('hidden_exclude_inspection_fee');
+        
+        if (excludeSecurity && hiddenExcludeSecurity) {
+            hiddenExcludeSecurity.value = excludeSecurity.checked ? 'true' : 'false';
+        }
+        if (excludeInspection && hiddenExcludeInspection) {
+            hiddenExcludeInspection.value = excludeInspection.checked ? 'true' : 'false';
+        }
+    }
+
+    // Client selection handler - also creates a draft lease
+    clientSelect.addEventListener('change', function() {
+        localStorage.setItem('selectedClient', this.value);
+        if (this.value) {
+            // Create draft lease in background
+            createDraftLease(this.value);
+            // Submit form to load client data
+            document.getElementById('client-form').submit();
         }
     });
-    
-    if (saveLandlordInfo) {
-        saveLandlordInfo.addEventListener('click', function() {
-            const landlordForm = document.getElementById('landlord-form');
-            const formData = new FormData(landlordForm);
-        
-        // Add CSRF token
-            formData.append('csrfmiddlewaretoken', document.querySelector('[name=csrfmiddlewaretoken]').value);
-        
-        // AJAX save to database
-        fetch("{% url 'save_landlord' %}", {
+
+    // Create draft lease when client is selected
+    function createDraftLease(clientName) {
+        fetch('{% url "create_draft_lease" %}', {
             method: 'POST',
-            body: formData,
             headers: {
-                'X-Requested-With': 'XMLHttpRequest'
-            }
+                'Content-Type': 'application/json',
+                'X-CSRFToken': '{{ csrf_token }}'
+            },
+            body: JSON.stringify({
+                client_name: clientName
+            })
         })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
-                landlordFormStatus.style.display = 'inline-block';
-                landlordFormStatus.textContent = "Landlord information saved";
-                landlordFormStatus.style.color = "#4CAF50";
-                landlordModal.style.display = 'none';
-                
-                // Store form data in hidden fields for PDF generation
-                const pdfForm = document.getElementById('pdf-generation-form');
-                const landlordInputs = landlordForm.querySelectorAll('input, select, textarea');
-                
-                landlordInputs.forEach(input => {
-                    if (input.name && input.type !== 'file') {
-                        const hiddenField = pdfForm.querySelector(`#hidden_${input.name}`);
-                        if (hiddenField) hiddenField.value = input.value;
-                    }
-                });
-            } else {
-                alert('Error saving landlord: ' + (data.error || 'Unknown error'));
+                console.log('Draft lease: ', data.is_new ? 'Created new' : 'Found existing', data.lease_id);
             }
         })
         .catch(error => {
-            console.error('Error:', error);
-            alert('Error saving landlord information');
+            console.error('Error creating draft lease:', error);
         });
-      });
-    };
+    }
 
-   function openPreviewModal() {
-    document.body.classList.add('modal-open');
-    previewModal.style.display = 'block';
-    
-    // Force redraw to ensure proper rendering
-    setTimeout(() => {
-        modalIframe.style.height = '100%';
-        // Focus the iframe to ensure keyboard scrolling works
-        if (modalIframe.contentWindow) {
-            modalIframe.contentWindow.focus();
+    // Select All functionality
+    selectAllCheckbox.addEventListener('change', function() {
+        documentCheckboxes.forEach(checkbox => {
+            checkbox.checked = this.checked;
+            updateDocumentCard(checkbox);
+        });
+        updateDownloadButton();
+    });
+
+    // Individual checkbox handlers
+    documentCheckboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            updateDocumentCard(this);
+            updateDownloadButton();
+            updateSelectAllState();
+        });
+    });
+
+    function updateDocumentCard(checkbox) {
+        const card = checkbox.closest('.document-card');
+        if (checkbox.checked) {
+            card.classList.add('selected');
+        } else {
+            card.classList.remove('selected');
         }
-    }, 50);
-}
+    }
 
-function closePreviewModal() {
-    document.body.classList.remove('modal-open');
-    previewModal.style.display = 'none';
-}
+    function updateDownloadButton() {
+        const selectedCount = document.querySelectorAll('.document-checkbox:checked').length;
+        if (selectedCount > 0) {
+            downloadSelected.style.display = 'inline-flex';
+            downloadSelected.innerHTML = `<i class="fa fa-download" style="margin-right: 8px;"></i>Download ${selectedCount} PDF(s)`;
+        } else {
+            downloadSelected.style.display = 'none';
+        }
+    }
 
-// Thumbnail click handler
-previewThumbnail.addEventListener('click', function() {
-    if (modalIframe.style.display === 'block') {
+    function updateSelectAllState() {
+        const checkedCount = document.querySelectorAll('.document-checkbox:checked').length;
+        const totalCount = documentCheckboxes.length;
+        selectAllCheckbox.checked = checkedCount === totalCount;
+        selectAllCheckbox.indeterminate = checkedCount > 0 && checkedCount < totalCount;
+    }
+
+    // Generate All Previews
+    generateAllPreviews.addEventListener('click', function() {
+        generatePreviews(true);
+    });
+
+    // Individual preview handlers
+    individualPreviews.forEach(preview => {
+        preview.addEventListener('click', function() {
+            const documentName = this.getAttribute('data-document-name');
+            generatePreviews(false, documentName);
+        });
+    });
+
+    function generatePreviews(allDocuments = true, specificDocument = null) {
         openPreviewModal();
-    }
-});
+        generateAllPreviews.disabled = true;
+        modalLoading.style.display = 'block';
+        previewContents.innerHTML = '';
 
-// Close modal handlers
-closeButtons.forEach(button => {
-    button.addEventListener('click', closePreviewModal);
-});
+        // Update hidden form fields with current values
+        updateHiddenFormFields();
 
-// Close modal when clicking outside
-window.addEventListener('click', function(event) {
-    if (event.target === previewModal) {
-        closePreviewModal();
-    }
-});
-
-// Ensure iframe content can be scrolled
-window.addEventListener('keydown', function(event) {
-    if (previewModal.style.display === 'block') {
-        // Allow arrow keys and page up/down to scroll the iframe
-        const iframeWindow = modalIframe.contentWindow;
-        if (iframeWindow) {
-            iframeWindow.dispatchEvent(new KeyboardEvent('keydown', event));
-        }
-    }
-});
-
-    // Preview Button
-    previewButton.addEventListener('click', function() {
-       openPreviewModal();
-        previewButton.disabled = true;
+        // Validate required fields
+        const requiredFields = [
+            'full_name', 'address', 'city', 'state', 'zip_code', 'phone',
+            'property_address', 'property_city', 'property_state', 'property_zip'
+        ];
         
-        // Validate form if lease document
-        if ("{{ selected_document.document_type }}" === 'lease') {
-            const landlordForm = document.getElementById('landlord-form');
-            if (landlordForm) {
-                const requiredFields = landlordForm.querySelectorAll('[required]');
-                let allValid = true;
-                
-                requiredFields.forEach(field => {
-                    if (!field.value.trim()) {
-                        allValid = false;
-                        field.classList.add('is-invalid');
-                    }
-                });
-                
-                if (!allValid) {
-                    alert('Please fill in all required fields');
-                    previewSpinner.style.display = 'none';
-                    previewButton.disabled = false;
-                    return;
-                }
+        let allValid = true;
+        const missingFields = [];
+        
+        requiredFields.forEach(field => {
+            const input = document.getElementById(field);
+            if (input && !input.value.trim()) {
+                allValid = false;
+                input.classList.add('is-invalid');
+                missingFields.push(field.replace(/_/g, ' '));
+            } else if (input) {
+                input.classList.remove('is-invalid');
             }
-        }
+        });
         
+        if (!allValid) {
+            alert('Please fill in all required fields: ' + missingFields.join(', '));
+            generateAllPreviews.disabled = false;
+            modalLoading.style.display = 'none';
+            return;
+        }
+
         // Prepare form data
         const formData = new FormData();
         formData.append('client_name', "{{ selected_client.pOwner }}");
-        formData.append('document_name', "{{ selected_document.name }}");
-        formData.append('document_type', "{{ selected_document.document_type }}");
         formData.append('preview', 'true');
         
-        // Add landlord data if applicable
-        if ("{{ selected_document.document_type }}" === 'lease') {
-            const landlordForm = document.getElementById('landlord-form');
-            const landlordInputs = landlordForm.querySelectorAll('input, select, textarea');
-            
-            landlordInputs.forEach(input => {
-                if (input.name && input.type !== 'file') {
-                    formData.append(input.name, input.value);
+        // Add all form data including exclude checkboxes
+        const allFields = document.querySelectorAll('.input-section input, .input-section textarea, .input-section select');
+        allFields.forEach(field => {
+            if (field.name && field.type !== 'file') {
+                if (field.type === 'checkbox') {
+                    formData.append(field.name, field.checked ? 'true' : 'false');
+                } else {
+                    formData.append(field.name, field.value);
                 }
-            });
-        }
-        
+            }
+        });
+
         // AJAX request
-        fetch("{% url 'generate_pdf' %}", {
+        fetch("{% url 'generate_all_documents' %}", {
             method: 'POST',
             body: formData,
             headers: {
@@ -1062,53 +1348,203 @@ window.addEventListener('keydown', function(event) {
         })
         .then(response => {
             if (!response.ok) throw new Error('Network response was not ok');
-            return response.text();
+            return response.json();
         })
-        .then(html => {
-            modalIframe.srcdoc = html;
-            modalIframe.style.display = 'block';
+        .then(data => {
             modalLoading.style.display = 'none';
-            downloadButton.style.display = 'inline-flex';
-            previewThumbnail.innerHTML = `
-                <i class="fa fa-check-circle" style="color:#4CAF50;font-size:3rem;"></i>
-                <div class="preview-thumbnail-text">Preview generated - Click to view</div>
-            `;
-            previewModal.style.display = 'block';
+            displayPreviews(data.previews, specificDocument);
+            downloadSelected.style.display = 'inline-flex';
+            
+            // Update thumbnails
+            document.querySelectorAll('.preview-thumbnail').forEach(thumb => {
+                thumb.innerHTML = `
+                    <i class="fa fa-check-circle" style="color:#4CAF50;font-size:3rem;"></i>
+                    <div class="preview-thumbnail-text">Preview generated - Click to view</div>
+                `;
+            });
         })
         .catch(error => {
             console.error('Error:', error);
-            previewThumbnail.innerHTML = `
-                <i class="fa fa-exclamation-triangle" style="color:#F44336;font-size:3rem;"></i>
-                <div class="preview-thumbnail-text">Preview failed - Click to retry</div>
-            `;
+            modalLoading.style.display = 'none';
+            previewContents.innerHTML = `<p>Error generating previews: ${error.message}</p>`;
         })
         .finally(() => {
-            previewSpinner.style.display = 'none';
-            previewButton.disabled = false;
+            generateAllPreviews.disabled = false;
         });
+    }
+
+function displayPreviews(previews, specificDocument = null) {
+    previewTabs.innerHTML = '';
+    previewContents.innerHTML = '';
+    
+    let firstTab = true;
+    let documentsToShow = previews;
+    
+    // If specific document requested, filter the previews
+    if (specificDocument) {
+        documentsToShow = {};
+        documentsToShow[specificDocument] = previews[specificDocument];
+    }
+    
+    for (const [docName, htmlContent] of Object.entries(documentsToShow)) {
+        // Create tab
+        const tab = document.createElement('button');
+        tab.className = `preview-tab ${firstTab ? 'active' : ''}`;
+        tab.textContent = docName;
+        tab.setAttribute('data-document', docName);
+        tab.addEventListener('click', function() {
+            // Switch active tab
+            document.querySelectorAll('.preview-tab').forEach(t => t.classList.remove('active'));
+            this.classList.add('active');
+            
+            // Show corresponding content
+            document.querySelectorAll('.preview-iframe-container').forEach(container => {
+                container.style.display = 'none';
+            });
+            document.getElementById(`preview-container-${docName}`).style.display = 'block';
+        });
+        previewTabs.appendChild(tab);
+        
+        // Create content container with iframe for proper scrolling
+        const contentDiv = document.createElement('div');
+        contentDiv.id = `preview-container-${docName}`;
+        contentDiv.className = 'preview-iframe-container';
+        contentDiv.style.display = firstTab ? 'block' : 'none';
+        contentDiv.style.height = '100%';
+        contentDiv.style.position = 'relative';
+        
+        const iframe = document.createElement('iframe');
+        iframe.className = 'preview-iframe';
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        iframe.style.background = 'white';
+        iframe.srcdoc = htmlContent;
+        
+        contentDiv.appendChild(iframe);
+        previewContents.appendChild(contentDiv);
+        
+        firstTab = false;
+    }
+    
+    // If only one document, hide tabs
+    if (Object.keys(documentsToShow).length === 1) {
+        previewTabs.style.display = 'none';
+    } else {
+        previewTabs.style.display = 'flex';
+    }
+    
+    // Ensure iframe content can be scrolled
+    setTimeout(() => {
+        document.querySelectorAll('.preview-iframe').forEach(iframe => {
+            if (iframe.contentWindow) {
+                iframe.contentWindow.focus();
+                // Add CSS to ensure scrolling works
+                const style = iframe.contentDocument.createElement('style');
+                style.textContent = `
+                    body { 
+                        margin: 0; 
+                        padding: 20px;
+                        overflow-y: auto !important;
+                        height: auto !important;
+                        min-height: 100% !important;
+                    }
+                    html {
+                        overflow-y: auto !important;
+                        height: auto !important;
+                    }
+                `;
+                iframe.contentDocument.head.appendChild(style);
+            }
+        });
+    }, 100);
+}
+
+    // Download Selected PDFs
+    downloadSelected.addEventListener('click', function() {
+        const selectedDocuments = Array.from(document.querySelectorAll('.document-checkbox:checked'))
+            .map(cb => cb.value);
+        
+        if (selectedDocuments.length === 0) {
+            alert('Please select at least one document to download');
+            return;
+        }
+
+        // Update hidden form fields before download
+        updateHiddenFormFields();
+
+        const batchForm = document.getElementById('batch-generation-form');
+        const previewFlag = document.getElementById('previewFlag');
+        
+        previewFlag.value = 'false'; // Set to download mode
+        batchForm.submit();
+        
+        // Reset for future previews
+        previewFlag.value = 'true';
     });
 
-    // Download Button
-    downloadButton.addEventListener('click', function() {
-        const pdfForm = document.getElementById('pdf-generation-form');
-        pdfForm.querySelector('[name=document_name]').value = "{{ selected_document.name }}";
-        pdfForm.querySelector('[name=client_name]').value = "{{ selected_client.pOwner }}";
-        pdfForm.querySelector('[name=document_type]').value = "{{ selected_document.document_type }}";
-        
-        if ("{{ selected_document.document_type }}" === 'lease') {
-            const landlordForm = document.getElementById('landlord-form');
-            const landlordInputs = landlordForm.querySelectorAll('input, select, textarea');
-            
-            landlordInputs.forEach(input => {
-                if (input.name && input.type !== 'file') {
-                    const hiddenField = pdfForm.querySelector(`#hidden_${input.name}`);
-                    if (hiddenField) hiddenField.value = input.value;
-                }
-            });
+// Enhanced modal functions with proper scrolling
+function openPreviewModal() {
+    document.body.classList.add('modal-open');
+    previewModal.style.display = 'block';
+    
+    // Force redraw and focus for scrolling
+    setTimeout(() => {
+        const activeIframe = document.querySelector('.preview-iframe-container[style*="display: block"] .preview-iframe');
+        if (activeIframe && activeIframe.contentWindow) {
+            activeIframe.contentWindow.focus();
         }
-        
-        pdfForm.submit();
-    });
+    }, 100);
+}
+
+function closePreviewModal() {
+    document.body.classList.remove('modal-open');
+    previewModal.style.display = 'none';
+}
+
+// Enhanced keyboard scrolling support
+window.addEventListener('keydown', function(event) {
+    if (previewModal.style.display === 'block') {
+        const activeIframe = document.querySelector('.preview-iframe-container[style*="display: block"] .preview-iframe');
+        if (activeIframe && activeIframe.contentWindow) {
+            // Clone the event and dispatch it to the iframe
+            const iframeDoc = activeIframe.contentDocument;
+            if (iframeDoc) {
+                const newEvent = new KeyboardEvent('keydown', {
+                    key: event.key,
+                    code: event.code,
+                    keyCode: event.keyCode,
+                    which: event.which,
+                    shiftKey: event.shiftKey,
+                    ctrlKey: event.ctrlKey,
+                    altKey: event.altKey,
+                    metaKey: event.metaKey
+                });
+                iframeDoc.dispatchEvent(newEvent);
+            }
+        }
+    }
+});
+
+// Close modal handlers (keep existing)
+document.querySelectorAll('.close').forEach(button => {
+    button.addEventListener('click', closePreviewModal);
+});
+
+window.addEventListener('click', function(event) {
+    if (event.target === previewModal) {
+        closePreviewModal();
+    }
+});
+
+    // Initialize
+    documentCheckboxes.forEach(updateDocumentCard);
+    updateDownloadButton();
+    updateSelectAllState();
+    
+    // Restore client selection
+    const savedClient = localStorage.getItem('selectedClient');
+    if (savedClient) clientSelect.value = savedClient;
 });
 </script>
 {% endblock %}

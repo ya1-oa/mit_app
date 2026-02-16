@@ -1,28 +1,49 @@
+"""
+Django Imports
+"""
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth import authenticate, login, logout
+from django.contrib.auth.decorators import login_required
 from django.core import serializers
+from django.core.cache import cache
 from django.core.files.base import ContentFile
+from django.core.files.storage import FileSystemStorage, default_storage
 from django.core.mail import EmailMessage
+from django.core.management import call_command
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Avg, Case, Count, F, Q, When, IntegerField
-from django.http import HttpResponse, JsonResponse
+from django.http import HttpResponse, JsonResponse, HttpRequest
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template import Template, Context
 from django.template.loader import render_to_string
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.dateparse import parse_date
+from django.views import View
+from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.http import require_GET
 
-""" Third Party App Imports """
+"""
+Third Party App Imports
+"""
 from allauth.account.decorators import login_required
 
-""" Project Specific Imports """
+"""
+Project Specific Imports
+"""
 from .config.excel_mappings import SCOPE_FORM_MAPPINGS
-from .forms import ClientForm, CreateUserForm, UploadClientForm, UploadFilesForm, LandlordForm
-from docsAppR.models import ChecklistItem, Client, File, Document, Landlord
+from .forms import ClientForm, CreateUserForm, UploadClientForm, UploadFilesForm, LandlordForm, EmailForm, EmailScheduleForm
+from .models import ChecklistItem, Client, File, Document, Landlord, SentEmail, EmailSchedule, EmailOpenEvent, DocumentCategory, ReadingImage, Room, WorkType, RoomWorkTypeValue, Lease, LeaseDocument, LeaseActivity
 from automations.tasks import RoomTemplateAutomation
 
-"""Python Standard Library"""
+"""
+Python Standard Library
+"""
+import base64
+import csv
 import datetime as dt
+import io
 import json
 import logging
 import math
@@ -30,32 +51,32 @@ import os
 import platform
 import re
 import shutil
+import subprocess
 import tempfile
 import time
+import zipfile
+from collections import defaultdict
+from decimal import Decimal, InvalidOperation
+from difflib import SequenceMatcher
 from io import BytesIO
 from pathlib import Path
-import logging
+from urllib.parse import quote
 
-"""Third Party Libraries"""
+"""
+Third Party Libraries
+"""
+import openpyxl
 import pandas as pd
 import requests
+from dateutil.parser import parse as parse_date
+from dotenv import load_dotenv
 from openpyxl import Workbook, load_workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from weasyprint import HTML
-import tempfile
+from xhtml2pdf import pisa
 
-import os
-import shutil
-import logging
-from pathlib import Path
-from datetime import datetime
-from django.http import JsonResponse
-from django.views import View
-from django.conf import settings
-from openpyxl import load_workbook
-#import pythoncom
-#import win32com.client as win32
+# Configure logging
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
@@ -1149,23 +1170,294 @@ class EncircleMediaDownloader:
         metadata_path = f"{file_path}.meta.json"
         with open(metadata_path, 'w') as f:
             json.dump(metadata, f, indent=2)
-from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse, HttpRequest
-from django.core.files.storage import FileSystemStorage
-from datetime import datetime
-from django.http import JsonResponse
-from django.core.files.storage import FileSystemStorage
-from openpyxl import load_workbook
-from django.conf import settings
+import re
+from collections import defaultdict
+from difflib import SequenceMatcher
 
-import os
-import json
-import subprocess
-from datetime import datetime
-from django.http import JsonResponse
-from django.conf import settings
-from openpyxl import load_workbook
-from openpyxl.utils import get_column_letter
+# ---------------------------
+# Simple Normalization & Token Extraction
+# ---------------------------
+
+def normalize_text(text):
+    """Basic normalization: uppercase, strip extra spaces"""
+    if not text:
+        return ""
+    return ' '.join(text.upper().split())
+
+def extract_tokens(text):
+    """
+    Extract meaningful tokens from text.
+    Returns a set of normalized words (3+ chars) excluding common noise.
+    """
+    if not text:
+        return set()
+    
+    # Split by @ to separate main part from address
+    parts = text.split('@')
+    main_part = parts[0] if parts else text
+    address_part = parts[1] if len(parts) > 1 else ""
+    
+    # Extract alphanumeric tokens
+    tokens = re.findall(r'\b[A-Z0-9]{2,}\b', main_part.upper())
+    
+    # Add address tokens if present
+    if address_part:
+        address_tokens = re.findall(r'\b[A-Z0-9]{2,}\b', address_part.upper())
+        tokens.extend(address_tokens)
+    
+    # Filter out noise words
+    noise_words = {'LLC', 'INC', 'THE', 'AND', 'FOR', 'CLAIM', 'EST', 'FIRE', 'WATER', 'STORM'}
+    tokens = [t for t in tokens if t not in noise_words and len(t) >= 2]
+    
+    return set(tokens)
+
+def extract_location_code(text):
+    """
+    Extract location codes like GA22, OH24, GA22A, OH24-900
+    """
+    if not text:
+        return None
+    
+    # Pattern: 2-3 letters + 2-3 digits + optional letters/numbers
+    match = re.search(r'\b([A-Z]{2,3}\d{2,3}[A-Z0-9\-]*)\b', text.upper())
+    return match.group(1) if match else None
+
+# ---------------------------
+# Simple Fuzzy Matching
+# ---------------------------
+
+def calculate_match_score(encircle_contractor, folder_name):
+    """
+    Simple fuzzy matching between contractor ID and folder name.
+    Returns score 0-1.
+    """
+    if not encircle_contractor or not folder_name:
+        return 0.0
+    
+    # Normalize both
+    contractor_norm = normalize_text(encircle_contractor)
+    folder_norm = normalize_text(folder_name)
+    
+    score = 0.0
+    
+    # 1. Check if contractor ID is substring of folder (40 points)
+    if contractor_norm in folder_norm or folder_norm in contractor_norm:
+        score += 0.4
+    
+    # 2. Location code match (30 points)
+    contractor_location = extract_location_code(contractor_norm)
+    folder_location = extract_location_code(folder_norm)
+    
+    if contractor_location and folder_location:
+        # Exact match
+        if contractor_location == folder_location:
+            score += 0.3
+        # Fuzzy match (e.g., GA22 vs GA22A)
+        elif contractor_location[:4] == folder_location[:4]:
+            score += 0.2
+    
+    # 3. Token overlap (30 points)
+    contractor_tokens = extract_tokens(contractor_norm)
+    folder_tokens = extract_tokens(folder_norm)
+    
+    if contractor_tokens and folder_tokens:
+        common_tokens = contractor_tokens.intersection(folder_tokens)
+        token_score = len(common_tokens) / max(len(contractor_tokens), len(folder_tokens))
+        score += token_score * 0.3
+    
+    return min(score, 1.0)
+
+# ---------------------------
+# Main Comparison Function
+# ---------------------------
+
+def compare_claims(encircle_claims, onedrive_claims):
+    """
+    Simple matching: compare contractor ID against folder name
+    """
+    # Filter out test data
+    valid_encircle = [c for c in encircle_claims if _is_valid_claim(c)]
+    valid_onedrive = [c for c in onedrive_claims if _is_valid_folder(c)]
+    
+    encircle_test_data = [c for c in encircle_claims if not _is_valid_claim(c)]
+    onedrive_test_data = [c for c in onedrive_claims if not _is_valid_folder(c)]
+    
+    results = {
+        'summary': {
+            'total_encircle': len(encircle_claims),
+            'total_onedrive': len(onedrive_claims),
+            'matches': 0,
+            'encircle_only': 0,
+            'onedrive_only': 0,
+            'encircle_test_data': len(encircle_test_data),
+            'onedrive_test_data': len(onedrive_test_data),
+            'match_breakdown': {
+                'high_confidence': 0,
+                'medium_confidence': 0,
+                'low_confidence': 0,
+            }
+        },
+        'matched_pairs': [],
+        'encircle_missing_onedrive': [],
+        'onedrive_extra': [],
+        'encircle_test_data': encircle_test_data,
+        'onedrive_test_data': onedrive_test_data,
+        'duplicates': find_duplicates(valid_encircle, valid_onedrive)
+    }
+    
+    matched_encircle = set()
+    matched_onedrive = set()
+    
+    print("=" * 80)
+    print("SIMPLIFIED CLAIM MATCHING")
+    print("=" * 80)
+    
+    # Match each encircle claim to best onedrive folder
+    for encircle_claim in valid_encircle:
+        if encircle_claim['id'] in matched_encircle:
+            continue
+        
+        contractor_id = encircle_claim.get('contractor_identifier', '').strip()
+        
+        if not contractor_id:
+            continue
+        
+        best_match = None
+        best_score = 0
+        
+        # Check against all onedrive folders
+        for onedrive_claim in valid_onedrive:
+            if onedrive_claim['folder_id'] in matched_onedrive:
+                continue
+            
+            folder_name = onedrive_claim.get('folder_name', '').strip()
+            
+            # Calculate match score
+            score = calculate_match_score(contractor_id, folder_name)
+            
+            # Print analysis
+            if score >= 0.5:  # Only print potential matches
+                print(f"\nPOTENTIAL MATCH:")
+                print(f"  Encircle: {contractor_id}")
+                print(f"  OneDrive: {folder_name}")
+                print(f"  Score: {score:.2f} ({int(score*100)}%)")
+            
+            if score > best_score:
+                best_score = score
+                best_match = onedrive_claim
+        
+        # Accept matches above threshold
+        MATCH_THRESHOLD = 0.65
+        if best_match and best_score >= MATCH_THRESHOLD:
+            confidence_level = "High" if best_score >= 0.8 else "Medium" if best_score >= 0.65 else "Low"
+            
+            results['matched_pairs'].append({
+                'encircle': encircle_claim,
+                'onedrive': best_match,
+                'match_type': f'Fuzzy Match ({confidence_level})',
+                'confidence': f'{int(best_score * 100)}%'
+            })
+            
+            matched_encircle.add(encircle_claim['id'])
+            matched_onedrive.add(best_match['folder_id'])
+            results['summary']['matches'] += 1
+            
+            # Update breakdown
+            if best_score >= 0.8:
+                results['summary']['match_breakdown']['high_confidence'] += 1
+            elif best_score >= 0.65:
+                results['summary']['match_breakdown']['medium_confidence'] += 1
+            else:
+                results['summary']['match_breakdown']['low_confidence'] += 1
+            
+            print(f"  ✓ MATCHED! ({confidence_level} confidence)")
+    
+    # Collect unmatched claims
+    for encircle_claim in valid_encircle:
+        if encircle_claim['id'] not in matched_encircle:
+            results['encircle_missing_onedrive'].append(encircle_claim)
+            results['summary']['encircle_only'] += 1
+    
+    for onedrive_claim in valid_onedrive:
+        if onedrive_claim['folder_id'] not in matched_onedrive:
+            results['onedrive_extra'].append(onedrive_claim)
+            results['summary']['onedrive_only'] += 1
+    
+    print("\n" + "=" * 80)
+    print(f"MATCHING COMPLETE")
+    print(f"Matches: {results['summary']['matches']}")
+    print(f"Encircle Only: {results['summary']['encircle_only']}")
+    print(f"OneDrive Only: {results['summary']['onedrive_only']}")
+    print("=" * 80)
+    
+    return results
+
+# ---------------------------
+# Filter Functions (from original code)
+# ---------------------------
+
+_TEST_EXCLUDE_PATTERNS = [
+    'HOW2', 'TEST', 'TEMPLATE', 'SAMPLE', 'ROOMLISTS', 'READINGS',
+    'TMPL', 'CHECKLIST', 'TRAILER', 'WAREHOUSE', 'DEFAULT', 'TEMP',
+    'PLACEHOLDER', 'EXAMPLE', 'DEMO', 'XXXX', 'AAA', '===', 'BACKEND', 'TUTORIAL'
+]
+
+def _is_valid_claim(claim):
+    """Filter out test/placeholder claims from Encircle."""
+    if not claim.get('policyholder_name') and not claim.get('contractor_identifier'):
+        return False
+    policyholder = (claim.get('policyholder_name') or '').upper()
+    contractor = (claim.get('contractor_identifier') or '').upper()
+    return not any(p in policyholder or p in contractor for p in _TEST_EXCLUDE_PATTERNS)
+
+def _is_valid_folder(folder_claim):
+    """Filter out test/placeholder folders from OneDrive."""
+    folder_name = (folder_claim.get('folder_name') or '').upper()
+    exclude_patterns = _TEST_EXCLUDE_PATTERNS + [
+        'CLOSED CLAIMS', 'PROOF OF LOSS', 'DRAWINGS', 'APPRAISALS',
+        'FOLDER', 'TEXT'
+    ]
+    if any(p in folder_name for p in exclude_patterns):
+        return False
+    clean_alpha = re.sub(r'[^A-Z]', '', folder_name)
+    return len(clean_alpha) >= 3
+
+def find_duplicates(encircle_claims, onedrive_claims):
+    """Find duplicate claims in both systems"""
+    duplicates = {'encircle_duplicates': [], 'onedrive_duplicates': []}
+    
+    # Encircle duplicates by contractor ID
+    contractor_count = defaultdict(list)
+    for claim in encircle_claims:
+        contractor_id = claim.get('contractor_identifier', '')
+        if contractor_id and contractor_id.strip():
+            contractor_count[contractor_id].append(claim)
+    
+    for contractor_id, claims in contractor_count.items():
+        if len(claims) > 1:
+            duplicates['encircle_duplicates'].append({
+                'contractor_id': contractor_id, 
+                'count': len(claims), 
+                'claims': claims
+            })
+    
+    # OneDrive duplicates by normalized folder name
+    folder_count = defaultdict(list)
+    for claim in onedrive_claims:
+        folder_name = claim.get('folder_name', '')
+        if folder_name:
+            normalized = normalize_text(folder_name)
+            folder_count[normalized].append(claim)
+    
+    for folder_name, claims in folder_count.items():
+        if len(claims) > 1:
+            duplicates['onedrive_duplicates'].append({
+                'folder_name': folder_name, 
+                'count': len(claims), 
+                'claims': claims
+            })
+    
+    return duplicates
 
 @csrf_exempt
 def create_room_template_from_excel(request):
@@ -2409,7 +2701,6 @@ SYSTEM AUTOMATICALLY LOADS IT IN THE SYSTEM
 """
 
 import json
-import datetime as dt
 import pandas as pd
 from io import BytesIO
 from django.shortcuts import render, redirect
@@ -2630,8 +2921,8 @@ def extract_room_data_from_rooms_sheet_openpyxl(worksheet):
                 
                 if rooms_found <= 3:  # Log first 3 rooms for debugging
                     print(f"🚪 Found room {rooms_found}: '{room_name}'")
-                      if value_col <= worksheet.max_column:
-                        cell = worksheet.cell(row=row, column=value_col)
+                if value_col <= worksheet.max_column:
+                    cell = worksheet.cell(row=row, column=value_col)
     
                 # Extract work type values for ALL 10 work types
                 work_types_found = 0
@@ -2639,13 +2930,13 @@ def extract_room_data_from_rooms_sheet_openpyxl(worksheet):
                     # Use the LAST column of each 5-column section for the value
                     value_col = list(col_range)[4]  # Last column of the 5-column range
                     
-                                  if cell.value is not None and str(cell.value).strip():
-                            value_str = str(cell.value).strip().upper()
-                            value_type = determine_los_travel_value_enhanced(value_str)
+                    if cell.value is not None and str(cell.value).strip():
+                        value_str = str(cell.value).strip().upper()
+                        value_type = determine_los_travel_value_enhanced(value_str)
                             
-                            if value_type != 'NA':  # Only store if it has a meaningful value
-                                room_data['work_type_values'][wt_id] = value_type
-                                work_types_found += 1
+                        if value_type != 'NA':  # Only store if it has a meaningful value
+                            room_data['work_type_values'][wt_id] = value_type
+                            work_types_found += 1
                 
                 if work_types_found > 0 and rooms_found <= 3:
                     print(f"   📋 Work types with values: {work_types_found}")
@@ -2783,22 +3074,23 @@ def determine_los_travel_value_enhanced(value_str):
 def ensure_work_types_exist():
     """
     Make sure all work types are created in the database
-    ENHANCED with all 10 work types
+    ENHANCED with all work types (100-700 + MC readings)
     """
     work_types = {}
-    
-    # Define all 10 work types
+
+    # Define all work types
     work_type_definitions = [
-        (100, 'Work Type 100'),
-        (200, 'Work Type 200'),
-        (300, 'Work Type 300'),
-        (400, 'Work Type 400'),
-        (500, 'Work Type 500'),
-        (800, 'Work Type 800'),
-        (6100, 'DAY 1'),
-        (6200, 'DAY 2'),
-        (6300, 'DAY 3'),
-        (6400, 'DAY 4'),
+        (100, 'Overview'),
+        (200, 'Source'),
+        (300, 'CPS'),
+        (400, 'PPR'),
+        (500, 'Demo'),
+        (600, 'Mitigation'),
+        (700, 'HMR'),
+        (6100, 'DAY 1 MC Readings'),
+        (6200, 'DAY 2 MC Readings'),
+        (6300, 'DAY 3 MC Readings'),
+        (6400, 'DAY 4 MC Readings'),
     ]
     
     print("🔧 Ensuring work types exist in database...")
@@ -2901,163 +3193,326 @@ def create_or_update_client(client_data):
         client_data['_action'] = 'created'
         return client
 
+def import_from_master_insurer_file(excel_file):
+    """
+    Import multiple clients from MASTER-Insurer format
+    Structure: Column C = field names, Columns D onward = client data (one client per column)
+    """
+    try:
+        # Use openpyxl to read Excel
+        excel_file.seek(0)
+        wb = openpyxl.load_workbook(BytesIO(excel_file.read()), data_only=True)
+        ws = wb.active
+        
+        print(f"📊 Processing MASTER-Insurer file: {ws.max_row} rows, {ws.max_column} columns")
+        
+        # Map excel column letters to column numbers
+        # Column C = 3, Column D = 4, etc.
+        HEADER_COLUMN = 3  # Column C contains field names
+        
+        # Find all field names from Column C
+        field_mapping = {}  # {row_number: field_name}
+        
+        for row in range(1, ws.max_row + 1):
+            header_cell = ws.cell(row=row, column=HEADER_COLUMN)
+            if header_cell.value and str(header_cell.value).strip():
+                raw_header = str(header_cell.value).strip()
+                
+                # Normalize field name (same logic as your other function)
+                field_name = (raw_header.lower()
+                            .replace(' ', '_')
+                            .replace('-', '_')
+                            .replace('#', 'num')
+                            .replace(':', '')
+                            .replace('  ', '_')
+                            .replace('__', '_')
+                            .strip('_'))
+                
+                # Special handling for specific fields
+                if 'property_owner' in field_name:
+                    field_name = 'pOwner'  # Map to your model field
+                elif 'claim_num' in field_name or 'claim#' in field_name:
+                    field_name = 'claim_num'
+                elif 'insurance_co' in field_name:
+                    field_name = 'ins_company'
+                
+                field_mapping[row] = field_name
+                print(f"📝 Field mapping: row {row} '{raw_header}' → '{field_name}'")
+        
+        # Process each client column (starting from Column D = 4)
+        clients_data = []
+        client_columns_processed = 0
+        
+        for col in range(4, ws.max_column + 1):  # Start from Column D
+            client_data = {}
+            has_data = False
+            
+            for row, field_name in field_mapping.items():
+                value_cell = ws.cell(row=row, column=col)
+                value = value_cell.value
+                
+                if value is not None and str(value).strip():
+                    has_data = True
+                    
+                    # Process value based on field type
+                    if any(date_term in field_name for date_term in ['date', 'dol']):
+                        parsed_date = parse_excel_date_openpyxl(value)
+                        if parsed_date:
+                            client_data[field_name] = parsed_date
+                            print(f"📅 Parsed date for {field_name}: {value} → {parsed_date}")
+                        else:
+                            client_data[field_name] = value
+                    elif isinstance(value, str) and value.upper() in ('Y', 'N', 'YES', 'NO'):
+                        client_data[field_name] = value.upper() in ('Y', 'YES')
+                    else:
+                        client_data[field_name] = value
+            
+            # Only add client if we found data (not an empty column)
+            if has_data:
+                # Extract room areas from specific fields
+                rooms = []
+                for i in range(1, 26):  # Room/Area 1 to 25
+                    room_field = f'room_area_{i}'
+                    if room_field in client_data:
+                        room_name = client_data.pop(room_field)
+                        if room_name and str(room_name).strip():
+                            rooms.append({
+                                'room_name': str(room_name).strip(),
+                                'sequence': i
+                            })
+                
+                if rooms:
+                    client_data['_rooms'] = rooms
+                    print(f"🚪 Found {len(rooms)} rooms for client")
+                
+                clients_data.append(client_data)
+                client_columns_processed += 1
+                
+                # Show first client for debugging
+                if client_columns_processed == 1:
+                    print(f"👤 First client sample data:")
+                    print(f"  - Owner: {client_data.get('pOwner', 'Unknown')}")
+                    print(f"  - Address: {client_data.get('property_address_street', 'Unknown')}")
+                    print(f"  - Claim #: {client_data.get('claim_num', 'Unknown')}")
+        
+        print(f"✅ Processed {client_columns_processed} clients from MASTER file")
+        wb.close()
+        
+        return clients_data
+        
+    except Exception as e:
+        raise Exception(f"Failed to process MASTER-Insurer file: {str(e)}")
+
 def map_client_data_to_model(raw_data):
     """
-    Map extracted data to Client model fields
-    COMPLETE mapping based on your existing structure
+    Map extracted data to Client model fields - FIXED FOR YOUR MODEL
     """
-    return {
-        # Property Owner Information
-        'pOwner': raw_data.get('property_owner_name', ''),
-        'pAddress': raw_data.get('property_address_street', ''),
-        'pCityStateZip': raw_data.get('property_city_state_zip', ''),
-        'cEmail': raw_data.get('customer_email', ''),
-        'cPhone': raw_data.get('cst_owner_phonenum', ''),
-        
-        # Co-Owner Information
-        'coOwner2': raw_data.get('co_owner_cst2', ''),
-        'cPhone2': raw_data.get('cst_ph_num_2', ''),
-        'cAddress2': raw_data.get('cst_address_num_2', ''),
-        'cCityStateZip2': raw_data.get('cst_city_state_zip_2', ''),
-        'cEmail2': raw_data.get('email_cst_num_2', ''),
-        
-        # Claim Information
-        'causeOfLoss': raw_data.get('cause_of_loss', ''),
-        'dateOfLoss': raw_data.get('date_of_loss', None),
-        'rebuildType1': raw_data.get('rebuild_type_1', ''),
-        'rebuildType2': raw_data.get('rebuild_type_2', ''),
-        'rebuildType3': raw_data.get('rebuild_type_3', ''),
-        'demo': bool(raw_data.get('demo', False)),
-        'mitigation': bool(raw_data.get('mitigation', False)),
-        'otherStructures': bool(raw_data.get('other_structures', False)),
-        'replacement': bool(raw_data.get('replacement', False)),
-        'CPSCLNCONCGN': bool(raw_data.get('cps_cln_con_cgn', False)),
-        'yearBuilt': raw_data.get('year_built', ''),
-        'contractDate': raw_data.get('contract_date', None),
-        'lossOfUse': raw_data.get('loss_of_use_ale', ''),
-        'breathingIssue': raw_data.get('breathing_issue', ''),
-        'hazardMaterialRemediation': raw_data.get('hmr', ''),
-        
-        # Insurance Information
-        'insuranceCo_Name': raw_data.get('insurance_co_name', ''),
-        'claimNumber': raw_data.get('claim_num', ''),
-        'policyNumber': raw_data.get('policy_num', ''),
-        'emailInsCo': raw_data.get('email_ins_co', ''),
-        'deskAdjusterDA': raw_data.get('desk_adjuster_da', ''),
-        'DAPhone': raw_data.get('da_phone', ''),
-        'DAPhExt': raw_data.get('da_ph_ext_num', ''),
-        'DAEmail': raw_data.get('da_email', ''),
-        'fieldAdjusterName': raw_data.get('field_adjuster_name', ''),
-        'phoneFieldAdj': raw_data.get('phone_num_field_adj', ''),
-        'fieldAdjEmail': raw_data.get('field_adj_email', ''),
-        'adjContents': raw_data.get('adj_contents', ''),
-        'adjCpsPhone': raw_data.get('adj_cps_phone_num', ''),
-        'adjCpsEmail': raw_data.get('adj_cps_email', ''),
-        'emsAdj': raw_data.get('tmp_adj', ''),
-        'emsAdjPhone': raw_data.get('tmp_adj_phone_num', ''),
-        'emsTmpEmail': raw_data.get('adj_tmp_email', ''),
-        'attLossDraftDept': raw_data.get('att_loss_draft_dept', ''),
-        'insAddressOvernightMail': raw_data.get('address_ins_overnight_mail', ''),
-        'insCityStateZip': raw_data.get('city_state_zip_ins', ''),
-        'insuranceCoPhone': raw_data.get('insurance_co_phone', ''),
-        'insWebsite': raw_data.get('website_ins_co', ''),
-        'insMailingAddress': raw_data.get('mailing_address_ins', ''),
-        'insMailCityStateZip': raw_data.get('mail_city_state_zip_ins', ''),
-        'mortgageCoFax': raw_data.get('fax_ins_co', ''),
-        
-        # Rooms Information
-        'newCustomerID': client_data.get('new_customer_num', ''),
-        'roomID': client_data.get('room_id', ''),
+    # Helper functions
+    def get_val(key, default=''):
+        value = raw_data.get(key)
+        if value is None or pd.isna(value):
+            return default
+        if isinstance(value, str) and not value.strip():
+            return default
+        return value
+    
+    def get_bool(key, default=False):
+        value = get_val(key)
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            return value.upper() in ['Y', 'YES', 'TRUE', '1']
+        if isinstance(value, (int, float)):
+            return bool(value)
+        return default
+    
+    def get_date(key):
+        """Convert to datetime for DateTimeField"""
+        value = get_val(key)
+        if not value:
+            return None
 
-        # Mortgage Information
-        'mortgageCo': raw_data.get('mortgage_co', ''),
-        'mortgageAccountCo': raw_data.get('account_num_mtge_co', ''),
-        'mortgageContactPerson': raw_data.get('contact_person_mtge', ''),
-        'mortgagePhoneContact': raw_data.get('phone_num_mtge_contact', ''),
-        'mortgagePhoneExtContact': raw_data.get('ph_ext_mtge_contact', ''),
-        'mortgageAttnLossDraftDept': raw_data.get('attn_loss_draft_dept', ''),
-        'mortgageOverNightMail': raw_data.get('mtge_ovn_mail', ''),
-        'mortgageCityStZipOVN': raw_data.get('city_st_zip_mtge_ovn', ''),
-        'mortgageEmail': raw_data.get('email_mtge', ''),
-        'mortgageWebsite': raw_data.get('mtge_website', ''),
-        'mortgageCoFax': raw_data.get('mtge_co_fax_num', ''),
-        'mortgageMailingAddress': raw_data.get('mailing_address_mtge', ''),
-        'mortgageInitialOfferPhase1ContractAmount': raw_data.get('initial_offer_phase_1_contract_amount', ''),
-        
-        # Cash Flow
-        'drawRequest': raw_data.get('draw_request', ''),
-        
-        # Contractor Information
-        'coName': raw_data.get('co_name', ''),
-        'coWebsite': raw_data.get('co_website', ''),
-        'coEmailstatus': raw_data.get('co_emailstatus', ''),
-        'coAddress': raw_data.get('co_adress', ''),
-        'coCityState': raw_data.get('co_city_state', ''),
-        'coAddress2': raw_data.get('co_address_2', ''),
-        'coCityState2': raw_data.get('co_city_state_2', ''),
-        'coCityState3': raw_data.get('co_city_state_3', ''),
-        'coLogo1': raw_data.get('co_logo_1', ''),
-        'coLogo2': raw_data.get('co_logo_2', ''),
-        'coLogo3': raw_data.get('co_logo_3', ''),
-        'coRepPH': raw_data.get('co_rep_ph', ''),
-        'coREPEmail': raw_data.get('co_rep_email', ''),
-        'coPhone2': raw_data.get('co_ph_num_2', ''),
-        'TinW9': raw_data.get('tin_w9', ''),
-        'fedExAccount': raw_data.get('fedex_account_num', ''),
-        
-        # Claim Reporting
-        'claimReportDate': raw_data.get('claim_report_date', None),
-        'insuranceCustomerServiceRep': raw_data.get('co_represesntative', ''),
-        'timeOfClaimReport': raw_data.get('time_of_claim_report', ''),
-        'phoneExt': raw_data.get('phone_ext', ''),
-        'tarpExtTMPOk': bool(raw_data.get('tarp_ext_tmp_ok', False)),
-        'IntTMPOk': bool(raw_data.get('int_tmp_ok', False)),
-        'DRYPLACUTOUTMOLDSPRAYOK': bool(raw_data.get('drypla_cutout_mold_spray_ok', False)),
-        
-        # ALE Information
-        'lossOfUseALE': raw_data.get('ale_info', ''),
-        'tenantLesee': raw_data.get('tenant_lesee', ''),
-        'propertyAddressStreet': raw_data.get('property_address_street_ale', ''),
-        'propertyCityStateZip': raw_data.get('property_city_state_zip_ale', ''),
-        'customerEmail': raw_data.get('customer_email_ale', ''),
-        'cstOwnerPhoneNumber': raw_data.get('cst_owner_phonenum_ale', ''),
-        'deskAdjusterDA': raw_data.get('desk_adjuster', ''),
-        'DAPhone': raw_data.get('phone_num_da', ''),
-        'DAPhExtNumber': raw_data.get('extension_da', ''),
-        'DAEmail': raw_data.get('email_da', ''),
-        'startDate': raw_data.get('start_date', None),
-        'endDate': raw_data.get('end_date', None),
-        'lessor': raw_data.get('lessor', ''),
-        'bedrooms': raw_data.get('bedrooms', ''),
-        'termsAmount': raw_data.get('terms_amount', ''),
-    }
-    """Create room and work type data for a client"""
-    work_types = ensure_work_types_exist()
+        # If it's already a date or datetime object, use it
+        if isinstance(value, dt.datetime):
+            return value
+        if isinstance(value, dt.date):
+            return dt.datetime.combine(value, dt.time.min)
+
+        # Otherwise, parse it
+        date_val = parse_excel_date(value)
+        if date_val:
+            # Convert date to datetime with midnight time
+            return dt.datetime.combine(date_val, dt.time.min)
+        return None
     
-    # Delete existing rooms for this client
-    client.rooms.all().delete()
-    
-    rooms_created = 0
-    work_type_values_created = 0
-    
-    for room_info in rooms_data:
-        room = Room.objects.create(
-            client=client,
-            room_name=room_info['room_name'],
-            sequence=room_info['sequence']
-        )
-        rooms_created += 1
+    return {
+        # Property Owner Information - ALL GOOD
+        'pOwner': get_val('property_owner_name'),
+        'pAddress': get_val('property_address_street'),
+        'pCityStateZip': get_val('property_city_state_zip'),
+        'cEmail': get_val('customer_email'),
+        'cPhone': get_val('cst_owner_phonenum'),
         
-        # Create work type values for this room
-        for wt_id, value_type in room_info.get('work_type_values', {}).items():
-            RoomWorkTypeValue.objects.create(
-                room=room,
-                work_type=work_types[wt_id],
-                value_type=value_type
-            )
-            work_type_values_created += 1
+        # Co-Owner Information - ALL GOOD
+        'coOwner2': get_val('co_owner_cst2'),
+        'cPhone2': get_val('cst_ph_num_2'),
+        'cAddress2': get_val('cst_address_num_2'),
+        'cCityStateZip2': get_val('cst_city_state_zip_2'),
+        'cEmail2': get_val('email_cst_num_2'),
+        
+        # Claim Information - FIXED DATES
+        'causeOfLoss': get_val('cause_of_loss_2'),
+        'dateOfLoss': get_date('date_of_loss_2') or timezone.now(),
+        'rebuildType1': get_val('rebuild_type_1'),
+        'rebuildType2': get_val('rebuild_type_2'),
+        'rebuildType3': get_val('rebuild_type_3'),
+        'demo': get_bool('demo'),
+        'mitigation': get_bool('mitigation'),
+        'otherStructures': get_bool('other_structures'),
+        'replacement': get_bool('replacement'),
+        'CPSCLNCONCGN': get_bool('cps_cln_con_cgn'),
+        'yearBuilt': get_val('year_built'),
+        'contractDate': get_date('contract_date') or timezone.now(),  # DateTimeField
+        # 'lossOfUse': get_val('loss_of_use_ale'),  # REMOVED - not in model
+        'breathingIssue': get_val('breathing_issue'),
+        'hazardMaterialRemediation': get_val('hmr'),
+        
+        # Insurance Information - ALL GOOD
+        'insuranceCo_Name': get_val('insurance_co_name'),
+        'claimNumber': get_val('claim_num'),
+        'policyNumber': get_val('policy_num'),
+        'emailInsCo': get_val('email_ins_co'),
+        'deskAdjusterDA': get_val('desk_adjuster_da'),
+        'DAPhone': get_val('da_phone'),
+        'DAPhExt': get_val('da_ph_ext_num'),
+        'DAEmail': get_val('da_email'),
+        'fieldAdjusterName': get_val('field_adjuster_name'),
+        'phoneFieldAdj': get_val('phone_num_field_adj'),
+        'fieldAdjEmail': get_val('field_adj_email'),
+        'adjContents': get_val('adj_contents'),
+        'adjCpsPhone': get_val('adj_cps_phone_num'),
+        'adjCpsEmail': get_val('adj_cps_email'),
+        'emsAdj': get_val('tmp_adj'),
+        'emsAdjPhone': get_val('tmp_adj_phone_num'),
+        'emsTmpEmail': get_val('adj_tmp_email'),
+        'attLossDraftDept': get_val('att_loss_draft_dept'),
+        'insAddressOvernightMail': get_val('address_ins_overnight_mail'),
+        'insCityStateZip': get_val('city_state_zip_ins'),
+        'insuranceCoPhone': get_val('insurance_co_phone'),
+        'insWebsite': get_val('website_ins_co'),
+        'insMailingAddress': get_val('mailing_address_ins'),
+        'insMailCityStateZip': get_val('mail_city_state_zip_ins'),
+        'mortgageCoFax': get_val('fax_ins_co'),
+        
+        # Rooms Information - ALL GOOD
+        'newCustomerID': get_val('new_customer_num'),
+        'roomID': get_val('room_id'),
+        
+        # Mortgage Information - ALL GOOD
+        'mortgageCo': get_val('mortgage_co'),
+        'mortgageAccountCo': get_val('account_num_mtge_co'),
+        'mortgageContactPerson': get_val('contact_person_mtge'),
+        'mortgagePhoneContact': get_val('phone_num_mtge_contact'),
+        'mortgagePhoneExtContact': get_val('ph_ext_mtge_contact'),
+        'mortgageAttnLossDraftDept': get_val('attn_loss_draft_dept'),
+        'mortgageOverNightMail': get_val('mtge_ovn_mail'),
+        'mortgageCityStZipOVN': get_val('city_st_zip_mtge_ovn'),
+        'mortgageEmail': get_val('email_mtge'),
+        'mortgageWebsite': get_val('mtge_website'),
+        'mortgageCoFax': get_val('mtge_co_fax_num'),
+        'mortgageMailingAddress': get_val('mailing_address_mtge'),
+        'mortgageInitialOfferPhase1ContractAmount': get_val('initial_offer_phase_1_contract_amount'),
+        
+        # Cash Flow - ALL GOOD
+        'drawRequest': get_val('draw_request'),
+        # 'custId': get_val('cust_id'),  # REMOVED - not in model
+        
+        # Contractor Information - ALL GOOD
+        'coName': get_val('co_name'),
+        'coWebsite': get_val('co_website'),
+        'coEmailstatus': get_val('co_emailstatus'),
+        'coAddress': get_val('co_adress'),
+        'coCityState': get_val('co_city_state'),
+        'coAddress2': get_val('co_address_2'),
+        'coCityState2': get_val('co_city_state_2'),
+        'coCityState3': get_val('co_city_state_3'),
+        'coLogo1': get_val('co_logo_1'),
+        'coLogo2': get_val('co_logo_2'),
+        'coLogo3': get_val('co_logo_3'),
+        'coRepPH': get_val('co_rep_ph'),
+        'coREPEmail': get_val('co_rep_email'),
+        'coPhone2': get_val('co_ph_num_2'),
+        'TinW9': get_val('tin_w9'),
+        'fedExAccount': get_val('fedex_account_num'),
+
+        # Claim Reporting - FIXED DATE
+        'claimReportDate': get_date('claim_report_date') or timezone.now(),  # DateTimeField
+        'insuranceCustomerServiceRep': get_val('co_represesntative'),
+        'timeOfClaimReport': get_val('time_of_claim_report'),
+        'phoneExt': get_val('phone_ext'),
+        'tarpExtTMPOk': get_bool('tarp_ext_tmp_ok'),
+        'IntTMPOk': get_bool('int_tmp_ok'),
+        'DRYPLACUTOUTMOLDSPRAYOK': get_bool('drypla_cutout_mold_spray_ok'),
+        
+        # ALE Information - CORRECTED FOR YOUR MODEL
+        'lossOfUseALE': get_val('ale_info'),  # This matches your model
+        'ale_lessee_name': get_val('tenant_lesee'),
+        'ale_lessee_home_address': get_val('property_address_street_ale'),
+        'ale_lessee_city_state_zip': get_val('property_city_state_zip_ale'),
+        'ale_lessee_email': get_val('customer_email_ale'),
+        'ale_lessee_phone': get_val('cst_owner_phonenum_ale'),
+        'ale_rental_bedrooms': get_val('bedrooms'),
+        'ale_rental_months': get_val('months'),
+        'ale_rental_start_date': get_date('start_date') or timezone.now(),  # DateField
+        'ale_rental_end_date': get_date('end_date') or timezone.now(),  # DateField
+        
+        # Handle decimal for amount
+        'ale_rental_amount_per_month': parse_decimal(get_val('terms_amount')),
+        
+        # Lessor Information - CORRECTED
+        'ale_lessor_name': get_val('lessor'),
+        'ale_lessor_leased_address': get_val('leased_address'),
+        'ale_lessor_city_zip': get_val('city_zip_lessor'),
+        'ale_lessor_phone': get_val('phone_lessor'),
+        'ale_lessor_email': get_val('email_lessor'),
+        'ale_lessor_mailing_address': get_val('lessor_mailing_address'),
+        'ale_lessor_mailing_city_zip': get_val('city_zip_lessor_mail'),
+        'ale_lessor_contact_person': get_val('lessor_contact_person'),
+        
+        # Real Estate Company - CORRECTED
+        'ale_re_company_name': get_val('real_estate_company'),
+        'ale_re_mailing_address': get_val('mailing_address_re'),
+        'ale_re_city_zip': get_val('city_zip_re'),
+        'ale_re_contact_person': get_val('contact_re'),
+        'ale_re_phone': get_val('phone_re'),
+        'ale_re_email': get_val('email_re'),
+        'ale_re_owner_broker_name': get_val('owner_broker'),
+        'ale_re_owner_broker_phone': get_val('phone_owner_broker'),
+        'ale_re_owner_broker_email': get_val('email_owner_broker'),
     
-    return rooms_created, work_type_values_created
+    } 
+
+def parse_decimal(value):
+    """Parse string to decimal for monetary values"""
+    if not value or pd.isna(value):
+        return None
+    
+    try:
+        # Handle various input types
+        if isinstance(value, (int, float)):
+            return Decimal(str(value))
+        
+        # Handle string values
+        if isinstance(value, str):
+            value = value.replace('$', '').replace(',', '').strip()
+            if not value or value.upper() in ['NA', 'N/A', 'NULL', '']:
+                return None
+            return Decimal(value)
+        
+        # Try to convert anything else
+        return Decimal(str(value))
+    except (ValueError, TypeError, InvalidOperation):
+        return None
 
 # MAIN IMPORT FUNCTION
 @csrf_exempt
@@ -3124,19 +3579,41 @@ def import_client_with_rooms_formula_support(request):
 
 # KEEP YOUR EXISTING parse_excel_date FUNCTION
 def parse_excel_date(value):
-    """Your existing robust date parser"""
-    try:
-        if pd.isna(value) or value in ('', 'TBD', 'NA', 'N/A'):
-            return None
-        
-        # Your existing date parsing logic here
-        # ... 
-        
-        return None  # Your actual parsed date
-    except Exception as e:
-        print(f"Date parsing error: {str(e)}")
+    """Parse Excel date values to Python date"""
+    if not value or pd.isna(value):
         return None
-
+    
+    try:
+        # If it's already a datetime/date
+        if isinstance(value, (datetime, date)):
+            if isinstance(value, datetime):
+                return value.date()
+            return value
+        
+        # If it's an Excel serial number (float)
+        if isinstance(value, (int, float)):
+            # Excel base date is 1899-12-30 for Windows Excel
+            base_date = date(1899, 12, 30)
+            if value == 0:
+                return None
+            return base_date + dt.timedelta(days=value)
+        
+        # If it's a string
+        if isinstance(value, str):
+            value = value.strip()
+            if not value:
+                return None
+            # Try various date formats
+            for fmt in ['%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%Y/%m/%d']:
+                try:
+                    return dt.datetime.strptime(value, fmt).date()
+                except ValueError:
+                    continue
+        
+        return None
+    except Exception as e:
+        print(f"⚠️ Error parsing date {value}: {e}")
+        return None
 
 def clean_session_data(data):
     """
@@ -3181,48 +3658,88 @@ def handle_excel_import(request):
         return redirect('create')
     
     try:
+        # DETECT FILE TYPE AND ROUTE ACCORDINGLY
+        file_name = excel_file.name.lower()
+        
+        if 'master' in file_name or 'insurer' in file_name:
+            # Process MASTER-Insurer file format (columns D onward)
+            print("🔍 Detected MASTER-Insurer file format")
+            return process_master_file(request, excel_file)
+        else:
+            # Process INFO file format (01-INFO.xlsx with jobinfo(2) tab)
+            print("🔍 Detected INFO file format")
+            return process_info_file(request, excel_file)
+            
+    except Exception as e:
+        error_msg = f"❌ File processing error: {str(e)}"
+        print(error_msg)
+        messages.error(request, error_msg)
+        return redirect('create')
+
+from decimal import Decimal, InvalidOperation
+
+def process_master_file(request, excel_file):
+    """Process 30-MASTER-Insurer.xlsx files with ALL sheet - COMPLETE"""
+    try:
         # Debug: Verify sheet exists
         xls = pd.ExcelFile(BytesIO(excel_file.read()))
-        if 'ALL' not in xls.sheet_names:
-            messages.error(request, "Sheet 'ALL' not found in Excel file. Available sheets: " + ", ".join(xls.sheet_names))
-            return redirect('create')
+        
+        # Try to find the right sheet
+        sheet_to_use = None
+        for sheet in xls.sheet_names:
+            if sheet.upper() in ['ALL', 'MASTER', 'DATA', 'CLIENTS']:
+                sheet_to_use = sheet
+                break
+        
+        if not sheet_to_use:
+            # Use first sheet as fallback
+            sheet_to_use = xls.sheet_names[0]
+        
+        print(f"📄 Using sheet: '{sheet_to_use}'")
         
         # Reset file pointer after checking sheets
         excel_file.seek(0)
-        df = pd.read_excel(BytesIO(excel_file.read()), sheet_name='ALL')
+        df = pd.read_excel(BytesIO(excel_file.read()), sheet_name=sheet_to_use)
         
         # Debug: Show structure
         print("🔍 Excel Structure:")
         print(f"Columns: {df.columns.tolist()}")
-        print(f"First 3 rows:\n{df.head(3)}")
-        messages.info(request, f"Found {len(df.columns)-3} potential clients in file (columns D onward)")
-
-        # Constants for our structure
-        HEADER_COLUMN = 2  # Column C (0-indexed would be 2)
+        print(f"Shape: {df.shape}")
+        print(f"First 5 rows of column C (headers):")
+        for i in range(min(5, len(df))):
+            print(f"  Row {i+1}: '{df.iloc[i, 2] if 2 < len(df.columns) else 'N/A'}'")
+        
+        # Constants for MASTER file structure
+        HEADER_COLUMN = 2  # Column C (0-indexed)
         FIRST_DATA_COLUMN = 3  # Column D
-        # Find which row in Column C contains "property_owner_name"
-        owner_name_row = None
-        for row_idx in range(len(df)):
-            header_cell = str(df.iloc[row_idx, HEADER_COLUMN]).strip().lower()
-            if 'property-owner_name' in header_cell.replace(' ', '_'):
-                owner_name_row = row_idx
-                break
         
-        if owner_name_row is None:
-            messages.error(request, "Could not find 'property_owner_name' in header column (Column C)")
-            return redirect('create')
-        
-        print(f"ℹ️ Found property_owner_name at Row {owner_name_row + 1} in Column C")
+        total_clients = len(df.columns) - FIRST_DATA_COLUMN
+        messages.info(request, f"Found {total_clients} potential clients in file (columns D onward)")
         
         success_count = 0
         update_count = 0
         error_count = 0
         processing_details = []
-
+        
+        # Build header mapping ONCE
+        header_mapping = {}
+        print("\n🔍 Building header mapping from Column C:")
+        for row_idx in range(len(df)):
+            header = str(df.iloc[row_idx, HEADER_COLUMN]).strip() if pd.notna(df.iloc[row_idx, HEADER_COLUMN]) else ""
+            if header:
+                field_name = normalize_header_for_mapping(header)
+                header_mapping[row_idx] = {
+                    'original': header,
+                    'field': field_name
+                }
+                print(f"  Row {row_idx+1}: '{header}' → '{field_name}'")
+        
+        # Process each client column (starting from Column D)
         for col_idx in range(FIRST_DATA_COLUMN, len(df.columns)):
-            col_name = df.columns[col_idx]
+            col_letter = chr(65 + col_idx)  # Excel column letter
             client_status = {
-                'column': col_idx + 1,  # Show as Excel column letter/number
+                'column': col_idx + 1,  # Excel column number
+                'column_letter': col_letter,
                 'name': None,
                 'status': None,
                 'message': None,
@@ -3231,306 +3748,486 @@ def handle_excel_import(request):
             }
 
             try:
-                # Debug: Show which column we're processing
-                print(f"\n📊 Processing Client Column {col_idx+1} (Excel Column {chr(65+col_idx)})")
+                print(f"\n{'='*60}")
+                print(f"📊 Processing Client Column {col_letter}")
+                print(f"{'='*60}")
                 
-                # Get property owner name from first row of this column
-                claim_owner = df.iloc[owner_name_row, col_idx]
-                if pd.isna(claim_owner):
-                    error_msg = f"Column {col_idx+1}: Missing property owner name in first row"
-                    print(f"❌ {error_msg}")
-                    client_status['errors'].append(error_msg)
-                    raise ValueError(error_msg)
-                
-                claim_owner = str(claim_owner).strip()
-                client_status['name'] = claim_owner
-                print(f"👤 Client Name: {claim_owner}")
-                messages.info(request, f"Processing client: {claim_owner}")
-
-                # Build client data from header column (Column C) and current data column
+                # Build client data from header mapping
                 client_data = {}
-                for row_idx in range(len(df)):
-                    # Get field name from header column (Column C)
-                    header = str(df.iloc[row_idx, HEADER_COLUMN]).strip() if pd.notna(df.iloc[row_idx, HEADER_COLUMN]) else None
+                
+                # First: Find property owner name
+                claim_owner = None
+                owner_row = None
+                
+                for row_idx, mapping in header_mapping.items():
+                    if 'property_owner_name' in mapping['field'].lower():
+                        value = df.iloc[row_idx, col_idx]
+                        if pd.notna(value):
+                            claim_owner = str(value).strip()
+                            owner_row = row_idx
+                            break
+                
+                if not claim_owner:
+                    # Try to find any value in this column
+                    for row_idx in range(min(10, len(df))):
+                        value = df.iloc[row_idx, col_idx]
+                        if pd.notna(value) and str(value).strip():
+                            claim_owner = str(value).strip()
+                            owner_row = row_idx
+                            print(f"⚠️  Found owner name from row {row_idx+1}: '{claim_owner}'")
+                            break
+                
+                if not claim_owner or claim_owner.upper() in ['NA', 'N/A', '']:
+                    print(f"⏭️  Column {col_letter}: Empty column, skipping")
+                    continue
+                
+                client_status['name'] = claim_owner
+                print(f"👤 Client Name: '{claim_owner}'")
+                
+                # Collect ALL data for this client
+                for row_idx, mapping in header_mapping.items():
+                    original_header = mapping['original']
+                    field_name = mapping['field']
                     value = df.iloc[row_idx, col_idx]
                     
-                    if not header or pd.isna(value):
+                    # Skip if value is empty
+                    if pd.isna(value) or (isinstance(value, str) and not value.strip()):
                         continue
                     
-                    # Normalize field name
-                    field_name = (header.lower()
-                                 .replace(' ', '_')
-                                 .replace('/', '_')
-                                 .replace('\\', '_')
-                                 .replace('.', '_')
-                                 .replace('-', '_')
-                                 .replace(':', '_')
-                                 .replace('__', '_')
-                                 .replace('#', 'num')
-                                 .strip('_'))
-                    
-                    # Special handling for date fields
+                    # Special handling for dates
                     if any(term in field_name for term in ['date', 'dol']):
                         parsed_date = parse_excel_date(value)
                         if parsed_date:
-                            client_status['dates'].append(f"{header}: {parsed_date}")
-                            print(f"📅 Found date: {header} → {parsed_date}")
-                            if 'loss' in field_name:
-                                client_data['date_of_loss'] = parsed_date
-                            else:
-                                client_data[field_name] = parsed_date
+                            client_status['dates'].append(f"{original_header}: {parsed_date}")
+                            client_data[field_name] = parsed_date
+                        else:
+                            client_data[field_name] = value
                         continue
                     
-                    # Handle boolean fields
-                    if isinstance(value, str) and value.lower() in ('yes', 'no', 'true', 'false'):
-                        value = value.lower() in ('yes', 'true')
-                    
-                    client_data[field_name] = value
-
-                # Debug: Show dates found for this client
-                if client_status['dates']:
-                    print(f"📅 Dates for client {claim_owner}:")
-                    for date_info in client_status['dates']:
-                        print(f"   - {date_info}")
-                    messages.info(request, f"Client {claim_owner} dates: {', '.join(client_status['dates'])}")
-                                # Use your mapped_data dictionary
-                mapped_data = {
-                    # Property Owner Information
-                    'pOwner': client_data.get('property_owner_name', ''),
-                    'pAddress': client_data.get('property_address_street', ''),
-                    'pCityStateZip': client_data.get('property_city_state_zip', ''),
-                    'cEmail': client_data.get('customer_email', ''),
-                    'cPhone': client_data.get('cst_owner_phonenum', ''),
-                    
-                    # Co-Owner Information
-                    'coOwner2': client_data.get('co_owner_cst2', ''),
-                    'cPhone2': client_data.get('cst_ph_num_2', ''),
-                    'cAddress2': client_data.get('cst_address_num_2', ''),
-                    'cCityStateZip2': client_data.get('cst_city_state_zip_2', ''),
-                    'cEmail2': client_data.get('email_cst_num_2', ''),
-                    
-                    # Claim Information
-                    'causeOfLoss': client_data.get('cause_of_loss', ''),
-                    'dateOfLoss': client_data.get('date_of_loss', None),
-                    'rebuildType1': client_data.get('rebuild_type_1', ''),
-                    'rebuildType2': client_data.get('rebuild_type_2', ''),
-                    'rebuildType3': client_data.get('rebuild_type_3', ''),
-                    'demo': bool(client_data.get('demo', False)),
-                    'mitigation': bool(client_data.get('mitigation', False)),
-                    'otherStructures': bool(client_data.get('other_structures', False)),
-                    'replacement': bool(client_data.get('replacement', False)),
-                    'CPSCLNCONCGN': bool(client_data.get('cps_cln_con_cgn', False)),
-                    'yearBuilt': client_data.get('year_built', ''),
-                    'contractDate': client_data.get('contract_date', None),
-                    'lossOfUse': client_data.get('loss_of_use_ale', ''),
-                    'breathingIssue': client_data.get('breathing_issue', ''),
-                    'hazardMaterialRemediation': client_data.get('hmr', ''),
-                    
-                    # Insurance Information
-                    'insuranceCo_Name': client_data.get('insurance_co_name', ''),
-                    'claimNumber': client_data.get('claim_num', ''),
-                    'policyNumber': client_data.get('policy_num', ''),
-                    'emailInsCo': client_data.get('email_ins_co', ''),
-                    'deskAdjusterDA': client_data.get('desk_adjuster_da', ''),
-                    'DAPhone': client_data.get('da_phone', ''),
-                    'DAPhExt': client_data.get('da_ph_ext_num', ''),
-                    'DAEmail': client_data.get('da_email', ''),
-                    'fieldAdjusterName': client_data.get('field_adjuster_name', ''),
-                    'phoneFieldAdj': client_data.get('phone_num_field_adj', ''),
-                    'fieldAdjEmail': client_data.get('field_adj_email', ''),
-                    'adjContents': client_data.get('adj_contents', ''),
-                    'adjCpsPhone': client_data.get('adj_cps_phone_num', ''),
-                    'adjCpsEmail': client_data.get('adj_cps_email', ''),
-                    'emsAdj': client_data.get('tmp_adj', ''),
-                    'emsAdjPhone': client_data.get('tmp_adj_phone_num', ''),
-                    'emsTmpEmail': client_data.get('adj_tmp_email', ''),
-                    'attLossDraftDept': client_data.get('att_loss_draft_dept', ''),
-                    'insAddressOvernightMail': client_data.get('address_ins_overnight_mail', ''),
-                    'insCityStateZip': client_data.get('city_state_zip_ins', ''),
-                    'insuranceCoPhone': client_data.get('insurance_co_phone', ''),
-                    'insWebsite': client_data.get('website_ins_co', ''),
-                    'insMailingAddress': client_data.get('mailing_address_ins', ''),
-                    'insMailCityStateZip': client_data.get('mail_city_state_zip_ins', ''),
-                    'mortgageCoFax': client_data.get('fax_ins_co', ''),
-                    
-                    # Rooms Information
-                    'newCustomerID': client_data.get('new_customer_num', ''),
-                    'roomID': client_data.get('room_id', ''),
-                    'roomArea1': client_data.get('room_area_1', ''),
-                    'roomArea2': client_data.get('room_area_2', ''),
-                    'roomArea3': client_data.get('room_area_3', ''),
-                    'roomArea4': client_data.get('room_area_4', ''),
-                    'roomArea5': client_data.get('room_area_5', ''),
-                    'roomArea6': client_data.get('room_area_6', ''),
-                    'roomArea7': client_data.get('room_area_7', ''),
-                    'roomArea8': client_data.get('room_area_8', ''),
-                    'roomArea9': client_data.get('room_area_9', ''),
-                    'roomArea10': client_data.get('room_area_10', ''),
-                    'roomArea11': client_data.get('room_area_11', ''),
-                    'roomArea12': client_data.get('room_area_12', ''),
-                    'roomArea13': client_data.get('room_area_13', ''),
-                    'roomArea14': client_data.get('room_area_14', ''),
-                    'roomArea15': client_data.get('room_area_15', ''),
-                    'roomArea16': client_data.get('room_area_16', ''),
-                    'roomArea17': client_data.get('room_area_17', ''),
-                    'roomArea18': client_data.get('room_area_18', ''),
-                    'roomArea19': client_data.get('room_area_19', ''),
-                    'roomArea20': client_data.get('room_area_20', ''),
-                    'roomArea21': client_data.get('room_area_21', ''),
-                    'roomArea22': client_data.get('room_area_22', ''),
-                    'roomArea23': client_data.get('room_area_23', ''),
-                    'roomArea24': client_data.get('room_area_24', ''),
-                    'roomArea25': client_data.get('room_area_25', ''),
-                    
-                    # Mortgage Information
-                    'mortgageCo': client_data.get('mortgage_co', ''),
-                    'mortgageAccountCo': client_data.get('account_num_mtge_co', ''),
-                    'mortgageContactPerson': client_data.get('contact_person_mtge', ''),
-                    'mortgagePhoneContact': client_data.get('phone_num_mtge_contact', ''),
-                    'mortgagePhoneExtContact': client_data.get('ph_ext_mtge_contact', ''),
-                    'mortgageAttnLossDraftDept': client_data.get('attn_loss_draft_dept', ''),
-                    'mortgageOverNightMail': client_data.get('mtge_ovn_mail', ''),
-                    'mortgageCityStZipOVN': client_data.get('city_st_zip_mtge_ovn', ''),
-                    'mortgageEmail': client_data.get('email_mtge', ''),
-                    'mortgageWebsite': client_data.get('mtge_website', ''),
-                    'mortgageCoFax': client_data.get('mtge_co_fax_num', ''),
-                    'mortgageMailingAddress': client_data.get('mailing_address_mtge', ''),
-                    'mortgageInitialOfferPhase1ContractAmount': client_data.get('initial_offer_phase_1_contract_amount', ''),
-                    
-                    # Cash Flow
-                    'drawRequest': client_data.get('draw_request', ''),
-                    
-                    # Contractor Information
-                    'coName': client_data.get('co_name', ''),
-                    'coWebsite': client_data.get('co_website', ''),
-                    'coEmailstatus': client_data.get('co_emailstatus', ''),
-                    'coAddress': client_data.get('co_adress', ''),
-                    'coCityState': client_data.get('co_city_state', ''),
-                    'coAddress2': client_data.get('co_address_2', ''),
-                    'coCityState2': client_data.get('co_city_state_2', ''),
-                    'coCityState3': client_data.get('co_city_state_3', ''),
-                    'coLogo1': client_data.get('co_logo_1', ''),
-                    'coLogo2': client_data.get('co_logo_2', ''),
-                    'coLogo3': client_data.get('co_logo_3', ''),
-                    'coRepPH': client_data.get('co_rep_ph', ''),
-                    'coREPEmail': client_data.get('co_rep_email', ''),
-                    'coPhone2': client_data.get('co_ph_num_2', ''),
-                    'TinW9': client_data.get('tin_w9', ''),
-                    'fedExAccount': client_data.get('fedex_account_num', ''),
-                    
-                    # Claim Reporting
-                    'claimReportDate': client_data.get('claim_report_date', None),
-                    'insuranceCustomerServiceRep': client_data.get('co_represesntative', ''),
-                    'timeOfClaimReport': client_data.get('time_of_claim_report', ''),
-                    'phoneExt': client_data.get('phone_ext', ''),
-                    'tarpExtTMPOk': bool(client_data.get('tarp_ext_tmp_ok', False)),
-                    'IntTMPOk': bool(client_data.get('int_tmp_ok', False)),
-                    'DRYPLACUTOUTMOLDSPRAYOK': bool(client_data.get('drypla_cutout_mold_spray_ok', False)),
-                    
-                    # ALE Information
-                    'lossOfUseALE': client_data.get('ale_info', ''),
-                    'tenantLesee': client_data.get('tenant_lesee', ''),
-                    'propertyAddressStreet': client_data.get('property_address_street_ale', ''),
-                    'propertyCityStateZip': client_data.get('property_city_state_zip_ale', ''),
-                    'customerEmail': client_data.get('customer_email_ale', ''),
-                    'cstOwnerPhoneNumber': client_data.get('cst_owner_phonenum_ale', ''),
-                    'deskAdjusterDA': client_data.get('desk_adjuster', ''),
-                    'DAPhone': client_data.get('phone_num_da', ''),
-                    'DAPhExtNumber': client_data.get('extension_da', ''),
-                    'DAEmail': client_data.get('email_da', ''),
-                    'startDate': client_data.get('start_date', None),
-                    'endDate': client_data.get('end_date', None),
-                    'lessor': client_data.get('lessor', ''),
-                    'bedrooms': client_data.get('bedrooms', ''),
-                    'termsAmount': client_data.get('terms_amount', ''),
-                }
-
-               # Update or create client
-                existing_client = Client.objects.filter(pOwner=claim_owner).first()
+                    # Handle boolean fields (Y/N, Yes/No)
+                    if isinstance(value, str):
+                        value_upper = value.strip().upper()
+                        if value_upper in ['Y', 'YES', 'TRUE']:
+                            client_data[field_name] = True
+                        elif value_upper in ['N', 'NO', 'FALSE']:
+                            client_data[field_name] = False
+                        else:
+                            client_data[field_name] = value
+                    else:
+                        client_data[field_name] = value
+                
+                # Debug: Show what we collected
+                print(f"📋 Collected {len(client_data)} data points")
+                print(f"📅 Dates found: {len(client_status['dates'])}")
+                
+                # Extract rooms from room_area fields
+                rooms_data = extract_rooms_from_master_data(client_data)
+                if rooms_data:
+                    print(f"🏠 Found {len(rooms_data)} rooms")
+                    for room in rooms_data[:3]:  # Show first 3 rooms
+                        print(f"  - {room['sequence']}. {room['room_name']}")
+                
+                # Map to model using COMPLETE mapping
+                mapped_data = map_client_data_to_model(client_data)
+                
+                # Ensure we have the owner name
+                if not mapped_data.get('pOwner'):
+                    mapped_data['pOwner'] = claim_owner
+                    print(f"⚠️  Added owner name to mapped data: '{claim_owner}'")
+                
+                # Debug: Check critical fields
+                critical_fields = ['pOwner', 'pAddress', 'claimNumber', 'insuranceCo_Name']
+                for field in critical_fields:
+                    value = mapped_data.get(field, 'NOT FOUND')
+                    print(f"  {field}: '{value}'")
+                
+                # Update or create client
+                existing_client = Client.objects.filter(pOwner=mapped_data['pOwner']).first()
+                
                 if existing_client:
                     update_fields = {}
                     for field, new_value in mapped_data.items():
-                        current_value = getattr(existing_client, field, None)
-                        if current_value != new_value and new_value is not None:
-                            update_fields[field] = new_value
+                        if hasattr(existing_client, field) and new_value is not None:
+                            current_value = getattr(existing_client, field, None)
+                            if current_value != new_value:
+                                update_fields[field] = new_value
                     
                     if update_fields:
                         Client.objects.filter(pk=existing_client.pk).update(**update_fields)
+                        existing_client.refresh_from_db()
                         client_status['status'] = 'updated'
                         client_status['message'] = f"Updated {len(update_fields)} fields"
                         update_count += 1
-                        print(f"🔄 Updated client {claim_owner}")
-                        messages.success(request, f"Updated client: {claim_owner}")
+                        print(f"🔄 Updated client '{claim_owner}' ({len(update_fields)} fields)")
                     else:
                         client_status['status'] = 'unchanged'
                         client_status['message'] = "No changes needed"
-                        print(f"➖ No changes for client {claim_owner}")
+                        print(f"➖ No changes for client '{claim_owner}'")
+                    
+                    client = existing_client
                 else:
-                    Client.objects.create(**mapped_data)
+                    client = Client.objects.create(**mapped_data)
                     client_status['status'] = 'created'
                     client_status['message'] = "New client created"
                     success_count += 1
-                    print(f"🆕 Created new client {claim_owner}")
-                    messages.success(request, f"Created new client: {claim_owner}")
-
+                    print(f"🆕 Created new client '{claim_owner}'")
+                
+                # Create rooms for this client
+                if rooms_data:
+                    print(f"🏗️ Creating {len(rooms_data)} rooms for '{claim_owner}'...")
+                    rooms_created, wt_created = create_rooms_for_client(client, rooms_data)
+                    print(f"✅ Created {rooms_created} rooms with {wt_created} work type values")
+                    client_status['message'] += f", {rooms_created} rooms created"
+                
+                processing_details.append(client_status)
+                
             except Exception as e:
+                import traceback
+                error_detail = traceback.format_exc()
+                print(f"❌ Error processing column {col_letter}: {str(e)}")
+                print(f"Error details:\n{error_detail}")
+                
                 client_status['status'] = 'failed'
-                error_msg = f"Error processing column {col_idx+1}: {str(e)}"
+                error_msg = f"Column {col_letter}: {str(e)}"
                 client_status['errors'].append(error_msg)
                 error_count += 1
-                print(f"❌ {error_msg}")
-                messages.error(request, error_msg)
-            
-            processing_details.append(client_status)
-
-            # Prepare detailed results report
-            result_messages = [f"<strong>Import Results:</strong>",
-                             f"✅ Successfully created: {success_count}",
-                             f"🔄 Updated: {update_count}",
-                             f"❌ Failed: {error_count}",
-                             "<br><strong>Processing Details:</strong>"]
-            
-            for detail in processing_details:
-                status_icon = {"created": "✅", "updated": "🔄", "failed": "❌", "unchanged": "➖"}.get(detail['status'], "�")
-                
-            result_message = (
-                    f"Import complete: {success_count} created, {update_count} updated, "
-                    f"{error_count} errors"
-                )
-            messages.success(request, result_message)
-            
-            processing_details.append(clean_session_data(client_status))  # Clean the client status data
-
-        # Prepare session data
+                processing_details.append(client_status)
+        
+        # Prepare final results
+        print(f"\n{'='*60}")
+        print(f"✅ IMPORT COMPLETE")
+        print(f"{'='*60}")
+        print(f"   Successfully created: {success_count}")
+        print(f"   Updated: {update_count}")
+        print(f"   Failed: {error_count}")
+        print(f"   Total columns processed: {len(df.columns) - FIRST_DATA_COLUMN}")
+        
+        # Store results in session
         session_data = {
             'success_count': success_count,
             'update_count': update_count,
             'error_count': error_count,
-            'processing_details': processing_details,
-            'excel_data': clean_session_data(df.to_dict()),
+            'processing_details': processing_details[:20],
             'file_name': excel_file.name,
             'timestamp': timezone.now().isoformat()
         }
-
-        # Store cleaned data in session
+        
         request.session['import_results'] = clean_session_data(session_data)
         
-        messages.success(request, f"Import complete: {success_count} created, {update_count} updated, {error_count} errors")
+        result_message = f"Import complete: {success_count} created, {update_count} updated, {error_count} errors"
+        messages.success(request, result_message)
+        
         return render(request, 'account/create.html', {
             'form': ClientForm(),
             'import_summary': {
                 'success_count': success_count,
                 'update_count': update_count,
-                'error_count': error_count
+                'error_count': error_count,
+                'total_clients': total_clients,
+                'rooms_imported': sum(len(d.get('rooms', [])) for d in processing_details if 'rooms' in d)
             }
         })
-
+        
     except Exception as e:
-        error_msg = f"❌ File processing error: {str(e)}"
+        import traceback
+        error_msg = f"❌ MASTER file processing error: {str(e)}"
+        print(error_msg)
+        print(f"Error details:\n{traceback.format_exc()}")
+        messages.error(request, error_msg)
+        return redirect('create')
+
+def extract_rooms_from_master_data(client_data):
+    """Extract rooms from MASTER file client data for Room model"""
+    rooms_data = []
+    room_name_counts = {}  # Track duplicate room names
+
+    for room_num in range(1, 26):
+        room_field = f'room_area_{room_num}'
+        room_value = client_data.get(room_field)
+
+        if room_value:
+            if isinstance(room_value, str):
+                room_value = room_value.strip()
+            else:
+                room_value = str(room_value).strip()
+
+        # Check if it's a valid room name
+        if (room_value and
+            room_value not in ['', 'NA', 'N/A', 'None', 'nan'] and
+            len(room_value) > 1):
+
+            # Handle duplicate room names by appending a number
+            original_name = room_value
+            if original_name in room_name_counts:
+                room_name_counts[original_name] += 1
+                room_value = f"{original_name} ({room_name_counts[original_name]})"
+            else:
+                room_name_counts[original_name] = 1
+
+            rooms_data.append({
+                'room_name': room_value,
+                'sequence': room_num,
+                'work_type_values': {}  # Empty for MASTER files
+            })
+
+    return rooms_data
+
+def normalize_header_for_mapping(header):
+    """Normalize Excel header to field name for MASTER files"""
+    if not header or pd.isna(header):
+        return ""
+    
+    header_str = str(header).strip()
+    
+    # Special mapping for your exact headers
+    header_mapping = {
+        # Property Owner Information
+        'Property-Owner Name': 'property_owner_name',
+        'Property address: street': 'property_address_street',
+        'Property city, state, zip': 'property_city_state_zip',
+        'Customer Email': 'customer_email',
+        'Cst-owner Phone#': 'cst_owner_phonenum',
+        
+        # Co-Owner Information
+        'Co-Owner.cst#2': 'co_owner_cst2',
+        'cst ph # 2': 'cst_ph_num_2',
+        'Cst address # 2': 'cst_address_num_2',
+        'city, state-cst#2': 'cst_city_state_zip_2',
+        'email-cst #2': 'email_cst_num_2',
+        
+        # Claim Information
+        'Cause of Loss': 'cause_of_loss',
+        'date of loss': 'date_of_loss',
+        'rebuild  type 1': 'rebuild_type_1',
+        'rebuild  type 2': 'rebuild_type_2',
+        'rebuild  type 3': 'rebuild_type_3',
+        'DEMO': 'demo',
+        'Mitigation': 'mitigation',
+        'Other Structures': 'other_structures',
+        'Replacement': 'replacement',
+        'CPS / CLN / CON/ CGN': 'cps_cln_con_cgn',
+        'Year Built': 'year_built',
+        'Contract Date': 'contract_date',
+        'Loss of use/ ALE': 'loss_of_use_ale',
+        'Breathing issue': 'breathing_issue',
+        'HMR': 'hmr',
+        
+        # Insurance Information
+        'Insurance Co. Name': 'insurance_co_name',
+        'Claim #': 'claim_num',
+        'policy #': 'policy_num',
+        'Email INS. co.': 'email_ins_co',
+        'DESK Adjuster DA': 'desk_adjuster_da',
+        'DA Phone': 'da_phone',
+        'DA Ph. Ext. #': 'da_ph_ext_num',
+        'DA Email': 'da_email',
+        'Field Adjuster Name': 'field_adjuster_name',
+        'Phone # field adj': 'phone_num_field_adj',
+        'Field adj email': 'field_adj_email',
+        'adj contents': 'adj_contents',
+        'adj CPS phone #': 'adj_cps_phone_num',
+        'adj CPS email': 'adj_cps_email',
+        'TMP adj': 'tmp_adj',
+        'TMP adj phone #': 'tmp_adj_phone_num',
+        'adj TMP email': 'adj_tmp_email',
+        'ATT: Loss Draft Dept.': 'att_loss_draft_dept',
+        'address ins overnight mail': 'address_ins_overnight_mail',
+        'city, state-zip ins': 'city_state_zip_ins',
+        'Insurance Co. Phone': 'insurance_co_phone',
+        'Website Ins Co.': 'website_ins_co',
+        'Mailing   address INS': 'mailing_address_ins',
+        'Mail city, state, zip INS': 'mail_city_state_zip_ins',
+        'FAX Ins. Co': 'fax_ins_co',
+        
+        # Rooms Information
+        'NEW CUSTOMER #': 'new_customer_num',
+        'ROOM ID': 'room_id',
+        
+        # Room Areas (1-25)
+        'Room/Area 1': 'room_area_1',
+        'Room/Area 2': 'room_area_2',
+        'Room/Area 3': 'room_area_3',
+        'Room/Area 4': 'room_area_4',
+        'Room/Area 5': 'room_area_5',
+        'Room/Area 6': 'room_area_6',
+        'Room/Area 7': 'room_area_7',
+        'Room/Area 8': 'room_area_8',
+        'Room/Area 9': 'room_area_9',
+        'Room/Area 10': 'room_area_10',
+        'Room/Area 11': 'room_area_11',
+        'Room/Area 12': 'room_area_12',
+        'Room/Area 13': 'room_area_13',
+        'Room/Area 14': 'room_area_14',
+        'Room/Area 15': 'room_area_15',
+        'Room/Area 16': 'room_area_16',
+        'Room/Area 17': 'room_area_17',
+        'Room/Area 18': 'room_area_18',
+        'Room/Area 19': 'room_area_19',
+        'Room/Area 20': 'room_area_20',
+        'Room/Area 21': 'room_area_21',
+        'Room/Area 22': 'room_area_22',
+        'Room/Area 23': 'room_area_23',
+        'Room/Area 24': 'room_area_24',
+        'Room/Area 25': 'room_area_25',
+        
+        # Mortgage Information
+        'Mortgage co': 'mortgage_co',
+        'Account# Mtge Co.': 'account_num_mtge_co',
+        'Loan status': 'loan_status',
+        'contact person mtge': 'contact_person_mtge',
+        'Phone # MTGE contact': 'phone_num_mtge_contact',
+        'Ph. Ext. Mtge contact': 'ph_ext_mtge_contact',
+        'Attn.: Loss Draft Dept': 'attn_loss_draft_dept',
+        'Mtge OVN mail': 'mtge_ovn_mail',
+        'city, St., zip ,mtge OVN': 'city_st_zip_mtge_ovn',
+        'Phone # MTGE co.': 'phone_num_mtge_co',
+        'email mtge': 'email_mtge',
+        'mtge website': 'mtge_website',
+        'MTGE co. Fax #': 'mtge_co_fax_num',
+        'Mailing   address mtge': 'mailing_address_mtge',
+        'Mail city, state, zip mtge': 'mail_city_state_zip_mtge',
+        'Initial Offer / phase 1 contract amount': 'initial_offer_phase_1_contract_amount',
+        
+        # Cash Flow
+        'Draw Request': 'draw_request',
+        'Cust id': 'cust_id',
+        
+        # Contractor Information
+        'co name': 'co_name',
+        'Co. website': 'co_website',
+        'co. EMAIL/co. status': 'co_emailstatus',
+        'co address': 'co_adress',
+        'co. city state': 'co_city_state',
+        'co. address 2': 'co_address_2',
+        'co. city state 2': 'co_city_state_2',
+        'co address 3': 'co_address_3',
+        'co. city state 3': 'co_city_state_3',
+        'Co. logo 1': 'co_logo_1',
+        'Co. logo 2': 'co_logo_2',
+        'Co. logo 3': 'co_logo_3',
+        'Co. REP. / PH': 'co_rep_ph',
+        'CO.REP. email': 'co_rep_email',
+        'Co PH # 2': 'co_ph_num_2',
+        'CO.REP. email 2': 'co_rep_email_2',
+        'TIN W9': 'tin_w9',
+        'FedEx     account #': 'fedex_account_num',
+        
+        # Claim Reporting
+        'claim report date': 'claim_report_date',
+        'Time OF CLAIM REPORT': 'time_of_claim_report',
+        'co.represesntative': 'co_represesntative',
+        'phone ext.': 'phone_ext',
+        'Tarp ext. TMP ok': 'tarp_ext_tmp_ok',
+        'Int TMP ok': 'int_tmp_ok',
+        'DRY/PLA CUTOUT MOLD SPRAY  OK': 'drypla_cutout_mold_spray_ok',
+        
+        # ALE Information
+        'ALE INFO  …            APC #': 'ale_info',
+        'Lesse info / NAME': 'tenant_lesee',
+        'HOME ADDRESS': 'property_address_street_ale',
+        'Property city, state, zip': 'property_city_state_zip_ale',
+        'Customer Email': 'customer_email_ale',
+        'Customer Phone#': 'cst_owner_phonenum_ale',
+        'RENTAL INFO': 'rental_info',
+        'bedrooms': 'bedrooms',
+        'months': 'months',
+        'START DATE': 'start_date',
+        'END DATE': 'end_date',
+        'Amount / Month': 'terms_amount',
+        
+        # Lessor Information
+        'LESSOR INFO / NAME': 'lessor',
+        'Leased Address': 'leased_address',
+        'city zip': 'city_zip_lessor',
+        'phone #': 'phone_lessor',
+        'Email lessor': 'email_lessor',
+        'Lessor mailing Address': 'lessor_mailing_address',
+        'city zip': 'city_zip_lessor_mail',
+        'LESSOR CONTACT PERSON': 'lessor_contact_person',
+        
+        # Claim Info (duplicate section)
+        'CLAIM INFO': 'claim_info_header',
+        'Cause of Loss': 'cause_of_loss_2',
+        'date of loss': 'date_of_loss_2',
+        'Insurance Co. Name': 'insurance_co_name_2',
+        'Claim #': 'claim_num_2',
+        'policy #': 'policy_num_2',
+        'Email INS. co.': 'email_ins_co_2',
+        'DESK Adjuster DA': 'desk_adjuster_da_2',
+        'DA Phone': 'da_phone_2',
+        'DA Ph. Ext. #': 'da_ph_ext_num_2',
+        'DA Email': 'da_email_2',
+        
+        # Real Estate Company
+        'REAL ESTATE COMPANY': 'real_estate_company',
+        'MAILING ADDRESS': 'mailing_address_re',
+        'city zip': 'city_zip_re',
+        'CONTACT': 'contact_re',
+        'phone #': 'phone_re',
+        'Email': 'email_re',
+        'OWNER/BROKER': 'owner_broker',
+        'phone #': 'phone_owner_broker',
+        'Email': 'email_owner_broker',
+    }
+    
+    # Try exact match first
+    if header_str in header_mapping:
+        return header_mapping[header_str]
+    
+    # Fallback: generic normalization
+    field_name = header_str.lower()
+    field_name = field_name.replace(' ', '_').replace('-', '_').replace('#', 'num')
+    field_name = field_name.replace(':', '').replace('.', '').replace(',', '')
+    field_name = field_name.replace('__', '_').strip('_')
+    
+    return field_name
+
+
+
+def process_info_file(request, excel_file):
+    """Process 01-INFO.xlsx files with jobinfo(2) tab"""
+    try:
+        # Use your existing import_client_from_info_file function
+        client_data = import_client_from_info_file(excel_file)
+        
+        if not client_data:
+            messages.error(request, "No client data found in INFO file")
+            return redirect('create')
+        
+        # Create or update client
+        client = create_or_update_client(client_data)
+        
+        messages.success(request, f'Client {client.pOwner} imported successfully from INFO file!')
+        return redirect('dashboard')
+        
+    except Exception as e:
+        error_msg = f"❌ INFO file import failed: {str(e)}"
         print(error_msg)
         messages.error(request, error_msg)
         return redirect('create')
 
+
+def normalize_header(header):
+    """Normalize Excel header to field name"""
+    if not header or pd.isna(header):
+        return ""
+    
+    # Convert to string and clean
+    header_str = str(header).strip()
+    
+    # Your existing normalization logic
+    field_name = (header_str.lower()
+                 .replace(' ', '_')
+                 .replace('/', '_')
+                 .replace('\\', '_')
+                 .replace('.', '_')
+                 .replace('-', '_')
+                 .replace(':', '_')
+                 .replace('__', '_')
+                 .replace('#', 'num')
+                 .strip('_'))
+    
+    return field_name
 def parse_excel_date(value):
     """Robust date parser that handles all cases"""
     # Handle empty/None values
@@ -3821,6 +4518,82 @@ def checklist(request):
     }
     
     return render(request, 'account/checklist.html', context)
+
+def process_master_insurer_file(request, excel_file):
+    """Simplified MASTER file processor"""
+    try:
+        excel_file.seek(0)
+        df = pd.read_excel(BytesIO(excel_file.read()), sheet_name='ALL')
+        
+        # Column C is headers (index 2), Column D onward is data (starting at index 3)
+        HEADER_COLUMN_INDEX = 2  # Column C
+        FIRST_DATA_COLUMN_INDEX = 3  # Column D
+        
+        print(f"📊 Processing {len(df.columns) - FIRST_DATA_COLUMN_INDEX} clients")
+        
+        # Build header mapping once
+        header_map = {}
+        for row_idx in range(len(df)):
+            header = str(df.iloc[row_idx, HEADER_COLUMN_INDEX]).strip() if pd.notna(df.iloc[row_idx, HEADER_COLUMN_INDEX]) else ""
+            if header:
+                # Normalize header name
+                field_name = normalize_header_to_field(header)
+                header_map[row_idx] = field_name
+        
+        # Process each client column
+        clients_processed = 0
+        for col_idx in range(FIRST_DATA_COLUMN_INDEX, len(df.columns)):
+            client_data = {}
+            
+            # Build client data from headers
+            for row_idx, field_name in header_map.items():
+                value = df.iloc[row_idx, col_idx]
+                if pd.notna(value):
+                    client_data[field_name] = value
+            
+            # Get owner name (should be in 'pOwner' field)
+            owner_name = client_data.get('pOwner')
+            if owner_name:
+                # Map to your model
+                mapped_data = map_client_data_to_model(client_data)
+                
+                # Create or update client
+                existing = Client.objects.filter(pOwner=owner_name).first()
+                if existing:
+                    Client.objects.filter(pk=existing.pk).update(**mapped_data)
+                else:
+                    Client.objects.create(**mapped_data)
+                
+                clients_processed += 1
+        
+        messages.success(request, f"Processed {clients_processed} clients from MASTER file")
+        return redirect('dashboard')
+        
+    except Exception as e:
+        messages.error(request, f"MASTER file error: {str(e)}")
+        return redirect('create')
+
+def normalize_header_to_field(header):
+    """Convert Excel header to field name"""
+    # Your existing normalization logic
+    field_name = (header.lower()
+                 .replace(' ', '_')
+                 .replace('-', '_')
+                 .replace('#', 'num')
+                 .replace(':', '')
+                 .strip('_'))
+    
+    # Map specific headers to model fields
+    header_mapping = {
+        'property_owner_name': 'pOwner',
+        'property_address_street': 'pAddress',
+        'property_city_state_zip': 'pCityStateZip',
+        'customer_email': 'cEmail',
+        'cst_owner_phonenum': 'cPhone',
+        # Add all your mappings from your map_client_data_to_model function
+    }
+    
+    return header_mapping.get(field_name, field_name)
 
 import os
 import re
@@ -4118,20 +4891,15 @@ def labels(request):
             if selected_claim_id:
                 try:
                     client = get_object_or_404(Client, pOwner=selected_claim_id)
-                    
-                    # Get all non-empty rooms
-                    for i in range(1, 26):
-                        room_attr = f'roomArea{i}'
-                        room_value = getattr(client, room_attr, None)
-                        
-                        if room_value and isinstance(room_value, str):
-                            room_value = room_value.strip()
-                            if room_value.lower() not in ['', 'tbd', 'n/a']:
-                                rooms.append({
-                                    'id': room_attr,
-                                    'name': room_value
-                                })
-                    
+
+                    # UPDATED: Get rooms from Room model instead of roomArea fields
+                    for room in client.rooms.all().order_by('sequence'):
+                        rooms.append({
+                            'id': str(room.id),
+                            'name': room.room_name,
+                            'sequence': room.sequence
+                        })
+
                     logger.info(f"Found {len(rooms)} rooms for claim {selected_claim_id}")
                     
                 except Client.DoesNotExist:
@@ -4199,16 +4967,13 @@ def labels(request):
                 logger.error(f"Error getting client: {str(e)}")
                 return JsonResponse({'status': 'error', 'message': 'Error retrieving client data'}, status=500)
 
-            # Create room index mapping
+            # UPDATED: Create room index mapping from Room model
             room_indices = {}
             logger.info("Creating room index mapping:")
-            for i in range(1, 26):  # roomArea1 through roomArea25
-                field_name = f'roomArea{i}'
-                if hasattr(client, field_name):
-                    room_value = getattr(client, field_name, '')
-                    if room_value and str(room_value).strip():  # Only add if not empty
-                        room_indices[str(room_value).strip()] = i
-                        logger.info(f"  - Room {i}: '{room_value}'")
+            for room in client.rooms.all().order_by('sequence'):
+                # Use sequence + 1 to maintain compatibility with old 1-based numbering
+                room_indices[room.room_name] = room.sequence + 1
+                logger.info(f"  - Room {room.sequence + 1}: '{room.room_name}'")
 
             logger.info(f"Room indices mapping created with {len(room_indices)} entries")
 
@@ -4264,61 +5029,62 @@ def labels(request):
                         logger.info(f"  - PDF: {temp_pdf_path}")
                         logger.info(f"  - Sheet: {sheet_name}")
 
-                        # 1. Create Excel from template with client data
-                        logger.info("Creating Excel from template...")
+                        # Generate thermal printer PDF directly (bypassing Excel template)
+                        logger.info("Generating thermal printer PDF...")
                         try:
-                            excel_success = create_excel_from_template(
-                                template_path, 
-                                temp_excel_path, 
-                                sheet_name, 
-                                room_index, 
-                                claim_id, 
-                                client
-                            )
-                            if not excel_success:
-                                logger.error(f"Excel creation returned False for {room_name}")
-                                continue
-                            logger.info("Excel creation successful")
-                        except Exception as e:
-                            logger.error(f"Excel creation failed for {room_name}: {str(e)}")
-                            continue
-
-                        # 2. Convert to PDF with proper label format
-                        logger.info("Converting Excel to PDF...")
-                        try:
-                            convert_excel_to_pdf_with_pages(
-                                excel_path=temp_excel_path,
+                            create_room_label_pdf_thermal(
                                 pdf_path=temp_pdf_path,
-                                sheet_name=sheet_name,
                                 room_name=room_name,
-                                p_owner=client.pOwner,
+                                claim_name=client.pOwner,
                                 num_labels=num_labels
                             )
-                            logger.info("PDF conversion successful")
+                            logger.info("PDF generation successful")
                         except Exception as e:
-                            logger.error(f"PDF conversion failed for {room_name}: {str(e)}")
+                            logger.error(f"PDF generation failed for {room_name}: {str(e)}")
                             continue
 
-                        # 3. Store the PDF
+                        # 3. Store the PDF to server folder AND File model
                         if os.path.exists(temp_pdf_path):
                             logger.info(f"PDF file exists at: {temp_pdf_path}")
                             try:
                                 with open(temp_pdf_path, 'rb') as pdf_file:
                                     pdf_content = pdf_file.read()
-                                
+
                                 logger.info(f"PDF content size: {len(pdf_content)} bytes")
-                                
-                                # Create File object and save
+
+                                # UPDATED: Save PDF to server claim folder structure
+                                from .claim_folder_utils import copy_file_to_claim_folder
+
+                                # Get Templates folder name for this client
+                                client_folder_name = f"{client.pOwner}@{client.pAddress}" if client.pOwner and client.pAddress else f"Client_{client.id}"
+                                safe_folder_name = re.sub(r'[<>:"/\\|?*]', '_', client_folder_name)
+                                destination_folder = f"Templates {safe_folder_name}"
+
+                                # Copy PDF to server folder
+                                try:
+                                    server_pdf_path = copy_file_to_claim_folder(
+                                        client=client,
+                                        source_file_path=temp_pdf_path,
+                                        destination_folder_type=destination_folder,
+                                        new_filename=pdf_filename
+                                    )
+                                    logger.info(f"Saved PDF to server: {server_pdf_path}")
+                                except Exception as copy_err:
+                                    logger.warning(f"Could not copy to server folder: {str(copy_err)}")
+                                    server_pdf_path = None
+
+                                # Also create File object for download links
                                 pdf_obj = File(filename=pdf_filename, size=len(pdf_content))
                                 pdf_obj.file.save(pdf_filename, ContentFile(pdf_content))
-                                
+
                                 pdfs_info.append({
                                     'room_name': room_name,
                                     'pdf_url': pdf_obj.file.url,
+                                    'server_path': server_pdf_path,  # Track server location
                                     'num_labels': num_labels,
                                     'print_area': calculate_print_area(num_labels) if callable(calculate_print_area) else "unknown"
                                 })
-                                
+
                                 logger.info(f"Successfully generated PDF for {room_name} with {num_labels} labels")
                             except Exception as e:
                                 logger.error(f"Error saving PDF file: {str(e)}")
@@ -4357,6 +5123,289 @@ def labels(request):
     # Handle other HTTP methods (PUT, DELETE, etc.)
     else:
         return HttpResponseNotAllowed(['GET', 'POST'])
+
+
+@login_required
+def wall_labels(request):
+    """
+    Generate wall orientation labels for thermal printer (3x4 inch labels)
+    Shows room name and wall orientation diagram
+    """
+    logger.info(f"Wall labels function called - method: {request.method}")
+
+    # GET request handling - show the form (same as room labels)
+    if request.method == 'GET':
+        try:
+            claims = Client.objects.all()
+            selected_claim_id = request.GET.get('claim')
+            rooms = []
+
+            if selected_claim_id:
+                try:
+                    client = get_object_or_404(Client, pOwner=selected_claim_id)
+                    for room in client.rooms.all().order_by('sequence'):
+                        rooms.append({
+                            'id': str(room.id),
+                            'name': room.room_name,
+                            'sequence': room.sequence
+                        })
+                    logger.info(f"Found {len(rooms)} rooms for claim {selected_claim_id}")
+                except Client.DoesNotExist:
+                    rooms = []
+                    logger.error(f"Client not found for pOwner: {selected_claim_id}")
+                except Exception as e:
+                    rooms = []
+                    logger.error(f"Unexpected error loading rooms for claim {selected_claim_id}: {str(e)}")
+
+            context = {
+                'claims': claims,
+                'rooms': rooms,
+                'selected_claim_id': selected_claim_id,
+                'label_type': 'wall'  # Indicate this is wall labels
+            }
+            return render(request, 'account/wall_labels.html', context)
+        except Exception as e:
+            logger.error(f"Error in GET request: {str(e)}", exc_info=True)
+            return JsonResponse({'status': 'error', 'message': 'Error loading page'}, status=500)
+
+    # POST request handling - generate wall label PDFs
+    elif request.method == 'POST':
+        try:
+            logger.info("=== STARTING WALL LABEL GENERATION ===")
+
+            room_labels = {}
+            claim_id = request.POST.get('claim', '').strip()
+            logger.info(f"Claim ID from POST: '{claim_id}'")
+
+            if not claim_id:
+                logger.error("Missing claim ID in POST data")
+                return JsonResponse({'status': 'error', 'message': 'Missing claim ID'}, status=400)
+
+            # Parse room labels from POST data
+            for key, value in request.POST.items():
+                if key.startswith('room_labels['):
+                    try:
+                        room_name = key[len('room_labels['):-1]
+                        count = int(value)
+                        if count > 0:
+                            room_labels[room_name] = count
+                            logger.info(f"  - {room_name}: {count} wall labels")
+                    except ValueError:
+                        continue
+
+            if not room_labels:
+                return JsonResponse({'status': 'success', 'message': 'No labels requested', 'pdfs': []})
+
+            # Get client data
+            try:
+                client = Client.objects.get(pOwner=claim_id)
+                logger.info(f"Client found: {client.pOwner}")
+            except Client.DoesNotExist:
+                return JsonResponse({'status': 'error', 'message': 'Client not found'}, status=404)
+
+            # Generate PDFs
+            with tempfile.TemporaryDirectory() as temp_dir:
+                pdfs_info = []
+
+                for room_name, num_labels in room_labels.items():
+                    try:
+                        logger.info(f"--- Processing wall label for room: '{room_name}', labels: {num_labels} ---")
+
+                        # Create safe filenames
+                        safe_claim = safe_filename(claim_id) if callable(safe_filename) else claim_id.replace(' ', '_')
+                        safe_room = safe_filename(room_name) if callable(safe_filename) else room_name.replace(' ', '_')
+                        pdf_filename = f"wall_label_{safe_claim}_{safe_room}.pdf"
+                        temp_pdf_path = os.path.join(temp_dir, pdf_filename)
+
+                        # Generate thermal printer PDF
+                        create_wall_label_pdf(
+                            pdf_path=temp_pdf_path,
+                            room_name=room_name,
+                            claim_name=client.pOwner,
+                            num_labels=num_labels
+                        )
+
+                        # Store the PDF
+                        if os.path.exists(temp_pdf_path):
+                            with open(temp_pdf_path, 'rb') as pdf_file:
+                                pdf_content = pdf_file.read()
+
+                            # Save to server folder
+                            from .claim_folder_utils import copy_file_to_claim_folder
+                            client_folder_name = f"{client.pOwner}@{client.pAddress}" if client.pOwner and client.pAddress else f"Client_{client.id}"
+                            safe_folder_name = re.sub(r'[<>:"/\\|?*]', '_', client_folder_name)
+                            destination_folder = f"Templates {safe_folder_name}"
+
+                            try:
+                                server_pdf_path = copy_file_to_claim_folder(
+                                    client=client,
+                                    source_file_path=temp_pdf_path,
+                                    destination_folder_type=destination_folder,
+                                    new_filename=pdf_filename
+                                )
+                            except Exception as copy_err:
+                                logger.warning(f"Could not copy to server folder: {str(copy_err)}")
+                                server_pdf_path = None
+
+                            # Create File object for download
+                            pdf_obj = File(filename=pdf_filename, size=len(pdf_content))
+                            pdf_obj.file.save(pdf_filename, ContentFile(pdf_content))
+
+                            pdfs_info.append({
+                                'room_name': room_name,
+                                'pdf_url': pdf_obj.file.url,
+                                'server_path': server_pdf_path,
+                                'num_labels': num_labels
+                            })
+
+                            logger.info(f"Successfully generated wall label PDF for {room_name}")
+                    except Exception as e:
+                        logger.error(f"Error processing room {room_name}: {str(e)}", exc_info=True)
+                        continue
+
+                logger.info(f"=== WALL LABEL GENERATION COMPLETED ===")
+
+                if pdfs_info:
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': f'Generated {len(pdfs_info)} wall label PDF(s) successfully',
+                        'pdfs': pdfs_info
+                    })
+                else:
+                    return JsonResponse({
+                        'status': 'success',
+                        'message': 'No valid labels generated',
+                        'pdfs': []
+                    })
+
+        except Exception as e:
+            logger.error(f"=== WALL LABEL GENERATION FAILED ===")
+            logger.error(f"Error: {str(e)}", exc_info=True)
+            return JsonResponse({
+                'status': 'error',
+                'message': 'Wall label generation failed. Please try again.'
+            }, status=500)
+    else:
+        return HttpResponseNotAllowed(['GET', 'POST'])
+
+
+def create_room_label_pdf_thermal(pdf_path, room_name, claim_name, num_labels):
+    """
+    Create thermal printer PDF for room/box labels (3x4 inch)
+    Simple design with room name and claim name
+    """
+    from reportlab.lib.pagesizes import inch
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import inch as INCH
+    from reportlab.lib import colors
+
+    # 3x4 inch label size for thermal printer
+    LABEL_WIDTH = 4 * INCH
+    LABEL_HEIGHT = 3 * INCH
+
+    c = canvas.Canvas(pdf_path, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+
+    # Generate the requested number of labels
+    for label_num in range(num_labels):
+        # Room Name (large, centered)
+        c.setFont("Helvetica-Bold", 36)
+        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 + 0.2 * INCH, room_name.upper())
+
+        # Claim Name (smaller, below room name)
+        c.setFont("Helvetica", 14)
+        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 - 0.4 * INCH, claim_name)
+
+        # Add decorative border
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(2)
+        c.rect(0.2 * INCH, 0.2 * INCH, LABEL_WIDTH - 0.4 * INCH, LABEL_HEIGHT - 0.4 * INCH)
+
+        # Add page break if more labels are needed
+        if label_num < num_labels - 1:
+            c.showPage()
+
+    c.save()
+    logger.info(f"Created room label PDF: {pdf_path} with {num_labels} label(s)")
+
+
+def create_wall_label_pdf(pdf_path, room_name, claim_name, num_labels):
+    """
+    Create thermal printer PDF for wall labels (3x4 inch)
+    Shows room name and wall orientation diagram matching the FOYER structure
+    """
+    from reportlab.lib.pagesizes import inch
+    from reportlab.pdfgen import canvas
+    from reportlab.lib.units import inch as INCH
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from reportlab.lib import colors
+
+    # 3x4 inch label size for thermal printer
+    LABEL_WIDTH = 4 * INCH
+    LABEL_HEIGHT = 3 * INCH
+
+    c = canvas.Canvas(pdf_path, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+
+    # Generate the requested number of labels
+    for label_num in range(num_labels):
+        # Room Name (large, centered at top)
+        c.setFont("Helvetica-Bold", 28)
+        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 0.5 * INCH, room_name)
+
+        # Orientation diagram - matching your FOYER image structure
+        center_y = LABEL_HEIGHT / 2 - 0.1 * INCH
+        center_x = LABEL_WIDTH / 2
+
+        # Draw orientation boxes/sections
+        # W=1 (left side)
+        c.setFont("Helvetica", 10)
+        c.drawCentredString(center_x - 1.2 * INCH, center_y, "W=1")
+
+        # CENTER (middle, with arrow pointing up)
+        c.setFont("Helvetica-Bold", 12)
+        c.drawCentredString(center_x, center_y + 0.3 * INCH, "CENTER")
+        # Draw up arrow
+        c.line(center_x, center_y, center_x, center_y + 0.2 * INCH)
+        c.line(center_x - 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
+        c.line(center_x + 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
+
+        # W=3 (right side)
+        c.setFont("Helvetica", 10)
+        c.drawCentredString(center_x + 1.2 * INCH, center_y, "W=3")
+
+        # W=4 (bottom)
+        c.drawCentredString(center_x, center_y - 0.5 * INCH, "W=4")
+
+        # Draw circular arrows around the orientation (optional decoration)
+        # This adds the curved arrow effect from your image
+        c.setStrokeColor(colors.blue)
+        c.setLineWidth(2)
+        # Left curved arrow
+        c.arc(center_x - 1.5 * INCH, center_y - 0.15 * INCH,
+              center_x - 0.9 * INCH, center_y + 0.15 * INCH,
+              startAng=30, extent=120)
+        # Right curved arrow
+        c.arc(center_x + 0.9 * INCH, center_y - 0.15 * INCH,
+              center_x + 1.5 * INCH, center_y + 0.15 * INCH,
+              startAng=30, extent=120)
+
+        # Reset stroke color
+        c.setStrokeColor(colors.black)
+        c.setLineWidth(1)
+
+        # Add dotted separator line (matching your image)
+        c.setDash(3, 3)
+        c.line(0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH,
+               LABEL_WIDTH - 0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH)
+        c.setDash()  # Reset to solid line
+
+        # Add page break if more labels are needed
+        if label_num < num_labels - 1:
+            c.showPage()
+
+    c.save()
+    logger.info(f"Created wall label PDF: {pdf_path} with {num_labels} label(s)")
+
 
 def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, room_name, p_owner, num_labels):
     """Convert Excel to PDF with proper print area, eliminating formula errors"""
@@ -4478,22 +5527,46 @@ def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, room_name,
         raise
 
 
+# views.py
+from django.shortcuts import render, get_object_or_404
+from django.contrib.auth.decorators import login_required
+from django.db.models import Q, Count, Avg, Case, When, IntegerField, F
+from django.http import JsonResponse
+from django.utils import timezone
+from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
+import json
+from .models import Client, ChecklistItem, Room, RoomWorkTypeValue, WorkType
+
 @login_required
 def dashboard(request):
     # Handle client selection
     selected_client_id = request.GET.get('selected_client')
     selected_client = None
-    if selected_client:
-        from .signals import create_checklist_items_for_client
-        create_checklist_items_for_client(selected_client)
-        selected_client.update_completion_stats()
-    # Get all clients with their completion stats
+
+    # Get all clients
     clients = Client.objects.all()
-    for client in clients:
-        client.update_completion_stats()
-        if str(client.id) == selected_client_id:
-            selected_client = client
-    
+
+    # Apply search filter
+    search = request.GET.get('search', '')
+    if search:
+        clients = clients.filter(
+            Q(pOwner__icontains=search) |
+            Q(claimNumber__icontains=search) |
+            Q(pAddress__icontains=search) |
+            Q(newCustomerID__icontains=search)
+        )
+
+    # Apply cause of loss filter
+    cause_of_loss = request.GET.get('cause_of_loss', '')
+    if cause_of_loss:
+        clients = clients.filter(causeOfLoss__icontains=cause_of_loss)
+
+    # Apply age filter
+    age = request.GET.get('age', '')
+    if age:
+        cutoff_date = timezone.now() - dt.timedelta(days=int(age))
+        clients = clients.filter(dateOfLoss__gte=cutoff_date)
+
     # Apply sorting
     sort_by = request.GET.get('sort', 'name')
     if sort_by == 'name':
@@ -4501,9 +5574,9 @@ def dashboard(request):
     elif sort_by == 'id':
         clients = clients.order_by('newCustomerID')
     elif sort_by == 'date':
-        clients = clients.order_by('dateOfLoss')
-    
-    # Apply filtering
+        clients = clients.order_by('-dateOfLoss')
+
+    # Apply type filtering
     filter_type = request.GET.get('type', 'all')
     if filter_type == 'CPS':
         clients = clients.filter(CPSCLNCONCGN=True)
@@ -4512,44 +5585,318 @@ def dashboard(request):
     elif filter_type == 'PPR':
         clients = clients.filter(replacement=True)
     
-    context = {
-        'allClients': clients,
-        'selected_client': selected_client,
+    # PAGINATION
+    paginator = Paginator(clients, 10)  # Show 10 claims per page
+    page = request.GET.get('page', 1)
+    
+    try:
+        paginated_clients = paginator.page(page)
+    except PageNotAnInteger:
+        paginated_clients = paginator.page(1)
+    except EmptyPage:
+        paginated_clients = paginator.page(paginator.num_pages)
+    
+    # Set selected client
+    if selected_client_id:
+        try:
+            selected_client = Client.objects.get(id=selected_client_id)
+            # Ensure checklist items exist for selected client
+            from .signals import create_checklist_items_for_client
+            create_checklist_items_for_client(selected_client)
+            selected_client.update_completion_stats()
+        except Client.DoesNotExist:
+            selected_client = None
+    
+    # Calculate dashboard statistics
+    total_claims = clients.count()
+    
+    # Safely calculate average completion
+    completion_avg = clients.aggregate(avg=Avg('completion_percent'))['avg']
+    avg_completion = round(completion_avg, 1) if completion_avg is not None else 0
+    
+    # Claim type counts
+    mit_count = clients.filter(mitigation=True).count()
+    cps_count = clients.filter(CPSCLNCONCGN=True).count()
+    ppr_count = clients.filter(replacement=True).count()
+    
+    # ORIGINAL AGE DISTRIBUTION THRESHOLDS
+    now = timezone.now().date()
+    age_categories = {
+        "0-30 days": Q(dateOfLoss__isnull=False, dateOfLoss__gte=now - dt.timedelta(days=30)),
+        "31-60 days": Q(dateOfLoss__isnull=False, dateOfLoss__lt=now - dt.timedelta(days=30)) & 
+                     Q(dateOfLoss__gte=now - dt.timedelta(days=60)),
+        "61-120 days": Q(dateOfLoss__isnull=False, dateOfLoss__lt=now - dt.timedelta(days=60)) & 
+                      Q(dateOfLoss__gte=now - dt.timedelta(days=120)),
+        "121-180 days": Q(dateOfLoss__isnull=False, dateOfLoss__lt=now - dt.timedelta(days=120)) & 
+                       Q(dateOfLoss__gte=now - dt.timedelta(days=180)),
+        "181-360 days": Q(dateOfLoss__isnull=False, dateOfLoss__lt=now - dt.timedelta(days=180)) & 
+                        Q(dateOfLoss__gte=now - dt.timedelta(days=360)),
+        "360+ days": Q(dateOfLoss__isnull=False, dateOfLoss__lt=now - dt.timedelta(days=360)),
+        "No Date": Q(dateOfLoss__isnull=True)
     }
+    
+    age_distribution_data = {}
+    for category, query in age_categories.items():
+        count = clients.filter(query).count()
+        age_distribution_data[category] = count
+    
+    # Cause of loss distribution with safe handling
+    cause_of_loss_data = {}
+    for client in clients:
+        cause = client.causeOfLoss.strip() if client.causeOfLoss else 'Unknown'
+        if not cause:
+            cause = 'Unknown'
+        cause_of_loss_data[cause] = cause_of_loss_data.get(cause, 0) + 1
+    
+    # Sort and get top causes
+    top_causes = dict(sorted(cause_of_loss_data.items(), key=lambda x: x[1], reverse=True)[:5])
+    
+    # Work type distribution with safe handling
+    work_type_stats = {
+        'MIT': mit_count,
+        'CPS': cps_count, 
+        'PPR': ppr_count
+    }
+    
+    # Document completion rates with safe handling
+    document_completion_data = {'MIT': 0, 'CPS': 0, 'PPR': 0}
+    try:
+        for category in ['MIT', 'CPS', 'PPR']:
+            items = ChecklistItem.objects.filter(document_category=category)
+            total = items.count()
+            if total > 0:
+                completed = items.filter(is_completed=True).count()
+                document_completion_data[category] = round((completed / total) * 100, 1)
+    except Exception as e:
+        print(f"Error calculating document completion: {e}")
+
+    # Completion distribution (how many claims at each completion level)
+    completion_distribution = {
+        '0%': clients.filter(completion_percent=0).count(),
+        '1-25%': clients.filter(completion_percent__gt=0, completion_percent__lte=25).count(),
+        '26-50%': clients.filter(completion_percent__gt=25, completion_percent__lte=50).count(),
+        '51-75%': clients.filter(completion_percent__gt=50, completion_percent__lte=75).count(),
+        '76-99%': clients.filter(completion_percent__gt=75, completion_percent__lt=100).count(),
+        '100%': clients.filter(completion_percent=100).count(),
+    }
+
+    # Category-specific completion stats
+    category_stats = {}
+    for category in ['MIT', 'CPS', 'PPR']:
+        items = ChecklistItem.objects.filter(document_category=category)
+        total = items.count()
+        completed = items.filter(is_completed=True).count()
+        category_stats[category] = {
+            'total': total,
+            'completed': completed,
+            'pending': total - completed,
+            'percent': round((completed / total) * 100, 1) if total > 0 else 0
+        }
+
+    # Checklist item completion by document type (top items needing attention)
+    from django.db.models import Sum
+    items_by_type = ChecklistItem.objects.values('document_type').annotate(
+        total=Count('id'),
+        completed=Count('id', filter=Q(is_completed=True))
+    ).order_by('-total')[:10]
+
+    items_completion = {}
+    for item in items_by_type:
+        doc_type = item['document_type']
+        # Get display name
+        display_name = dict(ChecklistItem.DOCUMENT_TYPES).get(doc_type, doc_type)
+        items_completion[display_name] = {
+            'total': item['total'],
+            'completed': item['completed'],
+            'percent': round((item['completed'] / item['total']) * 100, 1) if item['total'] > 0 else 0
+        }
+
+    context = {
+        'total_claims': total_claims,
+        'avg_completion': avg_completion,
+        'mit_count': mit_count,
+        'cps_count': cps_count,
+        'ppr_count': ppr_count,
+        # JSON serialized data for JavaScript
+        'age_distribution_json': json.dumps(age_distribution_data),
+        'cause_of_loss_json': json.dumps(top_causes),
+        'work_type_stats_json': json.dumps(work_type_stats),
+        'document_completion_json': json.dumps(document_completion_data),
+        'completion_distribution_json': json.dumps(completion_distribution),
+        'category_stats_json': json.dumps(category_stats),
+        'items_completion_json': json.dumps(items_completion),
+    }
+
     return render(request, 'account/dashboard.html', context)
 
-# Function for updating the checklist 
+@login_required
 def update_checklist(request):
     if request.method == 'POST':
-        client_id = request.POST.get('client_id')
-        client = get_object_or_404(Client, id=client_id)
-        
-        # Update all checklist items
-        for item in client.checklist_items.all():
-            field_name = f'item_{item.id}'
-            item.is_completed = field_name in request.POST
-            item.save()
-        
-        # Update completion stats
-        client.update_completion_stats()
-        
-        return JsonResponse({
-            'success': True,
-            'completion_percent': client.completion_percent
-        })
-    
-    return JsonResponse({'success': False})
-
-def update_checklist_item(request, item_id):
-    if request.method == 'POST':
         try:
-            item = ChecklistItem.objects.get(id=item_id)
-            item.is_completed = request.POST.get('is_completed') == 'true'
-            item.save()
-            return JsonResponse({'success': True})
-        except ChecklistItem.DoesNotExist:
-            return JsonResponse({'success': False, 'error': 'Item not found'})
-    return JsonResponse({'success': False, 'error': 'Invalid request'})
+            client_id = request.POST.get('client_id')
+            if not client_id:
+                return JsonResponse({'success': False, 'error': 'No client ID provided'})
+                
+            client = get_object_or_404(Client, id=client_id)
+            
+            # Update all checklist items
+            for item in client.checklist_items.all():
+                field_name = f'item_{item.id}'
+                item.is_completed = field_name in request.POST
+                item.save()
+            
+            # Update completion stats
+            client.update_completion_stats()
+            
+            return JsonResponse({
+                'success': True,
+                'completion_percent': client.completion_percent,
+                'category_completion': getattr(client, 'category_completion', {})
+            })
+        except Exception as e:
+            return JsonResponse({'success': False, 'error': str(e)})
+    
+    return JsonResponse({'success': False, 'error': 'Invalid request method'})
+
+@login_required
+def api_client_details(request, client_id):
+    try:
+        from .models import OneDriveFolder, OneDriveFile, SyncLog
+        client = Client.objects.get(id=client_id)
+
+        # Ensure completion stats are up to date
+        client.update_completion_stats()
+
+        # Get all checklist items for this client
+        checklist_categories = []
+        for category_code, category_name in ChecklistItem.DOCUMENT_CATEGORIES:
+            items = client.checklist_items.filter(document_category=category_code)
+            if items.exists():
+                category_data = {
+                    'grouper': category_name,
+                    'items': []
+                }
+                for item in items:
+                    category_data['items'].append({
+                        'id': item.id,
+                        'document_type': item.document_type,
+                        'document_type_display': item.get_document_type_display(),
+                        'is_completed': item.is_completed,
+                        'document_category': item.document_category
+                    })
+                checklist_categories.append(category_data)
+
+        # Get OneDrive folders
+        onedrive_folders = []
+        for folder in client.onedrive_folders.filter(is_active=True):
+            onedrive_folders.append({
+                'folder_path': folder.folder_path,
+                'onedrive_folder_id': folder.onedrive_folder_id,
+                'last_synced': folder.last_synced.isoformat() if folder.last_synced else None
+            })
+
+        # Get OneDrive files
+        onedrive_files = []
+        for file in client.onedrive_files.all()[:20]:  # Limit to 20 most recent
+            onedrive_files.append({
+                'file_name': file.file_name,
+                'file_type': file.file_type,
+                'sync_status': file.get_sync_status_display(),
+                'last_modified': file.last_modified_onedrive.isoformat() if file.last_modified_onedrive else None,
+                'onedrive_file_id': file.onedrive_file_id
+            })
+
+        # Get recent sync logs
+        sync_logs = []
+        for log in client.sync_logs.all()[:5]:  # Last 5 sync activities
+            sync_logs.append({
+                'sync_direction': log.get_sync_direction_display(),
+                'sync_status': log.get_sync_status_display(),
+                'timestamp': log.timestamp.isoformat() if log.timestamp else None,
+                'error_message': log.error_message
+            })
+
+        # Get rooms data
+        rooms_data = client.get_rooms_data()
+
+        # Prepare comprehensive client data
+        client_data = {
+            'id': client.id,
+            # Customer Info
+            'pOwner': client.pOwner or '',
+            'pAddress': client.pAddress or '',
+            'pCityStateZip': client.pCityStateZip or '',
+            'cEmail': client.cEmail or '',
+            'cPhone': client.cPhone or '',
+            'coOwner2': client.coOwner2 or '',
+            'cPhone2': client.cPhone2 or '',
+            'cAddress2': client.cAddress2 or '',
+            'cCityStateZip2': client.cCityStateZip2 or '',
+            'cEmail2': client.cEmail2 or '',
+
+            # Claim Info
+            'causeOfLoss': client.causeOfLoss or '',
+            'dateOfLoss': client.dateOfLoss.isoformat() if client.dateOfLoss else '',
+            'yearBuilt': client.yearBuilt or '',
+            'contractDate': client.contractDate.isoformat() if client.contractDate else '',
+            'mitigation': client.mitigation,
+            'CPSCLNCONCGN': client.CPSCLNCONCGN,
+            'replacement': client.replacement,
+            'demo': client.demo,
+            'otherStructures': client.otherStructures,
+
+            # Insurance Info
+            'insuranceCo_Name': client.insuranceCo_Name or '',
+            'claimNumber': client.claimNumber or '',
+            'policyNumber': client.policyNumber or '',
+            'deskAdjusterDA': client.deskAdjusterDA or '',
+            'DAPhone': client.DAPhone or '',
+            'DAEmail': client.DAEmail or '',
+            'fieldAdjusterName': client.fieldAdjusterName or '',
+            'phoneFieldAdj': client.phoneFieldAdj or '',
+            'fieldAdjEmail': client.fieldAdjEmail or '',
+
+            # Mortgage Info
+            'mortgageCo': client.mortgageCo or '',
+            'mortgageAccountCo': client.mortgageAccountCo or '',
+            'mortgageContactPerson': client.mortgageContactPerson or '',
+            'mortgagePhoneContact': client.mortgagePhoneContact or '',
+            'mortgageEmail': client.mortgageEmail or '',
+
+            # Contractor Info
+            'coName': client.coName or '',
+            'coWebsite': client.coWebsite or '',
+            'coAddress': client.coAddress or '',
+            'coPhone': client.cPhone or '',
+
+            # OneDrive Info (status field removed)
+            'onedrive_folder_id': client.onedrive_folder_id or '',
+            'last_onedrive_sync': client.last_onedrive_sync.isoformat() if client.last_onedrive_sync else None,
+            'onedrive_folders': onedrive_folders,
+            'onedrive_files': onedrive_files,
+            'sync_logs': sync_logs,
+
+            # Completion Stats
+            'completion_percent': client.completion_percent,
+            'category_completion': getattr(client, 'category_completion', {}),
+            'checklist_items': checklist_categories,
+
+            # Rooms
+            'rooms': rooms_data,
+            'newCustomerID': client.newCustomerID or ''
+        }
+
+        return JsonResponse({'success': True, 'client': client_data})
+    except Client.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Client not found'})
+    except Exception as e:
+        import traceback
+        return JsonResponse({'success': False, 'error': str(e), 'traceback': traceback.format_exc()})
+
+def calculate_percentage_change(old_value, new_value):
+    if old_value == 0:
+        return 0
+    return ((new_value - old_value) / old_value) * 100
 
 
 # LEASE GENERATION VIEWS
@@ -4558,35 +5905,70 @@ def client_list(request):
     clients = Client.objects.all()
     documents = Document.objects.all()
     selected_client = None
-    selected_document = None
+    selected_documents = []  # Changed to handle multiple documents
     form = None
 
-    # Filter documents based on selections
-    if selected_document:
-        documents = documents.filter(name=selected_document)
-    
-    if selected_client:
-        clients = clients.filter(pOwner=selected_client)
-
-    if 'client_name' in request.GET and 'document_name' in request.GET:
+    if 'client_name' in request.GET:
         client_id = request.GET['client_name']
-        document_id = request.GET['document_name']
-        print(client_id + " " + document_id)
-        if client_id and document_id:  # Only try to get client if an ID was provided
+        if client_id:  # Only try to get client if an ID was provided
             selected_client = get_object_or_404(clients, pOwner=client_id)
 
-            selected_document = get_object_or_404(documents, name=document_id)
-            if selected_document.document_type == 'lease':
+            # Always select the 3 specific documents
+            document_names = ['Engagement Agreement', 'Term Sheet', 'Month to Month Rental']
+            selected_documents = Document.objects.filter(name__in=document_names)
+
+            if selected_documents and selected_documents.first().document_type == 'lease':
+                # Create a Landlord instance pre-populated with ALE data from the client
                 landlord = Landlord()
+
+                # Map Client ALE fields to Landlord fields
+                # Lessor (Landlord) Information
+                landlord.full_name = selected_client.ale_lessor_name or ''
+                landlord.address = selected_client.ale_lessor_mailing_address or ''
+                landlord.city = selected_client.ale_lessor_city_zip or ''  # Contains city+zip
+                landlord.state = ''  # Not directly mapped
+                landlord.zip_code = ''  # Part of city_zip
+                landlord.phone = selected_client.ale_lessor_phone or ''
+                landlord.email = selected_client.ale_lessor_email or ''
+                landlord.contact_person_1 = selected_client.ale_lessor_contact_person or ''
+
+                # Property Information (Leased Property)
+                landlord.property_address = selected_client.ale_lessor_leased_address or ''
+                landlord.property_city = ''  # Need to parse from ale_lessor_city_zip
+                landlord.property_state = ''  # Need to parse
+                landlord.property_zip = ''  # Need to parse
+
+                # Rental Terms
+                landlord.term_start_date = selected_client.ale_rental_start_date
+                landlord.term_end_date = selected_client.ale_rental_end_date
+                landlord.default_rent_amount = selected_client.ale_rental_amount_per_month or 0
+                landlord.bedrooms = int(selected_client.ale_rental_bedrooms) if selected_client.ale_rental_bedrooms and selected_client.ale_rental_bedrooms.isdigit() else 1
+                landlord.rental_months = int(selected_client.ale_rental_months) if selected_client.ale_rental_months and selected_client.ale_rental_months.isdigit() else 12
+
+                # Real Estate Company Information
+                landlord.real_estate_company = selected_client.ale_re_company_name or ''
+                landlord.company_mailing_address = selected_client.ale_re_mailing_address or ''
+                landlord.company_city = ''  # Need to parse from ale_re_city_zip
+                landlord.company_state = ''  # Need to parse
+                landlord.company_zip = ''  # Need to parse
+                landlord.company_contact_person = selected_client.ale_re_contact_person or ''
+                landlord.company_phone = selected_client.ale_re_phone or ''
+                landlord.company_email = selected_client.ale_re_email or ''
+                landlord.broker_name = selected_client.ale_re_owner_broker_name or ''
+                landlord.broker_phone = selected_client.ale_re_owner_broker_phone or ''
+                landlord.broker_email = selected_client.ale_re_owner_broker_email or ''
+
+                # Create form with pre-populated landlord instance
                 form = LandlordForm(instance=landlord)
+    
     if selected_client:
         print(selected_client.__dict__)
     
     return render(request, "account/client_list.html", {
         "clients": clients,
         "documents": documents,
-        "selected_client" : selected_client,
-        "selected_document": selected_document,
+        "selected_client": selected_client,
+        "selected_documents": selected_documents,  # Changed to plural
         'current_client_id': selected_client.id if selected_client else None,
         "form": form,
     })
@@ -4594,29 +5976,845 @@ def client_list(request):
 import re
 import os
 import logging
+import zipfile
 from io import BytesIO
-from datetime import datetime
 from django.shortcuts import get_object_or_404
 from django.http import HttpResponse, JsonResponse
 from django.core.files.storage import default_storage
 from django.template import Template, Context
-from django.utils.dateparse import parse_date
+from dateutil.parser import parse as parse_date
 from xhtml2pdf import pisa
+from weasyprint import HTML
+from django.conf import settings
 from .models import Client, Document, Landlord
 
-# Set up logging
 logger = logging.getLogger(__name__)
 
-from django.template.loader import render_to_string
-from django.http import HttpResponse, HttpResponseServerError
-import logging
-import os
+def generate_all_documents(request):
+    """Generate all 3 documents at once and return as ZIP or individual previews"""
+    logger.debug("Batch document generation started")
+    
+    if request.method != 'POST':
+        logger.error("Invalid request method")
+        return HttpResponse("Only POST requests are allowed", status=405)
+
+    
+        # Debug logging for form data
+    logger.debug(f"Form data received: {dict(request.POST)}")
+    logger.debug(f"Exclude security deposit: {request.POST.get('exclude_security_deposit')}")
+    logger.debug(f"Exclude inspection fee: {request.POST.get('exclude_inspection_fee')}")
+    logger.debug(f"Real estate company: {request.POST.get('real_estate_company')}")
+    logger.debug(f"Company mailing address: {request.POST.get('company_mailing_address')}")
+
+    try:
+        # Get required parameters
+        client_name = request.POST.get('client_name')
+        if not client_name:
+            logger.error("Missing client_name")
+            return HttpResponse("client_name is required", status=400)
+
+        # Get models
+        try:
+            client = get_object_or_404(Client, pOwner=client_name)
+            # Get all 3 specific documents
+            document_names = ['Engagement Agreement', 'Term Sheet', 'Month to Month Rental']
+            documents = Document.objects.filter(name__in=document_names)
+            logger.debug(f"Found client {client_name} and {documents.count()} documents")
+        except Exception as e:
+            logger.error(f"Error fetching models: {str(e)}")
+            return HttpResponse("Error loading client or documents", status=404)
+
+        # Date formatting function
+        def clean_and_format_date(date_str):
+            if not date_str:
+                return ""
+            
+            try:
+                cleaned = re.sub(r'[^\d/-]', '', str(date_str))
+                date_obj = parse_date(cleaned)
+                
+                if not date_obj:
+                    for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m-%d-%Y', '%m/%d/%Y', '%d-%m-%Y', '%d/%m/%Y'):
+                        try:
+                            date_obj = dt.datetime.strptime(cleaned, fmt).date()
+                            break
+                        except ValueError:
+                            continue
+                
+                if date_obj:
+                    try:
+                        return date_obj.strftime('%B %d, %Y').replace(' 0', ' ')
+                    except:
+                        return date_obj.strftime('%B %d, %Y')
+            except Exception as e:
+                logger.warning(f"Date formatting failed for {date_str}: {str(e)}")
+            return ""
+
+        def format_agreement_date(date_str):
+            """Format date as 'Xth day of Month Year' for legal documents"""
+            if not date_str:
+                return ""
+
+            try:
+                cleaned = re.sub(r'[^\d/-]', '', str(date_str))
+                date_obj = parse_date(cleaned)
+
+                if not date_obj:
+                    for fmt in ('%Y-%m-%d', '%Y\\%m\\%d', '%m-%d-%Y', '%m\\%d\\%Y', '%d-%m-%Y', '%d\\%m\\%Y'):
+                        try:
+                            date_obj = dt.datetime.strptime(cleaned, fmt).date()
+                            break
+                        except ValueError:
+                            continue
+
+                if date_obj:
+                    day = date_obj.day
+                    # Add ordinal suffix (1st, 2nd, 3rd, 4th, etc.)
+                    if 10 <= day % 100 <= 20:
+                        suffix = 'th'
+                    else:
+                        suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(day % 10, 'th')
+
+                    month_year = date_obj.strftime('%B %Y')
+                    return f"{day}{suffix} day of {month_year}"
+            except Exception as e:
+                logger.warning(f"Agreement date formatting failed for {date_str}: {str(e)}")
+            return ""
+
+        # Handle preview request
+        if request.POST.get('preview') == 'true':
+            logger.debug("Generating HTML previews for all documents")
+            previews = {}
+            
+            for document in documents:
+                try:
+                    # Read template content
+                    if not document.file:
+                        logger.error(f"No template file attached to document: {document.name}")
+                        continue
+                        
+                    template_path = document.file.path
+                    logger.debug(f"Attempting to read template from: {template_path}")
+                    
+                    if not os.path.exists(template_path):
+                        logger.error(f"Template file not found at: {template_path}")
+                        continue
+                        
+                    with open(template_path, 'r', encoding='utf-8') as template_file:
+                        template_content = template_file.read()
+                    
+                    # Create template and context
+                    template = Template(template_content)
+                    context = Context({
+                        'client': client,
+                        'document': document,
+                        'preview': True,
+                        'today': dt.datetime.now().strftime('%B %d, %Y')  # Fixed datetime
+                    })
+
+                    # Process lease-specific data for ALL documents
+                    # All 3 documents will receive the same landlord data
+                    lease_agreement_date = request.POST.get('lease_agreement_date', '')
+                    term_start_date = request.POST.get('term_start_date', '')
+                    term_end_date = request.POST.get('term_end_date', '')
+                    is_renewal = request.POST.get('is_renewal') == 'true'
+                    exclude_security_deposit = request.POST.get('exclude_security_deposit') == 'true'
+                    exclude_inspection_fee = request.POST.get('exclude_inspection_fee') == 'true'
+
+                    context.update({
+                        'formatted_agreement_date': format_agreement_date(lease_agreement_date),
+                        'lease_agreement_date': lease_agreement_date,
+                        'formatted_start_date': clean_and_format_date(term_start_date),
+                        'formatted_end_date': clean_and_format_date(term_end_date),
+                        'term_start_date': term_start_date,
+                        'term_end_date': term_end_date,
+                        'is_renewal': is_renewal,
+                        'exclude_security_deposit': exclude_security_deposit,
+                        'exclude_inspection_fee': exclude_inspection_fee,
+
+                    })
+
+                    # Add ALL landlord data from form
+                    landlord_data = {
+                        # Basic Information
+                        'full_name': request.POST.get('full_name'),
+                        'address': request.POST.get('address'),
+                        'city': request.POST.get('city'),
+                        'state': request.POST.get('state'),
+                        'zip_code': request.POST.get('zip_code'),
+                        'phone': request.POST.get('phone'),
+                        'email': request.POST.get('email'),
+                        
+                        # Rental Property Information
+                        'property_address': request.POST.get('property_address'),
+                        'property_city': request.POST.get('property_city'),
+                        'property_state': request.POST.get('property_state'),
+                        'property_zip': request.POST.get('property_zip'),
+                        
+                        # Term dates
+                        'term_start_date': request.POST.get('term_start_date'),
+                        'term_end_date': request.POST.get('term_end_date'),
+
+                        # Agreement Defaults
+                        'default_rent_amount': request.POST.get('default_rent_amount', 0),
+                        'default_security_deposit': request.POST.get('default_security_deposit', 0),
+                        'default_rent_due_day': request.POST.get('default_rent_due_day', 1),
+                        'default_late_fee': request.POST.get('default_late_fee', 0),
+                        'default_late_fee_start_day': request.POST.get('default_late_fee_start_day', 5),
+                        'default_eviction_day': request.POST.get('default_eviction_day', 10),
+                        'default_nsf_fee': request.POST.get('default_nsf_fee', 0),
+                        'default_max_occupants': request.POST.get('default_max_occupants', 10),
+                        'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
+                        'default_parking_fee': request.POST.get('default_parking_fee', 0),
+                        'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
+                        'bedrooms': request.POST.get('bedrooms', 1),
+                        'rental_months': request.POST.get('rental_months'),
+                        
+                        # Additional Contact Persons
+                        'contact_person_1': request.POST.get('contact_person_1'),
+                        'contact_person_2': request.POST.get('contact_person_2'),
+                        'contact_phone': request.POST.get('contact_phone'),
+                        'contact_email': request.POST.get('contact_email'),
+                        
+                        # Real Estate Company Information
+                        'real_estate_company': request.POST.get('real_estate_company'),
+                        'company_mailing_address': request.POST.get('company_mailing_address'),
+                        'company_city': request.POST.get('company_city'),
+                        'company_state': request.POST.get('company_state'),
+                        'company_zip': request.POST.get('company_zip'),
+                        'company_contact_person': request.POST.get('company_contact_person'),
+                        'company_phone': request.POST.get('company_phone'),
+                        'company_email': request.POST.get('company_email'),
+                        'broker_name': request.POST.get('broker_name'),
+                        'broker_phone': request.POST.get('broker_phone'),
+                        'broker_email': request.POST.get('broker_email'),
+
+                        # Special Lease Instructions/Notes
+                        'lease_special_notes': request.POST.get('lease_special_notes', ''),
+
+                        'is_renewal': is_renewal,
+                        'exclude_security_deposit': exclude_security_deposit,
+                        'exclude_inspection_fee': exclude_inspection_fee,
+                    }
+
+                    # Convert numeric fields with proper error handling
+                    numeric_fields = {
+                        'default_rent_amount': 0,
+                        'default_security_deposit': 0,
+                        'default_late_fee': 50,
+                        'default_nsf_fee': 35,
+                        'default_inspection_fee': 300.00,
+                        'bedrooms': 0,
+                        'rental_months': 0,
+                        'default_rent_due_day': 1,
+                        'default_late_fee_start_day': 5,
+                        'default_eviction_day': 10,
+                        'default_max_occupants': 10,
+                        'default_parking_spaces': 2,
+                        'default_parking_fee': 0
+                    }
+
+                    for field, default in numeric_fields.items():
+                        try:
+                            value = request.POST.get(field, default)
+                            if value:
+                                if field in ['default_rent_amount', 'default_security_deposit', 
+                                           'default_late_fee', 'default_nsf_fee', 'default_parking_fee', 
+                                           'default_inspection_fee']:
+                                    landlord_data[field] = float(value)
+                                else:
+                                    landlord_data[field] = int(float(value))  # Handle integer fields
+                            else:
+                                landlord_data[field] = default
+                        except (ValueError, TypeError) as e:
+                            logger.warning(f"Invalid number format for {field}: {str(e)}")
+                            landlord_data[field] = default
+
+                    context['landlord'] = landlord_data
+
+                    # Render template
+                    html_content = template.render(context)
+                    previews[document.name] = html_content
+                    
+                except Exception as e:
+                    logger.error(f"Error generating preview for {document.name}: {str(e)}")
+                    previews[document.name] = f"<p>Error generating preview: {str(e)}</p>"
+
+            # Generate Input Sheet preview
+            try:
+                input_sheet_path = os.path.join(
+                    settings.BASE_DIR, 'docsAppR', 'templates', 'account', 'lease_input_sheet.html'
+                )
+
+                if os.path.exists(input_sheet_path):
+                    with open(input_sheet_path, 'r', encoding='utf-8') as input_sheet_file:
+                        input_sheet_content = input_sheet_file.read()
+
+                    input_sheet_template = Template(input_sheet_content)
+
+                    # Build context for input sheet
+                    input_sheet_landlord_data = {
+                        'full_name': request.POST.get('full_name'),
+                        'address': request.POST.get('address'),
+                        'city': request.POST.get('city'),
+                        'state': request.POST.get('state'),
+                        'zip_code': request.POST.get('zip_code'),
+                        'phone': request.POST.get('phone'),
+                        'email': request.POST.get('email'),
+                        'property_address': request.POST.get('property_address'),
+                        'property_city': request.POST.get('property_city'),
+                        'property_state': request.POST.get('property_state'),
+                        'property_zip': request.POST.get('property_zip'),
+                        'default_rent_amount': request.POST.get('default_rent_amount', 0),
+                        'default_security_deposit': request.POST.get('default_security_deposit', 0),
+                        'default_rent_due_day': request.POST.get('default_rent_due_day', 1),
+                        'default_late_fee': request.POST.get('default_late_fee', 0),
+                        'default_late_fee_start_day': request.POST.get('default_late_fee_start_day', 5),
+                        'default_eviction_day': request.POST.get('default_eviction_day', 10),
+                        'default_nsf_fee': request.POST.get('default_nsf_fee', 0),
+                        'default_max_occupants': request.POST.get('default_max_occupants', 10),
+                        'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
+                        'default_parking_fee': request.POST.get('default_parking_fee', 0),
+                        'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
+                        'bedrooms': request.POST.get('bedrooms', 1),
+                        'rental_months': request.POST.get('rental_months'),
+                        'contact_person_1': request.POST.get('contact_person_1'),
+                        'contact_person_2': request.POST.get('contact_person_2'),
+                        'contact_phone': request.POST.get('contact_phone'),
+                        'contact_email': request.POST.get('contact_email'),
+                        'real_estate_company': request.POST.get('real_estate_company'),
+                        'company_mailing_address': request.POST.get('company_mailing_address'),
+                        'company_city': request.POST.get('company_city'),
+                        'company_state': request.POST.get('company_state'),
+                        'company_zip': request.POST.get('company_zip'),
+                        'company_contact_person': request.POST.get('company_contact_person'),
+                        'company_phone': request.POST.get('company_phone'),
+                        'company_email': request.POST.get('company_email'),
+                        'broker_name': request.POST.get('broker_name'),
+                        'broker_phone': request.POST.get('broker_phone'),
+                        'broker_email': request.POST.get('broker_email'),
+                        'lease_special_notes': request.POST.get('lease_special_notes', ''),
+                    }
+
+                    # Convert numeric fields
+                    for field in ['default_rent_amount', 'default_security_deposit', 'default_late_fee',
+                                 'default_nsf_fee', 'default_parking_fee', 'default_inspection_fee']:
+                        try:
+                            input_sheet_landlord_data[field] = float(input_sheet_landlord_data[field] or 0)
+                        except (ValueError, TypeError):
+                            input_sheet_landlord_data[field] = 0
+
+                    for field in ['default_rent_due_day', 'default_late_fee_start_day', 'default_eviction_day',
+                                 'default_max_occupants', 'default_parking_spaces', 'bedrooms', 'rental_months']:
+                        try:
+                            input_sheet_landlord_data[field] = int(float(input_sheet_landlord_data[field] or 0))
+                        except (ValueError, TypeError):
+                            input_sheet_landlord_data[field] = 0
+
+                    input_sheet_context = Context({
+                        'client': client,
+                        'landlord': input_sheet_landlord_data,
+                        'today': dt.datetime.now().strftime('%B %d, %Y'),
+                        'formatted_agreement_date': format_agreement_date(lease_agreement_date),
+                        'formatted_start_date': clean_and_format_date(term_start_date),
+                        'formatted_end_date': clean_and_format_date(term_end_date),
+                        'is_renewal': is_renewal,
+                        'exclude_security_deposit': exclude_security_deposit,
+                        'exclude_inspection_fee': exclude_inspection_fee,
+                    })
+
+                    input_sheet_html = input_sheet_template.render(input_sheet_context)
+                    previews['Input Sheet'] = input_sheet_html
+
+            except Exception as e:
+                logger.error(f"Error generating Input Sheet preview: {str(e)}")
+                previews['Input Sheet'] = f"<p>Error generating Input Sheet preview: {str(e)}</p>"
+
+            # Return JSON with all previews
+            return JsonResponse({'previews': previews})
+
+        # Generate PDFs for download
+        else:
+            logger.debug("Starting PDF generation for all documents")
+            
+            # Create in-memory ZIP file
+            zip_buffer = BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                generated_count = 0
+                
+                for document in documents:
+                    try:
+                        # Read template content
+                        if not document.file:
+                            logger.error(f"No template file attached to document: {document.name}")
+                            continue
+                            
+                        template_path = document.file.path
+                        
+                        if not os.path.exists(template_path):
+                            logger.error(f"Template file not found at: {template_path}")
+                            continue
+                            
+                        with open(template_path, 'r', encoding='utf-8') as template_file:
+                            template_content = template_file.read()
+                        
+                        # Create template and context
+                        template = Template(template_content)
+                        context = Context({
+                            'client': client,
+                            'document': document,
+                            'preview': False,
+                            'today': dt.datetime.now().strftime('%B %d, %Y')  # Fixed datetime
+                        })
+
+                        # Process lease-specific data (same as preview)
+                        lease_agreement_date = request.POST.get('lease_agreement_date', '')
+                        term_start_date = request.POST.get('term_start_date', '')
+                        term_end_date = request.POST.get('term_end_date', '')
+                        is_renewal = request.POST.get('is_renewal') == 'true'
+                        exclude_security_deposit = request.POST.get('exclude_security_deposit') == 'true'
+                        exclude_inspection_fee = request.POST.get('exclude_inspection_fee') == 'true'
+
+
+                        context.update({
+                            'formatted_agreement_date': format_agreement_date(lease_agreement_date),
+                            'lease_agreement_date': lease_agreement_date,
+                            'formatted_start_date': clean_and_format_date(term_start_date),
+                            'formatted_end_date': clean_and_format_date(term_end_date),
+                            'term_start_date': term_start_date,
+                            'term_end_date': term_end_date,
+                            'is_renewal': is_renewal,
+                            'exclude_security_deposit': exclude_security_deposit,
+                            'exclude_inspection_fee': exclude_inspection_fee,
+                        })
+
+                        # Add ALL landlord data from form (same structure as preview)
+                        landlord_data = {
+                            # Basic Information
+                            'full_name': request.POST.get('full_name'),
+                            'address': request.POST.get('address'),
+                            'city': request.POST.get('city'),
+                            'state': request.POST.get('state'),
+                            'zip_code': request.POST.get('zip_code'),
+                            'phone': request.POST.get('phone'),
+                            'email': request.POST.get('email'),
+                            
+                            # Rental Property Information
+                            'property_address': request.POST.get('property_address'),
+                            'property_city': request.POST.get('property_city'),
+                            'property_state': request.POST.get('property_state'),
+                            'property_zip': request.POST.get('property_zip'),
+                            
+                            # Term dates
+                            'term_start_date': request.POST.get('term_start_date'),
+                            'term_end_date': request.POST.get('term_end_date'),
+
+                            # Agreement Defaults
+                            'default_rent_amount': request.POST.get('default_rent_amount', 0),
+                            'default_security_deposit': request.POST.get('default_security_deposit', 0),
+                            'default_rent_due_day': request.POST.get('default_rent_due_day', 1),
+                            'default_late_fee': request.POST.get('default_late_fee', 0),
+                            'default_late_fee_start_day': request.POST.get('default_late_fee_start_day', 5),
+                            'default_eviction_day': request.POST.get('default_eviction_day', 10),
+                            'default_nsf_fee': request.POST.get('default_nsf_fee', 0),
+                            'default_max_occupants': request.POST.get('default_max_occupants', 10),
+                            'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
+                            'default_parking_fee': request.POST.get('default_parking_fee', 0),
+                            'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
+                            'bedrooms': request.POST.get('bedrooms', 1),
+                            'rental_months': request.POST.get('rental_months'),
+                            
+                            # Additional Contact Persons
+                            'contact_person_1': request.POST.get('contact_person_1'),
+                            'contact_person_2': request.POST.get('contact_person_2'),
+                            'contact_phone': request.POST.get('contact_phone'),
+                            'contact_email': request.POST.get('contact_email'),
+                            
+                            # Real Estate Company Information
+                            'real_estate_company': request.POST.get('real_estate_company'),
+                            'company_mailing_address': request.POST.get('company_mailing_address'),
+                            'company_city': request.POST.get('company_city'),
+                            'company_state': request.POST.get('company_state'),
+                            'company_zip': request.POST.get('company_zip'),
+                            'company_contact_person': request.POST.get('company_contact_person'),
+                            'company_phone': request.POST.get('company_phone'),
+                            'company_email': request.POST.get('company_email'),
+                            'broker_name': request.POST.get('broker_name'),
+                            'broker_phone': request.POST.get('broker_phone'),
+                            'broker_email': request.POST.get('broker_email'),
+
+                            # Special Lease Instructions/Notes
+                            'lease_special_notes': request.POST.get('lease_special_notes', ''),
+
+                            'is_renewal': is_renewal,
+                            'exclude_security_deposit': exclude_security_deposit,
+                            'exclude_inspection_fee': exclude_inspection_fee,
+
+                        }
+
+                        # Convert numeric fields (same as preview)
+                        numeric_fields = {
+                            'default_rent_amount': 0,
+                            'default_security_deposit': 0,
+                            'default_late_fee': 50,
+                            'default_nsf_fee': 35,
+                            'default_inspection_fee': 300.00,
+                            'bedrooms': 0,
+                            'rental_months': 0,
+                            'default_rent_due_day': 1,
+                            'default_late_fee_start_day': 5,
+                            'default_eviction_day': 10,
+                            'default_max_occupants': 10,
+                            'default_parking_spaces': 2,
+                            'default_parking_fee': 0
+                        }
+
+                        for field, default in numeric_fields.items():
+                            try:
+                                value = request.POST.get(field, default)
+                                if value:
+                                    if field in ['default_rent_amount', 'default_security_deposit', 
+                                               'default_late_fee', 'default_nsf_fee', 'default_parking_fee', 
+                                               'default_inspection_fee']:
+                                        landlord_data[field] = float(value)
+                                    else:
+                                        landlord_data[field] = int(float(value))
+                                else:
+                                    landlord_data[field] = default
+                            except (ValueError, TypeError) as e:
+                                logger.warning(f"Invalid number format for {field}: {str(e)}")
+                                landlord_data[field] = default
+
+                        context['landlord'] = landlord_data
+
+                        # Generate PDF
+                        html_string = template.render(context)
+                        pdf_bytes = HTML(
+                            string=html_string,
+                            base_url=request.build_absolute_uri('/')
+                        ).write_pdf()
+
+                        # Add to ZIP
+                        filename = f"{document.name.replace(' ', '_')}_{client_name}.pdf"
+                        zip_file.writestr(filename, pdf_bytes)
+
+                        # Save PDF to disk for later viewing
+                        lease_docs_dir = os.path.join(settings.MEDIA_ROOT, 'lease_documents', client_name.replace(' ', '_'))
+                        os.makedirs(lease_docs_dir, exist_ok=True)
+                        saved_pdf_path = os.path.join(lease_docs_dir, filename)
+                        with open(saved_pdf_path, 'wb') as pdf_file:
+                            pdf_file.write(pdf_bytes)
+
+                        # Store the relative path for later reference
+                        if not hasattr(request, '_generated_pdf_paths'):
+                            request._generated_pdf_paths = {}
+                        request._generated_pdf_paths[document.name] = f"lease_documents/{client_name.replace(' ', '_')}/{filename}"
+
+                        generated_count += 1
+
+                    except Exception as e:
+                        logger.error(f"Error generating PDF for {document.name}: {str(e)}")
+                        continue
+
+                # Generate Input Sheet after all lease documents
+                try:
+                    logger.debug("Generating Lease Input Sheet")
+                    input_sheet_path = os.path.join(
+                        settings.BASE_DIR, 'docsAppR', 'templates', 'account', 'lease_input_sheet.html'
+                    )
+
+                    if os.path.exists(input_sheet_path):
+                        with open(input_sheet_path, 'r', encoding='utf-8') as input_sheet_file:
+                            input_sheet_content = input_sheet_file.read()
+
+                        input_sheet_template = Template(input_sheet_content)
+
+                        # Build context for input sheet (reuse last landlord_data and context values)
+                        lease_agreement_date = request.POST.get('lease_agreement_date', '')
+                        term_start_date = request.POST.get('term_start_date', '')
+                        term_end_date = request.POST.get('term_end_date', '')
+                        is_renewal = request.POST.get('is_renewal') == 'true'
+                        exclude_security_deposit = request.POST.get('exclude_security_deposit') == 'true'
+                        exclude_inspection_fee = request.POST.get('exclude_inspection_fee') == 'true'
+
+                        # Rebuild landlord_data for input sheet
+                        input_sheet_landlord_data = {
+                            'full_name': request.POST.get('full_name'),
+                            'address': request.POST.get('address'),
+                            'city': request.POST.get('city'),
+                            'state': request.POST.get('state'),
+                            'zip_code': request.POST.get('zip_code'),
+                            'phone': request.POST.get('phone'),
+                            'email': request.POST.get('email'),
+                            'property_address': request.POST.get('property_address'),
+                            'property_city': request.POST.get('property_city'),
+                            'property_state': request.POST.get('property_state'),
+                            'property_zip': request.POST.get('property_zip'),
+                            'default_rent_amount': request.POST.get('default_rent_amount', 0),
+                            'default_security_deposit': request.POST.get('default_security_deposit', 0),
+                            'default_rent_due_day': request.POST.get('default_rent_due_day', 1),
+                            'default_late_fee': request.POST.get('default_late_fee', 0),
+                            'default_late_fee_start_day': request.POST.get('default_late_fee_start_day', 5),
+                            'default_eviction_day': request.POST.get('default_eviction_day', 10),
+                            'default_nsf_fee': request.POST.get('default_nsf_fee', 0),
+                            'default_max_occupants': request.POST.get('default_max_occupants', 10),
+                            'default_parking_spaces': request.POST.get('default_parking_spaces', 2),
+                            'default_parking_fee': request.POST.get('default_parking_fee', 0),
+                            'default_inspection_fee': request.POST.get('default_inspection_fee', 300.00),
+                            'bedrooms': request.POST.get('bedrooms', 1),
+                            'rental_months': request.POST.get('rental_months'),
+                            'contact_person_1': request.POST.get('contact_person_1'),
+                            'contact_person_2': request.POST.get('contact_person_2'),
+                            'contact_phone': request.POST.get('contact_phone'),
+                            'contact_email': request.POST.get('contact_email'),
+                            'real_estate_company': request.POST.get('real_estate_company'),
+                            'company_mailing_address': request.POST.get('company_mailing_address'),
+                            'company_city': request.POST.get('company_city'),
+                            'company_state': request.POST.get('company_state'),
+                            'company_zip': request.POST.get('company_zip'),
+                            'company_contact_person': request.POST.get('company_contact_person'),
+                            'company_phone': request.POST.get('company_phone'),
+                            'company_email': request.POST.get('company_email'),
+                            'broker_name': request.POST.get('broker_name'),
+                            'broker_phone': request.POST.get('broker_phone'),
+                            'broker_email': request.POST.get('broker_email'),
+                            'lease_special_notes': request.POST.get('lease_special_notes', ''),
+                        }
+
+                        # Convert numeric fields
+                        for field in ['default_rent_amount', 'default_security_deposit', 'default_late_fee',
+                                     'default_nsf_fee', 'default_parking_fee', 'default_inspection_fee']:
+                            try:
+                                input_sheet_landlord_data[field] = float(input_sheet_landlord_data[field] or 0)
+                            except (ValueError, TypeError):
+                                input_sheet_landlord_data[field] = 0
+
+                        for field in ['default_rent_due_day', 'default_late_fee_start_day', 'default_eviction_day',
+                                     'default_max_occupants', 'default_parking_spaces', 'bedrooms', 'rental_months']:
+                            try:
+                                input_sheet_landlord_data[field] = int(float(input_sheet_landlord_data[field] or 0))
+                            except (ValueError, TypeError):
+                                input_sheet_landlord_data[field] = 0
+
+                        input_sheet_context = Context({
+                            'client': client,
+                            'landlord': input_sheet_landlord_data,
+                            'today': dt.datetime.now().strftime('%B %d, %Y'),
+                            'formatted_agreement_date': format_agreement_date(lease_agreement_date),
+                            'formatted_start_date': clean_and_format_date(term_start_date),
+                            'formatted_end_date': clean_and_format_date(term_end_date),
+                            'is_renewal': is_renewal,
+                            'exclude_security_deposit': exclude_security_deposit,
+                            'exclude_inspection_fee': exclude_inspection_fee,
+                        })
+
+                        input_sheet_html = input_sheet_template.render(input_sheet_context)
+                        input_sheet_pdf = HTML(
+                            string=input_sheet_html,
+                            base_url=request.build_absolute_uri('/')
+                        ).write_pdf()
+
+                        # Add input sheet to ZIP (with 00_ prefix so it appears first)
+                        input_sheet_filename = f"00_Input_Sheet_{client_name}.pdf"
+                        zip_file.writestr(input_sheet_filename, input_sheet_pdf)
+
+                        # Save input sheet PDF to disk for later viewing
+                        lease_docs_dir = os.path.join(settings.MEDIA_ROOT, 'lease_documents', client_name.replace(' ', '_'))
+                        os.makedirs(lease_docs_dir, exist_ok=True)
+                        saved_input_sheet_path = os.path.join(lease_docs_dir, f"Input_Sheet_{client_name}.pdf")
+                        with open(saved_input_sheet_path, 'wb') as pdf_file:
+                            pdf_file.write(input_sheet_pdf)
+
+                        # Store the relative path for later reference
+                        if not hasattr(request, '_generated_pdf_paths'):
+                            request._generated_pdf_paths = {}
+                        request._generated_pdf_paths['Input Sheet'] = f"lease_documents/{client_name.replace(' ', '_')}/Input_Sheet_{client_name}.pdf"
+
+                        logger.debug("Lease Input Sheet generated successfully")
+
+                except Exception as e:
+                    logger.error(f"Error generating Input Sheet: {str(e)}")
+                    # Continue without input sheet if it fails
+
+            if generated_count == 0:
+                return HttpResponse("No documents could be generated", status=400)
+
+            # Create Lease record with all form data and link documents to it
+            try:
+                from dateutil.parser import parse as date_parse
+
+                # Parse dates
+                start_date = None
+                end_date = None
+                agreement_date = None
+                try:
+                    if term_start_date:
+                        start_date = date_parse(term_start_date).date()
+                    if term_end_date:
+                        end_date = date_parse(term_end_date).date()
+                    if lease_agreement_date:
+                        agreement_date = date_parse(lease_agreement_date).date()
+                except:
+                    pass
+
+                # Helper to safely get numeric values
+                def safe_decimal(value, default=0):
+                    try:
+                        return float(value) if value else default
+                    except (ValueError, TypeError):
+                        return default
+
+                def safe_int(value, default=0):
+                    try:
+                        return int(float(value)) if value else default
+                    except (ValueError, TypeError):
+                        return default
+
+                # Create the Lease record with all form data
+                lease = Lease.objects.create(
+                    client=client,
+                    # Lessor Information
+                    lessor_name=request.POST.get('full_name', ''),
+                    lessor_address=request.POST.get('address', ''),
+                    lessor_city=request.POST.get('city', ''),
+                    lessor_state=request.POST.get('state', ''),
+                    lessor_zip=request.POST.get('zip_code', ''),
+                    lessor_phone=request.POST.get('phone', ''),
+                    lessor_email=request.POST.get('email', ''),
+                    lessor_contact_person_1=request.POST.get('contact_person_1', ''),
+                    lessor_contact_person_2=request.POST.get('contact_person_2', ''),
+                    lessor_contact_phone=request.POST.get('contact_phone', ''),
+                    lessor_contact_email=request.POST.get('contact_email', ''),
+                    # Property Information
+                    property_address=request.POST.get('property_address', ''),
+                    property_city=request.POST.get('property_city', ''),
+                    property_state=request.POST.get('property_state', ''),
+                    property_zip=request.POST.get('property_zip', ''),
+                    bedrooms=safe_int(request.POST.get('bedrooms'), 1),
+                    # Rental Terms
+                    lease_start_date=start_date,
+                    lease_end_date=end_date,
+                    lease_agreement_date=agreement_date,
+                    rental_months=safe_int(request.POST.get('rental_months'), 12),
+                    monthly_rent=safe_decimal(request.POST.get('default_rent_amount'), 0),
+                    security_deposit=safe_decimal(request.POST.get('default_security_deposit'), 0),
+                    rent_due_day=safe_int(request.POST.get('default_rent_due_day'), 1),
+                    late_fee=safe_decimal(request.POST.get('default_late_fee'), 50),
+                    late_fee_start_day=safe_int(request.POST.get('default_late_fee_start_day'), 5),
+                    eviction_day=safe_int(request.POST.get('default_eviction_day'), 10),
+                    nsf_fee=safe_decimal(request.POST.get('default_nsf_fee'), 35),
+                    max_occupants=safe_int(request.POST.get('default_max_occupants'), 10),
+                    parking_spaces=safe_int(request.POST.get('default_parking_spaces'), 2),
+                    parking_fee=safe_decimal(request.POST.get('default_parking_fee'), 0),
+                    inspection_fee=safe_decimal(request.POST.get('default_inspection_fee'), 300),
+                    # Real Estate Company Info
+                    real_estate_company=request.POST.get('real_estate_company', ''),
+                    company_mailing_address=request.POST.get('company_mailing_address', ''),
+                    company_city=request.POST.get('company_city', ''),
+                    company_state=request.POST.get('company_state', ''),
+                    company_zip=request.POST.get('company_zip', ''),
+                    company_contact_person=request.POST.get('company_contact_person', ''),
+                    company_phone=request.POST.get('company_phone', ''),
+                    company_email=request.POST.get('company_email', ''),
+                    broker_name=request.POST.get('broker_name', ''),
+                    broker_phone=request.POST.get('broker_phone', ''),
+                    broker_email=request.POST.get('broker_email', ''),
+                    # Special Notes
+                    special_notes=request.POST.get('lease_special_notes', ''),
+                    # Flags
+                    is_renewal=is_renewal,
+                    exclude_security_deposit=exclude_security_deposit,
+                    exclude_inspection_fee=exclude_inspection_fee,
+                    # Status
+                    status='generated',
+                    generated_at=timezone.now(),
+                    # User tracking
+                    created_by=request.user if request.user.is_authenticated else None,
+                    last_modified_by=request.user if request.user.is_authenticated else None,
+                )
+
+                # Create LeaseDocument records for each document
+                document_type_map = {
+                    'Engagement Agreement': 'engagement_agreement',
+                    'Term Sheet': 'term_sheet',
+                    'Month to Month Rental': 'month_to_month_rental',
+                }
+
+                # Create LeaseDocument records and log activity for each document
+                pdf_paths = getattr(request, '_generated_pdf_paths', {})
+                for document in documents:
+                    doc_type = document_type_map.get(document.name, 'engagement_agreement')
+                    file_path = pdf_paths.get(document.name, '')
+                    LeaseDocument.objects.create(
+                        lease=lease,
+                        document_type=doc_type,
+                        document_name=f"{document.name} - {client_name}",
+                        file_path=file_path,
+                    )
+                    # Log activity for each document created
+                    LeaseActivity.objects.create(
+                        lease=lease,
+                        activity_type='document_created',
+                        description=f'Created {document.name} for {client_name}',
+                        performed_by=request.user if request.user.is_authenticated else None
+                    )
+
+                # Create input sheet document record
+                input_sheet_path = pdf_paths.get('Input Sheet', '')
+                LeaseDocument.objects.create(
+                    lease=lease,
+                    document_type='input_sheet',
+                    document_name=f"Input Sheet - {client_name}",
+                    file_path=input_sheet_path,
+                )
+                # Log activity for input sheet
+                LeaseActivity.objects.create(
+                    lease=lease,
+                    activity_type='document_created',
+                    description=f'Created Input Sheet for {client_name}',
+                    performed_by=request.user if request.user.is_authenticated else None
+                )
+
+                # Log the overall lease generation activity
+                LeaseActivity.objects.create(
+                    lease=lease,
+                    activity_type='generated',
+                    description=f'Generated lease package for {client_name} (${lease.monthly_rent}/month, {start_date} to {end_date})',
+                    performed_by=request.user if request.user.is_authenticated else None
+                )
+
+                logger.debug(f"Successfully created Lease record with {generated_count + 1} documents")
+
+            except Exception as track_error:
+                logger.error(f"Failed to create Lease record: {str(track_error)}")
+                import traceback
+                logger.error(traceback.format_exc())
+                print(f"LEASE CREATION ERROR: {str(track_error)}")
+                print(traceback.format_exc())
+                # Don't fail the whole request if tracking fails
+
+            # Return ZIP file
+            zip_buffer.seek(0)
+            response = HttpResponse(zip_buffer.read(), content_type='application/zip')
+            response['Content-Disposition'] = f'attachment; filename="{client_name}_documents.zip"'
+            logger.debug(f"Successfully generated {generated_count} documents")
+            return response
+
+    except Exception as e:
+        logger.error(f"Unexpected error in batch generation: {str(e)}", exc_info=True)
+        return HttpResponse(f"An unexpected error occurred: {str(e)}", status=500)
+
 import re
-from django.shortcuts import get_object_or_404
-from dateutil.parser import parse as parse_date
-from datetime import datetime
+import os
+import logging
 from io import BytesIO
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponse, JsonResponse
+from django.core.files.storage import default_storage
+from django.template import Template, Context
+from dateutil.parser import parse as parse_date
 from xhtml2pdf import pisa
+from .models import Client, Document, Landlord
 
 logger = logging.getLogger(__name__)
 def generate_document_from_html(request):
@@ -4664,7 +6862,7 @@ def generate_document_from_html(request):
                 if not date_obj:
                     for fmt in ('%Y-%m-%d', '%Y/%m/%d', '%m-%d-%Y', '%m/%d/%Y', '%d-%m-%Y', '%d/%m/%Y'):
                         try:
-                            date_obj = datetime.strptime(cleaned, fmt).date()
+                            date_obj = dt.datetime.strptime(cleaned, fmt).date()
                             break
                         except ValueError:
                             continue
@@ -4707,7 +6905,7 @@ def generate_document_from_html(request):
             'client': client,
             'document': document,
             'preview': request.POST.get('preview') == 'true',
-            'today': datetime.now().strftime('%B %d, %Y')
+            'today': dt.datetime.now().strftime('%B %d, %Y')
         })
 
         # Process lease-specific data
@@ -4840,6 +7038,7 @@ def generate_document_from_html(request):
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}", exc_info=True)
         return HttpResponse(f"An unexpected error occurred: {str(e)}", status=500)
+
 def save_landlord(request):
     if request.method == 'POST' and request.headers.get('X-Requested-With') == 'XMLHttpRequest':
         try:
@@ -4880,7 +7079,7 @@ def save_landlord(request):
                 # Additional Contact Persons
                 'contact_person_1': request.POST.get('contact_person_1'),
                 'contact_person_2': request.POST.get('contact_person_2'),
-                'contact_phone': request.POST.get('contact_phone'),
+                'contact_phone': request.POST.get('contact_phone'),   
                 'contact_email': request.POST.get('contact_email'),
                 
                 # Real Estate Company Information
@@ -5139,53 +7338,461 @@ def generate_invoice_pdf(request, client_id):
         return HttpResponse(f"An error occurred while generating the files: {str(e)}", status=500)
 
 @login_required
+@login_required
 def emails(request):
-    if request.method == 'POST':
-        recipients = request.POST.getlist('recipients[]')
-        subject = request.POST.get('subject')
-        message = request.POST.get('message')
-        selected_docs = request.POST.getlist('selected_docs[]')
-        
-        try:
-            email = EmailMessage(
-                subject=subject,
-                body=message,
-                from_email=settings.DEFAULT_FROM_EMAIL,
-                to=recipients,
-            )
-            
-            # Attach selected documents
-            for doc_id in selected_docs:
-                doc = get_object_or_404(File, id=doc_id)
-                email.attach_file(doc.file.path)
-            
-            email.send()
-            messages.success(request, 'Email sent successfully!')
-            
-        except Exception as e:
-            messages.error(request, f'Error sending email: {str(e)}')
-        
-        return redirect('emails')
+    # Get filter parameters
+    category_id = request.GET.get('category')
+    client_name = request.GET.get('client')
+    date_range = request.GET.get('date_range', 'recent')
+
+    # Base queryset - use Document model
+    documents = Document.objects.filter(created_by=request.user)
     
-    # Get recently generated documents (last 10)
-    documents = File.objects.all().order_by('-id')[:10]
+    # Apply filters
+    if category_id:
+        documents = documents.filter(category_id=category_id)
+    if client_name:
+        documents = documents.filter(client_name__icontains=client_name)
+    
+    # Date range filters
+    if date_range == 'today':
+        documents = documents.filter(created_at__date=timezone.now().date())
+    elif date_range == 'week':
+        week_ago = timezone.now() - timezone.timedelta(days=7)
+        documents = documents.filter(created_at__gte=week_ago)
+    elif date_range == 'month':
+        month_ago = timezone.now() - timezone.timedelta(days=30)
+        documents = documents.filter(created_at__gte=month_ago)
+    else:  # recent - last 50
+        documents = documents.order_by('-created_at')[:50]
+    
+    categories = DocumentCategory.objects.all()
+    sent_emails = SentEmail.objects.filter(sent_by=request.user)[:20]
+    schedules = EmailSchedule.objects.filter(created_by=request.user, is_active=True)
+    
+    if request.method == 'POST':
+        form = EmailForm(request.POST)
+        # Set queryset to user's documents
+        form.fields['documents'].queryset = documents
+        if form.is_valid():
+            try:
+                # Get selected documents
+                selected_docs = form.cleaned_data['documents']
+                # Recipients is already a list from clean_recipients()
+                recipients = form.cleaned_data['recipients']
+
+                # Check if user pasted Excel data
+                pasted_excel_data = request.POST.get('pasted_excel_data', '').strip()
+
+                # Check if user wants to embed Excel as HTML (from request POST)
+                embed_excel = request.POST.get('embed_excel', False)
+
+                # Create email
+                email = EmailMessage(
+                    subject=form.cleaned_data['subject'],
+                    body=form.cleaned_data['body'],
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=recipients,
+                )
+
+                # Handle pasted Excel data (highest priority)
+                excel_embedded = False
+                if pasted_excel_data:
+                    try:
+                        # Convert pasted Excel data to HTML
+                        excel_html = convert_pasted_excel_to_html(pasted_excel_data)
+                        email.body = excel_html
+                        email.content_subtype = "html"
+                        excel_embedded = True
+                        messages.success(request, 'Pasted Excel data converted to HTML email body.')
+                    except Exception as e:
+                        messages.warning(request, f'Could not convert pasted data: {str(e)}')
+
+                # Handle Excel file embedding or attachment
+                if not excel_embedded:
+                    for doc in selected_docs:
+                        # Check if document is Excel and user wants it embedded
+                        if embed_excel and doc.file.name.endswith(('.xlsx', '.xls')):
+                            try:
+                                # Convert Excel to HTML and use as email body
+                                excel_html = convert_excel_to_html(doc.file.path)
+                                email.body = excel_html
+                                email.content_subtype = "html"
+                                excel_embedded = True
+                                # Don't attach the Excel file if embedded
+                                continue
+                            except Exception as e:
+                                messages.warning(request, f'Could not embed Excel as HTML: {str(e)}. Attaching instead.')
+
+                        # Attach all other documents (or Excel if embedding failed)
+                        email.attach_file(doc.file.path)
+
+                # Create SentEmail record for tracking
+                sent_email = SentEmail.objects.create(
+                    subject=form.cleaned_data['subject'],
+                    body=form.cleaned_data['body'],
+                    recipients=recipients,
+                    sent_by=request.user,
+                    notify_on_open=form.cleaned_data['notify_on_open'],
+                    admin_notification_email=form.cleaned_data['admin_notification_email'] or request.user.email,
+                    scheduled_send_time=timezone.now() if form.cleaned_data['send_now'] else form.cleaned_data['scheduled_time']
+                )
+                sent_email.documents.set(selected_docs)
+
+                # Add tracking pixel to email
+                tracking_url = request.build_absolute_uri(
+                    f'/emails/track/{sent_email.tracking_pixel_id}/'
+                )
+
+                if email.content_subtype == "html" or excel_embedded:
+                    # Add tracking pixel to HTML email
+                    email.body += f'<img src="{tracking_url}" width="1" height="1" />'
+                else:
+                    # Convert plain text to HTML with tracking pixel
+                    html_body = f'<div style="white-space: pre-wrap;">{form.cleaned_data["body"]}</div>'
+                    html_body += f'<img src="{tracking_url}" width="1" height="1" />'
+                    email.body = html_body
+                    email.content_subtype = "html"
+                
+                # Send email
+                if form.cleaned_data['send_now'] or not form.cleaned_data['scheduled_time']:
+                    email.send()
+                    messages.success(request, 'Email sent successfully!')
+                else:
+                    # For scheduled emails, you'd typically use Celery
+                    messages.success(request, 'Email scheduled successfully!')
+                
+            except Exception as e:
+                import traceback
+                error_details = traceback.format_exc()
+                logger.error(f"Error sending email: {str(e)}\n{error_details}")
+                messages.error(request, f'Error sending email: {str(e)}')
+
+            return redirect('emails')
+        else:
+            # Form validation failed - show errors
+            for field, errors in form.errors.items():
+                for error in errors:
+                    messages.error(request, f'{field}: {error}')
+    else:
+        form = EmailForm()
+        # Set queryset to user's documents for GET request
+        form.fields['documents'].queryset = documents
     
     context = {
         'documents': documents,
+        'categories': categories,
+        'sent_emails': sent_emails,
+        'schedules': schedules,
+        'form': form,
+        'current_filters': {
+            'category_id': category_id,
+            'client_name': client_name,
+            'date_range': date_range,
+        }
     }
     
     return render(request, 'account/emails.html', context)
 
 
-import json
-import zipfile
-from django.shortcuts import render
-from django.http import JsonResponse, HttpResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.core.files.storage import default_storage
-from .models import ReadingImage
-from django.core.files.base import ContentFile
-import os
+def convert_pasted_excel_to_html(pasted_data):
+    """
+    Convert pasted Excel data (tab-separated values) to styled HTML table
+
+    Args:
+        pasted_data: String containing tab-separated values from Excel copy-paste
+
+    Returns:
+        Styled HTML string
+    """
+    import io
+
+    try:
+        # Split into rows
+        rows = [line.split('\t') for line in pasted_data.strip().split('\n')]
+
+        if not rows:
+            return "<p>No data provided</p>"
+
+        # Build HTML table
+        html_table = "<table class='email-table'>\n"
+
+        # First row as header
+        html_table += "  <thead>\n    <tr>\n"
+        for cell in rows[0]:
+            html_table += f"      <th>{cell.strip()}</th>\n"
+        html_table += "    </tr>\n  </thead>\n"
+
+        # Rest as body
+        html_table += "  <tbody>\n"
+        for row in rows[1:]:
+            html_table += "    <tr>\n"
+            for cell in row:
+                html_table += f"      <td>{cell.strip()}</td>\n"
+            html_table += "    </tr>\n"
+        html_table += "  </tbody>\n"
+        html_table += "</table>"
+
+        # Add professional CSS styling
+        styled_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{
+                    font-family: Arial, Helvetica, sans-serif;
+                    background-color: #f4f4f4;
+                    padding: 20px;
+                }}
+                .email-container {{
+                    max-width: 900px;
+                    margin: 0 auto;
+                    background-color: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }}
+                .email-table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    font-size: 14px;
+                    margin: 20px 0;
+                }}
+                .email-table thead {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }}
+                .email-table th {{
+                    padding: 12px 15px;
+                    text-align: left;
+                    font-weight: 600;
+                    border: 1px solid #ddd;
+                }}
+                .email-table td {{
+                    padding: 10px 15px;
+                    border: 1px solid #ddd;
+                }}
+                .email-table tbody tr:nth-child(even) {{
+                    background-color: #f8f9fa;
+                }}
+                .email-table tbody tr:hover {{
+                    background-color: #e9ecef;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                {html_table}
+            </div>
+        </body>
+        </html>
+        """
+
+        return styled_html
+
+    except Exception as e:
+        return f"<p>Error converting pasted data to HTML: {str(e)}</p>"
+
+
+def convert_excel_to_html(excel_file_path):
+    """
+    Convert Excel file to styled HTML table for email body
+
+    Args:
+        excel_file_path: Path to Excel file
+
+    Returns:
+        Styled HTML string
+    """
+    import pandas as pd
+
+    try:
+        # Read Excel file (first sheet by default)
+        df = pd.read_excel(excel_file_path, engine='openpyxl')
+
+        # Convert to HTML with styling
+        html_table = df.to_html(
+            index=False,
+            classes='email-table',
+            border=0,
+            escape=False,
+            na_rep=''
+        )
+
+        # Add professional CSS styling
+        styled_html = f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <meta charset="UTF-8">
+            <style>
+                body {{
+                    font-family: Arial, Helvetica, sans-serif;
+                    background-color: #f4f4f4;
+                    padding: 20px;
+                }}
+                .email-container {{
+                    max-width: 900px;
+                    margin: 0 auto;
+                    background-color: white;
+                    padding: 20px;
+                    border-radius: 8px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                }}
+                .email-table {{
+                    border-collapse: collapse;
+                    width: 100%;
+                    font-size: 14px;
+                    margin: 20px 0;
+                }}
+                .email-table thead {{
+                    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                    color: white;
+                }}
+                .email-table th {{
+                    padding: 12px 15px;
+                    text-align: left;
+                    font-weight: 600;
+                    border: 1px solid #ddd;
+                }}
+                .email-table td {{
+                    padding: 10px 15px;
+                    border: 1px solid #ddd;
+                }}
+                .email-table tbody tr:nth-child(even) {{
+                    background-color: #f8f9fa;
+                }}
+                .email-table tbody tr:hover {{
+                    background-color: #e9ecef;
+                }}
+            </style>
+        </head>
+        <body>
+            <div class="email-container">
+                {html_table}
+            </div>
+        </body>
+        </html>
+        """
+
+        return styled_html
+
+    except Exception as e:
+        return f"<p>Error converting Excel to HTML: {str(e)}</p>"
+
+
+@login_required
+def track_email_open(request, tracking_pixel_id):
+    try:
+        sent_email = SentEmail.objects.get(tracking_pixel_id=tracking_pixel_id)
+        sent_email.is_opened = True
+        sent_email.opened_at = timezone.now()
+        sent_email.save()
+        
+        # Create open event
+        EmailOpenEvent.objects.create(
+            sent_email=sent_email,
+            ip_address=get_client_ip(request),
+            user_agent=request.META.get('HTTP_USER_AGENT', '')
+        )
+        
+        # Send notification if enabled
+        if sent_email.notify_on_open and sent_email.admin_notification_email:
+            try:
+                notification_email = EmailMessage(
+                    subject=f"Email Opened: {sent_email.subject}",
+                    body=f"""
+                    Your email has been opened!
+                    
+                    Email: {sent_email.subject}
+                    Opened at: {timezone.now()}
+                    Recipient: {', '.join(sent_email.recipients)}
+                    """,
+                    from_email=settings.DEFAULT_FROM_EMAIL,
+                    to=[sent_email.admin_notification_email],
+                )
+                notification_email.send()
+            except Exception as e:
+                # Log error but don't break the tracking
+                print(f"Error sending notification: {e}")
+        
+    except SentEmail.DoesNotExist:
+        pass
+    
+    # Return a 1x1 transparent GIF
+    from django.http import HttpResponse
+    response = HttpResponse(
+        base64.b64decode(b'R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7'),
+        content_type='image/gif'
+    )
+    response['Cache-Control'] = 'no-cache, no-store, must-revalidate'
+    response['Pragma'] = 'no-cache'
+    response['Expires'] = '0'
+    return response
+
+def get_client_ip(request):
+    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
+    if x_forwarded_for:
+        ip = x_forwarded_for.split(',')[0]
+    else:
+        ip = request.META.get('REMOTE_ADDR')
+    return ip
+
+@login_required
+def create_schedule(request):
+    if request.method == 'POST':
+        form = EmailScheduleForm(request.POST)
+        if form.is_valid():
+            schedule = form.save(commit=False)
+            schedule.created_by = request.user
+            schedule.recipients = form.cleaned_data['recipients']
+            schedule.save()
+            form.save_m2m()  # Save many-to-many relationships
+            
+            messages.success(request, 'Email schedule created successfully!')
+            return redirect('emails')
+    else:
+        form = EmailScheduleForm()
+    
+    return render(request, 'account/email_schedule_form.html', {'form': form})
+
+@login_required
+def document_list_api(request):
+    """API endpoint for document filtering"""
+    category_id = request.GET.get('category')
+    client_name = request.GET.get('client')
+    search = request.GET.get('search', '')
+
+    documents = Document.objects.filter(created_by=request.user)
+    
+    if category_id:
+        documents = documents.filter(category_id=category_id)
+    if client_name:
+        documents = documents.filter(client_name__icontains=client_name)
+    if search:
+        documents = documents.filter(
+            Q(filename__icontains=search) | 
+            Q(description__icontains=search) |
+            Q(client_name__icontains=search)
+        )
+    
+    documents = documents.order_by('-created_at')[:50]
+    
+    data = []
+    for doc in documents:
+        data.append({
+            'id': str(doc.id),
+            'filename': doc.filename,
+            'client_name': doc.client_name,
+            'category': doc.category.name if doc.category else '',
+            'created_at': doc.created_at.strftime('%Y-%m-%d %H:%M'),
+            'description': doc.description,
+        })
+    
+    return JsonResponse({'documents': data})
+    
+
 
 def reading_browser(request):
     """Main view for the reading browser"""
@@ -5448,7 +8055,6 @@ def delete_reading(request, image_id):
 
 from django.db.models import Count, Avg, Case, When, IntegerField, F, Q
 from django.utils import timezone
-import datetime as dt
 import json
 from django.contrib.auth.decorators import login_required
 from django.shortcuts import render
@@ -5572,7 +8178,7 @@ def statistics(request):
         for c in clients.order_by('-updated_at')[:5]
     ]
     
-        recent_uploads = UploadActivity.objects.all().order_by('-uploaded_at')[:10]
+    recent_uploads = UploadActivity.objects.all().order_by('-uploaded_at')[:10]
     
     context.update({
         'recent_uploads': recent_uploads,
@@ -5639,3 +8245,4214 @@ def calculate_trend_days(current_days, comparison_date):
     
     last_month_days = (comparison_date.date() - oldest_last_month.dateOfLoss).days
     return current_days - last_month_days
+
+import os
+import re
+import base64
+import requests
+from urllib.parse import quote
+from dotenv import load_dotenv
+from django.http import JsonResponse, HttpResponse
+from django.views.decorators.http import require_GET
+from django.template import Template, Context
+from collections import defaultdict
+import logging
+
+load_dotenv()
+logger = logging.getLogger(__name__)
+
+CLIENT_ID     = os.getenv("GRAPH_CLIENT_ID")
+REDIRECT_URI  = os.getenv("GRAPH_REDIRECT_URI", "https://login.microsoftonline.com/common/oauth2/nativeclient")
+SCOPE         = os.getenv("GRAPH_SCOPE", "offline_access Files.ReadWrite.All")
+TENANT        = os.getenv("GRAPH_TENANT", "consumers")
+REFRESH_TOKEN = os.getenv("GRAPH_REFRESH_TOKEN")
+SHARED_ROOT_LINK = os.getenv("SHARED_ROOT_LINK")
+TOKEN_URL = f"https://login.microsoftonline.com/{TENANT}/oauth2/v2.0/token"
+GRAPH = "https://graph.microsoft.com/v1.0"
+
+IMG_EXT = {".jpg", ".jpeg", ".png", ".gif", ".bmp", ".webp", ".tif", ".tiff"}
+
+# --- Token Management ---
+def _access_token_from_refresh():
+    if not REFRESH_TOKEN:
+        raise RuntimeError("GRAPH_REFRESH_TOKEN is missing.")
+    data = {
+        "client_id": CLIENT_ID,
+        "grant_type": "refresh_token",
+        "refresh_token": REFRESH_TOKEN,
+        "scope": SCOPE,
+        "redirect_uri": REDIRECT_URI
+    }
+    r = requests.post(TOKEN_URL, data=data, timeout=30)
+    if r.status_code >= 400:
+        raise RuntimeError(f"Token refresh failed: {r.status_code} {r.text}")
+    return r.json()["access_token"]
+
+def _share_id_from_url(shared_url: str) -> str:
+    b = shared_url.encode("utf-8")
+    s = base64.urlsafe_b64encode(b).decode("ascii").rstrip("=")
+    return "u!" + s
+
+# --- OneDrive Navigation ---
+def _encode_path_segments(relative_path: str) -> str:
+    segments = relative_path.split('/')
+    encoded = ':/' + '/'.join(f"'{quote(seg, safe='')}'" for seg in segments)
+    return encoded
+
+def _get_shared_root_item(token: str, share_id: str):
+    headers = {"Authorization": f"Bearer {token}"}
+    url = f"{GRAPH}/shares/{share_id}/driveItem"
+    r = requests.get(url, headers=headers, timeout=30)
+    r.raise_for_status()
+    return r.json()
+
+def _list_children_by_path(token: str, drive_id: str, item_id: str, relative_path: str = None):
+    headers = {"Authorization": f"Bearer {token}"}
+    if relative_path:
+        encoded_path = _encode_path_segments(relative_path)
+        url = f"{GRAPH}/drives/{drive_id}/items/{item_id}{encoded_path}:/children"
+    else:
+        url = f"{GRAPH}/drives/{drive_id}/items/{item_id}/children"
+    url += "?$select=id,name,folder,file,@microsoft.graph.downloadUrl"
+    r = requests.get(url, headers=headers, timeout=30)
+    if r.status_code == 404:
+        return []
+    r.raise_for_status()
+    return r.json().get("value", [])
+
+# --- Helpers ---
+def _is_image(name: str) -> bool:
+    lower = name.lower()
+    return any(lower.endswith(ext) for ext in IMG_EXT)
+
+def _day_label(name: str):
+    if "rht" not in name.lower():
+        return None
+    m = re.search(r"day\s*([1-4])", name, flags=re.IGNORECASE)
+    return int(m.group(1)) if m else None
+
+def _num_prefix(filename: str):
+    m = re.match(r"^\s*(\d+)", filename)
+    return int(m.group(1)) if m else None
+
+def _find_estimates_folder(token: str, drive_id: str, item_id: str):
+    try:
+        children = _list_children_by_path(token, drive_id, item_id)
+        logger.info(f"Found {len(children)} children in folder")
+        for child in children:
+            name = child.get('name', '')
+            if not child.get('folder'):
+                continue
+            name_lower = name.lower()
+            if '01-' in name_lower and ('insurance' in name_lower or 'estimates' in name_lower or 'current-ins' in name_lower):
+                logger.info(f"✓ Found estimates folder: {name}")
+                return child
+        for child in children:
+            if not child.get('folder'):
+                continue
+            name_lower = child.get('name', '').lower()
+            if name_lower in ['documents', 'claims', 'projects']:
+                logger.info(f"Recursing into {child.get('name')}...")
+                result = _find_estimates_folder(token, drive_id, child.get('id'))
+                if result:
+                    return result
+        return None
+    except Exception as e:
+        logger.error(f"Error searching for estimates folder: {str(e)}")
+        return None
+
+# --- MAIN ENDPOINTS ---
+@require_GET
+def list_claim_images_shared(request):
+
+    logger.info(f"SHARED_ROOT_LINK in env: {os.getenv('SHARED_ROOT_LINK')}")
+    logger.info(f"All env vars: {dict(os.environ)}")
+
+    client_id = (request.GET.get("clientId") or "").strip()
+    if not SHARED_ROOT_LINK:
+        return JsonResponse({"error": "SHARED_ROOT_LINK not set in env."}, status=500)
+    try:
+        token = _access_token_from_refresh()
+    except Exception as e:
+        return JsonResponse({"error": str(e)}, status=500)
+    share_id = _share_id_from_url(SHARED_ROOT_LINK)
+    try:
+        root_item = _get_shared_root_item(token, share_id)
+        drive_id = root_item["parentReference"]["driveId"]
+        root_item_id = root_item["id"]
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to access shared root: {str(e)}"}, status=500)
+    try:
+        root_children = _list_children_by_path(token, drive_id, root_item_id)
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to list shared root: {str(e)}"}, status=500)
+    mit_item = None
+    for it in root_children:
+        if it.get("folder") and it.get("name", "").strip().lower() == "mit":
+            mit_item = it
+            break
+    if not mit_item:
+        return JsonResponse({"images": []})
+    try:
+        mit_children = _list_children_by_path(token, drive_id, mit_item["id"])
+    except Exception as e:
+        return JsonResponse({"error": f"Failed to list MIT: {str(e)}"}, status=500)
+    candidates = []
+    for it in mit_children:
+        name = it.get("name", "")
+        if not it.get("folder"):
+            continue
+        day = _day_label(name)
+        if day is None:
+            continue
+        if client_id:
+            if client_id.lower() in name.lower():
+                candidates.append((day, it))
+        else:
+            candidates.append((day, it))
+    if client_id and not candidates:
+        for it in mit_children:
+            name = it.get("name", "")
+            if not it.get("folder"):
+                continue
+            day = _day_label(name)
+            if day is not None:
+                candidates.append((day, it))
+    images = []
+    seen = set()
+    for day, rht_item in sorted(candidates, key=lambda x: x[0]):
+        try:
+            files = _list_children_by_path(token, drive_id, rht_item["id"])
+        except Exception:
+            continue
+        for f in files:
+            if not f.get("file"):
+                continue
+            nm = f.get("name", "")
+            if not _is_image(nm):
+                continue
+            dl = f.get("@microsoft.graph.downloadUrl")
+            if not dl:
+                continue
+            key = (nm, dl)
+            if key in seen:
+                continue
+            seen.add(key)
+            images.append({"name": nm, "downloadUrl": dl})
+    def sort_key(item):
+        num = _num_prefix(item["name"])
+        return (num if num is not None else 10**9, item["name"].lower())
+    images.sort(key=sort_key)
+    return JsonResponse({"images": images})
+
+
+# --- ENCIRCLE SYNC ---
+@csrf_exempt
+def generate_room_entries_from_configs(request):
+    """
+    Generate properly formatted room entries for each template
+    
+    Format: {number} …. {room_name} {description} {los_value}
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+    
+    try:
+        # Get the JSON data from the form
+        room_data_json = request.POST.get('room_data_json')
+        selected_templates = request.POST.getlist('selected_templates')
+        selected_work_types = request.POST.getlist('selected_work_types')  # Optional - only used with 'basic' template
+
+        # CRITICAL: Reorder templates so job_types is ALWAYS processed last (appears first in Encircle)
+        if 'job_types' in selected_templates:
+            selected_templates = [t for t in selected_templates if t != 'job_types']
+            selected_templates.append('job_types')
+
+        if not room_data_json:
+            return JsonResponse({'error': 'No room data provided'}, status=400)
+
+        room_data = json.loads(room_data_json)
+        rooms = room_data.get('rooms', [])
+        configs = room_data.get('configs', {})
+
+        if not rooms:
+            return JsonResponse({'error': 'No rooms provided'}, status=400)
+
+        # Check if at least one template is selected
+        if not selected_templates:
+            return JsonResponse({'error': 'No templates selected'}, status=400)
+
+        # Work type static descriptions - NEW FORMAT (100-700)
+        work_type_descs = {
+            100: "= … JOB/ROOMS OVERVIEW PICS ..",
+            200: "….. SOURCE of LOSS PICS …..",
+            300: "….. C.P.S. …...",
+            400: "….. PPR …..",
+            500: "…… DMO = DEMOLITION …....",
+            600: "… WTR MITIGATION EQUIPMENT & W.I.P . ...",
+            700: "… HMR = HAZARDOUS MATERIALS ..."
+        }
+
+        # Section labels - NEW FORMAT (100-700)
+        section_labels = {
+            100: "100 .... = ... JOB/ROOMS OVERVIEW PICS .. ==========================",
+            200: "200 .... ..... SOURCE of LOSS PICS ..... ===========================",
+            300: "300 .... ..... C.P.S. ...... =======================================",
+            400: "400 .... PPR ===================================================",
+            500: "500 .... ...... DMO = DEMOLITION ....... ===========================",
+            600: "600 . WTR MITIGATION EQUIPMENT & W.I.P. ============================",
+            700: "700 . HMR = HAZARDOUS MATERIALS ====================================",
+        }
+
+        room_entries_by_template = {}
+
+        # ===== TEMPLATE: Basic (100-700s) with optional work type deselection =====
+        if 'basic' in selected_templates:
+            # If user selected specific work types, use those. Otherwise use all.
+            if selected_work_types:
+                work_types_to_include = sorted([int(wt) for wt in selected_work_types])
+            else:
+                work_types_to_include = [100, 200, 300, 400, 500, 600, 700]
+
+            basic_entries = []
+
+            # Add the job types header entries at the top (0.0001-0.0004 and 1997-1999)
+            basic_entries.extend([
+                "0.0001 ….. JOBSITE VERIFICATION",
+                "0.0002 . MECHANICALS = WATER METER READING & PLUMBING REPORT/INVOICE",
+                "0.0003 . MECHANICALS = ELECTRICAL HAZARDS",
+                "0.0004 . EXT DAMAGE IF APPLICABLE ROOF TARPS",
+                "1997 . LEAD & HMR TESTING LAB RESULTS",
+                "1998 . KITCHEN CABINETS SIZES U & L =LF/ CT = SF; APPLIANCES",
+                "1999 . BATHROOM FIXTURES CAB SIZE & FIXTURES & TYPE",
+            ])
+
+            for work_type in work_types_to_include:
+                # ADD SECTION LABEL FIRST
+                basic_entries.append(section_labels[work_type])
+
+                for idx, room_name in enumerate(rooms):
+                    room_number = work_type + idx + 1
+
+                    # ALWAYS USE 100s CONFIG FOR ALL WORK TYPES
+                    room_config = configs.get(room_name, {})
+                    config_value = None
+
+                    # Get from 100s config
+                    if 100 in room_config:
+                        config_value = room_config[100]
+                    elif '100' in room_config:
+                        config_value = room_config['100']
+                    else:
+                        config_value = '.'
+
+                    # ORIGINAL DISPLAY LOGIC
+                    display_value = "…........." if config_value == "." else config_value
+
+                    # ORIGINAL FORMAT: {number} …. {room_name} {description} {los_value}
+                    entry = f"{room_number} {display_value} …. {room_name} {work_type_descs[work_type]}"
+                    basic_entries.append(entry)
+
+                # Add job type specific entries after 300s and 400s
+                if work_type == 300:
+                    basic_entries.extend([
+                        "3222 . CPS DAY2 WIP OVERVIEW WIP BOXES PACKOUT PICS",
+                        "3322 . CPS3 DAY3 STORAGE OVERVIEW STORAGE MOVE OUT PICS",
+                        "3444 . CPS4 DAY4 PACKBACK OVERVIEW PACK-BACK / RESET PICS",
+                    ])
+                elif work_type == 400:
+                    basic_entries.extend([
+                        "4111.1 . REPLACEMENT 1 CON OVERVIEW DAY PICS",
+                        "4222.2 . REPLACEMENT 2 CON WIP",
+                        "4333.3 . REPLACEMENT 3 CON STORAGE",
+                        "4444.4 . REPLACEMENT 4 CON DISPOSAL",
+                    ])
+
+            # Add the rebuild entries at the end (9998-9999)
+            basic_entries.extend([
+                "9998.0 . REBUILD OVERVIEW WORK IN PROGRESS.......WIP",
+                "9999.0 . REBUILD INTERIOR COMPLETED WORK",
+            ])
+
+            room_entries_by_template['basic'] = basic_entries
+
+        # ===== TEMPLATE: extended (400s only) =====
+        if 'extended' in selected_templates:
+            extended_entries = []
+
+            # ADD SECTION LABEL FIRST
+            extended_entries.append("400 .... NON SALVAGEABLE ITEMS =====================================")
+
+            for idx, room_name in enumerate(rooms):
+                room_number = 400 + idx + 1
+
+                # ALWAYS USE 100s CONFIG
+                room_config = configs.get(room_name, {})
+                config_value = None
+
+                if 100 in room_config:
+                    config_value = room_config[100]
+                elif '100' in room_config:
+                    config_value = room_config['100']
+                else:
+                    config_value = '.'
+
+                display_value = "…........." if config_value == "." else config_value
+
+                entry = f"{room_number} …. {room_name} {work_type_descs[400]} {display_value}"
+                extended_entries.append(entry)
+
+            room_entries_by_template['extended'] = extended_entries
+
+        # ===== TEMPLATE: readings (6000-7000s) =====
+        if 'readings' in selected_templates:
+            readings_entries = generate_8000_9000_entries(rooms, configs)
+            room_entries_by_template['readings'] = readings_entries
+        
+        # ===== TEMPLATE: readings default (70000s) =====
+        if 'readings default' in selected_templates:
+            readings_default_entries = generate_70000_entries(rooms, configs)
+            room_entries_by_template['readings default'] = readings_default_entries
+
+        # ===== TEMPLATE: Job Types (0.0000-9999.0) - CREATED LAST = APPEARS FIRST IN ENCIRCLE =====
+        if 'job_types' in selected_templates:
+            job_types_entries = generate_job_types_entries()
+            room_entries_by_template['job_types'] = job_types_entries
+
+        # Sort selected_templates by priority (lower priority number = created first = appears last in Encircle)
+        template_priority = {
+            'readings': 1,        # 8000-9000 MC Day Readings - created first
+            'extended': 2,        # 400 PPR List
+            'basic': 3,           # 100-700 Base List - created last = appears first
+            'readings default': 5,
+            'job_types': 0,       # Job Default - created very first
+        }
+        selected_templates = sorted(selected_templates, key=lambda x: template_priority.get(x, 99))
+
+        # Initialize automation
+        automation = RoomTemplateAutomation(headless=True)
+
+        # Run automation with the generated room entries
+        results = automation.run_automation_with_room_data(
+            room_entries=room_entries_by_template,
+            selected_template_ids=selected_templates,
+            delete_existing=True
+        )
+        
+        # Return the automation results
+        return JsonResponse({
+            'overall_status': results.get('overall_status', 'unknown'),
+            'templates_successful': results.get('templates_successful', 0),
+            'templates_failed': results.get('templates_failed', 0),
+            'templates_processed': results.get('templates_processed', []),
+            'login_status': results.get('login_status'),
+            'navigation_status': results.get('navigation_status'),
+            'deletion_results': results.get('deletion_results'),
+            'processed_rooms': len(rooms),
+            'selected_templates': selected_templates,
+            'room_entries_generated': {template: len(entries) for template, entries in room_entries_by_template.items()}
+        })
+        
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except ImportError as e:
+        return JsonResponse({'error': f'Automation module not available: {str(e)}'}, status=500)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def generate_8000_9000_entries(rooms, configs):
+    """
+    Generate 6000-7000s Readings List entries
+    ALWAYS USES 100s CONFIG FOR LOS VALUES
+    """
+    entries = []
+    
+    # Section labels for readings - 8000-9000 FORMAT
+    readings_section_labels = {
+        8100: "8100.0 . ..... DAY 1 MC READINGS ..... ======================",
+        8200: "8200.0 . ..... DAY 2 MC READINGS ..... ======================",
+        8300: "8300.0 . ..... DAY 3 MC READINGS ..... ======================",
+        8400: "8400.0 . ..... DAY 4 MC READINGS ..... ======================",
+    }
+    
+    # 6000s sections (use user room data with 100s LOS values)
+    for work_type in [8100, 8200, 8300, 8400]:
+        # ADD SECTION LABEL FIRST
+        entries.append(readings_section_labels[work_type])
+        
+        for idx, room_name in enumerate(rooms):
+            room_number = work_type + idx + 1
+            
+            # ALWAYS USE 100s CONFIG FOR LOS VALUES
+            room_config = configs.get(room_name, {})
+            config_value = None
+            
+            if 100 in room_config:
+                config_value = room_config[100]
+            elif '100' in room_config:
+                config_value = room_config['100']
+            else:
+                config_value = '.'
+            
+            display_value = "…........." if config_value == "." else config_value
+            
+            # Format for 6000s - ORIGINAL FORMAT
+            if work_type == 8100:
+                desc = "   ...  DAY1    MC READINGS .. "
+            elif work_type == 8200:
+                desc = "  ...  DAY2    MC READINGS .."
+            elif work_type == 8300:
+                desc = "  ...  DAY3    MC READINGS .."
+            else:  # 6400
+                desc = "  ...  DAY4    MC READINGS"
+            
+            # ORIGINAL FORMAT: {number} …. {room_name} {description} {los_value}
+            entry = f"{room_number} {display_value} .{str(work_type)[3]} …. {room_name} {desc}"
+            entries.append(entry)
+    
+    # 7000s section label - ORIGINAL FORMAT
+    entries.append("9000 RH &T & GPP  DRY CHAMBERS [DC] . READINGS ==================")
+    
+    # 7000s section (static entries - dry chambers) - ORIGINAL FORMAT
+    static_7000s_entries = [
+        "9100.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 1 ….. ",
+        "9100.0 …. EXTERIOR & UNAFFECTED AREA  ….. DAY 1 ….. ",
+        "9101.0 …. DRY CHAMBER # 1 ….. DAY 1 …..  RH &T & GPP ",
+        "9102.0 …. DRY CHAMBER # 2 ….. DAY 1 …..  RH &T & GPP ",
+        "9103.0 …. DRY CHAMBER # 3 ….. DAY 1 …..  RH &T & GPP ",
+        "9104.0 …. DRY CHAMBER # 4 ….. DAY 1 …..  RH &T & GPP ",
+        "9200.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 2 ….. ",
+        "9200.2 …. EXTERIOR & UNAFFECTED AREA ….. DAY 2 ….. ",
+        "9201.2 …. DRY CHAMBER # 1 ….. DAY 2 …..  RH &T & GPP ",
+        "9202.2 …. DRY CHAMBER # 2 ….. DAY 2 …..  RH &T & GPP ",
+        "9203.2 …. DRY CHAMBER # 3 ….. DAY 2 …..  RH &T & GPP ",
+        "9204.2 …. DRY CHAMBER # 4 ….. DAY 2 …..  RH &T & GPP ",
+        "9205.2 …. DRY CHAMBER # 5 ….. DAY 2 …..  RH &T & GPP ",
+        "9300.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 3 ….. ",
+        "9300.0 …. EXTERIOR & UNAFFECTED AREA ….. DAY 3 ….. ",
+        "9301.0 …. DRY CHAMBER # 1 ….. DAY 3 …..  RH &T & GPP ",
+        "9302.0 …. DRY CHAMBER # 2 ….. DAY 3 …..  RH &T & GPP ",
+        "9303.0 …. DRY CHAMBER # 3 ….. DAY 3 …..  RH &T & GPP ",
+        "9304.0 …. DRY CHAMBER # 4 ….. DAY 3 …..  RH &T & GPP ",
+        "9400.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 4 ….. ",
+        "9400.0 …. EXTERIOR & UNAFFECTED AREA ….. DAY 4 ….. ",
+        "9401.0 …. DRY CHAMBER # 1 ….. DAY 4 …..  RH &T & GPP ",
+        "9402.0 …. DRY CHAMBER # 2 ….. DAY 4 …..  RH &T & GPP ",
+        "9403.0 …. DRY CHAMBER # 3 ….. DAY 4 …..  RH &T & GPP ",
+        "9404.0 …. DRY CHAMBER # 4 ….. DAY 4 …..  RH &T & GPP "
+    ]
+    
+    entries.extend(static_7000s_entries)
+    return entries
+
+
+def generate_70000_entries(rooms, configs):
+    """
+    Generate 70000s Stabilization Readings entries
+    ALWAYS USES 100s CONFIG FOR LOS VALUES
+    """
+    entries = []
+    
+    # Add section label
+    entries.append("70000 ….. ======= DAY # 0  …..  MC READINGS STABILIZATION ===============")
+    
+    for idx, room_name in enumerate(rooms):
+        room_number = 70101 + idx
+        
+        # ALWAYS USE 100s CONFIG FOR LOS VALUES
+        room_config = configs.get(room_name, {})
+        config_value = None
+        
+        if 100 in room_config:
+            config_value = room_config[100]
+        elif '100' in room_config:
+            config_value = room_config['100']
+        else:
+            config_value = '.'
+        
+        display_value = "….........." if config_value == "." else config_value
+        
+        # ORIGINAL FORMAT: {number} …. {room_name} DAY 0 MOISTURE READINGS {los_value}
+        entry = f"{room_number} …. {room_name} … DAY # 0  … MC READINGS STABILIZATION … {display_value}"
+        entries.append(entry)
+    
+    return entries
+
+
+def generate_job_types_entries():
+    """
+    Generate static job types template entries (0.0000-9999.0)
+    This template has HIGHEST PRIORITY and doesn't use user room data
+    Format uses decimal numbers with simple space-separated descriptions for Encircle compatibility
+    """
+    entries = [
+        "0.0001 ….. JOBSITE VERIFICATION",
+        "0.0002 . MECHANICALS = WATER METER READING & PLUMBING REPORT/INVOICE",
+        "0.0003 . MECHANICALS = ELECTRICAL HAZARDS",
+        "0.0004 . EXT DAMAGE IF APPLICABLE ROOF TARPS",
+        "1997 . LEAD & HMR TESTING LAB RESULTS",
+        "1998 . KITCHEN CABINETS SIZES U & L =LF/ CT = SF; APPLIANCES",
+        "1999 . BATHROOM FIXTURES CAB SIZE & FIXTURES & TYPE",
+        "3222 . CPS DAY2 WIP OVERVIEW WIP BOXES PACKOUT PICS",
+        "3322 . CPS3 DAY3 STORAGE OVERVIEW STORAGE MOVE OUT PICS",
+        "3444 . CPS4 DAY4 PACKBACK OVERVIEW PACK-BACK / RESET PICS",
+        "4111.1 . REPLACEMENT 1 CON OVERVIEW DAY PICS",
+        "4222.2 . REPLACEMENT 2 CON WIP",
+        "4333.3 . REPLACEMENT 3 CON STORAGE",
+        "4444.4 . REPLACEMENT 4 CON DISPOSAL",
+        "9998.0 . REBUILD OVERVIEW WORK IN PROGRESS.......WIP",
+        "9999.0 . REBUILD INTERIOR COMPLETED WORK",
+    ]
+    return entries
+
+
+@csrf_exempt
+def get_all_clients(request):
+    """
+    Get all clients for dropdown selection
+    """
+    try:
+        clients = Client.objects.all().order_by('-created_at')[:100]  # Limit to 100 most recent
+        clients_data = []
+
+        for client in clients:
+            clients_data.append({
+                'id': client.id,
+                'pOwner': client.pOwner or 'Unknown',
+                'pAddress': client.pAddress or '',
+                'claimNumber': client.claimNumber or ''
+            })
+
+        return JsonResponse({'clients': clients_data})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@csrf_exempt
+def send_room_list_email(request):
+    """
+    Send room list email with dynamic claim data and room list
+    Includes PDF attachment and HTML email body with user instructions
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        recipients = data.get('recipients', [])
+        room_data = data.get('room_data', {})
+        claim_name = data.get('claim_name', 'CLAIM')
+        claim_address = data.get('claim_address', '')
+
+        if not recipients:
+            return JsonResponse({'error': 'No recipients provided'}, status=400)
+
+        if not room_data.get('rooms'):
+            return JsonResponse({'error': 'No room data provided'}, status=400)
+
+        # Get email version (default to 'table' for backward compatibility)
+        email_version = data.get('email_version', 'table')
+
+        # Generate email HTML with user instructions
+        html_content = generate_room_list_email_html(claim_name, claim_address, room_data, version=email_version)
+
+        # Generate PDF attachment with the same format
+        pdf_buffer = generate_room_list_pdf(claim_name, claim_address, room_data, format_type=email_version)
+
+        # Send email
+        from django.core.mail import EmailMessage
+        from django.conf import settings
+
+        email = EmailMessage(
+            subject=f'[ROOM LIST] {claim_name} — Worktype Documentation',
+            body=html_content,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=recipients,
+        )
+        email.content_subtype = 'html'
+
+        # Attach PDF
+        pdf_filename = f"{claim_name.replace(' ', '_')}_Room_List_{email_version}.pdf"
+        email.attach(pdf_filename, pdf_buffer.getvalue(), 'application/pdf')
+
+        email.send() 
+
+        return JsonResponse({
+            'success': True,
+            'recipients_count': len(recipients),
+            'message': f'Email sent successfully to {len(recipients)} recipient(s) with PDF attachment',
+            'format': email_version
+        })
+
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON data'}, status=400)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+    
+    
+def generate_room_list_pdf(claim_name, claim_address, room_data):
+    """
+    Generate a PDF of the room list table
+
+    Args:
+        claim_name: Name of the claim
+        claim_address: Address of the claim
+        room_data: Dictionary with 'rooms' and 'configs' keys
+
+    Returns:
+        BytesIO buffer containing the PDF
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from io import BytesIO
+
+    rooms = room_data.get('rooms', [])
+    configs = room_data.get('configs', {})
+
+    # Create PDF buffer
+    buffer = BytesIO()
+
+    # Create the PDF document in landscape mode for better table viewing
+    doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
+                           rightMargin=0.5*inch, leftMargin=0.5*inch,
+                           topMargin=0.5*inch, bottomMargin=0.5*inch)
+
+    # Container for the 'Flowable' objects
+    elements = []
+
+    # Define styles
+    styles = getSampleStyleSheet()
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=18,
+        textColor=colors.HexColor('#1e88e5'),
+        spaceAfter=12,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Normal'],
+        fontSize=12,
+        textColor=colors.HexColor('#555555'),
+        spaceAfter=20,
+        alignment=TA_CENTER
+    )
+
+    # Add title
+    title = Paragraph(f"{claim_name} — Worktype Documentation", title_style)
+    elements.append(title)
+
+    # Add address
+    subtitle = Paragraph(f"@ {claim_address}", subtitle_style)
+    elements.append(subtitle)
+    elements.append(Spacer(1, 0.2*inch))
+
+    # Build table data
+    table_data = []
+
+    # Header row
+    header = ['Room', '100\nOverview', 'LOS/\nTravel', '200\nSource', 'LOS/\nTravel',
+              '300\nCPS', 'LOS/\nTravel', '400\nPPR', 'LOS/\nTravel',
+              '500\nDemo', 'LOS/\nTravel', '600\nWTR', 'LOS/\nTravel',
+              '700\nHMR', 'LOS/\nTravel']
+    table_data.append(header)
+
+    # Room rows
+    for idx, room in enumerate(rooms):
+        base_num = idx + 1
+
+        # Get LOS/Travel value
+        room_config = configs.get(room, {})
+        config_value = room_config.get('100', room_config.get(100, '.'))
+        los_cell_value = '' if config_value == '.' else config_value
+
+        row = [
+            room,
+            f'1{base_num:02d}', los_cell_value,
+            f'2{base_num:02d}', los_cell_value,
+            f'3{base_num:02d}', los_cell_value,
+            f'4{base_num:02d}', los_cell_value,
+            f'5{base_num:02d}', los_cell_value,
+            f'6{base_num:02d}', los_cell_value,
+            f'7{base_num:02d}', los_cell_value
+        ]
+        table_data.append(row)
+
+    # Create table
+    col_widths = [1.8*inch] + [0.5*inch] * 14  # Room name wider, rest narrower
+    table = Table(table_data, colWidths=col_widths)
+
+    # Style the table
+    table_style = TableStyle([
+        # Header row
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e3f2fd')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 9),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+        ('TOPPADDING', (0, 0), (-1, 0), 8),
+
+        # Data cells
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 8),
+        ('TOPPADDING', (0, 1), (-1, -1), 6),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 6),
+
+        # Room name column
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+
+        # Alternating row colors
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+
+        # Work type columns (100, 200, 300, 400, 500, 600, 700)
+        ('BACKGROUND', (1, 1), (1, -1), colors.HexColor('#fff8c6')),  # 100
+        ('BACKGROUND', (3, 1), (3, -1), colors.HexColor('#f0f4f8')),  # 200
+        ('BACKGROUND', (5, 1), (5, -1), colors.HexColor('#fff8c6')),  # 300
+        ('BACKGROUND', (7, 1), (7, -1), colors.HexColor('#f0f4f8')),  # 400
+        ('BACKGROUND', (9, 1), (9, -1), colors.HexColor('#fff8c6')),  # 500
+        ('BACKGROUND', (11, 1), (11, -1), colors.HexColor('#f0f4f8')), # 600
+        ('BACKGROUND', (13, 1), (13, -1), colors.HexColor('#fff8c6')), # 700
+
+        # LOS/Travel columns
+        ('BACKGROUND', (2, 1), (2, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (4, 1), (4, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (6, 1), (6, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (8, 1), (8, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (10, 1), (10, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (12, 1), (12, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (14, 1), (14, -1), colors.HexColor('#ffe6e6')),
+        ('FONTNAME', (2, 1), (14, -1), 'Helvetica-Bold'),
+
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 1, colors.HexColor('#d0d0d0')),
+    ])
+
+    table.setStyle(table_style)
+    elements.append(table)
+
+    # Build PDF
+    doc.build(elements)
+
+    # Reset buffer position
+    buffer.seek(0)
+
+    return buffer
+
+
+def generate_room_list_email_html(claim_name, claim_address, room_data, version='table'):
+    """
+    Generate HTML email content for room list with dynamic data and user instructions
+
+    Args:
+        claim_name: Name of the claim
+        claim_address: Address of the claim
+        room_data: Dictionary with 'rooms' and 'configs' keys
+        version: 'table' for original table format, 'list' for sequential list format
+
+    Returns:
+        HTML string for email content
+    """
+    rooms = room_data.get('rooms', [])
+    configs = room_data.get('configs', {})
+
+    # DEBUG: Log the configs to see what we're receiving
+    print(f"[EMAIL DEBUG] Configs received: {configs}")
+    print(f"[EMAIL DEBUG] Email version: {version}")
+
+    if version == 'list':
+        # Generate the list format
+        return _generate_list_format_email(claim_name, claim_address, rooms, configs)
+    else:
+        # Generate the table format (original)
+        return _generate_table_format_email(claim_name, claim_address, rooms, configs)
+
+
+def _generate_table_format_email(claim_name, claim_address, rooms, configs):
+    """Generate the original table format email"""
+    # Build the room table rows with all work types (100, 200, 300, 400, 500, 600, 700)
+    room_rows_html = ''
+    for idx, room in enumerate(rooms):
+        base_num = idx + 1
+
+        # Get LOS/Travel value (100s value applies to all work types)
+        # Handle both string '100' and integer 100 keys from JavaScript
+        room_config = configs.get(room, {})
+        config_value = room_config.get('100', room_config.get(100, '.'))
+        print(f"[EMAIL DEBUG] Room: {room}, Room Config: {room_config}, Config Value: {config_value}")
+        # Display the actual value (LOS, TRVL, etc.) or leave empty if '.'
+        los_cell_value = '' if config_value == '.' else config_value
+
+        # Alternating row backgrounds
+        row_style = '' if idx % 2 == 0 else ''
+
+        room_rows_html += f'''
+        <tr{row_style}>
+          <td>{room}</td>
+          <td style="background:#fff8c6;">1{base_num:02d}</td>
+          <td style="background:#ffe6e6; font-weight:bold;">{los_cell_value}</td>
+          <td style="background:#f0f4f8;">2{base_num:02d}</td>
+          <td style="background:#ffe6e6; font-weight:bold;">{los_cell_value}</td>
+          <td style="background:#fff8c6;">3{base_num:02d}</td>
+          <td style="background:#ffe6e6; font-weight:bold;">{los_cell_value}</td>
+          <td style="background:#f0f4f8;">4{base_num:02d}</td>
+          <td style="background:#ffe6e6; font-weight:bold;">{los_cell_value}</td>
+          <td style="background:#fff8c6;">5{base_num:02d}</td>
+          <td style="background:#ffe6e6; font-weight:bold;">{los_cell_value}</td>
+          <td style="background:#f0f4f8;">6{base_num:02d}</td>
+          <td style="background:#ffe6e6; font-weight:bold;">{los_cell_value}</td>
+          <td style="background:#fff8c6;">7{base_num:02d}</td>
+          <td style="background:#ffe6e6; font-weight:bold;">{los_cell_value}</td>
+        </tr>
+        '''
+
+    html_content = f"""
+<div style="font-family: Arial, sans-serif; background:#f5f7fa; padding:30px;">
+
+  <!-- ========================= -->
+  <!-- HEADER / BRANDING BAR -->
+  <!-- ========================= -->
+  <div style="
+      background: linear-gradient(90deg, #1e88e5, #42a5f5);
+      color:white;
+      padding:20px 25px;
+      border-radius:8px;
+      font-size:22px;
+      font-weight:bold;
+      margin-bottom:25px;
+      box-shadow:0 4px 12px rgba(0,0,0,0.15);
+  ">
+    {claim_name} — Worktype Documentation
+  </div>
+
+  <!-- ========================= -->
+  <!-- USER INSTRUCTIONS -->
+  <!-- ========================= -->
+  <div style="
+      background:white;
+      border-radius:10px;
+      padding:25px;
+      margin-bottom:25px;
+      box-shadow:0 3px 12px rgba(0,0,0,0.12);
+      border-left: 5px solid #28a745;
+  ">
+    <h2 style="margin-top:0; color:#28a745; font-size:20px;">📋 How to Use This Email</h2>
+
+    <p style="font-size:15px; color:#333; line-height:1.6; margin-bottom:15px;">
+      This email contains the room list for <strong>{claim_name}</strong>. You have two ways to view and use this information:
+    </p>
+
+    <div style="margin-bottom:20px;">
+      <h3 style="color:#1e88e5; font-size:16px; margin-bottom:10px;">📧 Option 1: View in Email</h3>
+      <p style="font-size:14px; color:#555; line-height:1.6; margin-left:20px;">
+        Simply scroll down in this email to see the complete room list table below. Perfect for quick reference!
+      </p>
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <h3 style="color:#1e88e5; font-size:16px; margin-bottom:10px;">📎 Option 2: Download & Print the PDF</h3>
+      <p style="font-size:14px; color:#555; line-height:1.6; margin-left:20px; margin-bottom:15px;">
+        A PDF file is attached to this email. Use it to print a physical copy or save it for your records.
+      </p>
+
+      <div style="background:#f8f9fa; padding:15px; border-radius:6px; margin-left:20px;">
+        <p style="font-size:14px; color:#333; font-weight:600; margin:0 0 10px 0;">🖨️ Printing Instructions:</p>
+
+        <div style="margin-bottom:15px;">
+          <p style="font-size:13px; color:#555; margin:0 0 8px 0; font-weight:600;">📱 On Mobile Phone (iPhone/Android):</p>
+          <ol style="font-size:13px; color:#555; line-height:1.8; margin:0; padding-left:25px;">
+            <li>Tap the PDF attachment at the top or bottom of this email</li>
+            <li>The PDF will open in your phone's viewer</li>
+            <li>Tap the Share icon (box with arrow) or Menu (three dots)</li>
+            <li>Select "Print" from the menu</li>
+            <li>Choose your printer (make sure your phone and printer are on the same WiFi network)</li>
+            <li>Tap "Print"</li>
+          </ol>
+          <p style="font-size:12px; color:#777; margin:8px 0 0 0; font-style:italic;">
+            💡 Tip: If you don't see your printer, make sure it's turned on and connected to WiFi!
+          </p>
+        </div>
+
+        <div>
+          <p style="font-size:13px; color:#555; margin:0 0 8px 0; font-weight:600;">💻 On Computer (PC/Mac):</p>
+          <ol style="font-size:13px; color:#555; line-height:1.8; margin:0; padding-left:25px;">
+            <li>Click the PDF attachment to download it</li>
+            <li>Open the downloaded PDF file (usually in your Downloads folder)</li>
+            <li>Click "File" then "Print" (or press Ctrl+P on PC / Cmd+P on Mac)</li>
+            <li>Select your printer from the list</li>
+            <li>Choose "Landscape" orientation for best results</li>
+            <li>Click "Print"</li>
+          </ol>
+          <p style="font-size:12px; color:#777; margin:8px 0 0 0; font-style:italic;">
+            💡 Tip: Use Landscape orientation so the table fits better on the page!
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff3cd; padding:12px; border-radius:6px; border-left:4px solid #ffc107; margin-top:15px;">
+      <p style="font-size:13px; color:#856404; margin:0; line-height:1.6;">
+        <strong>Need Help?</strong> If you have trouble opening the PDF or printing, please reply to this email and we'll assist you!
+      </p>
+    </div>
+  </div>
+
+
+  <!-- ========================= -->
+  <!-- CARD: REFERENCE INDEX -->
+  <!-- ========================= -->
+  <div style="
+      background:white;
+      border-radius:10px;
+      padding:25px;
+      margin-bottom:35px;
+      box-shadow:0 3px 12px rgba(0,0,0,0.12);
+  ">
+    <h2 style="margin-top:0; color:#1e88e5;">Reference Index — Worktype Codes</h2>
+
+    <table cellspacing="0" cellpadding="8" border="1"
+      style="border-collapse: collapse; width:100%; font-size:14px; border-color:#d0d0d0;">
+
+      <tr>
+        <th style="background:#e3f2fd; font-weight:bold;">Code</th>
+        <th style="background:#e3f2fd; font-weight:bold;">Description</th>
+      </tr>
+
+      <tr><td>0.0001</td><td>Jobsite Verification</td></tr>
+      <tr><td>0.0002</td><td>Mechanicals – Water Meter Reading & Plumbing Report/Invoice</td></tr>
+      <tr><td>0.0003</td><td>Mechanicals – Electrical Hazards</td></tr>
+      <tr><td>0.0004</td><td>Exterior Damage If Applicable Roof Tarps</td></tr>
+      <tr><td>1997</td><td>Lead & HMR Testing Lab Results</td></tr>
+      <tr><td>1998</td><td>Kitchen Cabinets Sizes U & L =LF/ CT = SF; Appliances</td></tr>
+      <tr><td>1999</td><td>Bathroom Fixtures Cab Size & Fixtures & Type</td></tr>
+
+      <tr><td>100</td><td>Rooms Overview</td></tr>
+      <tr><td>200</td><td>Source of Loss</td></tr>
+      <tr><td>300</td><td>CPS</td></tr>
+      <tr><td>3222</td><td>CPS DAY2 WIP overview WIP boxes packout pics</td></tr>
+      <tr><td>3322</td><td>CPS3 DAY3 storage overview storage MOVE OUT pics</td></tr>
+      <tr><td>3444</td><td>CPS4 DAY4 packback overview pack-back / reset pics</td></tr>
+
+      <tr><td>400</td><td>PPR</td></tr>
+      <tr><td>4111.1</td><td>Replacement 1 CON overview day pics</td></tr>
+      <tr><td>4222.2</td><td>Replacement 2 CON WIP</td></tr>
+      <tr><td>4333.3</td><td>Replacement 3 CON storage</td></tr>
+      <tr><td>4444.4</td><td>Replacement 4 CON disposal</td></tr>
+
+      <tr><td>500</td><td>DMO Demo</td></tr>
+      <tr><td>600</td><td>WTR Mitigation Equipment & W.I.P</td></tr>
+      <tr><td>700</td><td>HMR</td></tr>
+
+      <tr><td>9998.0</td><td>Rebuild overview work in progress.......WIP</td></tr>
+      <tr><td>9999.0</td><td>Rebuild interior completed work</td></tr>
+    </table>
+  </div>
+
+
+
+  <!-- ========================= -->
+  <!-- CARD: ROOM LIST -->
+  <!-- ========================= -->
+  <div style="
+      background:white;
+      border-radius:10px;
+      padding:25px;
+      margin-bottom:35px;
+      box-shadow:0 3px 12px rgba(0,0,0,0.12);
+  ">
+    <h2 style="color:#1e88e5; margin-top:0;">{claim_name} Worktype Room List</h2>
+    <h3 style="color:#555; font-weight:normal; margin-top:5px;">
+      @ {claim_address}
+    </h3>
+
+    <!-- MOBILE SCROLL HINT -->
+    <div class="mobile-scroll-hint" style="display:none; background:#fff3cd; padding:10px; border-radius:6px; margin-bottom:10px; text-align:center; border:1px solid #ffc107;">
+      <span style="color:#856404; font-size:13px;">📱 Scroll horizontally to see all columns →</span>
+    </div>
+    <style>
+      @media only screen and (max-width: 768px) {{
+        .mobile-scroll-hint {{ display:block !important; }}
+      }}
+    </style>
+
+    <!-- MOBILE SAFE SCROLL WRAPPER -->
+    <div style="width:100%; overflow-x:auto; -webkit-overflow-scrolling:touch;">
+
+      <table cellspacing="0" cellpadding="8" border="1"
+        style="border-collapse: collapse; width:100%; min-width:650px; table-layout:auto; font-size:14px; border-color:#d0d0d0;">
+
+        <tr style="font-weight:bold;">
+          <th style="background:#e3f2fd;">Room</th>
+          <th style="background:#fff8c6;">100<br>Overview</th>
+          <th style="background:#ffe6e6;">LOS/<br>Travel</th>
+          <th style="background:#f0f4f8;">200<br>Source</th>
+          <th style="background:#ffe6e6;">LOS/<br>Travel</th>
+          <th style="background:#fff8c6;">300<br>CPS</th>
+          <th style="background:#ffe6e6;">LOS/<br>Travel</th>
+          <th style="background:#f0f4f8;">400<br>PPR</th>
+          <th style="background:#ffe6e6;">LOS/<br>Travel</th>
+          <th style="background:#fff8c6;">500<br>Demo</th>
+          <th style="background:#ffe6e6;">LOS/<br>Travel</th>
+          <th style="background:#f0f4f8;">600<br>WTR Equip</th>
+          <th style="background:#ffe6e6;">LOS/<br>Travel</th>
+          <th style="background:#fff8c6;">700<br>HMR</th>
+          <th style="background:#ffe6e6;">LOS/<br>Travel</th>
+        </tr>
+
+        <!-- ROWS -->
+        {room_rows_html}
+
+      </table>
+    </div>
+  </div>
+
+
+
+  <!-- ========================= -->
+  <!-- FOOTER -->
+  <!-- ========================= -->
+  <div style="
+      text-align:center;
+      padding:15px;
+      color:#777;
+      font-size:12px;
+      margin-top:20px;
+  ">
+    {claim_name} report | Powered by Claimet Email System
+  </div>
+
+</div>
+    """
+
+    return html_content
+
+
+def _generate_list_format_email(claim_name, claim_address, rooms, configs):
+    """Generate the sequential list format email"""
+
+    # Define work type configurations with their descriptions
+    work_types = [
+        (100, "JOB/ROOMS OVERVIEW PICS", "...", "=========================="),
+        (200, "SOURCE of LOSS PICS", ".....", "==========================="),
+        (300, "C.P.S.", ".....", "======================================="),
+        (400, "PPR", "", "============================================="),
+        (500, "DMO = DEMOLITION", "......", "==========================="),
+        (600, "WTR MITIGATION EQUIPMENT & W.I.P", "", "================================"),
+        (700, "HMR = HAZARDOUS MATERIALS", "", "===================================="),
+    ]
+
+    # Build the list items
+    list_items_html = ''
+
+    # Add default codes at the beginning
+    default_codes = [
+        ("0.0001", "JOBSITE VERIFICATION", "....."),
+        ("0.0002", "MECHANICALS = WATER METER READING & PLUMBING REPORT/INVOICE", "."),
+        ("0.0003", "MECHANICALS = ELECTRICAL HAZARDS", "."),
+        ("0.0004", "EXT DAMAGE IF APPLICABLE ROOF TARPS", "."),
+        ("1997", "LEAD & HMR TESTING LAB RESULTS", "."),
+        ("1998", "KITCHEN CABINETS SIZES U & L =LF/ CT = SF; APPLIANCES", "."),
+        ("1999", "BATHROOM FIXTURES CAB SIZE & FIXTURES & TYPE", "."),
+    ]
+
+    for code, description, dots in default_codes:
+        list_items_html += f'''
+        <div style="padding:8px 0; border-bottom:1px solid #e0e0e0; font-family:monospace; font-size:14px;">
+          <span style="display:inline-block; width:80px; font-weight:bold; color:#1e88e5;">{code}</span>
+          <span style="color:#555;">{dots} {description}</span>
+        </div>
+        '''
+
+    # Process each work type
+    for work_type_num, work_type_desc, dots, separator in work_types:
+        # Add the header for this work type
+        list_items_html += f'''
+        <div style="padding:10px 0; border-bottom:2px solid #1e88e5; font-family:monospace; font-size:14px; background:#e3f2fd; margin-top:10px;">
+          <span style="display:inline-block; width:80px; font-weight:bold; color:#1e88e5;">{work_type_num}</span>
+          <span style="font-weight:bold; color:#1e88e5;">{dots} = {work_type_desc} {separator}</span>
+        </div>
+        '''
+
+        # Add each room for this work type
+        for idx, room in enumerate(rooms):
+            base_num = idx + 1
+            room_code = f"{work_type_num // 100}{base_num:02d}"
+
+            # Get LOS/Travel value for this room
+            room_config = configs.get(room, {})
+            config_value = room_config.get(str(work_type_num), room_config.get(work_type_num, '.'))
+
+            # Display the config value (TRVL, LOS, etc.) or dots if empty
+            display_value = config_value if config_value and config_value != '.' else '............'
+
+            list_items_html += f'''
+            <div style="padding:8px 0; border-bottom:1px solid #e0e0e0; font-family:monospace; font-size:14px;">
+              <span style="display:inline-block; width:80px; font-weight:bold; color:#1e88e5;">{room_code}</span>
+              <span style="display:inline-block; width:150px; color:#333;">{room}</span>
+              <span style="color:#555;">{dots} {work_type_desc} {dots}</span>
+              <span style="font-weight:bold; color:#d32f2f; margin-left:10px;">{display_value}</span>
+            </div>
+            '''
+
+        # Add special codes after certain work types
+        if work_type_num == 300:
+            special_codes_300 = [
+                ("3222", "CPS DAY2 WIP OVERVIEW WIP BOXES PACKOUT PICS", "."),
+                ("3333", "CPS3 DAY3 STORAGE OVERVIEW STORAGE MOVE OUT PICS", "."),
+                ("3444", "CPS4 DAY4 PACKBACK OVERVIEW PACK-BACK / RESET PICS", "."),
+            ]
+            for code, description, dots in special_codes_300:
+                list_items_html += f'''
+                <div style="padding:8px 0; border-bottom:1px solid #e0e0e0; font-family:monospace; font-size:14px;">
+                  <span style="display:inline-block; width:80px; font-weight:bold; color:#1e88e5;">{code}</span>
+                  <span style="color:#555;">{dots} {description}</span>
+                </div>
+                '''
+
+        if work_type_num == 400:
+            special_codes_400 = [
+                ("4111.1", "REPLACEMENT 1 CON OVERVIEW DAY PICS", "."),
+                ("4222.2", "REPLACEMENT 2 CON WIP", "."),
+                ("4333.3", "REPLACEMENT 3 CON STORAGE", "."),
+                ("4444.4", "REPLACEMENT 4 CON DISPOSAL", "."),
+            ]
+            for code, description, dots in special_codes_400:
+                list_items_html += f'''
+                <div style="padding:8px 0; border-bottom:1px solid #e0e0e0; font-family:monospace; font-size:14px;">
+                  <span style="display:inline-block; width:80px; font-weight:bold; color:#1e88e5;">{code}</span>
+                  <span style="color:#555;">{dots} {description}</span>
+                </div>
+                '''
+
+    # Add rebuild codes at the end
+    rebuild_codes = [
+        ("9998.0", "REBUILD OVERVIEW WORK IN PROGRESS.......", "WIP"),
+        ("9999.0", "REBUILD INTERIOR COMPLETED WORK", ""),
+    ]
+
+    for code, description, suffix in rebuild_codes:
+        list_items_html += f'''
+        <div style="padding:8px 0; border-bottom:1px solid #e0e0e0; font-family:monospace; font-size:14px;">
+          <span style="display:inline-block; width:80px; font-weight:bold; color:#1e88e5;">{code}</span>
+          <span style="color:#555;">. {description} {suffix}</span>
+        </div>
+        '''
+
+    html_content = f"""
+<div style="font-family: Arial, sans-serif; background:#f5f7fa; padding:30px;">
+
+  <!-- ========================= -->
+  <!-- HEADER / BRANDING BAR -->
+  <!-- ========================= -->
+  <div style="
+      background: linear-gradient(90deg, #1e88e5, #42a5f5);
+      color:white;
+      padding:20px 25px;
+      border-radius:8px;
+      font-size:22px;
+      font-weight:bold;
+      margin-bottom:25px;
+      box-shadow:0 4px 12px rgba(0,0,0,0.15);
+  ">
+    {claim_name} — Worktype Documentation
+  </div>
+
+  <!-- ========================= -->
+  <!-- USER INSTRUCTIONS -->
+  <!-- ========================= -->
+  <div style="
+      background:white;
+      border-radius:10px;
+      padding:25px;
+      margin-bottom:25px;
+      box-shadow:0 3px 12px rgba(0,0,0,0.12);
+      border-left: 5px solid #28a745;
+  ">
+    <h2 style="margin-top:0; color:#28a745; font-size:20px;">📋 How to Use This Email</h2>
+
+    <p style="font-size:15px; color:#333; line-height:1.6; margin-bottom:15px;">
+      This email contains the room list for <strong>{claim_name}</strong>. You have two ways to view and use this information:
+    </p>
+
+    <div style="margin-bottom:20px;">
+      <h3 style="color:#1e88e5; font-size:16px; margin-bottom:10px;">📧 Option 1: View in Email</h3>
+      <p style="font-size:14px; color:#555; line-height:1.6; margin-left:20px;">
+        Simply scroll down in this email to see the complete room list below. Perfect for quick reference!
+      </p>
+    </div>
+
+    <div style="margin-bottom:20px;">
+      <h3 style="color:#1e88e5; font-size:16px; margin-bottom:10px;">📎 Option 2: Download & Print the PDF</h3>
+      <p style="font-size:14px; color:#555; line-height:1.6; margin-left:20px; margin-bottom:15px;">
+        A PDF file is attached to this email. Use it to print a physical copy or save it for your records.
+      </p>
+
+      <div style="background:#f8f9fa; padding:15px; border-radius:6px; margin-left:20px;">
+        <p style="font-size:14px; color:#333; font-weight:600; margin:0 0 10px 0;">🖨️ Printing Instructions:</p>
+
+        <div style="margin-bottom:15px;">
+          <p style="font-size:13px; color:#555; margin:0 0 8px 0; font-weight:600;">📱 On Mobile Phone (iPhone/Android):</p>
+          <ol style="font-size:13px; color:#555; line-height:1.8; margin:0; padding-left:25px;">
+            <li>Tap the PDF attachment at the top or bottom of this email</li>
+            <li>The PDF will open in your phone's viewer</li>
+            <li>Tap the Share icon (box with arrow) or Menu (three dots)</li>
+            <li>Select "Print" from the menu</li>
+            <li>Choose your printer (make sure your phone and printer are on the same WiFi network)</li>
+            <li>Tap "Print"</li>
+          </ol>
+          <p style="font-size:12px; color:#777; margin:8px 0 0 0; font-style:italic;">
+            💡 Tip: If you don't see your printer, make sure it's turned on and connected to WiFi!
+          </p>
+        </div>
+
+        <div>
+          <p style="font-size:13px; color:#555; margin:0 0 8px 0; font-weight:600;">💻 On Computer (PC/Mac):</p>
+          <ol style="font-size:13px; color:#555; line-height:1.8; margin:0; padding-left:25px;">
+            <li>Click the PDF attachment to download it</li>
+            <li>Open the downloaded PDF file (usually in your Downloads folder)</li>
+            <li>Click "File" then "Print" (or press Ctrl+P on PC / Cmd+P on Mac)</li>
+            <li>Select your printer from the list</li>
+            <li>Choose "Landscape" orientation for best results</li>
+            <li>Click "Print"</li>
+          </ol>
+          <p style="font-size:12px; color:#777; margin:8px 0 0 0; font-style:italic;">
+            💡 Tip: Use Landscape orientation so the table fits better on the page!
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <div style="background:#fff3cd; padding:12px; border-radius:6px; border-left:4px solid #ffc107; margin-top:15px;">
+      <p style="font-size:13px; color:#856404; margin:0; line-height:1.6;">
+        <strong>Need Help?</strong> If you have trouble opening the PDF or printing, please reply to this email and we'll assist you!
+      </p>
+    </div>
+  </div>
+
+  <!-- ========================= -->
+  <!-- CARD: ROOM LIST -->
+  <!-- ========================= -->
+  <div style="
+      background:white;
+      border-radius:10px;
+      padding:25px;
+      margin-bottom:35px;
+      box-shadow:0 3px 12px rgba(0,0,0,0.12);
+  ">
+    <h2 style="color:#1e88e5; margin-top:0;">{claim_name} Worktype Room List</h2>
+    <h3 style="color:#555; font-weight:normal; margin-top:5px;">
+      @ {claim_address}
+    </h3>
+
+    <!-- LIST OF WORK TYPES AND ROOMS -->
+    <div style="margin-top:20px;">
+      {list_items_html}
+    </div>
+  </div>
+
+  <!-- ========================= -->
+  <!-- FOOTER -->
+  <!-- ========================= -->
+  <div style="
+      text-align:center;
+      padding:15px;
+      color:#777;
+      font-size:12px;
+      margin-top:20px;
+  ">
+    {claim_name} report | Powered by Claimet Email System
+  </div>
+
+</div>
+    """
+
+    return html_content
+
+
+def generate_room_list_pdf(claim_name, claim_address, room_data, format_type='list'):
+    """
+    Generate a PDF of the room list in either table or list format
+
+    Args:
+        claim_name: Name of the claim
+        claim_address: Address of the claim
+        room_data: Dictionary with 'rooms' and 'configs' keys
+        format_type: 'table' or 'list'
+
+    Returns:
+        BytesIO buffer containing the PDF
+    """
+    from reportlab.lib import colors
+    from reportlab.lib.pagesizes import letter, landscape
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib.enums import TA_CENTER, TA_LEFT
+    from io import BytesIO
+
+    rooms = room_data.get('rooms', [])
+    configs = room_data.get('configs', {})
+
+    # Create PDF buffer
+    buffer = BytesIO()
+
+    # Use portrait mode for list format, landscape for table format
+    if format_type == 'list':
+        # Use portrait with narrow margins for compact list
+        doc = SimpleDocTemplate(buffer, pagesize=letter,
+                               rightMargin=0.3*inch, leftMargin=0.3*inch,
+                               topMargin=0.3*inch, bottomMargin=0.3*inch)
+    else:
+        # Use landscape for table format
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
+                               rightMargin=0.3*inch, leftMargin=0.3*inch,
+                               topMargin=0.3*inch, bottomMargin=0.3*inch)
+
+    # Container for the 'Flowable' objects
+    elements = []
+
+    # Define styles
+    styles = getSampleStyleSheet()
+    
+    if format_type == 'list':
+        return _generate_list_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements)
+    else:
+        return _generate_table_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements)
+
+
+def _generate_list_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements):
+    """Generate compact list format PDF"""
+    
+    # Title style - smaller and compact
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=12,
+        textColor=colors.HexColor('#1e88e5'),
+        spaceAfter=6,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Normal'],
+        fontSize=9,
+        textColor=colors.HexColor('#555555'),
+        spaceAfter=12,
+        alignment=TA_CENTER
+    )
+
+    # Add title
+    title = Paragraph(f"{claim_name}", title_style)
+    elements.append(title)
+
+    # Add address
+    subtitle = Paragraph(f"{claim_address}", subtitle_style)
+    elements.append(subtitle)
+    elements.append(Spacer(1, 0.1*inch))
+
+    # Define work types and their configurations
+    work_types = [
+        (100, "JOB/ROOMS OVERVIEW PICS"),
+        (200, "SOURCE of LOSS PICS"),
+        (300, "C.P.S."),
+        (400, "PPR"),
+        (500, "DMO = DEMOLITION"),
+        (600, "WTR MITIGATION EQUIPMENT & W.I.P"),
+        (700, "HMR = HAZARDOUS MATERIALS"),
+    ]
+
+    # Start building the compact list
+    all_data = []
+    
+    # Add default codes at top - very compact
+    default_codes = [
+        ("0.0001", "JOBSITE VERIFICATION"),
+        ("0.0002", "MECHANICALS = WATER METER READING & PLUMBING REPORT/INVOICE"),
+        ("0.0003", "MECHANICALS = ELECTRICAL HAZARDS"),
+        ("0.0004", "EXT DAMAGE IF APPLICABLE ROOF TARPS"),
+        ("1997", "LEAD & HMR TESTING LAB RESULTS"),
+        ("1998", "KITCHEN CABINETS SIZES U & L =LF/ CT = SF; APPLIANCES"),
+        ("1999", "BATHROOM FIXTURES CAB SIZE & FIXTURES & TYPE"),
+    ]
+    
+    for code, desc in default_codes:
+        all_data.append([code, desc])
+    
+    # Add separator
+    all_data.append([""] * 2)
+    
+    # Add each work type and its rooms
+    for work_type_num, work_type_desc in work_types:
+        # Add work type header
+        header_bg = colors.HexColor('#e3f2fd')  # Light blue background
+        all_data.append([f"  {work_type_num}", f"= {work_type_desc}"])
+        
+        # Add each room for this work type
+        for idx, room in enumerate(rooms):
+            base_num = idx + 1
+            room_code = f"{work_type_num // 100}{base_num:02d}"
+            
+            # Get LOS/Travel value
+            room_config = configs.get(room, {})
+            config_value = room_config.get(str(work_type_num), room_config.get(work_type_num, ''))
+            display_value = config_value if config_value else ''
+            
+            # Compact row: [Code, Room, LOS Value]
+            room_info = f"{room}  [{display_value}]" if display_value else room
+            all_data.append([f"    {room_code}", room_info])
+        
+        # Add special codes after certain work types
+        if work_type_num == 300:
+            special_codes = [
+                ("3222", "CPS DAY2 WIP OVERVIEW WIP BOXES PACKOUT PICS"),
+                ("3333", "CPS3 DAY3 STORAGE OVERVIEW STORAGE MOVE OUT PICS"),
+                ("3444", "CPS4 DAY4 PACKBACK OVERVIEW PACK-BACK / RESET PICS"),
+            ]
+            for code, desc in special_codes:
+                all_data.append([f"    {code}", desc])
+        
+        if work_type_num == 400:
+            special_codes = [
+                ("4111.1", "REPLACEMENT 1 CON OVERVIEW DAY PICS"),
+                ("4222.2", "REPLACEMENT 2 CON WIP"),
+                ("4333.3", "REPLACEMENT 3 CON STORAGE"),
+                ("4444.4", "REPLACEMENT 4 CON DISPOSAL"),
+            ]
+            for code, desc in special_codes:
+                all_data.append([f"    {code}", desc])
+    
+    # Add rebuild codes at the end
+    all_data.append([""] * 2)
+    rebuild_codes = [
+        ("9998.0", "REBUILD OVERVIEW WORK IN PROGRESS.......WIP"),
+        ("9999.0", "REBUILD INTERIOR COMPLETED WORK"),
+    ]
+    for code, desc in rebuild_codes:
+        all_data.append([code, desc])
+    
+    # Create compact table with minimal styling
+    col_widths = [1.2*inch, 4.5*inch]  # Narrow columns
+    
+    # Create table
+    table = Table(all_data, colWidths=col_widths, hAlign='LEFT')
+    
+    # Ultra compact styling
+    table_style = TableStyle([
+        # Default cell styling
+        ('FONTNAME', (0, 0), (-1, -1), 'Courier'),  # Monospace font
+        ('FONTSIZE', (0, 0), (-1, -1), 7),  # Very small font
+        ('TOPPADDING', (0, 0), (-1, -1), 1),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 1),
+        ('LEFTPADDING', (0, 0), (-1, -1), 2),
+        ('RIGHTPADDING', (0, 0), (-1, -1), 2),
+        
+        # Default code column styling
+        ('ALIGN', (0, 0), (0, -1), 'LEFT'),
+        ('FONTNAME', (0, 0), (0, -1), 'Courier-Bold'),
+        
+        # Default description column styling
+        ('ALIGN', (1, 0), (1, -1), 'LEFT'),
+        
+        # Work type headers
+        ('FONTNAME', (0, len(default_codes)+1), (1, len(default_codes)+1), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, len(default_codes)+1), (1, len(default_codes)+1), 8),
+        ('BACKGROUND', (0, len(default_codes)+1), (1, len(default_codes)+1), colors.HexColor('#e3f2fd')),
+        
+        # Special codes styling
+        ('FONTNAME', (0, 0), (0, len(default_codes)), 'Courier-Bold'),
+        ('TEXTCOLOR', (0, 0), (0, len(default_codes)), colors.HexColor('#1e88e5')),
+        
+        # Remove grid lines for cleaner look
+        # ('GRID', (0, 0), (-1, -1), 0.25, colors.lightgrey),
+    ])
+    
+    # Apply row-specific styling for work type sections
+    current_row = len(default_codes) + 2  # Start after default codes and separator
+    
+    for work_type_num, _ in work_types:
+        # Style the work type header
+        table_style.add('BACKGROUND', (0, current_row), (1, current_row), colors.HexColor('#f0f8ff'))
+        table_style.add('FONTNAME', (0, current_row), (1, current_row), 'Helvetica-Bold')
+        table_style.add('FONTSIZE', (0, current_row), (1, current_row), 8)
+        current_row += 1
+        
+        # Style the rooms for this work type
+        for idx, room in enumerate(rooms):
+            # Alternate row colors for readability
+            if idx % 2 == 0:
+                table_style.add('BACKGROUND', (0, current_row), (1, current_row), colors.HexColor('#f9f9f9'))
+            
+            # Make LOS value stand out
+            room_config = configs.get(room, {})
+            config_value = room_config.get(str(work_type_num), room_config.get(work_type_num, ''))
+            if config_value:
+                table_style.add('FONTNAME', (1, current_row), (1, current_row), 'Helvetica-Bold')
+                table_style.add('TEXTCOLOR', (1, current_row), (1, current_row), colors.HexColor('#d32f2f'))
+            
+            current_row += 1
+        
+        # Skip special codes if they exist
+        if work_type_num == 300 or work_type_num == 400:
+            special_count = 3 if work_type_num == 300 else 4
+            for i in range(special_count):
+                table_style.add('FONTNAME', (0, current_row), (0, current_row), 'Courier-Bold')
+                table_style.add('TEXTCOLOR', (0, current_row), (0, current_row), colors.HexColor('#1e88e5'))
+                current_row += 1
+    
+    table.setStyle(table_style)
+    elements.append(table)
+    
+    # Build PDF
+    doc.build(elements)
+    
+    # Reset buffer position
+    buffer.seek(0)
+    return buffer
+
+
+def _generate_table_pdf(claim_name, claim_address, rooms, configs, doc, styles, elements):
+    """Generate table format PDF (existing functionality)"""
+    # Keep your existing table PDF generation code but make it more compact
+    title_style = ParagraphStyle(
+        'CustomTitle',
+        parent=styles['Heading1'],
+        fontSize=10,  # Smaller
+        textColor=colors.HexColor('#1e88e5'),
+        spaceAfter=8,
+        alignment=TA_CENTER,
+        fontName='Helvetica-Bold'
+    )
+
+    subtitle_style = ParagraphStyle(
+        'CustomSubtitle',
+        parent=styles['Normal'],
+        fontSize=8,  # Smaller
+        textColor=colors.HexColor('#555555'),
+        spaceAfter=10,
+        alignment=TA_CENTER
+    )
+
+    # Add title
+    title = Paragraph(claim_name, title_style)
+    elements.append(title)
+
+    # Add address
+    subtitle = Paragraph(claim_address, subtitle_style)
+    elements.append(subtitle)
+    elements.append(Spacer(1, 0.1*inch))
+
+    # Build compact table data
+    table_data = []
+    
+    # Header row - single line
+    header = ['Room', '100', 'L/T', '200', 'L/T', '300', 'L/T', '400', 'L/T',
+              '500', 'L/T', '600', 'L/T', '700', 'L/T']
+    table_data.append(header)
+    
+    # Room rows - ultra compact
+    for idx, room in enumerate(rooms):
+        base_num = idx + 1
+        room_config = configs.get(room, {})
+        config_value = room_config.get('100', room_config.get(100, ''))
+        los_value = config_value if config_value else ''
+        
+        # Truncate room name if too long
+        display_room = room[:15] + '...' if len(room) > 18 else room
+        
+        row = [
+            display_room,
+            f'1{base_num:02d}', los_value,
+            f'2{base_num:02d}', los_value,
+            f'3{base_num:02d}', los_value,
+            f'4{base_num:02d}', los_value,
+            f'5{base_num:02d}', los_value,
+            f'6{base_num:02d}', los_value,
+            f'7{base_num:02d}', los_value
+        ]
+        table_data.append(row)
+    
+    # Create table with very narrow columns
+    col_widths = [1.0*inch] + [0.35*inch] * 14  # Even narrower
+    
+    table = Table(table_data, colWidths=col_widths)
+    
+    # Ultra compact table style
+    table_style = TableStyle([
+        # Header
+        ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e3f2fd')),
+        ('TEXTCOLOR', (0, 0), (-1, 0), colors.black),
+        ('ALIGN', (0, 0), (-1, 0), 'CENTER'),
+        ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE', (0, 0), (-1, 0), 7),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+        
+        # Data
+        ('ALIGN', (1, 1), (-1, -1), 'CENTER'),
+        ('FONTNAME', (0, 1), (0, -1), 'Helvetica'),
+        ('FONTSIZE', (0, 1), (-1, -1), 6),  # Very small
+        ('TOPPADDING', (0, 1), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 1), (-1, -1), 2),
+        
+        # Room column
+        ('ALIGN', (0, 1), (0, -1), 'LEFT'),
+        
+        # Alternating rows
+        ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, colors.HexColor('#f5f5f5')]),
+        
+        # Work type backgrounds
+        ('BACKGROUND', (1, 1), (1, -1), colors.HexColor('#fff8c6')),
+        ('BACKGROUND', (3, 1), (3, -1), colors.HexColor('#f0f4f8')),
+        ('BACKGROUND', (5, 1), (5, -1), colors.HexColor('#fff8c6')),
+        ('BACKGROUND', (7, 1), (7, -1), colors.HexColor('#f0f4f8')),
+        ('BACKGROUND', (9, 1), (9, -1), colors.HexColor('#fff8c6')),
+        ('BACKGROUND', (11, 1), (11, -1), colors.HexColor('#f0f4f8')),
+        ('BACKGROUND', (13, 1), (13, -1), colors.HexColor('#fff8c6')),
+        
+        # LOS columns
+        ('BACKGROUND', (2, 1), (2, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (4, 1), (4, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (6, 1), (6, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (8, 1), (8, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (10, 1), (10, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (12, 1), (12, -1), colors.HexColor('#ffe6e6')),
+        ('BACKGROUND', (14, 1), (14, -1), colors.HexColor('#ffe6e6')),
+        
+        # Grid
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#d0d0d0')),
+    ])
+    
+    table.setStyle(table_style)
+    elements.append(table)
+    
+    # Build PDF
+    doc.build(elements)
+    
+    # Reset buffer position
+    buffer.seek(0)
+    return buffer
+
+
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+import json
+from django.shortcuts import render
+
+import re
+from collections import defaultdict
+from difflib import SequenceMatcher
+
+# ---------------------------
+# Simple Normalization & Token Extraction
+# ---------------------------
+
+def normalize_text(text):
+    """Basic normalization: uppercase, strip extra spaces"""
+    if not text:
+        return ""
+    return ' '.join(text.upper().split())
+
+def extract_tokens(text):
+    """
+    Extract meaningful tokens from text.
+    Returns a set of normalized words (3+ chars) excluding common noise.
+    """
+    if not text:
+        return set()
+    
+    # Split by @ to separate main part from address
+    parts = text.split('@')
+    main_part = parts[0] if parts else text
+    address_part = parts[1] if len(parts) > 1 else ""
+    
+    # Extract alphanumeric tokens
+    tokens = re.findall(r'\b[A-Z0-9]{2,}\b', main_part.upper())
+    
+    # Add address tokens if present
+    if address_part:
+        address_tokens = re.findall(r'\b[A-Z0-9]{2,}\b', address_part.upper())
+        tokens.extend(address_tokens)
+    
+    # Filter out noise words
+    noise_words = {'LLC', 'INC', 'THE', 'AND', 'FOR', 'CLAIM', 'EST', 'FIRE', 'WATER', 'STORM'}
+    tokens = [t for t in tokens if t not in noise_words and len(t) >= 2]
+    
+    return set(tokens)
+
+def extract_location_code(text):
+    """
+    Extract location codes like GA22, OH24, GA22A, OH24-900
+    """
+    if not text:
+        return None
+    
+    # Pattern: 2-3 letters + 2-3 digits + optional letters/numbers
+    match = re.search(r'\b([A-Z]{2,3}\d{2,3}[A-Z0-9\-]*)\b', text.upper())
+    return match.group(1) if match else None
+
+# ---------------------------
+# Simple Fuzzy Matching
+# ---------------------------
+
+def calculate_match_score(encircle_contractor, folder_name):
+    """
+    Simple fuzzy matching between contractor ID and folder name.
+    Returns score 0-1.
+    Rule: If 2+ tokens match, it's automatically a strong match (0.8+)
+    """
+    if not encircle_contractor or not folder_name:
+        return 0.0
+    
+    # Normalize both
+    contractor_norm = normalize_text(encircle_contractor)
+    folder_norm = normalize_text(folder_name)
+    
+    # Extract tokens
+    contractor_tokens = extract_tokens(contractor_norm)
+    folder_tokens = extract_tokens(folder_norm)
+    
+    # Count matching tokens
+    common_tokens = contractor_tokens.intersection(folder_tokens)
+    num_matches = len(common_tokens)
+    
+    # RULE: 2+ matching tokens = automatic match
+    if num_matches >= 2:
+        return 0.85  # High confidence match
+    
+    # If only 1 token matches, use detailed scoring
+    score = 0.0
+    
+    # 1. Check if contractor ID is substring of folder (40 points)
+    if contractor_norm in folder_norm or folder_norm in contractor_norm:
+        score += 0.4
+    
+    # 2. Location code match (30 points)
+    contractor_location = extract_location_code(contractor_norm)
+    folder_location = extract_location_code(folder_norm)
+    
+    if contractor_location and folder_location:
+        # Exact match
+        if contractor_location == folder_location:
+            score += 0.3
+        # Fuzzy match (e.g., GA22 vs GA22A)
+        elif contractor_location[:4] == folder_location[:4]:
+            score += 0.2
+    
+    # 3. Single token match (30 points)
+    if num_matches == 1:
+        score += 0.3
+    
+    return min(score, 1.0)
+
+# ---------------------------
+# Main Comparison Function
+# ---------------------------
+
+def compare_claims(encircle_claims, onedrive_claims):
+    """
+    Simple matching: compare contractor ID against folder name
+    """
+    # Filter out test data
+    valid_encircle = [c for c in encircle_claims if _is_valid_claim(c)]
+    valid_onedrive = [c for c in onedrive_claims if _is_valid_folder(c)]
+    
+    encircle_test_data = [c for c in encircle_claims if not _is_valid_claim(c)]
+    onedrive_test_data = [c for c in onedrive_claims if not _is_valid_folder(c)]
+    
+    results = {
+        'summary': {
+            'total_encircle': len(encircle_claims),
+            'total_onedrive': len(onedrive_claims),
+            'matches': 0,
+            'encircle_only': 0,
+            'onedrive_only': 0,
+            'encircle_test_data': len(encircle_test_data),
+            'onedrive_test_data': len(onedrive_test_data),
+            'match_breakdown': {
+                'high_confidence': 0,
+                'medium_confidence': 0,
+                'low_confidence': 0,
+            }
+        },
+        'matched_pairs': [],
+        'encircle_missing_onedrive': [],
+        'onedrive_extra': [],
+        'encircle_test_data': encircle_test_data,
+        'onedrive_test_data': onedrive_test_data,
+        'duplicates': find_duplicates(valid_encircle, valid_onedrive)
+    }
+    
+    matched_encircle = set()
+    matched_onedrive = set()
+    
+    print("=" * 80)
+    print("SIMPLIFIED CLAIM MATCHING")
+    print("=" * 80)
+    
+    # Match each encircle claim to best onedrive folder
+    for encircle_claim in valid_encircle:
+        if encircle_claim['id'] in matched_encircle:
+            continue
+        
+        contractor_id = encircle_claim.get('contractor_identifier', '').strip()
+        
+        if not contractor_id:
+            continue
+        
+        best_match = None
+        best_score = 0
+        
+        # Check against all onedrive folders
+        for onedrive_claim in valid_onedrive:
+            if onedrive_claim['folder_id'] in matched_onedrive:
+                continue
+            
+            folder_name = onedrive_claim.get('folder_name', '').strip()
+            
+            # Calculate match score
+            score = calculate_match_score(contractor_id, folder_name)
+            
+            # Print analysis
+            if score >= 0.5:  # Only print potential matches
+                print(f"\nPOTENTIAL MATCH:")
+                print(f"  Encircle: {contractor_id}")
+                print(f"  OneDrive: {folder_name}")
+                print(f"  Score: {score:.2f} ({int(score*100)}%)")
+            
+            if score > best_score:
+                best_score = score
+                best_match = onedrive_claim
+        
+        # Accept matches above threshold
+        MATCH_THRESHOLD = 0.65
+        if best_match and best_score >= MATCH_THRESHOLD:
+            confidence_level = "High" if best_score >= 0.8 else "Medium" if best_score >= 0.65 else "Low"
+            
+            results['matched_pairs'].append({
+                'encircle': encircle_claim,
+                'onedrive': best_match,
+                'match_type': f'Fuzzy Match ({confidence_level})',
+                'confidence': f'{int(best_score * 100)}%'
+            })
+            
+            matched_encircle.add(encircle_claim['id'])
+            matched_onedrive.add(best_match['folder_id'])
+            results['summary']['matches'] += 1
+            
+            # Update breakdown
+            if best_score >= 0.8:
+                results['summary']['match_breakdown']['high_confidence'] += 1
+            elif best_score >= 0.65:
+                results['summary']['match_breakdown']['medium_confidence'] += 1
+            else:
+                results['summary']['match_breakdown']['low_confidence'] += 1
+            
+            print(f"  ✓ MATCHED! ({confidence_level} confidence)")
+    
+    # Collect unmatched claims
+    for encircle_claim in valid_encircle:
+        if encircle_claim['id'] not in matched_encircle:
+            results['encircle_missing_onedrive'].append(encircle_claim)
+            results['summary']['encircle_only'] += 1
+    
+    for onedrive_claim in valid_onedrive:
+        if onedrive_claim['folder_id'] not in matched_onedrive:
+            results['onedrive_extra'].append(onedrive_claim)
+            results['summary']['onedrive_only'] += 1
+    
+    print("\n" + "=" * 80)
+    print(f"MATCHING COMPLETE")
+    print(f"Matches: {results['summary']['matches']}")
+    print(f"Encircle Only: {results['summary']['encircle_only']}")
+    print(f"OneDrive Only: {results['summary']['onedrive_only']}")
+    print("=" * 80)
+    
+    return results
+
+# ---------------------------
+# Filter Functions (from original code)
+# ---------------------------
+
+_TEST_EXCLUDE_PATTERNS = [
+    'HOW2', 'TEST', 'TEMPLATE', 'SAMPLE', 'ROOMLISTS', 'READINGS',
+    'TMPL', 'CHECKLIST', 'TRAILER', 'WAREHOUSE', 'DEFAULT', 'TEMP',
+    'PLACEHOLDER', 'EXAMPLE', 'DEMO', 'XXXX', 'AAA', '===', 'BACKEND', 'TUTORIAL'
+]
+
+def _is_valid_claim(claim):
+    """Filter out test/placeholder claims from Encircle."""
+    if not claim.get('policyholder_name') and not claim.get('contractor_identifier'):
+        return False
+    policyholder = (claim.get('policyholder_name') or '').upper()
+    contractor = (claim.get('contractor_identifier') or '').upper()
+    return not any(p in policyholder or p in contractor for p in _TEST_EXCLUDE_PATTERNS)
+
+def _is_valid_folder(folder_claim):
+    """Filter out test/placeholder folders from OneDrive."""
+    folder_name = (folder_claim.get('folder_name') or '').upper()
+    exclude_patterns = _TEST_EXCLUDE_PATTERNS + [
+        'CLOSED CLAIMS', 'PROOF OF LOSS', 'DRAWINGS', 'APPRAISALS',
+        'FOLDER', 'TEXT'
+    ]
+    if any(p in folder_name for p in exclude_patterns):
+        return False
+    clean_alpha = re.sub(r'[^A-Z]', '', folder_name)
+    return len(clean_alpha) >= 3
+
+import re
+import logging
+from collections import defaultdict
+from difflib import SequenceMatcher
+from django.http import HttpResponse
+from django.views.decorators.http import require_GET
+from django.template import Template, Context
+from django.core.cache import cache
+
+logger = logging.getLogger(__name__)
+
+# Import your existing API clients and settings
+# from .encircle_client import EncircleAPIClient
+# from .encircle_processor import EncircleDataProcessor
+# from .onedrive_client import _access_token_from_refresh, _share_id_from_url, _get_shared_root_item, _find_estimates_folder, _list_children_by_path
+# from .settings import SHARED_ROOT_LINK
+
+# Cache keys
+ENCIRCLE_CACHE_KEY = 'encircle_claims_data'
+ONEDRIVE_CACHE_KEY = 'onedrive_claims_data'
+CACHE_TIMEOUT = 3600 * 24  # 24 hours
+
+# =============================================================================
+# MAIN VIEWS
+# =============================================================================
+
+@require_GET
+def sync_encircle_onedrive(request):
+    """Main sync endpoint - uses cached data"""
+    try:
+        # Use cached data
+        encircle_claims = get_encircle_claims(use_cache=True)
+        onedrive_claims = get_onedrive_claims(use_cache=True)
+        comparison_results = compare_claims(encircle_claims, onedrive_claims)
+        html_report = generate_comparison_report(comparison_results)
+        return HttpResponse(html_report, content_type='text/html')
+    except Exception as e:
+        logger.error(f"Error syncing Encircle and OneDrive: {str(e)}")
+        return HttpResponse(f"<h1>Error</h1><p>{str(e)}</p>", content_type='text/html', status=500)
+
+@require_GET
+def sync_encircle_onedrive_refresh(request):
+    """Refresh endpoint - forces fresh download and clears cache"""
+    try:
+        logger.info("Forcing fresh data download - clearing cache")
+        # Clear cache
+        cache.delete(ENCIRCLE_CACHE_KEY)
+        cache.delete(ONEDRIVE_CACHE_KEY)
+        
+        # Fetch fresh data
+        encircle_claims = get_encircle_claims(use_cache=False)
+        onedrive_claims = get_onedrive_claims(use_cache=False)
+        comparison_results = compare_claims(encircle_claims, onedrive_claims)
+        html_report = generate_comparison_report(comparison_results, is_refresh=True)
+        return HttpResponse(html_report, content_type='text/html')
+    except Exception as e:
+        logger.error(f"Error syncing Encircle and OneDrive: {str(e)}")
+        return HttpResponse(f"<h1>Error</h1><p>{str(e)}</p>", content_type='text/html', status=500)
+
+# =============================================================================
+# DATA FETCHING WITH CACHE
+# =============================================================================
+
+def get_encircle_claims(use_cache=True):
+    """Fetch Encircle claims with optional caching"""
+    if use_cache:
+        cached_data = cache.get(ENCIRCLE_CACHE_KEY)
+        if cached_data:
+            logger.info(f"Using cached Encircle data ({len(cached_data)} claims)")
+            return cached_data
+    
+    try:
+        logger.info("Fetching fresh Encircle data...")
+        api_client = EncircleAPIClient()
+        processor = EncircleDataProcessor()
+        raw_claims = api_client.get_all_claims()
+        processed_claims = processor.process_claims_list(raw_claims)
+        
+        for claim in processed_claims:
+            try:
+                claim_details = api_client.get_claim_details(claim['id'])
+                detailed_claim = processor.process_claim_details(claim_details)
+                claim['contractor_identifier'] = str(detailed_claim.get('contractor_identifier', '') or '').strip()
+                claim['policyholder_name'] = str(detailed_claim.get('policyholder_name', '') or '').strip()
+                claim['full_address'] = str(detailed_claim.get('full_address', '') or '').strip()
+                claim['insurance_company_name'] = str(detailed_claim.get('insurance_company_name', '') or '').strip()
+            except Exception as e:
+                logger.warning(f"Could not fetch details for claim {claim['id']}: {str(e)}")
+                claim['contractor_identifier'] = ''
+                claim['policyholder_name'] = ''
+                claim['full_address'] = ''
+                claim['insurance_company_name'] = ''
+        
+        logger.info(f"Found {len(processed_claims)} claims in Encircle")
+        
+        # Cache the data
+        cache.set(ENCIRCLE_CACHE_KEY, processed_claims, CACHE_TIMEOUT)
+        logger.info(f"Cached Encircle data for {CACHE_TIMEOUT} seconds")
+        
+        return processed_claims
+    except Exception as e:
+        logger.error(f"Error fetching Encircle claims: {str(e)}")
+        raise Exception(f"Failed to fetch Encircle claims: {str(e)}")
+
+def get_onedrive_claims(use_cache=True):
+    """Fetch OneDrive claims with optional caching"""
+    if use_cache:
+        cached_data = cache.get(ONEDRIVE_CACHE_KEY)
+        if cached_data:
+            logger.info(f"Using cached OneDrive data ({len(cached_data)} folders)")
+            return cached_data
+    
+    try:
+        logger.info("Fetching fresh OneDrive data...")
+        token = _access_token_from_refresh()
+        share_id = _share_id_from_url(SHARED_ROOT_LINK)
+        root_item = _get_shared_root_item(token, share_id)
+        drive_id = root_item["parentReference"]["driveId"]
+        root_item_id = root_item["id"]
+        logger.info(f"Shared root - Item ID: {root_item_id}, Drive ID: {drive_id}, Name: {root_item.get('name')}")
+        
+        estimates_item = _find_estimates_folder(token, drive_id, root_item_id)
+        if not estimates_item:
+            logger.error("Could not find estimates folder")
+            return []
+        
+        estimates_id = estimates_item.get('id')
+        logger.info(f"Using estimates folder ID: {estimates_id}")
+        
+        folders = _list_children_by_path(token, drive_id, estimates_id)
+        logger.info(f"Found {len(folders)} items in estimates folder")
+        
+        claims = []
+        for folder in folders:
+            if folder.get('folder'):
+                folder_name = folder.get('name', '')
+                folder_id = folder.get('id')
+                if not folder_id:
+                    continue
+                
+                try:
+                    folder_contents = _list_children_by_path(token, drive_id, folder_id)
+                    has_info_file = any(
+                        item.get('name', '').lower().startswith('01-info') and 
+                        item.get('name', '').lower().endswith(('.xlsx', '.xls'))
+                        for item in folder_contents
+                    )
+                    contractor_id = extract_contractor_id_from_folder(folder_name)
+                    claims.append({
+                        'folder_name': folder_name,
+                        'folder_id': folder_id,
+                        'has_info_file': has_info_file,
+                        'contractor_identifier': contractor_id if contractor_id else '',
+                        'normalized_name': normalize_claim_name(folder_name),
+                        'file_count': len(folder_contents)
+                    })
+                except Exception as e:
+                    logger.warning(f"Could not check folder contents for {folder_name}: {str(e)}")
+                    contractor_id = extract_contractor_id_from_folder(folder_name)
+                    claims.append({
+                        'folder_name': folder_name,
+                        'folder_id': folder_id,
+                        'has_info_file': False,
+                        'contractor_identifier': contractor_id if contractor_id else '',
+                        'normalized_name': normalize_claim_name(folder_name),
+                        'error': str(e),
+                        'file_count': 0
+                    })
+        
+        logger.info(f"Found {len(claims)} claim folders in OneDrive")
+        
+        # Cache the data
+        cache.set(ONEDRIVE_CACHE_KEY, claims, CACHE_TIMEOUT)
+        logger.info(f"Cached OneDrive data for {CACHE_TIMEOUT} seconds")
+        
+        return claims
+    except Exception as e:
+        logger.error(f"Error fetching OneDrive claims: {str(e)}")
+        raise Exception(f"Failed to fetch OneDrive claims: {str(e)}")
+
+# =============================================================================
+# SIMPLE NORMALIZATION & TOKEN EXTRACTION
+# =============================================================================
+
+def normalize_text(text):
+    """Basic normalization: uppercase, strip extra spaces"""
+    if not text:
+        return ""
+    return ' '.join(text.upper().split())
+
+def normalize_year_code(code):
+    """
+    Normalize location codes to match only the first 4 characters
+    GA22, GA22A, GA22P all become GA22
+    OH24, OH24A, OH24APC all become OH24
+    """
+    if not code:
+        return ""
+    
+    # Extract first 4 characters (2 letters + 2 digits)
+    # This handles: GA22, OH24, GA22A, OH24A, etc.
+    match = re.match(r'^([A-Z]{2}\d{2})', code.upper())
+    if match:
+        return match.group(1)
+    
+    return code.upper()
+
+def normalize_name(name):
+    """
+    Normalize names to handle spelling variations
+    CLEGGETT -> CLEGGET, THORNTON -> THORTON, etc.
+    """
+    if not name:
+        return ""
+    
+    name = name.upper().strip()
+    
+    # Common spelling variations
+    variations = {
+        'CLEGGETT': 'CLEGGET',
+        'CLEGGET': 'CLEGGET',
+        'GOLLATTE': 'GOLLATE',
+        'GOLLATE': 'GOLLATE',
+        'THORNTON': 'THORTON',
+        'THORTON': 'THORTON',
+    }
+    
+    for original, normalized in variations.items():
+        if original in name:
+            name = name.replace(original, normalized)
+    
+    return name
+
+def extract_tokens(text):
+    """
+    Extract meaningful tokens from text.
+    Returns a set of normalized words (2+ chars) excluding common noise.
+    Includes normalized year codes and name variations.
+    """
+    if not text:
+        return set()
+    
+    text = normalize_name(text)  # Apply name normalization
+    
+    # Split by @ to separate main part from address
+    parts = text.split('@')
+    main_part = parts[0] if parts else text
+    address_part = parts[1] if len(parts) > 1 else ""
+    
+    # Extract alphanumeric tokens
+    tokens = re.findall(r'\b[A-Z0-9]{2,}\b', main_part.upper())
+    
+    # Add address tokens if present
+    if address_part:
+        address_tokens = re.findall(r'\b[A-Z0-9]{2,}\b', address_part.upper())
+        tokens.extend(address_tokens)
+    
+    # Add normalized year codes
+    normalized_codes = set()
+    for token in tokens:
+        normalized = normalize_year_code(token)
+        if normalized and normalized != token:
+            normalized_codes.add(normalized)
+    
+    # Filter out noise words
+    noise_words = {'LLC', 'INC', 'THE', 'AND', 'FOR', 'CLAIM', 'EST', 'FIRE', 'WATER', 'STORM', 'WTR', 'RFG', 'INT', 'CPS', 'USAA', 'DMO', 'SOL', 'FSR', 'MIT'}
+    tokens = [t for t in tokens if t not in noise_words and len(t) >= 2]
+    
+    # Combine original tokens with normalized codes
+    all_tokens = set(tokens) | normalized_codes
+    
+    return all_tokens
+
+def extract_location_code(text):
+    """
+    Extract and normalize location codes like GA22, OH24, GA22A, OH24-900
+    Returns normalized 4-character code (e.g., GA22, OH24)
+    """
+    if not text:
+        return None
+    
+    # Pattern: 2 letters + 2 digits + optional letters/numbers/hyphens
+    match = re.search(r'\b([A-Z]{2}\d{2}[A-Z0-9\-]*)\b', text.upper())
+    if match:
+        raw_code = match.group(1)
+        # Normalize to first 4 characters only
+        return normalize_year_code(raw_code)
+    
+    return None
+    
+def extract_contractor_id_from_folder(folder_name):
+    """
+    Extract a meaningful contractor 'code' token from a folder name.
+    Examples to capture: OH25, OH24A, GA23A, OH25P, GA24APC, OH24-900
+    Returns '' if nothing meaningful is found.
+    """
+    if not folder_name:
+        return ''
+    s = str(folder_name).strip().upper()
+
+    # Prefer hyphenated numeric variants like OH24-900 first
+    m = re.search(r'\b([A-Z]{2,3}\d{2,3}-\d{2,4})\b', s)
+    if m:
+        return m.group(1)
+
+    # Common code forms: 2-3 letters + 2-3 digits + optional 1-3 letters (e.g., OH24A, GA23APC, OH25P)
+    m = re.search(r'\b([A-Z]{2,3}\d{2,3}[A-Z]{0,3})\b', s)
+    if m:
+        return m.group(1)
+
+    # Long numeric ids as a fallback
+    m = re.search(r'\b(\d{6,})\b', s)
+    if m:
+        return m.group(1)
+
+    # C-prefixed ids (e.g., C1234)
+    m = re.search(r'\b(C\d{3,})\b', s)
+    if m:
+        return m.group(1)
+
+    # 3-3 numeric like 123-456
+    m = re.search(r'\b(\d{3}-\d{3,})\b', s)
+    if m:
+        return m.group(1)
+
+    return ''
+
+def normalize_claim_name(name):
+    normalized = name.upper().strip()
+    normalized = re.sub(r'\s+', ' ', normalized)
+    remove_words = ['CLAIM', 'INSURANCE', 'ESTIMATE', 'PROJECT', 'RENOVATION']
+    for word in remove_words:
+        normalized = re.sub(r'\b' + re.escape(word) + r'\b', '', normalized)
+    normalized = re.sub(r'\s+', ' ', normalized).strip()
+    return normalized
+
+# =============================================================================
+# SIMPLE FUZZY MATCHING
+# =============================================================================
+
+def calculate_match_score(encircle_contractor, folder_name):
+    """
+    Simple fuzzy matching between contractor ID and folder name.
+    Returns score 0-1.
+    Rule: If 2+ tokens match, it's automatically a strong match (0.8+)
+    """
+    if not encircle_contractor or not folder_name:
+        return 0.0
+    
+    # Normalize both
+    contractor_norm = normalize_text(encircle_contractor)
+    folder_norm = normalize_text(folder_name)
+    
+    # Extract tokens
+    contractor_tokens = extract_tokens(contractor_norm)
+    folder_tokens = extract_tokens(folder_norm)
+    
+    # Count matching tokens
+    common_tokens = contractor_tokens.intersection(folder_tokens)
+    num_matches = len(common_tokens)
+    
+    # RULE: 2+ matching tokens = automatic match
+    if num_matches >= 2:
+        return 0.85  # High confidence match
+    
+    # If only 1 token matches, use detailed scoring
+    score = 0.0
+    
+    # 1. Check if contractor ID is substring of folder (40 points)
+    if contractor_norm in folder_norm or folder_norm in contractor_norm:
+        score += 0.4
+    
+    # 2. Location code match (30 points)
+    contractor_location = extract_location_code(contractor_norm)
+    folder_location = extract_location_code(folder_norm)
+    
+    if contractor_location and folder_location:
+        # Exact match
+        if contractor_location == folder_location:
+            score += 0.3
+        # Fuzzy match (e.g., GA22 vs GA22A)
+        elif contractor_location[:4] == folder_location[:4]:
+            score += 0.2
+    
+    # 3. Single token match (30 points)
+    if num_matches == 1:
+        score += 0.3
+    
+    return min(score, 1.0)
+
+# =============================================================================
+# TEST DATA FILTERS
+# =============================================================================
+
+_TEST_EXCLUDE_PATTERNS = [
+    'HOW2', 'TEST', 'TEMPLATE', 'SAMPLE', 'ROOMLISTS', 'READINGS',
+    'TMPL', 'CHECKLIST', 'TRAILER', 'WAREHOUSE', 'DEFAULT', 'TEMP',
+    'PLACEHOLDER', 'EXAMPLE', 'DEMO', 'XXXX', 'AAA', '===', 'BACKEND', 'TUTORIAL'
+]
+
+def _is_valid_claim(claim):
+    """Filter out test/placeholder claims from Encircle."""
+    if not claim.get('policyholder_name') and not claim.get('contractor_identifier'):
+        return False
+    policyholder = (claim.get('policyholder_name') or '').upper()
+    contractor = (claim.get('contractor_identifier') or '').upper()
+    return not any(p in policyholder or p in contractor for p in _TEST_EXCLUDE_PATTERNS)
+
+def _is_valid_folder(folder_claim):
+    """Filter out test/placeholder folders from OneDrive."""
+    folder_name = (folder_claim.get('folder_name') or '').upper()
+    exclude_patterns = _TEST_EXCLUDE_PATTERNS + [
+        'CLOSED CLAIMS', 'PROOF OF LOSS', 'DRAWINGS', 'APPRAISALS',
+        'FOLDER', 'TEXT'
+    ]
+    if any(p in folder_name for p in exclude_patterns):
+        return False
+    clean_alpha = re.sub(r'[^A-Z]', '', folder_name)
+    return len(clean_alpha) >= 3
+
+# =============================================================================
+# DUPLICATE DETECTION
+# =============================================================================
+
+def find_duplicates(encircle_claims, onedrive_claims):
+    """Find duplicate claims in both systems"""
+    duplicates = {'encircle_duplicates': [], 'onedrive_duplicates': []}
+    
+    # Encircle duplicates by contractor ID
+    contractor_count = defaultdict(list)
+    for claim in encircle_claims:
+        contractor_id = claim.get('contractor_identifier', '')
+        if contractor_id and contractor_id.strip():
+            contractor_count[contractor_id].append(claim)
+    
+    for contractor_id, claims in contractor_count.items():
+        if len(claims) > 1:
+            duplicates['encircle_duplicates'].append({
+                'contractor_id': contractor_id, 
+                'count': len(claims), 
+                'claims': claims
+            })
+    
+    # OneDrive duplicates by normalized folder name
+    folder_count = defaultdict(list)
+    for claim in onedrive_claims:
+        folder_name = claim.get('folder_name', '')
+        if folder_name:
+            normalized = normalize_text(folder_name)
+            folder_count[normalized].append(claim)
+    
+    for folder_name, claims in folder_count.items():
+        if len(claims) > 1:
+            duplicates['onedrive_duplicates'].append({
+                'folder_name': folder_name, 
+                'count': len(claims), 
+                'claims': claims
+            })
+    
+    return duplicates
+
+# =============================================================================
+# MAIN COMPARISON LOGIC
+# =============================================================================
+
+def compare_claims(encircle_claims, onedrive_claims):
+    """
+    Simple one-to-one matching: each encircle claim finds its BEST onedrive match
+    """
+    # Filter out test data
+    valid_encircle = [c for c in encircle_claims if _is_valid_claim(c)]
+    valid_onedrive = [c for c in onedrive_claims if _is_valid_folder(c)]
+    
+    encircle_test_data = [c for c in encircle_claims if not _is_valid_claim(c)]
+    onedrive_test_data = [c for c in onedrive_claims if not _is_valid_folder(c)]
+    
+    results = {
+        'summary': {
+            'total_encircle': len(encircle_claims),
+            'total_onedrive': len(onedrive_claims),
+            'valid_encircle': len(valid_encircle),
+            'valid_onedrive': len(valid_onedrive),
+            'matches': 0,
+            'encircle_only': 0,
+            'onedrive_only': 0,
+            'encircle_test_data': len(encircle_test_data),
+            'onedrive_test_data': len(onedrive_test_data),
+            'match_breakdown': {
+                'high_confidence': 0,
+                'medium_confidence': 0,
+                'low_confidence': 0,
+            }
+        },
+        'matched_pairs': [],
+        'encircle_missing_onedrive': [],
+        'onedrive_extra': [],
+        'encircle_test_data': encircle_test_data,
+        'onedrive_test_data': onedrive_test_data,
+        'duplicates': find_duplicates(valid_encircle, valid_onedrive)
+    }
+    
+    matched_encircle = set()
+    matched_onedrive = set()
+    
+    print("=" * 80)
+    print("ONE-TO-ONE CLAIM MATCHING")
+    print("=" * 80)
+    
+    # Find BEST match for each encircle claim
+    for encircle_claim in valid_encircle:
+        contractor_id = encircle_claim.get('contractor_identifier', '').strip()
+        
+        if not contractor_id:
+            continue
+        
+        best_match = None
+        best_score = 0
+        
+        # Find the best matching onedrive folder
+        for onedrive_claim in valid_onedrive:
+            if onedrive_claim['folder_id'] in matched_onedrive:
+                continue  # Skip already matched folders
+                
+            folder_name = onedrive_claim.get('folder_name', '').strip()
+            score = calculate_match_score(contractor_id, folder_name)
+            
+            if score > best_score:
+                best_score = score
+                best_match = onedrive_claim
+        
+        # Accept best match if above threshold
+        MATCH_THRESHOLD = 0.65
+        if best_match and best_score >= MATCH_THRESHOLD:
+            confidence_level = "High" if best_score >= 0.8 else "Medium" if best_score >= 0.65 else "Low"
+            
+            results['matched_pairs'].append({
+                'encircle': encircle_claim,
+                'onedrive': best_match,
+                'match_type': f'Fuzzy Match ({confidence_level})',
+                'confidence': f'{int(best_score * 100)}%'
+            })
+            
+            matched_encircle.add(encircle_claim['id'])
+            matched_onedrive.add(best_match['folder_id'])
+            results['summary']['matches'] += 1
+            
+            # Update breakdown
+            if best_score >= 0.8:
+                results['summary']['match_breakdown']['high_confidence'] += 1
+            elif best_score >= 0.65:
+                results['summary']['match_breakdown']['medium_confidence'] += 1
+            else:
+                results['summary']['match_breakdown']['low_confidence'] += 1
+    
+    # Collect unmatched
+    for encircle_claim in valid_encircle:
+        if encircle_claim['id'] not in matched_encircle:
+            results['encircle_missing_onedrive'].append(encircle_claim)
+            results['summary']['encircle_only'] += 1
+    
+    for onedrive_claim in valid_onedrive:
+        if onedrive_claim['folder_id'] not in matched_onedrive:
+            results['onedrive_extra'].append(onedrive_claim)
+            results['summary']['onedrive_only'] += 1
+    
+    print(f"\nMATCHING COMPLETE")
+    print(f"Valid Claims - Encircle: {results['summary']['valid_encircle']}, OneDrive: {results['summary']['valid_onedrive']}")
+    print(f"Total Matches: {results['summary']['matches']}")
+    print(f"Unmatched Encircle: {results['summary']['encircle_only']}")
+    print(f"Unmatched OneDrive: {results['summary']['onedrive_only']}")
+    print("=" * 80)
+    
+    return results
+
+# =============================================================================
+# REPORT GENERATION
+# =============================================================================
+
+def _coerce_report_defaults(results):
+    """Ensure all keys required by the template exist with sensible defaults and precompute display fields."""
+    results.setdefault('matched_pairs', [])
+    results.setdefault('encircle_missing_onedrive', [])
+    results.setdefault('onedrive_extra', [])
+    results.setdefault('encircle_test_data', [])
+    results.setdefault('onedrive_test_data', [])
+
+    summary = results.setdefault('summary', {})
+    summary.setdefault('total_encircle', 0)
+    summary.setdefault('total_onedrive', 0)
+    summary.setdefault('valid_encircle', 0)
+    summary.setdefault('valid_onedrive', 0)
+    summary.setdefault('matches', len(results['matched_pairs']))
+    summary.setdefault('encircle_only', len(results['encircle_missing_onedrive']))
+    summary.setdefault('onedrive_only', len(results['onedrive_extra']))
+    summary.setdefault('encircle_test_data', len(results['encircle_test_data']))
+    summary.setdefault('onedrive_test_data', len(results['onedrive_test_data']))
+    summary.setdefault('match_breakdown', {
+        'high_confidence': 0,
+        'medium_confidence': 0,
+        'low_confidence': 0,
+    })
+
+    # Precompute totals for display
+    summary['issues_total'] = summary['encircle_only'] + summary['onedrive_only']
+    summary['test_total'] = summary['encircle_test_data'] + summary['onedrive_test_data']
+    
+    # Count unique encircle claims that have matches
+    unique_matched_encircle = len(set(pair['encircle']['id'] for pair in results['matched_pairs']))
+    summary['unique_matches'] = unique_matched_encircle
+
+    # Display header counts (real claims only)
+    results['encircle_render_total'] = unique_matched_encircle + summary['encircle_only']
+    results['onedrive_render_total'] = summary['matches'] + summary['onedrive_only']
+
+    # DON'T precompute unmatched_rows - we'll show missing claims separately
+    return results
+
+def generate_comparison_report(comparison_results, is_refresh=False):
+    template_content = """
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Claims Sync Report</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { font-family:'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background:#f5f5f5; color:#333; line-height:1.4; }
+.container { max-width:1800px; margin:0 auto; background:white; }
+.header { background:linear-gradient(135deg,#2c3e50 0%,#3498db 100%); color:white; padding:30px; text-align:center; position:relative; }
+.header h1 { font-size:2em; margin-bottom:8px; }
+.header p { font-size:1em; opacity:.9; }
+.cache-badge { position:absolute; top:15px; right:20px; background:rgba(255,255,255,.2); padding:8px 15px; border-radius:20px; font-size:.85em; border:1px solid rgba(255,255,255,.3); }
+.cache-badge.cached { background:#27ae60; }
+.cache-badge.fresh { background:#e74c3c; }
+.status-bar { display:grid; grid-template-columns:repeat(5,1fr); gap:12px; padding:20px; background:#ecf0f1; }
+.status-card { background:white; padding:12px; border-radius:6px; text-align:center; box-shadow:0 1px 3px rgba(0,0,0,.1); }
+.status-card .label { font-size:.75em; color:#666; margin-bottom:6px; font-weight:600; text-transform:uppercase; }
+.status-card .value { font-size:1.6em; font-weight:bold; }
+.status-card .sub-value { font-size:.7em; color:#999; margin-top:3px; }
+.status-card.matched .value { color:#27ae60; }
+.status-card.missing .value { color:#e74c3c; }
+.status-card.encircle .value { color:#3498db; }
+.status-card.onedrive .value { color:#2980b9; }
+.status-card.test-data .value { color:#f39c12; }
+.content { padding:20px; }
+.section { margin-bottom:30px; }
+.section-title { font-size:1.3em; font-weight:600; color:#2c3e50; margin-bottom:15px; padding-bottom:8px; border-bottom:2px solid #3498db; }
+.claims-list { background:#f8f9fa; padding:15px; border-radius:6px; max-height:400px; overflow-y:auto; }
+.claim-row { display:flex; align-items:center; padding:8px 12px; margin-bottom:5px; background:white; border-radius:4px; border-left:4px solid #e74c3c; font-size:.9em; }
+.claim-row.matched { border-left-color:#27ae60; background:#f0f8ff; }
+.claim-row.unmatched { border-left-color:#e74c3c; background:#fff5f5; }
+.claim-row.extra { border-left-color:#f39c12; background:#fff9e6; }
+.claim-name { flex:1; font-weight:600; }
+.claim-details { flex:2; color:#666; font-size:.85em; }
+.claim-id { flex:1; color:#999; font-size:.8em; }
+.note { background:#fff9e6; padding:10px; border-radius:4px; margin:12px 0; border-left:4px solid #f39c12; font-size:.9em; }
+.match-breakdown { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; margin:12px 0; }
+.breakdown-item { background:#f8f9fa; padding:8px; border-radius:4px; text-align:center; }
+.breakdown-item .count { font-size:1.1em; font-weight:bold; color:#2c3e50; }
+.breakdown-item .label { font-size:.75em; color:#666; }
+.footer { text-align:center; padding:15px; color:#999; font-size:.8em; border-top:1px solid #ecf0f1; }
+.refresh-links { text-align:center; padding:15px; background:#ecf0f1; }
+.refresh-links a { display:inline-block; margin:0 10px; padding:10px 20px; background:#3498db; color:white; text-decoration:none; border-radius:4px; font-weight:600; }
+.refresh-links a:hover { background:#2980b9; }
+.refresh-links a.refresh { background:#e74c3c; }
+.refresh-links a.refresh:hover { background:#c0392b; }
+.refresh-links a.export { background:#27ae60; }
+.refresh-links a.export:hover { background:#229954; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <h1>Claims Sync Report</h1>
+    <p>Encircle System vs OneDrive Storage</p>
+    {% if is_refresh %}
+    <div class="cache-badge fresh">🔄 Fresh Data</div>
+    {% else %}
+    <div class="cache-badge cached">💾 Cached Data</div>
+    {% endif %}
+  </div>
+
+  <div class="refresh-links">
+    <a href="?">📊 View Report (Cached)</a>
+    <a href="/sync/refresh/" class="refresh">🔄 Refresh Data</a>
+    <a href="/sync/export/encircle/" class="export">📥 Export Encircle CSV</a>
+    <a href="/sync/export/onedrive/" class="export">📥 Export OneDrive CSV</a>
+  </div>
+
+  <div class="status-bar">
+    <div class="status-card encircle">
+      <div class="label">Encircle Total</div>
+      <div class="value">{{ summary.valid_encircle|default:0 }}</div>
+      <div class="sub-value">{{ summary.encircle_test_data|default:0 }} test excluded</div>
+    </div>
+    <div class="status-card onedrive">
+      <div class="label">OneDrive Total</div>
+      <div class="value">{{ summary.valid_onedrive|default:0 }}</div>
+      <div class="sub-value">{{ summary.onedrive_test_data|default:0 }} test excluded</div>
+    </div>
+    <div class="status-card matched">
+      <div class="label">Matches</div>
+      <div class="value">{{ summary.matches|default:0 }}</div>
+      <div class="sub-value">real claims only</div>
+    </div>
+    <div class="status-card missing">
+      <div class="label">Issues</div>
+      <div class="value">{{ summary.issues_total|default:0 }}</div>
+      <div class="sub-value">need attention</div>
+    </div>
+    <div class="status-card test-data">
+      <div class="label">Test Data</div>
+      <div class="value">{{ summary.test_total|default:0 }}</div>
+      <div class="sub-value">auto-filtered</div>
+    </div>
+  </div>
+
+  <div class="content">
+    
+    {# CLAIMS TO ADD TO ENCIRCLE - SHOW FIRST #}
+    <div class="section">
+      <div class="section-title">🚨 Claims to ADD to Encircle ({{ summary.onedrive_only }})</div>
+      <div class="note" style="border-left-color:#f39c12; background:#fff9e6;">
+        <strong>ACTION NEEDED:</strong> These OneDrive folders exist but have no matching Encircle claim. Create claims in Encircle for these.
+      </div>
+      
+      {% if onedrive_extra %}
+      <div class="claims-list">
+        {% for folder in onedrive_extra %}
+        <div class="claim-row extra">
+          <div class="claim-name">➕ {{ folder.folder_name }}</div>
+          <div class="claim-details">
+            Contractor: {{ folder.contractor_identifier }} | 
+            Files: {{ folder.file_count|default:0 }} | 
+            Info Sheet: {% if folder.has_info_file %}✅{% else %}❌{% endif %}
+          </div>
+          <div class="claim-id">ID: {{ folder.folder_id|truncatechars:15 }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="note" style="background:#d4edda; border-left-color:#27ae60;">
+        ✅ No missing claims found! All OneDrive folders have matching Encircle claims.
+      </div>
+      {% endif %}
+    </div>
+
+    {# CLAIMS MISSING FROM ONEDRIVE #}
+    <div class="section">
+      <div class="section-title">📁 Claims Missing from OneDrive ({{ summary.encircle_only }})</div>
+      <div class="note" style="border-left-color:#e74c3c; background:#fff5f5;">
+        <strong>ACTION REQUIRED:</strong> These Encircle claims have NO folders in OneDrive. Create folders immediately!
+      </div>
+      
+      {% if encircle_missing_onedrive %}
+      <div class="claims-list">
+        {% for claim in encircle_missing_onedrive %}
+        <div class="claim-row unmatched">
+          <div class="claim-name">❌ {{ claim.policyholder_name }}</div>
+          <div class="claim-details">
+            Contractor: {{ claim.contractor_identifier }} | 
+            Address: {{ claim.full_address|default:""|truncatewords:3 }}
+          </div>
+          <div class="claim-id">ID: {{ claim.id }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="note" style="background:#d4edda; border-left-color:#27ae60;">
+        ✅ All Encircle claims have folders in OneDrive!
+      </div>
+      {% endif %}
+    </div>
+
+    {# MATCH BREAKDOWN #}
+    {% if summary.match_breakdown %}
+    <div class="section">
+      <div class="section-title">📊 Match Breakdown</div>
+      <div class="note"><strong>Enhanced Location Matching:</strong> Now comparing only first 4 characters of location codes (e.g., GA22 = GA22A = GA22P)</div>
+      <div class="match-breakdown">
+        <div class="breakdown-item">
+          <div class="count">{{ summary.match_breakdown.high_confidence|default:0 }}</div>
+          <div class="label">High Confidence (80%+)</div>
+        </div>
+        <div class="breakdown-item">
+          <div class="count">{{ summary.match_breakdown.medium_confidence|default:0 }}</div>
+          <div class="label">Medium Confidence (65-80%)</div>
+        </div>
+        <div class="breakdown-item">
+          <div class="count">{{ summary.match_breakdown.low_confidence|default:0 }}</div>
+          <div class="label">Low Confidence (Below 65%)</div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+
+    {# SUCCESSFUL MATCHES - CONDENSED VIEW #}
+    <div class="section">
+      <div class="section-title">✅ Successfully Matched Claims ({{ summary.matches }})</div>
+      <div class="note">
+        <strong>Location Code Enhancement:</strong> GA22, GA22A, GA22P now all match as GA22
+      </div>
+      
+      {% if matched_pairs %}
+      <div class="claims-list">
+        {% for pair in matched_pairs %}
+        <div class="claim-row matched">
+          <div class="claim-name">✓ {{ pair.encircle.policyholder_name }}</div>
+          <div class="claim-details">
+            → {{ pair.onedrive.folder_name }} | 
+            Confidence: {{ pair.confidence }}
+          </div>
+          <div class="claim-id">ID: {{ pair.encircle.id }}</div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      <div class="note" style="background:#fff5f5; border-left-color:#e74c3c;">
+        ⚠️ No matches found. Check your data sources.
+      </div>
+      {% endif %}
+    </div>
+
+  </div>
+
+  <div class="footer">
+    <p><strong>Generated:</strong> {{ generated_date }} | 
+       <strong>Status:</strong> {% if is_refresh %}Fresh Download{% else %}Using Cache{% endif %} |
+       <strong>Enhanced Location Matching:</strong> 4-char codes only |
+       <strong>Issues:</strong> {{ summary.issues_total|default:0 }} total</p>
+  </div>
+</div>
+</body>
+</html>
+"""
+    
+    # Ensure all keys and precomputed fields exist
+    comparison_results = _coerce_report_defaults(comparison_results)
+    comparison_results['generated_date'] = dt.datetime.now().strftime("%Y-%m-%d %H:%M")
+    comparison_results['is_refresh'] = is_refresh
+
+    template = Template(template_content)
+    context = Context(comparison_results)
+    return template.render(context)
+
+import csv
+from django.http import HttpResponse
+from django.views.decorators.http import require_GET
+from django.core.cache import cache
+
+# Add these new views to your existing code
+
+@require_GET
+def export_encircle_csv(request):
+    """Export Encircle claims data as CSV"""
+    try:
+        # Get cached data (or fetch fresh if not available)
+        encircle_claims = get_encircle_claims(use_cache=True)
+        
+        # Create HTTP response with CSV content type
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="encircle_claims_export.csv"'
+        
+        writer = csv.writer(response)
+        
+        # Write header row
+        writer.writerow([
+            'Claim ID',
+            'Policyholder Name',
+            'Contractor Identifier',
+            'Full Address',
+            'Insurance Company',
+            'Status',
+            'Created Date'
+        ])
+        
+        # Write data rows
+        for claim in encircle_claims:
+            writer.writerow([
+                claim.get('id', ''),
+                claim.get('policyholder_name', ''),
+                claim.get('contractor_identifier', ''),
+                claim.get('full_address', ''),
+                claim.get('insurance_company_name', ''),
+                claim.get('status', ''),
+                claim.get('created_date', '')
+            ])
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error exporting Encircle CSV: {str(e)}")
+        return HttpResponse(f"Error exporting data: {str(e)}", status=500)
+
+
+@require_GET
+def export_onedrive_csv(request):
+    """Export OneDrive claims data as CSV"""
+    try:
+        # Get cached data (or fetch fresh if not available)
+        onedrive_claims = get_onedrive_claims(use_cache=True)
+        
+        # Create HTTP response with CSV content type
+        response = HttpResponse(content_type='text/csv')
+        response['Content-Disposition'] = 'attachment; filename="onedrive_folders_export.csv"'
+        
+        writer = csv.writer(response)
+        
+        # Write header row
+        writer.writerow([
+            'Folder Name',
+            'Folder ID',
+            'Contractor Identifier',
+            'Normalized Name',
+            'Has Info File',
+            'File Count',
+            'Error'
+        ])
+        
+        # Write data rows
+        for claim in onedrive_claims:
+            writer.writerow([
+                claim.get('folder_name', ''),
+                claim.get('folder_id', ''),
+                claim.get('contractor_identifier', ''),
+                claim.get('normalized_name', ''),
+                'Yes' if claim.get('has_info_file', False) else 'No',
+                claim.get('file_count', 0),
+                claim.get('error', '')
+            ])
+        
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error exporting OneDrive CSV: {str(e)}")
+        return HttpResponse(f"Error exporting data: {str(e)}", status=500)
+
+
+# ==================== ENCIRCLE WEBHOOK ENDPOINTS ====================
+
+@csrf_exempt
+def encircle_webhook(request):
+    """
+    Webhook endpoint for Encircle API notifications.
+
+    This endpoint receives webhook events from Encircle when:
+    - Media is created/updated (including floorplans)
+    - Claims are updated
+    - Other events
+
+    We specifically filter for floorplan creation events and send email notifications.
+
+    Encircle Webhook Event Types:
+    - media.created: New media uploaded
+    - media.updated: Media updated
+    - floor_plan.created: Floorplan created
+    - floor_plan.updated: Floorplan updated
+    - property_claim.updated: Claim data updated
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        # Parse the webhook payload
+        try:
+            payload = json.loads(request.body)
+        except json.JSONDecodeError:
+            logger.error("Invalid JSON in Encircle webhook payload")
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+        # Log the webhook for debugging
+        event_type = payload.get('event_type', payload.get('type', 'unknown'))
+        logger.info(f"Encircle webhook received: event_type={event_type}")
+        logger.debug(f"Encircle webhook payload: {json.dumps(payload, indent=2)}")
+
+        # Verify webhook signature if configured
+        webhook_secret = getattr(settings, 'ENCIRCLE_WEBHOOK_SECRET', '')
+        if webhook_secret:
+            signature = request.headers.get('X-Encircle-Signature', '')
+            if not _verify_encircle_signature(request.body, signature, webhook_secret):
+                logger.warning("Invalid Encircle webhook signature")
+                return JsonResponse({'error': 'Invalid signature'}, status=401)
+
+        # Process the webhook based on event type
+        result = _process_encircle_webhook(payload)
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Webhook processed',
+            'result': result
+        })
+
+    except Exception as e:
+        logger.error(f"Error processing Encircle webhook: {str(e)}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def _verify_encircle_signature(payload_body, signature, secret):
+    """Verify the Encircle webhook signature (if applicable)."""
+    import hmac
+    import hashlib
+
+    if not signature or not secret:
+        return True  # Skip verification if not configured
+
+    expected = hmac.new(
+        secret.encode('utf-8'),
+        payload_body,
+        hashlib.sha256
+    ).hexdigest()
+
+    return hmac.compare_digest(signature, expected)
+
+
+def _process_encircle_webhook(payload):
+    """
+    Process the Encircle webhook payload and trigger appropriate actions.
+
+    Encircle webhook structure (typical):
+    {
+        "event_type": "media.created" | "floor_plan.created" | etc,
+        "data": {
+            "property_claim_id": 12345,
+            "media_type": "floor_plan" | "photo" | etc,
+            "url": "https://...",
+            ...
+        },
+        "claim": {
+            "id": 12345,
+            "name": "Claim Name",
+            "address": "123 Main St",
+            ...
+        }
+    }
+    """
+    from .tasks import send_floorplan_notification_task
+
+    event_type = payload.get('event_type', payload.get('type', ''))
+    data = payload.get('data', {})
+    claim_data = payload.get('claim', payload.get('property_claim', {}))
+
+    # Check if this is a floorplan event
+    is_floorplan_event = False
+    floorplan_url = None
+
+    # Method 1: Direct floor_plan event type
+    if 'floor_plan' in event_type.lower():
+        is_floorplan_event = True
+        floorplan_url = data.get('url') or data.get('download_url') or data.get('image_url')
+
+    # Method 2: Media event with floor_plan type
+    elif event_type in ['media.created', 'media.updated']:
+        media_type = data.get('media_type', data.get('type', ''))
+        if 'floor' in media_type.lower() or 'plan' in media_type.lower():
+            is_floorplan_event = True
+            floorplan_url = data.get('url') or data.get('download_url') or data.get('image_url')
+
+    # Method 3: Check for floor_plan_dimensions or similar fields
+    if not is_floorplan_event:
+        if 'floor_plan_dimensions' in data or 'floor_plan' in data:
+            is_floorplan_event = True
+            fp_data = data.get('floor_plan_dimensions', data.get('floor_plan', {}))
+            if isinstance(fp_data, dict):
+                floorplan_url = fp_data.get('url') or fp_data.get('image_url')
+
+    if is_floorplan_event:
+        # Extract claim info
+        claim_id = (
+            claim_data.get('id') or
+            data.get('property_claim_id') or
+            data.get('claim_id') or
+            payload.get('property_claim_id')
+        )
+
+        claim_info = {
+            'encircle_id': claim_id,
+            'name': claim_data.get('name', claim_data.get('contractor_identifier', f'Claim {claim_id}')),
+            'address': claim_data.get('address', claim_data.get('location', {}).get('address', ''))
+        }
+
+        # Trigger the async task to send notification
+        if claim_id:
+            send_floorplan_notification_task.delay(
+                claim_id=str(claim_id),
+                floorplan_url=floorplan_url,
+                claim_info=claim_info
+            )
+            logger.info(f"Floorplan notification task queued for claim {claim_id}")
+            return {'action': 'floorplan_notification_queued', 'claim_id': claim_id}
+        else:
+            logger.warning("Floorplan event received but no claim_id found")
+            return {'action': 'skipped', 'reason': 'no_claim_id'}
+
+    # Not a floorplan event - log and acknowledge
+    logger.info(f"Encircle webhook event '{event_type}' received but not a floorplan event - ignoring")
+    return {'action': 'ignored', 'event_type': event_type}
+
+
+@csrf_exempt
+def encircle_webhook_test(request):
+    """
+    Test endpoint to manually trigger a floorplan notification.
+    Useful for testing the webhook flow without actual Encircle events.
+
+    POST /webhooks/encircle/test/
+    {
+        "claim_id": "12345",
+        "claim_name": "Test Claim",
+        "claim_address": "123 Test St",
+        "floorplan_url": "https://example.com/floorplan.png"  (optional)
+    }
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        claim_id = data.get('claim_id', 'test_123')
+        claim_name = data.get('claim_name', 'Test Claim')
+        claim_address = data.get('claim_address', '123 Test Street')
+        floorplan_url = data.get('floorplan_url', '')
+
+        from .tasks import send_floorplan_notification_task
+
+        claim_info = {
+            'encircle_id': claim_id,
+            'name': claim_name,
+            'address': claim_address
+        }
+
+        # Queue the notification task
+        send_floorplan_notification_task.delay(
+            claim_id=str(claim_id),
+            floorplan_url=floorplan_url,
+            claim_info=claim_info
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': 'Test floorplan notification queued',
+            'claim_id': claim_id
+        })
+
+    except Exception as e:
+        logger.error(f"Error in encircle_webhook_test: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+# ==================== LEASE MANAGER DASHBOARD ====================
+
+def lease_manager(request):
+    """
+    Main Lease Manager Dashboard
+    Displays leases (not individual documents), activity feed, and pipeline status
+    """
+    from django.db.models import Count, Sum, Q
+    from datetime import timedelta, date
+    from .models import PipelineStageAssignment, LeaseStageCompletion
+
+    # Get filter parameters
+    status_filter = request.GET.get('status', '')
+    client_filter = request.GET.get('client', '')
+    date_filter = request.GET.get('date_range', '30')  # Default 30 days
+
+    # Calculate date range
+    try:
+        days = int(date_filter)
+    except ValueError:
+        days = 30
+    date_threshold = timezone.now() - timedelta(days=days)
+
+    today = date.today()
+
+    # Get all leases (not individual documents)
+    leases_query = Lease.objects.select_related(
+        'client', 'created_by', 'last_modified_by'
+    ).prefetch_related('documents', 'stage_completions', 'stage_completions__assigned_user', 'stage_completions__completed_by')
+
+    if status_filter:
+        leases_query = leases_query.filter(status=status_filter)
+    if client_filter:
+        leases_query = leases_query.filter(client__id=client_filter)
+
+    all_leases = leases_query.order_by('-created_at')[:100]
+
+    # Get recent activity
+    recent_activity = LeaseActivity.objects.select_related(
+        'lease', 'lease__client', 'performed_by'
+    ).filter(
+        created_at__gte=date_threshold
+    ).order_by('-created_at')[:50]
+
+    # Pipeline statistics - CURRENT counts (how many are at each stage right now)
+    pipeline_stats = Lease.objects.values('status').annotate(
+        count=Count('id')
+    ).order_by('status')
+
+    # Convert to dict for easy template access
+    status_counts = {item['status']: item['count'] for item in pipeline_stats}
+
+    # CUMULATIVE pipeline counts - how many leases have reached or passed each stage
+    # A lease at "signed" has passed draft, generated, review, sent_for_signature
+    STATUS_ORDER = [
+        'draft', 'generated', 'review', 'sent_for_signature',
+        'signed', 'invoice_created', 'package_sent',
+        'payment_pending', 'payment_received', 'completed'
+    ]
+
+    cumulative_counts = {}
+    total_non_cancelled = Lease.objects.exclude(status='cancelled').count()
+
+    for i, status in enumerate(STATUS_ORDER):
+        # Count leases that are at this stage or have passed it
+        statuses_at_or_past = STATUS_ORDER[i:]
+        cumulative_counts[status] = Lease.objects.filter(
+            status__in=statuses_at_or_past
+        ).exclude(status='cancelled').count()
+
+    # Get stage assignments for display (which team member handles each stage)
+    stage_assignments = PipelineStageAssignment.objects.select_related('assigned_user').order_by('order')
+
+    # Build pipeline steps with assignee info for template
+    pipeline_steps = []
+    for i, status_tuple in enumerate(Lease.LEASE_STATUS_CHOICES):
+        status_value, status_label = status_tuple
+        if status_value == 'cancelled':
+            continue  # Skip cancelled in pipeline view
+
+        assignment = stage_assignments.filter(stage=status_value).first()
+        assignee_email = assignment.assigned_user.email if assignment and assignment.assigned_user else 'Unassigned'
+        assignee_initials = ''.join([part[0].upper() for part in assignee_email.split('@')[0].split('.')[:2]]) if assignment and assignment.assigned_user else '?'
+
+        pipeline_steps.append({
+            'value': status_value,
+            'label': status_label,
+            'order': i,
+            'assignee_email': assignee_email,
+            'assignee_initials': assignee_initials,
+            'current_count': status_counts.get(status_value, 0),
+            'cumulative_count': cumulative_counts.get(status_value, 0),
+        })
+
+    # Calculate totals - ACTIVE means within date range and not cancelled/completed
+    total_active = Lease.objects.filter(
+        lease_start_date__lte=today,
+        lease_end_date__gte=today
+    ).exclude(
+        status__in=['completed', 'cancelled']
+    ).count()
+
+    total_completed = Lease.objects.filter(status='completed').count()
+
+    # Get expired leases (end date passed)
+    total_expired = Lease.objects.filter(
+        lease_end_date__lt=today
+    ).exclude(
+        status__in=['completed', 'cancelled']
+    ).count()
+
+    # Get leases organized by client/property owner
+    clients_with_leases = Client.objects.filter(
+        leases__isnull=False
+    ).distinct().prefetch_related(
+        'leases', 'leases__documents'
+    ).annotate(
+        lease_count=Count('leases', distinct=True),
+        active_lease_count=Count(
+            'leases',
+            filter=Q(leases__lease_start_date__lte=today) & Q(leases__lease_end_date__gte=today) & ~Q(leases__status__in=['completed', 'cancelled']),
+            distinct=True
+        )
+    ).order_by('-leases__created_at')
+
+    # Get all clients for filter dropdown
+    all_clients = Client.objects.all().order_by('pOwner')
+
+    # Status choices for filter
+    status_choices = Lease.LEASE_STATUS_CHOICES
+
+    # Get total monthly rent for ACTIVE leases only (within date range)
+    total_monthly_rent = Lease.objects.filter(
+        lease_start_date__lte=today,
+        lease_end_date__gte=today
+    ).exclude(
+        status__in=['completed', 'cancelled']
+    ).aggregate(
+        total=Sum('monthly_rent')
+    )['total'] or 0
+
+    context = {
+        'leases': all_leases,
+        'recent_activity': recent_activity,
+        'status_counts': status_counts,
+        'cumulative_counts': cumulative_counts,
+        'pipeline_steps': pipeline_steps,
+        'stage_assignments': stage_assignments,
+        'total_active': total_active,
+        'total_completed': total_completed,
+        'total_expired': total_expired,
+        'total_non_cancelled': total_non_cancelled,
+        'clients_with_leases': clients_with_leases,
+        'all_clients': all_clients,
+        'status_choices': status_choices,
+        'current_status_filter': status_filter,
+        'current_client_filter': client_filter,
+        'current_date_filter': date_filter,
+        'total_monthly_rent': total_monthly_rent,
+        'today': today,
+    }
+
+    return render(request, 'account/lease_manager.html', context)
+
+def create_draft_lease(request):
+    """
+    Auto-create a draft lease when user starts inputting information for a client.
+    Called via AJAX when user selects a client for lease generation.
+    """
+    from .models import PipelineStageAssignment, LeaseStageCompletion
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        client_id = data.get('client_id')
+        client_name = data.get('client_name')
+
+        if not client_id and not client_name:
+            return JsonResponse({'error': 'client_id or client_name required'}, status=400)
+
+        # Look up client by ID or name
+        if client_id:
+            client = Client.objects.get(id=client_id)
+        else:
+            client = Client.objects.get(pOwner=client_name)
+
+        # Check if there's already a draft for this client
+        existing_draft = Lease.objects.filter(
+            client=client,
+            status='draft'
+        ).first()
+
+        if existing_draft:
+            return JsonResponse({
+                'success': True,
+                'lease_id': str(existing_draft.id),
+                'message': 'Existing draft found',
+                'is_new': False
+            })
+
+        # Create new draft lease with minimal data
+        lease = Lease.objects.create(
+            client=client,
+            lessor_name='',  # Will be filled in during form entry
+            property_address=client.pAddress or '',
+            property_city=client.pCityStateZip.split(',')[0].strip() if client.pCityStateZip else '',
+            status='draft',
+            created_by=request.user if request.user.is_authenticated else None,
+            last_modified_by=request.user if request.user.is_authenticated else None,
+        )
+
+        # Log activity
+        LeaseActivity.objects.create(
+            lease=lease,
+            activity_type='draft',
+            description=f'Draft lease created for {client.pOwner}',
+            performed_by=request.user if request.user.is_authenticated else None
+        )
+
+        # Create stage completion records for all stages
+        stage_assignments = PipelineStageAssignment.objects.all()
+        for assignment in stage_assignments:
+            LeaseStageCompletion.objects.create(
+                lease=lease,
+                stage=assignment.stage,
+                assigned_user=assignment.assigned_user,
+                is_completed=False
+            )
+
+        # Mark draft stage as completed since we just created it
+        draft_completion = LeaseStageCompletion.objects.filter(
+            lease=lease,
+            stage='draft'
+        ).first()
+        if draft_completion:
+            draft_completion.is_completed = True
+            draft_completion.completed_by = request.user if request.user.is_authenticated else None
+            draft_completion.completed_at = timezone.now()
+            draft_completion.save()
+
+        return JsonResponse({
+            'success': True,
+            'lease_id': str(lease.id),
+            'message': 'Draft lease created',
+            'is_new': True
+        })
+
+    except Client.DoesNotExist:
+        return JsonResponse({'error': 'Client not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error creating draft lease: {str(e)}")
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def update_lease_status(request):
+    """API endpoint to update lease status"""
+    from .models import LeaseStageCompletion
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        lease_id = data.get('lease_id')
+        new_status = data.get('status')
+
+        if not lease_id or not new_status:
+            return JsonResponse({'error': 'Missing required fields'}, status=400)
+
+        lease = Lease.objects.get(id=lease_id)
+        old_status = lease.status
+
+        # Update status
+        lease.status = new_status
+        lease.last_modified_by = request.user if request.user.is_authenticated else None
+
+        # Update timestamp based on status
+        now = timezone.now()
+        status_timestamp_map = {
+            'generated': 'generated_at',
+            'review': 'reviewed_at',
+            'sent_for_signature': 'sent_for_signature_at',
+            'signed': 'signed_at',
+            'invoice_created': 'invoice_created_at',
+            'package_sent': 'package_sent_at',
+            'payment_received': 'payment_received_at',
+            'completed': 'completed_at',
+        }
+
+        if new_status in status_timestamp_map:
+            setattr(lease, status_timestamp_map[new_status], now)
+
+        lease.save()
+
+        # Update stage completion record
+        stage_completion = LeaseStageCompletion.objects.filter(
+            lease=lease,
+            stage=new_status
+        ).first()
+
+        if stage_completion and not stage_completion.is_completed:
+            stage_completion.is_completed = True
+            stage_completion.completed_by = request.user if request.user.is_authenticated else None
+            stage_completion.completed_at = now
+            stage_completion.save()
+
+        # Log activity with status-aligned activity type
+        LeaseActivity.objects.create(
+            lease=lease,
+            activity_type=new_status,  # Use new status as activity type
+            description=f'Status changed from "{old_status}" to "{new_status}"',
+            old_status=old_status,
+            new_status=new_status,
+            performed_by=request.user if request.user.is_authenticated else None
+        )
+
+        return JsonResponse({
+            'success': True,
+            'new_status': new_status,
+            'status_display': lease.get_status_display()
+        })
+
+    except Lease.DoesNotExist:
+        return JsonResponse({'error': 'Lease not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def get_leases_by_client(request, client_id):
+    """API endpoint to get leases for a specific client"""
+    from datetime import date
+    today = date.today()
+
+    try:
+        client = Client.objects.get(id=client_id)
+        leases = Lease.objects.filter(client=client).prefetch_related('documents').order_by('-created_at')
+
+        leases_data = []
+        for lease in leases:
+            # Get documents for this lease
+            docs = [{
+                'id': str(doc.id),
+                'document_type': doc.document_type,
+                'document_type_display': doc.get_document_type_display(),
+                'document_name': doc.document_name,
+                'file_path': doc.file_path,
+            } for doc in lease.documents.all()]
+
+            leases_data.append({
+                'id': str(lease.id),
+                'lessor_name': lease.lessor_name,
+                'property_address': lease.full_property_address,
+                'monthly_rent': float(lease.monthly_rent) if lease.monthly_rent else None,
+                'lease_start_date': lease.lease_start_date.isoformat() if lease.lease_start_date else None,
+                'lease_end_date': lease.lease_end_date.isoformat() if lease.lease_end_date else None,
+                'status': lease.status,
+                'status_display': lease.get_status_display(),
+                'status_color': lease.get_status_color(),
+                'is_active': lease.is_active,
+                'is_expired': lease.is_expired,
+                'is_renewal': lease.is_renewal,
+                'created_at': lease.created_at.isoformat(),
+                'created_by': lease.created_by.email if lease.created_by else None,
+                'documents': docs,
+            })
+
+        return JsonResponse({
+            'success': True,
+            'client': {
+                'id': client.id,
+                'name': client.pOwner,
+                'address': client.pAddress,
+            },
+            'leases': leases_data
+        })
+
+    except Client.DoesNotExist:
+        return JsonResponse({'error': 'Client not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+def download_lease_document(request, document_id):
+    """Download a specific lease document PDF"""
+    import mimetypes
+
+    try:
+        lease_doc = LeaseDocument.objects.select_related('lease').get(id=document_id)
+
+        if not lease_doc.file_path:
+            return HttpResponse("Document file path not set", status=404)
+
+        # Build full path from MEDIA_ROOT
+        full_path = os.path.join(settings.MEDIA_ROOT, lease_doc.file_path)
+
+        if not os.path.exists(full_path):
+            return HttpResponse(f"Document file not found at {full_path}", status=404)
+
+        # Log download activity
+        LeaseActivity.objects.create(
+            lease=lease_doc.lease,
+            activity_type='downloaded',
+            description=f'Downloaded {lease_doc.document_name}',
+            performed_by=request.user if request.user.is_authenticated else None
+        )
+
+        # Serve the file
+        with open(full_path, 'rb') as f:
+            content = f.read()
+
+        content_type, _ = mimetypes.guess_type(full_path)
+        response = HttpResponse(content, content_type=content_type or 'application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{lease_doc.document_name}.pdf"'
+        return response
+
+    except LeaseDocument.DoesNotExist:
+        return HttpResponse("Document not found", status=404)
+    except Exception as e:
+        return HttpResponse(f"Error downloading document: {str(e)}", status=500)
+
+
+def view_lease_document(request, document_id):
+    """View a specific lease document PDF in browser"""
+    import mimetypes
+
+    try:
+        lease_doc = LeaseDocument.objects.select_related('lease').get(id=document_id)
+
+        if not lease_doc.file_path:
+            return HttpResponse("Document file path not set", status=404)
+
+        # Build full path from MEDIA_ROOT
+        full_path = os.path.join(settings.MEDIA_ROOT, lease_doc.file_path)
+
+        if not os.path.exists(full_path):
+            return HttpResponse(f"Document file not found", status=404)
+
+        # Log view activity
+        LeaseActivity.objects.create(
+            lease=lease_doc.lease,
+            activity_type='viewed',
+            description=f'Viewed {lease_doc.document_name}',
+            performed_by=request.user if request.user.is_authenticated else None
+        )
+
+        # Serve the file inline (opens in browser)
+        with open(full_path, 'rb') as f:
+            content = f.read()
+
+        content_type, _ = mimetypes.guess_type(full_path)
+        response = HttpResponse(content, content_type=content_type or 'application/pdf')
+        # Use 'inline' to open in browser instead of download
+        response['Content-Disposition'] = f'inline; filename="{lease_doc.document_name}.pdf"'
+        return response
+
+    except LeaseDocument.DoesNotExist:
+        return HttpResponse("Document not found", status=404)
+    except Exception as e:
+        return HttpResponse(f"Error viewing document: {str(e)}", status=500)
+
+
+def add_lease_note(request):
+    """Add a note to a lease"""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        lease_id = data.get('lease_id')
+        note = data.get('note', '').strip()
+
+        if not lease_id or not note:
+            return JsonResponse({'error': 'Missing required fields'}, status=400)
+
+        lease = Lease.objects.get(id=lease_id)
+
+        # Append note with timestamp
+        timestamp = timezone.now().strftime('%Y-%m-%d %H:%M')
+        user_name = request.user.email if request.user.is_authenticated else 'Anonymous'
+        new_note = f"[{timestamp}] {user_name}: {note}"
+
+        if lease.notes:
+            lease.notes = f"{lease.notes}\n\n{new_note}"
+        else:
+            lease.notes = new_note
+
+        lease.save()
+
+        # Log activity
+        LeaseActivity.objects.create(
+            lease=lease,
+            activity_type='note_added',
+            description=f'Note added: {note[:100]}...' if len(note) > 100 else f'Note added: {note}',
+            performed_by=request.user if request.user.is_authenticated else None
+        )
+
+        return JsonResponse({'success': True, 'note': new_note})
+
+    except Lease.DoesNotExist:
+        return JsonResponse({'error': 'Lease not found'}, status=404)
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def lease_activity_feed(request):
+    """API endpoint to get paginated activity feed"""
+    page = int(request.GET.get('page', 1))
+    per_page = int(request.GET.get('per_page', 20))
+    client_filter = request.GET.get('client', '')
+
+    offset = (page - 1) * per_page
+
+    query = LeaseActivity.objects.select_related('lease', 'lease__client', 'performed_by')
+
+    if client_filter:
+        query = query.filter(lease__client__id=client_filter)
+
+    total_count = query.count()
+    activities = query.order_by('-created_at')[offset:offset + per_page]
+
+    activity_data = []
+    for activity in activities:
+        activity_data.append({
+            'id': str(activity.id),
+            'activity_type': activity.activity_type,
+            'activity_type_display': activity.get_activity_type_display(),
+            'description': activity.description,
+            'client_name': activity.lease.client.pOwner if activity.lease else 'Unknown',
+            'client_id': activity.lease.client.id if activity.lease else None,
+            'lease_id': str(activity.lease.id) if activity.lease else None,
+            'performed_by': activity.performed_by.email if activity.performed_by else 'System',
+            'created_at': activity.created_at.isoformat(),
+            'time_ago': get_time_ago(activity.created_at),
+        })
+
+    return JsonResponse({
+        'success': True,
+        'activities': activity_data,
+        'total_count': total_count,
+        'page': page,
+        'per_page': per_page,
+        'has_more': offset + per_page < total_count
+    })
+
+
+def get_time_ago(dt):
+    """Helper function to get human-readable time ago string"""
+    now = timezone.now()
+    diff = now - dt
+
+    if diff.days > 30:
+        return dt.strftime('%b %d, %Y')
+    elif diff.days > 0:
+        return f"{diff.days} day{'s' if diff.days > 1 else ''} ago"
+    elif diff.seconds > 3600:
+        hours = diff.seconds // 3600
+        return f"{hours} hour{'s' if hours > 1 else ''} ago"
+    elif diff.seconds > 60:
+        minutes = diff.seconds // 60
+        return f"{minutes} minute{'s' if minutes > 1 else ''} ago"
+    else:
+        return "Just now"
+
+
+# ==================== SCOPE CHECKLIST VIEWS ====================
+
+@login_required
+def scope_checklist(request):
+    """
+    Main Scope Checklist page - Interior Inspection Work Scope
+    Displays claim selection, room tabs, and detailed checklist with Xactimate codes
+    """
+    claims = Client.objects.all().order_by('-created_at')
+
+    return render(request, 'account/scope_checklist.html', {
+        'claims': claims
+    })
+
+
+@login_required
+def scope_checklist_get_rooms(request, claim_id):
+    """
+    API endpoint to get rooms for a selected claim
+    Returns room list with any saved scope checklist data
+    """
+    try:
+        client = get_object_or_404(Client, id=claim_id)
+        rooms = Room.objects.filter(client=client).order_by('sequence', 'room_name')
+
+        rooms_data = []
+        for room in rooms:
+            room_info = {
+                'id': str(room.id),
+                'room_name': room.room_name,
+                'sequence': room.sequence,
+            }
+
+            # Get saved scope checklist data if it exists
+            try:
+                from .models import RoomScopeChecklist
+                scope_data = RoomScopeChecklist.objects.get(room=room, client=client)
+                room_info['scope_data'] = scope_data.to_dict()
+            except:
+                room_info['scope_data'] = {}
+
+            rooms_data.append(room_info)
+
+        return JsonResponse({
+            'success': True,
+            'rooms': rooms_data,
+            'client': {
+                'id': client.id,
+                'name': client.pOwner,
+                'address': client.pAddress,
+                'phone': client.cPhone,
+                'insurance': client.insuranceCo_Name,
+                'cause': client.causeOfLoss
+            }
+        })
+
+    except Client.DoesNotExist:
+        return JsonResponse({'success': False, 'error': 'Claim not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error getting rooms for scope checklist: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+def scope_checklist_save(request):
+    """
+    API endpoint to save scope checklist data for all rooms
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        claim_id = data.get('claim_id')
+        rooms_data = data.get('rooms_data', {})
+
+        if not claim_id:
+            return JsonResponse({'error': 'Missing claim_id'}, status=400)
+
+        client = get_object_or_404(Client, id=claim_id)
+        from .models import RoomScopeChecklist
+
+        saved_count = 0
+        for room_id, room_fields in rooms_data.items():
+            try:
+                room = Room.objects.get(id=room_id)
+
+                # Update or create scope checklist
+                scope_data, created = RoomScopeChecklist.objects.update_or_create(
+                    room=room,
+                    client=client,
+                    defaults={
+                        'clg_material': room_fields.get('clg_material', ''),
+                        'clg_construction': room_fields.get('clg_construction', ''),
+                        'clg_finish': room_fields.get('clg_finish', ''),
+                        'clg_activity': room_fields.get('clg_activity', ''),
+                        'clg_sf': room_fields.get('clg_sf') or None,
+                        'lit_type': room_fields.get('lit_type', ''),
+                        'lit_activity': room_fields.get('lit_activity', ''),
+                        'lit_qty': room_fields.get('lit_qty') or None,
+                        'hvc_type': room_fields.get('hvc_type', ''),
+                        'hvc_activity': room_fields.get('hvc_activity', ''),
+                        'hvc_qty': room_fields.get('hvc_qty') or None,
+                        'wal_material': room_fields.get('wal_material', ''),
+                        'wal_finish': room_fields.get('wal_finish', ''),
+                        'wal_activity': room_fields.get('wal_activity', ''),
+                        'wal_sf': room_fields.get('wal_sf') or None,
+                        'ele_outlets': room_fields.get('ele_outlets') or None,
+                        'ele_switches': room_fields.get('ele_switches') or None,
+                        'ele_sw3': room_fields.get('ele_sw3') or None,
+                        'ele_activity': room_fields.get('ele_activity', ''),
+                        'flr_type': room_fields.get('flr_type', ''),
+                        'flr_activity': room_fields.get('flr_activity', ''),
+                        'flr_sf': room_fields.get('flr_sf') or None,
+                        'bb_height': room_fields.get('bb_height', ''),
+                        'bb_activity': room_fields.get('bb_activity', ''),
+                        'bb_lf': room_fields.get('bb_lf') or None,
+                        'trim_type': room_fields.get('trim_type', ''),
+                        'trim_crown': room_fields.get('trim_crown', ''),
+                        'trim_chairrail': room_fields.get('trim_chairrail', ''),
+                        'trim_activity': room_fields.get('trim_activity', ''),
+                        'dor_type': room_fields.get('dor_type', ''),
+                        'dor_activity': room_fields.get('dor_activity', ''),
+                        'dor_qty': room_fields.get('dor_qty') or None,
+                        'open_activity': room_fields.get('open_activity', ''),
+                        'open_qty': room_fields.get('open_qty') or None,
+                        'wdw_type': room_fields.get('wdw_type', ''),
+                        'wdw_covers': room_fields.get('wdw_covers', ''),
+                        'wdw_activity': room_fields.get('wdw_activity', ''),
+                        'wdw_qty': room_fields.get('wdw_qty') or None,
+                        'closet_type': room_fields.get('closet_type', ''),
+                        'closet_rod': room_fields.get('closet_rod', ''),
+                        'closet_lf': room_fields.get('closet_lf') or None,
+                        'ins_type': room_fields.get('ins_type', ''),
+                        'ins_rvalue': room_fields.get('ins_rvalue', ''),
+                        'ins_sf': room_fields.get('ins_sf') or None,
+                        'frm_type': room_fields.get('frm_type', ''),
+                        'frm_activity': room_fields.get('frm_activity', ''),
+                        'frm_lf': room_fields.get('frm_lf') or None,
+                        'activity_notes': room_fields.get('activity_notes', ''),
+                        'created_by': request.user,
+                    }
+                )
+                saved_count += 1
+            except Room.DoesNotExist:
+                logger.warning(f"Room not found: {room_id}")
+                continue
+            except Exception as e:
+                logger.error(f"Error saving room {room_id}: {str(e)}")
+                continue
+
+        return JsonResponse({
+            'success': True,
+            'saved_count': saved_count,
+            'message': f'Saved data for {saved_count} rooms'
+        })
+
+    except Exception as e:
+        logger.error(f"Error saving scope checklist: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+def scope_checklist_generate_pdf(request):
+    """
+    Generate PDF for scope checklist
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        claim_id = data.get('claim_id')
+        rooms_data = data.get('rooms_data', {})
+
+        if not claim_id:
+            return JsonResponse({'error': 'Missing claim_id'}, status=400)
+
+        client = get_object_or_404(Client, id=claim_id)
+
+        # Generate PDF using ReportLab
+        from reportlab.lib.pagesizes import letter, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from io import BytesIO
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
+                               rightMargin=30, leftMargin=30,
+                               topMargin=30, bottomMargin=30)
+
+        elements = []
+        styles = getSampleStyleSheet()
+
+        # Header style
+        header_style = ParagraphStyle(
+            'Header',
+            parent=styles['Heading1'],
+            fontSize=14,
+            spaceAfter=12
+        )
+
+        # Title
+        elements.append(Paragraph(f"Interior Inspection Work Scope", header_style))
+        elements.append(Paragraph(f"<b>Client:</b> {client.pOwner}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Address:</b> {client.pAddress} {client.pCityStateZip}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Phone:</b> {client.cPhone}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Insurance:</b> {client.insuranceCo_Name}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Cause of Loss:</b> {client.causeOfLoss}", styles['Normal']))
+        elements.append(Spacer(1, 20))
+
+        # Get rooms
+        rooms = Room.objects.filter(client=client).order_by('sequence', 'room_name')
+
+        # Summary table headers
+        headers = ['#', 'Room', 'CLG', 'LIT', 'HVC', 'WAL', 'ELE', 'FLR', 'BB', 'DOR', 'WDW', 'NOTES']
+
+        # Build summary table data
+        table_data = [headers]
+
+        for idx, room in enumerate(rooms, 1):
+            room_id = str(room.id)
+            room_fields = rooms_data.get(room_id, {})
+
+            row = [
+                str(idx),
+                room.room_name[:15],  # Truncate long names
+                room_fields.get('clg_material', '') + '/' + room_fields.get('clg_activity', ''),
+                room_fields.get('lit_type', ''),
+                room_fields.get('hvc_type', ''),
+                room_fields.get('wal_material', '') + '/' + room_fields.get('wal_activity', ''),
+                f"OS:{room_fields.get('ele_outlets', '')} SW:{room_fields.get('ele_switches', '')}",
+                room_fields.get('flr_type', '') + '/' + room_fields.get('flr_activity', ''),
+                room_fields.get('bb_height', ''),
+                room_fields.get('dor_type', ''),
+                room_fields.get('wdw_type', ''),
+                room_fields.get('activity_notes', '')[:30] if room_fields.get('activity_notes') else ''
+            ]
+            table_data.append(row)
+
+        # Create summary table
+        col_widths = [25, 80, 60, 40, 40, 60, 70, 60, 40, 40, 40, 120]
+        summary_table = Table(table_data, colWidths=col_widths)
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(summary_table)
+
+        # Add detailed room pages
+        elements.append(PageBreak())
+
+        for idx, room in enumerate(rooms, 1):
+            room_id = str(room.id)
+            room_fields = rooms_data.get(room_id, {})
+
+            elements.append(Paragraph(f"Room {idx}: {room.room_name}", header_style))
+            elements.append(Spacer(1, 10))
+
+            # Room details table
+            detail_data = [
+                ['SECTION', 'TYPE/MATERIAL', 'ACTIVITY', 'QTY/SF/LF', 'NOTES'],
+                ['CEILING', room_fields.get('clg_material', ''), room_fields.get('clg_activity', ''), room_fields.get('clg_sf', ''), room_fields.get('clg_finish', '')],
+                ['LIGHTS', room_fields.get('lit_type', ''), room_fields.get('lit_activity', ''), room_fields.get('lit_qty', ''), ''],
+                ['HVAC', room_fields.get('hvc_type', ''), room_fields.get('hvc_activity', ''), room_fields.get('hvc_qty', ''), ''],
+                ['WALLS', room_fields.get('wal_material', ''), room_fields.get('wal_activity', ''), room_fields.get('wal_sf', ''), room_fields.get('wal_finish', '')],
+                ['ELECTRICAL', f"OS:{room_fields.get('ele_outlets', '')} SW:{room_fields.get('ele_switches', '')}", room_fields.get('ele_activity', ''), '', ''],
+                ['FLOOR', room_fields.get('flr_type', ''), room_fields.get('flr_activity', ''), room_fields.get('flr_sf', ''), ''],
+                ['BASEBOARD', room_fields.get('bb_height', ''), room_fields.get('bb_activity', ''), room_fields.get('bb_lf', ''), ''],
+                ['TRIM', room_fields.get('trim_type', ''), room_fields.get('trim_activity', ''), '', f"CRN:{room_fields.get('trim_crown', '')} CHR:{room_fields.get('trim_chairrail', '')}"],
+                ['DOORS', room_fields.get('dor_type', ''), room_fields.get('dor_activity', ''), room_fields.get('dor_qty', ''), ''],
+                ['OPENINGS', '', room_fields.get('open_activity', ''), room_fields.get('open_qty', ''), ''],
+                ['WINDOWS', room_fields.get('wdw_type', ''), room_fields.get('wdw_activity', ''), room_fields.get('wdw_qty', ''), room_fields.get('wdw_covers', '')],
+                ['CLOSET', room_fields.get('closet_type', ''), '', room_fields.get('closet_lf', ''), f"ROD:{room_fields.get('closet_rod', '')}"],
+                ['INSULATION', room_fields.get('ins_type', ''), '', room_fields.get('ins_sf', ''), room_fields.get('ins_rvalue', '')],
+                ['FRAMING', room_fields.get('frm_type', ''), room_fields.get('frm_activity', ''), room_fields.get('frm_lf', ''), ''],
+            ]
+
+            detail_table = Table(detail_data, colWidths=[80, 120, 80, 80, 150])
+            detail_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#333333')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 8),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+                ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+                ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+                ('BACKGROUND', (0, 1), (0, -1), colors.HexColor('#f0f0f0')),
+            ]))
+            elements.append(detail_table)
+
+            # Activity notes
+            if room_fields.get('activity_notes'):
+                elements.append(Spacer(1, 10))
+                elements.append(Paragraph(f"<b>Activity Notes:</b> {room_fields.get('activity_notes', '')}", styles['Normal']))
+
+            elements.append(PageBreak())
+
+        # Add scope codes reference page
+        elements.append(Paragraph("XACTIMATE SCOPE CODES REFERENCE", header_style))
+        elements.append(Spacer(1, 10))
+
+        codes_data = [
+            ['BUILDING MATERIALS', '', 'CONSTRUCTION TYPE', '', 'FINISH', ''],
+            ['ACT', 'CLG TILES', 'FLT', 'FLAT', 'SMH', 'SMOOTH'],
+            ['DRY', 'DRYWALL', 'VLT', 'VAULTED', 'TEX', 'TEXTURE'],
+            ['PLA', 'PLASTER', 'TRY', 'TRAY', 'POP', 'POPCORN'],
+            ['T&G', 'TONGUE&GROOVE', 'FRM', 'OPEN', '', ''],
+            ['PNL', 'PANELING', '', '', '', ''],
+            ['WPR', 'WALLPAPER', '', '', '', ''],
+            ['CNC', 'CONCRETE', '', '', '', ''],
+            ['MAS', 'BRICK/MASONRY', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            ['FLOOR TYPES', '', 'DOOR TYPES', '', 'WINDOW TYPES', ''],
+            ['FCC', 'CARPET', 'STD', 'STANDARD', 'WDW', 'WOOD'],
+            ['FCS', 'STONE', 'BFD', 'BIFOLD', 'WDV', 'VINYL'],
+            ['FCV', 'VINYL TILE', 'BYD', 'BYPASS/SLIDER', 'WDA', 'ALUMINUM'],
+            ['FCW', 'HARDWOOD', 'BPM', 'MIRROR', 'BAY', 'BAY/BOW'],
+            ['LAM', 'LAMINATE', '', '', '', ''],
+            ['', '', '', '', '', ''],
+            ['ACTIVITY CODES', '', '', '', '', ''],
+            ['ALL', 'REPAIR ALL', 'CLN', 'CLEAN', 'R&R', 'REPLACE'],
+            ['D&R', 'DETACH & RESET', 'MSK', 'MASK', 'S++', 'PRIME/SEAL'],
+            ['PNT', 'PAINT', 'STN', 'STAIN & SEAL', 'SND', 'SAND'],
+        ]
+
+        codes_table = Table(codes_data, colWidths=[50, 100, 50, 100, 50, 100])
+        codes_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
+            ('BACKGROUND', (0, 10), (-1, 10), colors.HexColor('#0066cc')),
+            ('BACKGROUND', (0, 17), (-1, 17), colors.HexColor('#0066cc')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('TEXTCOLOR', (0, 10), (-1, 10), colors.white),
+            ('TEXTCOLOR', (0, 17), (-1, 17), colors.white),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 10), (-1, 10), 'Helvetica-Bold'),
+            ('FONTNAME', (0, 17), (-1, 17), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, -1), 8),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.grey),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(codes_table)
+
+        # Build PDF
+        doc.build(elements)
+
+        # Return PDF response
+        buffer.seek(0)
+        response = HttpResponse(buffer, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="scope_checklist_{client.pOwner}.pdf"'
+        return response
+
+    except Exception as e:
+        logger.error(f"Error generating scope checklist PDF: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+@csrf_exempt
+@login_required
+def scope_checklist_send_email(request):
+    """
+    Send scope checklist PDF via email
+    """
+    if request.method != 'POST':
+        return JsonResponse({'error': 'Method not allowed'}, status=405)
+
+    try:
+        data = json.loads(request.body)
+        claim_id = data.get('claim_id')
+        rooms_data = data.get('rooms_data', {})
+        recipients = data.get('recipients', '')
+        subject = data.get('subject', '')
+        notes = data.get('notes', '')
+
+        if not claim_id:
+            return JsonResponse({'error': 'Missing claim_id'}, status=400)
+
+        if not recipients:
+            return JsonResponse({'error': 'Missing recipients'}, status=400)
+
+        client = get_object_or_404(Client, id=claim_id)
+
+        # Parse recipients
+        recipient_list = [email.strip() for email in recipients.split(',') if email.strip()]
+
+        if not recipient_list:
+            return JsonResponse({'error': 'No valid recipients'}, status=400)
+
+        # Generate PDF
+        from reportlab.lib.pagesizes import letter, landscape
+        from reportlab.lib import colors
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from io import BytesIO
+
+        buffer = BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=landscape(letter),
+                               rightMargin=30, leftMargin=30,
+                               topMargin=30, bottomMargin=30)
+
+        elements = []
+        styles = getSampleStyleSheet()
+
+        header_style = ParagraphStyle(
+            'Header',
+            parent=styles['Heading1'],
+            fontSize=14,
+            spaceAfter=12
+        )
+
+        # Build PDF content (same as generate_pdf)
+        elements.append(Paragraph(f"Interior Inspection Work Scope", header_style))
+        elements.append(Paragraph(f"<b>Client:</b> {client.pOwner}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Address:</b> {client.pAddress} {client.pCityStateZip}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Phone:</b> {client.cPhone}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Insurance:</b> {client.insuranceCo_Name}", styles['Normal']))
+        elements.append(Paragraph(f"<b>Cause of Loss:</b> {client.causeOfLoss}", styles['Normal']))
+        elements.append(Spacer(1, 20))
+
+        rooms = Room.objects.filter(client=client).order_by('sequence', 'room_name')
+
+        # Summary table
+        headers = ['#', 'Room', 'CLG', 'LIT', 'HVC', 'WAL', 'ELE', 'FLR', 'BB', 'DOR', 'WDW', 'NOTES']
+        table_data = [headers]
+
+        for idx, room in enumerate(rooms, 1):
+            room_id = str(room.id)
+            room_fields = rooms_data.get(room_id, {})
+
+            row = [
+                str(idx),
+                room.room_name[:15],
+                room_fields.get('clg_material', '') + '/' + room_fields.get('clg_activity', ''),
+                room_fields.get('lit_type', ''),
+                room_fields.get('hvc_type', ''),
+                room_fields.get('wal_material', '') + '/' + room_fields.get('wal_activity', ''),
+                f"OS:{room_fields.get('ele_outlets', '')} SW:{room_fields.get('ele_switches', '')}",
+                room_fields.get('flr_type', '') + '/' + room_fields.get('flr_activity', ''),
+                room_fields.get('bb_height', ''),
+                room_fields.get('dor_type', ''),
+                room_fields.get('wdw_type', ''),
+                room_fields.get('activity_notes', '')[:30] if room_fields.get('activity_notes') else ''
+            ]
+            table_data.append(row)
+
+        col_widths = [25, 80, 60, 40, 40, 60, 70, 60, 40, 40, 40, 120]
+        summary_table = Table(table_data, colWidths=col_widths)
+        summary_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#0066cc')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.white),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 8),
+            ('FONTSIZE', (0, 1), (-1, -1), 7),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 8),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.white),
+            ('GRID', (0, 0), (-1, -1), 0.5, colors.black),
+            ('VALIGN', (0, 0), (-1, -1), 'MIDDLE'),
+        ]))
+        elements.append(summary_table)
+
+        doc.build(elements)
+        buffer.seek(0)
+
+        # Create and send email
+        from django.core.mail import EmailMessage
+
+        email_subject = subject or f"Interior Inspection Scope - {client.pOwner}"
+
+        email_body = f"""
+<html>
+<body style="font-family: Arial, sans-serif;">
+<h2>Interior Inspection Work Scope</h2>
+<p><strong>Client:</strong> {client.pOwner}</p>
+<p><strong>Address:</strong> {client.pAddress}</p>
+<p><strong>Insurance:</strong> {client.insuranceCo_Name}</p>
+<p><strong>Cause of Loss:</strong> {client.causeOfLoss}</p>
+{f'<p><strong>Notes:</strong> {notes}</p>' if notes else ''}
+<p>Please find the attached scope checklist PDF.</p>
+<hr>
+<p style="color: #666; font-size: 12px;">Generated by Claimet App</p>
+</body>
+</html>
+"""
+
+        email = EmailMessage(
+            subject=email_subject,
+            body=email_body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=recipient_list
+        )
+        email.content_subtype = 'html'
+
+        # Attach PDF
+        pdf_filename = f"Scope_Checklist_{client.pOwner.replace(' ', '_')}.pdf"
+        email.attach(pdf_filename, buffer.getvalue(), 'application/pdf')
+
+        # Send email
+        email.send()
+
+        # Log sent email
+        SentEmail.objects.create(
+            subject=email_subject,
+            recipients=recipient_list,
+            body=email_body,
+            sent_by=request.user,
+            sent_at=timezone.now()
+        )
+
+        return JsonResponse({
+            'success': True,
+            'message': f'Email sent successfully to {len(recipient_list)} recipient(s)',
+            'recipients_count': len(recipient_list)
+        })
+
+    except Exception as e:
+        logger.error(f"Error sending scope checklist email: {str(e)}")
+        return JsonResponse({'success': False, 'error': str(e)}, status=500)

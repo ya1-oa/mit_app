@@ -15,6 +15,10 @@ import os
 from django.core.management.utils import get_random_secret_key
 import sys
 import dj_database_url
+from dotenv import load_dotenv
+
+# Load environment variables from .env file
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -29,10 +33,12 @@ SECRET_KEY = os.getenv("DJANGO_SECRET_KEY", get_random_secret_key())
 # SECURITY WARNING: don't run with debug turned on in production!
 #DEBUG = os.getenv("DEBUG", "False") == "False"
 DEBUG=True
-ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost").split(",")
+ALLOWED_HOSTS = os.getenv("DJANGO_ALLOWED_HOSTS", "127.0.0.1,localhost,claimetapp.com,www.claimetapp.com").split(",")
 
 CSRF_TRUSTED_ORIGINS = [
-    "https://sea-lion-app-o5y45.ondigitalocean.app"
+    "https://sea-lion-app-o5y45.ondigitalocean.app",
+    "https://claimetapp.com",
+    "https://www.claimetapp.com",
 ]
 
 
@@ -55,6 +61,9 @@ INSTALLED_APPS = [
     'django.contrib.sessions',
     'django.contrib.messages',
     'django.contrib.staticfiles',
+    # Celery & Background Tasks
+    'django_celery_beat',
+    'django_celery_results',
 ]
 
 MIDDLEWARE = [
@@ -160,16 +169,121 @@ STATICFILES_DIRS = [
 ]
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+# ==================== Email Configuration ====================
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = 'smtp.gmail.com'  # Or your SMTP server
-EMAIL_PORT = 587
-EMAIL_USE_TLS = True
-EMAIL_HOST_USER = 'your-email@example.com'
-EMAIL_HOST_PASSWORD = 'your-app-specific-password'
-DEFAULT_FROM_EMAIL = 'your-email@example.com'
+EMAIL_HOST = os.getenv('EMAIL_HOST', 'smtp.gmail.com')
+EMAIL_PORT = int(os.getenv('EMAIL_PORT', '587'))
+EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
+EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
+EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
+DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+
 AUTH_USER_MODEL = 'docsAppR.CustomUser'
 
 # Add these settings for media files
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# ==================== OneDrive Configuration ====================
+ONEDRIVE_CLIENT_ID = os.getenv('ONEDRIVE_CLIENT_ID', '')
+ONEDRIVE_CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')  # Optional for native client
+ONEDRIVE_REDIRECT_URI = os.getenv(
+    'ONEDRIVE_REDIRECT_URI',
+    'http://localhost:8000/auth/onedrive/callback/'
+)
+ONEDRIVE_USE_SHARED_DRIVE = os.getenv('ONEDRIVE_USE_SHARED_DRIVE', 'True') == 'True'
+
+# Existing refresh token (for native client authentication)
+ONEDRIVE_REFRESH_TOKEN = os.getenv('ONEDRIVE_REFRESH_TOKEN', '')
+
+# Token encryption key (generate with: python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")
+TOKEN_ENCRYPTION_KEY = os.getenv('TOKEN_ENCRYPTION_KEY', '')
+
+# Webhook configuration
+ONEDRIVE_WEBHOOK_SECRET = os.getenv('ONEDRIVE_WEBHOOK_SECRET', 'generate-random-secret')
+ONEDRIVE_WEBHOOK_URL = os.getenv(
+    'ONEDRIVE_WEBHOOK_URL',
+    'https://yourdomain.com/webhooks/onedrive/'
+)
+
+# ==================== Celery Configuration ====================
+CELERY_BROKER_URL = os.getenv('REDIS_URL', 'redis://redis:6379/0')
+CELERY_RESULT_BACKEND = 'django-db'
+CELERY_CACHE_BACKEND = 'django-cache'
+CELERY_ACCEPT_CONTENT = ['json']
+CELERY_TASK_SERIALIZER = 'json'
+CELERY_RESULT_SERIALIZER = 'json'
+CELERY_TIMEZONE = 'America/New_York'  # Adjust to your timezone
+CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
+
+# Celery Beat Schedule
+from celery.schedules import crontab
+
+CELERY_BEAT_SCHEDULE = {
+    'renew-onedrive-subscriptions': {
+        'task': 'docsAppR.tasks.renew_subscriptions_task',
+        'schedule': crontab(minute='*/15'),  # Every 15 minutes
+    },
+    'check-delta-sync': {
+        'task': 'docsAppR.tasks.check_all_folders_for_changes',
+        'schedule': crontab(minute='*/5'),  # Every 5 minutes (fallback)
+    },
+}
+
+# ==================== Cache Configuration ====================
+CACHES = {
+    'default': {
+        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
+        'LOCATION': os.getenv('REDIS_URL', 'redis://redis:6379/1'),
+        'KEY_PREFIX': 'mitigation',
+        'TIMEOUT': 3600,  # 1 hour default
+    }
+}
+
+# ==================== File Upload Settings ====================
+DATA_UPLOAD_MAX_MEMORY_SIZE = 104857600  # 100MB
+FILE_UPLOAD_MAX_MEMORY_SIZE = 104857600
+
+# ==================== Logging Configuration ====================
+# Create logs directory
+os.makedirs(os.path.join(BASE_DIR, 'logs'), exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'file': {
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': os.path.join(BASE_DIR, 'logs', 'onedrive_sync.log'),
+            'maxBytes': 10485760,  # 10MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+        'console': {
+            'level': 'DEBUG',
+            'class': 'logging.StreamHandler',
+            'formatter': 'verbose',
+        },
+    },
+    'loggers': {
+        'onedrive_sync': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'celery': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+    },
+}
 

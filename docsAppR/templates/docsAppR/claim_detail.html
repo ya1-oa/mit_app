@@ -1,0 +1,1928 @@
+{% extends "account/base.html" %}
+
+{% block title %}{{ client.pOwner }} - Claim Details{% endblock %}
+{% block page_title %}{{ client.pOwner }} - Claim Details{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+<style>
+    .room-item {
+        transition: all 0.2s;
+        border-left: 3px solid #dee2e6;
+        cursor: move;
+    }
+    .room-item:hover {
+        box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        border-left-color: #007bff;
+    }
+    .drag-handle {
+        cursor: grab;
+    }
+    .drag-handle:active {
+        cursor: grabbing;
+    }
+    .ui-sortable-placeholder {
+        background-color: #e3f2fd !important;
+        border: 2px dashed #007bff !important;
+        visibility: visible !important;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-11 mx-auto">
+
+            <!-- Header -->
+            <div class="mb-3">
+                <a href="{% url 'claim_list' %}" class="btn btn-outline-secondary btn-sm mb-3">
+                    <i class="fas fa-arrow-left"></i> Back to Claims List
+                </a>
+            </div>
+
+            <!-- Claim Summary Card -->
+            <div class="card mb-4 border-primary">
+                <div class="card-header bg-primary text-white">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <h5 class="mb-0"><i class="fas fa-file-invoice"></i> {{ client.pOwner }} - Claim Summary</h5>
+                        <span class="badge bg-light text-dark">ID: {{ client.id }}</span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <p class="mb-1"><strong><i class="fas fa-map-marker-alt"></i> Address:</strong></p>
+                            <p class="text-muted small">{{ client.pAddress }}<br>{{ client.pCityStateZip }}</p>
+                        </div>
+                        <div class="col-md-3">
+                            <p class="mb-1"><strong><i class="fas fa-building"></i> Insurance:</strong></p>
+                            <p class="text-muted small">{{ client.insuranceCo_Name|default:"—" }}</p>
+                            <p class="mb-1"><strong><i class="fas fa-hashtag"></i> Claim #:</strong></p>
+                            <p class="text-muted small">{{ client.claimNumber|default:"—" }}</p>
+                        </div>
+                        <div class="col-md-3">
+                            <p class="mb-1"><strong><i class="fas fa-fire"></i> Cause:</strong> {{ client.causeOfLoss|default:"—" }}</p>
+                            <p class="mb-1"><strong><i class="fas fa-calendar"></i> Date of Loss:</strong> {{ client.dateOfLoss|date:"M d, Y"|default:"—" }}</p>
+                        </div>
+                        <div class="col-md-3">
+                            <p class="mb-1"><strong><i class="fas fa-briefcase"></i> Work Types:</strong></p>
+                            <p>
+                                {% if client.mitigation %}<span class="badge bg-info">MIT</span>{% endif %}
+                                {% if client.CPSCLNCONCGN %}<span class="badge bg-warning text-dark">CPS</span>{% endif %}
+                                {% if client.replacement %}<span class="badge bg-success">PPR</span>{% endif %}
+                                {% if not client.mitigation and not client.CPSCLNCONCGN and not client.replacement %}<span class="text-muted">—</span>{% endif %}
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row">
+
+                <!-- Left Column: Client Information with Tabs -->
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header">
+                            <h5 class="mb-0">
+                                <i class="fas fa-edit"></i> Edit Claim Information
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <!-- Nav Tabs -->
+                            <ul class="nav nav-pills mb-3" id="claimTabs" role="tablist">
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link active" id="customer-tab" data-bs-toggle="pill" data-bs-target="#customer" type="button" role="tab">
+                                        <i class="fas fa-user"></i> Customer
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="claim-tab" data-bs-toggle="pill" data-bs-target="#claim" type="button" role="tab">
+                                        <i class="fas fa-file-alt"></i> Claim
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="insurance-tab" data-bs-toggle="pill" data-bs-target="#insurance" type="button" role="tab">
+                                        <i class="fas fa-shield-alt"></i> Insurance
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="mortgage-tab" data-bs-toggle="pill" data-bs-target="#mortgage" type="button" role="tab">
+                                        <i class="fas fa-home"></i> Mortgage
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="contractor-tab" data-bs-toggle="pill" data-bs-target="#contractor" type="button" role="tab">
+                                        <i class="fas fa-hard-hat"></i> Contractor
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="ale-tab" data-bs-toggle="pill" data-bs-target="#ale" type="button" role="tab">
+                                        <i class="fas fa-key"></i> ALE
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="rooms-tab" data-bs-toggle="pill" data-bs-target="#rooms" type="button" role="tab">
+                                        <i class="fas fa-door-open"></i> Rooms
+                                    </button>
+                                </li>
+                                <li class="nav-item" role="presentation">
+                                    <button class="nav-link" id="checklist-tab" data-bs-toggle="pill" data-bs-target="#checklist" type="button" role="tab">
+                                        <i class="fas fa-tasks"></i> Checklist
+                                        <span class="badge bg-{% if client.completion_percent == 100 %}success{% elif client.completion_percent > 0 %}warning{% else %}secondary{% endif %} ms-1">{{ client.completion_percent|default:0 }}%</span>
+                                    </button>
+                                </li>
+                            </ul>
+
+                            <!-- Tab Content -->
+                            <div class="tab-content" id="claimTabContent" style="max-height: 650px; overflow-y: auto;">
+
+                                <!-- Customer Tab -->
+                                <div class="tab-pane fade show active" id="customer" role="tabpanel">
+                                    <form id="edit-customer-form" class="claim-edit-form" method="post" action="{% url 'update_claim' client.id %}" novalidate>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client_id" value="{{ client.id }}">
+
+                                        <h6 class="mb-3">Property Owner</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Property Owner</label>
+                                                <input type="text" class="form-control" name="pOwner" value="{{ client.pOwner }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Email</label>
+                                                <input type="email" class="form-control" name="cEmail" value="{{ client.cEmail }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-8">
+                                                <label class="form-label">Address</label>
+                                                <input type="text" class="form-control" name="pAddress" value="{{ client.pAddress }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Phone</label>
+                                                <input type="tel" class="form-control" name="cPhone" value="{{ client.cPhone }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-4">
+                                            <div class="col-md-12">
+                                                <label class="form-label">City, State, ZIP</label>
+                                                <input type="text" class="form-control" name="pCityStateZip" value="{{ client.pCityStateZip }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Co-Owner (Optional)</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Co-Owner Name</label>
+                                                <input type="text" class="form-control" name="coOwner2" value="{{ client.coOwner2 }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Co-Owner Email</label>
+                                                <input type="email" class="form-control" name="cEmail2" value="{{ client.cEmail2 }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-8">
+                                                <label class="form-label">Co-Owner Address</label>
+                                                <input type="text" class="form-control" name="cAddress2" value="{{ client.cAddress2 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Co-Owner Phone</label>
+                                                <input type="tel" class="form-control" name="cPhone2" value="{{ client.cPhone2 }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="d-grid mt-4">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save"></i> Save Customer Info
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- Claim Tab -->
+                                <div class="tab-pane fade" id="claim" role="tabpanel">
+                                    <form id="edit-claim-form" class="claim-edit-form" method="post" action="{% url 'update_claim' client.id %}" novalidate>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client_id" value="{{ client.id }}">
+
+                                        <h6 class="mb-3">Claim Details</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Cause of Loss</label>
+                                                <select class="form-select" name="causeOfLoss">
+                                                    <option value="">Select...</option>
+                                                    <option value="Fire" {% if client.causeOfLoss == 'Fire' %}selected{% endif %}>Fire</option>
+                                                    <option value="Water" {% if client.causeOfLoss == 'Water' %}selected{% endif %}>Water</option>
+                                                    <option value="Wind" {% if client.causeOfLoss == 'Wind' %}selected{% endif %}>Wind</option>
+                                                    <option value="Hail" {% if client.causeOfLoss == 'Hail' %}selected{% endif %}>Hail</option>
+                                                    <option value="Storm" {% if client.causeOfLoss == 'Storm' %}selected{% endif %}>Storm</option>
+                                                    <option value="Other" {% if client.causeOfLoss == 'Other' %}selected{% endif %}>Other</option>
+                                                </select>
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Date of Loss</label>
+                                                <input type="date" class="form-control" name="dateOfLoss" value="{{ client.dateOfLoss|date:'Y-m-d' }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Contract Date</label>
+                                                <input type="date" class="form-control" name="contractDate" value="{{ client.contractDate|date:'Y-m-d' }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Year Built</label>
+                                                <input type="text" class="form-control" name="yearBuilt" value="{{ client.yearBuilt }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Loss of Use</label>
+                                                <input type="text" class="form-control" name="lossOfUse" value="{{ client.lossOfUse }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Breathing Issue</label>
+                                                <input type="text" class="form-control" name="breathingIssue" value="{{ client.breathingIssue }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Rebuild Type 1</label>
+                                                <input type="text" class="form-control" name="rebuildType1" value="{{ client.rebuildType1 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Rebuild Type 2</label>
+                                                <input type="text" class="form-control" name="rebuildType2" value="{{ client.rebuildType2 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Rebuild Type 3</label>
+                                                <input type="text" class="form-control" name="rebuildType3" value="{{ client.rebuildType3 }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Hazardous Material Remediation</label>
+                                                <input type="text" class="form-control" name="hazardMaterialRemediation" value="{{ client.hazardMaterialRemediation }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="row mb-3">
+                                            <div class="col-md-12">
+                                                <label class="form-label">Services</label>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="demo" {% if client.demo %}checked{% endif %}>
+                                                    <label class="form-check-label">Demo</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="mitigation" {% if client.mitigation %}checked{% endif %}>
+                                                    <label class="form-check-label"><span class="badge bg-info">MIT</span> Mitigation</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="CPSCLNCONCGN" {% if client.CPSCLNCONCGN %}checked{% endif %}>
+                                                    <label class="form-check-label"><span class="badge bg-warning text-dark">CPS</span> Contents/Pack/Storage</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="replacement" {% if client.replacement %}checked{% endif %}>
+                                                    <label class="form-check-label"><span class="badge bg-success">PPR</span> Rebuild/Replacement</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="otherStructures" {% if client.otherStructures %}checked{% endif %}>
+                                                    <label class="form-check-label">Other Structures</label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Claim Reporting</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Claim Report Date</label>
+                                                <input type="date" class="form-control" name="claimReportDate" value="{{ client.claimReportDate|date:'Y-m-d' }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Customer Service Rep</label>
+                                                <input type="text" class="form-control" name="insuranceCustomerServiceRep" value="{{ client.insuranceCustomerServiceRep }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Time of Claim Report</label>
+                                                <input type="text" class="form-control" name="timeOfClaimReport" value="{{ client.timeOfClaimReport }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-12">
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="tarpExtTMPOk" {% if client.tarpExtTMPOk %}checked{% endif %}>
+                                                    <label class="form-check-label">Tarp Ext/TMP Approved</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="IntTMPOk" {% if client.IntTMPOk %}checked{% endif %}>
+                                                    <label class="form-check-label">Int TMP Approved</label>
+                                                </div>
+                                                <div class="form-check">
+                                                    <input class="form-check-input" type="checkbox" name="DRYPLACUTOUTMOLDSPRAYOK" {% if client.DRYPLACUTOUTMOLDSPRAYOK %}checked{% endif %}>
+                                                    <label class="form-check-label">Dry Place/Cutout/Mold Spray Approved</label>
+                                                </div>
+                                            </div>
+                                        </div>
+
+                                        <div class="d-grid mt-4">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save"></i> Save Claim Details
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- Insurance Tab -->
+                                <div class="tab-pane fade" id="insurance" role="tabpanel">
+                                    <form id="edit-insurance-form" class="claim-edit-form" method="post" action="{% url 'update_claim' client.id %}" novalidate>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client_id" value="{{ client.id }}">
+
+                                        <h6 class="mb-3">Insurance Company</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Insurance Company Name</label>
+                                                <input type="text" class="form-control" name="insuranceCo_Name" value="{{ client.insuranceCo_Name }}">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Claim Number</label>
+                                                <input type="text" class="form-control" name="claimNumber" value="{{ client.claimNumber }}">
+                                            </div>
+                                            <div class="col-md-3">
+                                                <label class="form-label">Policy Number</label>
+                                                <input type="text" class="form-control" name="policyNumber" value="{{ client.policyNumber }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Overnight Mail Address</label>
+                                                <input type="text" class="form-control" name="insAddressOvernightMail" value="{{ client.insAddressOvernightMail }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">City, State, ZIP</label>
+                                                <input type="text" class="form-control" name="insCityStateZip" value="{{ client.insCityStateZip }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Insurance Phone</label>
+                                                <input type="tel" class="form-control" name="insuranceCoPhone" value="{{ client.insuranceCoPhone }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Insurance Email</label>
+                                                <input type="email" class="form-control" name="emailInsCo" value="{{ client.emailInsCo }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Insurance Website</label>
+                                                <input type="text" class="form-control" name="insWebsite" value="{{ client.insWebsite }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Mailing Address</label>
+                                                <input type="text" class="form-control" name="insMailingAddress" value="{{ client.insMailingAddress }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Mailing City, State, ZIP</label>
+                                                <input type="text" class="form-control" name="insMailCityStateZip" value="{{ client.insMailCityStateZip }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Attn: Loss Draft Dept</label>
+                                                <input type="text" class="form-control" name="attLossDraftDept" value="{{ client.attLossDraftDept }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Desk Adjuster</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Desk Adjuster Name</label>
+                                                <input type="text" class="form-control" name="deskAdjusterDA" value="{{ client.deskAdjusterDA }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">DA Email</label>
+                                                <input type="email" class="form-control" name="DAEmail" value="{{ client.DAEmail }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">DA Phone</label>
+                                                <input type="tel" class="form-control" name="DAPhone" value="{{ client.DAPhone }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">DA Extension</label>
+                                                <input type="text" class="form-control" name="DAPhExt" value="{{ client.DAPhExt }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Field Adjuster</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Field Adjuster Name</label>
+                                                <input type="text" class="form-control" name="fieldAdjusterName" value="{{ client.fieldAdjusterName }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Field Adjuster Phone</label>
+                                                <input type="tel" class="form-control" name="phoneFieldAdj" value="{{ client.phoneFieldAdj }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Field Adjuster Email</label>
+                                                <input type="email" class="form-control" name="fieldAdjEmail" value="{{ client.fieldAdjEmail }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Other Adjusters</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Contents Adjuster</label>
+                                                <input type="text" class="form-control" name="adjContents" value="{{ client.adjContents }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">CPS Adjuster Phone</label>
+                                                <input type="tel" class="form-control" name="adjCpsPhone" value="{{ client.adjCpsPhone }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">CPS Adjuster Email</label>
+                                                <input type="email" class="form-control" name="adjCpsEmail" value="{{ client.adjCpsEmail }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">EMS Adjuster</label>
+                                                <input type="text" class="form-control" name="emsAdj" value="{{ client.emsAdj }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">EMS Adjuster Phone</label>
+                                                <input type="tel" class="form-control" name="emsAdjPhone" value="{{ client.emsAdjPhone }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">EMS Temp Email</label>
+                                                <input type="email" class="form-control" name="emsTmpEmail" value="{{ client.emsTmpEmail }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="d-grid mt-4">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save"></i> Save Insurance Info
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- Mortgage Tab -->
+                                <div class="tab-pane fade" id="mortgage" role="tabpanel">
+                                    <form id="edit-mortgage-form" class="claim-edit-form" method="post" action="{% url 'update_claim' client.id %}" novalidate>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client_id" value="{{ client.id }}">
+
+                                        <h6 class="mb-3">Mortgage Company</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Mortgage Company</label>
+                                                <input type="text" class="form-control" name="mortgageCo" value="{{ client.mortgageCo }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Account Number</label>
+                                                <input type="text" class="form-control" name="mortgageAccountCo" value="{{ client.mortgageAccountCo }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Contact Person</label>
+                                                <input type="text" class="form-control" name="mortgageContactPerson" value="{{ client.mortgageContactPerson }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Phone</label>
+                                                <input type="tel" class="form-control" name="mortgagePhoneContact" value="{{ client.mortgagePhoneContact }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Phone Extension</label>
+                                                <input type="text" class="form-control" name="mortgagePhoneExtContact" value="{{ client.mortgagePhoneExtContact }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Email</label>
+                                                <input type="email" class="form-control" name="mortgageEmail" value="{{ client.mortgageEmail }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Website</label>
+                                                <input type="text" class="form-control" name="mortgageWebsite" value="{{ client.mortgageWebsite }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Attn: Loss Draft Dept</label>
+                                                <input type="text" class="form-control" name="mortgageAttnLossDraftDept" value="{{ client.mortgageAttnLossDraftDept }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Fax</label>
+                                                <input type="text" class="form-control" name="mortgageCoFax" value="{{ client.mortgageCoFax }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Mailing Addresses</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Overnight Mail Address</label>
+                                                <input type="text" class="form-control" name="mortgageOverNightMail" value="{{ client.mortgageOverNightMail }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Overnight City, State, ZIP</label>
+                                                <input type="text" class="form-control" name="mortgageCityStZipOVN" value="{{ client.mortgageCityStZipOVN }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Regular Mailing Address</label>
+                                                <input type="text" class="form-control" name="mortgageMailingAddress" value="{{ client.mortgageMailingAddress }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Initial Offer/Phase 1 Contract</label>
+                                                <input type="text" class="form-control" name="mortgageInitialOfferPhase1ContractAmount" value="{{ client.mortgageInitialOfferPhase1ContractAmount }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Cash Flow</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Draw Request</label>
+                                                <input type="text" class="form-control" name="drawRequest" value="{{ client.drawRequest }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="d-grid mt-4">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save"></i> Save Mortgage Info
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- Contractor Tab -->
+                                <div class="tab-pane fade" id="contractor" role="tabpanel">
+                                    <form id="edit-contractor-form" class="claim-edit-form" method="post" action="{% url 'update_claim' client.id %}" novalidate>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client_id" value="{{ client.id }}">
+
+                                        <h6 class="mb-3">Contractor Information</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Company Name</label>
+                                                <input type="text" class="form-control" name="coName" value="{{ client.coName }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Website</label>
+                                                <input type="text" class="form-control" name="coWebsite" value="{{ client.coWebsite }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Email</label>
+                                                <input type="email" class="form-control" name="coEmailstatus" value="{{ client.coEmailstatus }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Address 1</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Address</label>
+                                                <input type="text" class="form-control" name="coAddress" value="{{ client.coAddress }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">City, State</label>
+                                                <input type="text" class="form-control" name="coCityState" value="{{ client.coCityState }}">
+                                            </div>
+                                        </div>
+
+                                        <h6 class="mb-3">Address 2 (Optional)</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Address 2</label>
+                                                <input type="text" class="form-control" name="coAddress2" value="{{ client.coAddress2 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">City, State 2</label>
+                                                <input type="text" class="form-control" name="coCityState2" value="{{ client.coCityState2 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">City, State 3</label>
+                                                <input type="text" class="form-control" name="coCityState3" value="{{ client.coCityState3 }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Contact Information</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Rep Phone</label>
+                                                <input type="tel" class="form-control" name="coRepPH" value="{{ client.coRepPH }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Rep Email</label>
+                                                <input type="email" class="form-control" name="coREPEmail" value="{{ client.coREPEmail }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Phone 2</label>
+                                                <input type="tel" class="form-control" name="coPhone2" value="{{ client.coPhone2 }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Tax & Shipping</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">TIN/W9</label>
+                                                <input type="text" class="form-control" name="TinW9" value="{{ client.TinW9 }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">FedEx Account</label>
+                                                <input type="text" class="form-control" name="fedExAccount" value="{{ client.fedExAccount }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Logos (Optional)</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Logo 1</label>
+                                                <input type="text" class="form-control" name="coLogo1" value="{{ client.coLogo1 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Logo 2</label>
+                                                <input type="text" class="form-control" name="coLogo2" value="{{ client.coLogo2 }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Logo 3</label>
+                                                <input type="text" class="form-control" name="coLogo3" value="{{ client.coLogo3 }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="d-grid mt-4">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save"></i> Save Contractor Info
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- ALE Tab -->
+                                <div class="tab-pane fade" id="ale" role="tabpanel">
+                                    <form id="edit-ale-form" class="claim-edit-form" method="post" action="{% url 'update_claim' client.id %}" novalidate>
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client_id" value="{{ client.id }}">
+
+                                        <h6 class="mb-3">Additional Living Expenses (ALE)</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Loss of Use/ALE</label>
+                                                <input type="text" class="form-control" name="lossOfUseALE" value="{{ client.lossOfUseALE }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Lessee/Tenant Information</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessee/Tenant Name</label>
+                                                <input type="text" class="form-control" name="ale_lessee_name" value="{{ client.ale_lessee_name }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessee Phone</label>
+                                                <input type="tel" class="form-control" name="ale_lessee_phone" value="{{ client.ale_lessee_phone }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessee Home Address</label>
+                                                <input type="text" class="form-control" name="ale_lessee_home_address" value="{{ client.ale_lessee_home_address }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessee City, State, ZIP</label>
+                                                <input type="text" class="form-control" name="ale_lessee_city_state_zip" value="{{ client.ale_lessee_city_state_zip }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessee Email</label>
+                                                <input type="email" class="form-control" name="ale_lessee_email" value="{{ client.ale_lessee_email }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Rental Information</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Number of Bedrooms</label>
+                                                <input type="text" class="form-control" name="ale_rental_bedrooms" value="{{ client.ale_rental_bedrooms }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Number of Months</label>
+                                                <input type="text" class="form-control" name="ale_rental_months" value="{{ client.ale_rental_months }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Amount Per Month</label>
+                                                <input type="number" step="0.01" class="form-control" name="ale_rental_amount_per_month" value="{{ client.ale_rental_amount_per_month }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Rental Start Date</label>
+                                                <input type="date" class="form-control" name="ale_rental_start_date" value="{{ client.ale_rental_start_date|date:'Y-m-d' }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Rental End Date</label>
+                                                <input type="date" class="form-control" name="ale_rental_end_date" value="{{ client.ale_rental_end_date|date:'Y-m-d' }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Lessor Information</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessor Name</label>
+                                                <input type="text" class="form-control" name="ale_lessor_name" value="{{ client.ale_lessor_name }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessor Contact Person</label>
+                                                <input type="text" class="form-control" name="ale_lessor_contact_person" value="{{ client.ale_lessor_contact_person }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Leased Property Address</label>
+                                                <input type="text" class="form-control" name="ale_lessor_leased_address" value="{{ client.ale_lessor_leased_address }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessor City, ZIP</label>
+                                                <input type="text" class="form-control" name="ale_lessor_city_zip" value="{{ client.ale_lessor_city_zip }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessor Phone</label>
+                                                <input type="tel" class="form-control" name="ale_lessor_phone" value="{{ client.ale_lessor_phone }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessor Email</label>
+                                                <input type="email" class="form-control" name="ale_lessor_email" value="{{ client.ale_lessor_email }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessor Mailing Address</label>
+                                                <input type="text" class="form-control" name="ale_lessor_mailing_address" value="{{ client.ale_lessor_mailing_address }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">Lessor Mailing City, ZIP</label>
+                                                <input type="text" class="form-control" name="ale_lessor_mailing_city_zip" value="{{ client.ale_lessor_mailing_city_zip }}">
+                                            </div>
+                                        </div>
+
+                                        <hr>
+                                        <h6 class="mb-3">Real Estate Company</h6>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">Real Estate Company</label>
+                                                <input type="text" class="form-control" name="ale_re_company_name" value="{{ client.ale_re_company_name }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">RE Contact Person</label>
+                                                <input type="text" class="form-control" name="ale_re_contact_person" value="{{ client.ale_re_contact_person }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">RE Mailing Address</label>
+                                                <input type="text" class="form-control" name="ale_re_mailing_address" value="{{ client.ale_re_mailing_address }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">RE City, ZIP</label>
+                                                <input type="text" class="form-control" name="ale_re_city_zip" value="{{ client.ale_re_city_zip }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-6">
+                                                <label class="form-label">RE Company Phone</label>
+                                                <input type="tel" class="form-control" name="ale_re_phone" value="{{ client.ale_re_phone }}">
+                                            </div>
+                                            <div class="col-md-6">
+                                                <label class="form-label">RE Company Email</label>
+                                                <input type="email" class="form-control" name="ale_re_email" value="{{ client.ale_re_email }}">
+                                            </div>
+                                        </div>
+                                        <div class="row mb-3">
+                                            <div class="col-md-4">
+                                                <label class="form-label">Owner/Broker Name</label>
+                                                <input type="text" class="form-control" name="ale_re_owner_broker_name" value="{{ client.ale_re_owner_broker_name }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Owner/Broker Phone</label>
+                                                <input type="tel" class="form-control" name="ale_re_owner_broker_phone" value="{{ client.ale_re_owner_broker_phone }}">
+                                            </div>
+                                            <div class="col-md-4">
+                                                <label class="form-label">Owner/Broker Email</label>
+                                                <input type="email" class="form-control" name="ale_re_owner_broker_email" value="{{ client.ale_re_owner_broker_email }}">
+                                            </div>
+                                        </div>
+
+                                        <div class="d-grid mt-4">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save"></i> Save ALE Info
+                                            </button>
+                                        </div>
+                                    </form>
+                                </div>
+
+                                <!-- Rooms Tab -->
+                                <div class="tab-pane fade" id="rooms" role="tabpanel">
+                                    <div class="mb-3">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h6><i class="fas fa-door-open"></i> Rooms <span class="badge bg-primary" id="room-count">{{ rooms|length }}</span></h6>
+                                            <button type="button" class="btn btn-sm btn-success" id="add-room-btn">
+                                                <i class="fas fa-plus"></i> Add Room
+                                            </button>
+                                        </div>
+                                        <div class="alert alert-light border small">
+                                            <i class="fas fa-info-circle text-primary"></i> Drag rooms to reorder. Changes save automatically.
+                                        </div>
+                                    </div>
+
+                                    <div id="rooms-container" style="max-height: 400px; overflow-y: auto;">
+                                        {% if rooms %}
+                                            {% for room in rooms %}
+                                                <div class="room-item card mb-2" data-room-id="{{ room.id }}" data-sequence="{{ room.sequence }}">
+                                                    <div class="card-body py-2 px-3">
+                                                        <div class="d-flex justify-content-between align-items-center">
+                                                            <div class="d-flex align-items-center flex-grow-1">
+                                                                <i class="fas fa-grip-vertical text-muted me-3 drag-handle"></i>
+                                                                <span class="room-number badge bg-primary me-3">{{ room.sequence }}</span>
+                                                                <input type="text" class="form-control form-control-sm room-name-input" value="{{ room.room_name }}" data-room-id="{{ room.id }}">
+                                                            </div>
+                                                            <button type="button" class="btn btn-sm btn-outline-danger delete-room-btn ms-2" data-room-id="{{ room.id }}">
+                                                                <i class="fas fa-trash"></i>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                </div>
+                                            {% endfor %}
+                                        {% else %}
+                                            <div class="alert alert-info mb-0" id="no-rooms-message">
+                                                <i class="fas fa-info-circle"></i> No rooms configured. Click "Add Room" to get started.
+                                            </div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+
+                                <!-- Checklist Tab -->
+                                <div class="tab-pane fade" id="checklist" role="tabpanel">
+                                    <!-- Overall Progress -->
+                                    <div class="mb-4">
+                                        <div class="d-flex justify-content-between align-items-center mb-2">
+                                            <h6 class="mb-0"><i class="fas fa-chart-pie"></i> Overall Progress</h6>
+                                            <span class="badge bg-{% if client.completion_percent == 100 %}success{% elif client.completion_percent > 0 %}primary{% else %}secondary{% endif %} fs-6" id="overall-percent">{{ client.completion_percent|default:0 }}%</span>
+                                        </div>
+                                        <div class="progress" style="height: 20px;">
+                                            <div class="progress-bar bg-success" role="progressbar" id="overall-progress-bar" style="width: {{ client.completion_percent|default:0 }}%;" aria-valuenow="{{ client.completion_percent|default:0 }}" aria-valuemin="0" aria-valuemax="100"></div>
+                                        </div>
+                                    </div>
+
+                                    <form id="checklist-form" method="post" action="{% url 'update_checklist' %}">
+                                        {% csrf_token %}
+                                        <input type="hidden" name="client_id" value="{{ client.id }}">
+
+                                        {% for category, data in checklist_by_category.items %}
+                                        <div class="card mb-3 checklist-category" data-category="{{ category }}">
+                                            <div class="card-header py-2 d-flex justify-content-between align-items-center">
+                                                <div>
+                                                    <span class="badge bg-{% if category == 'MIT' %}info{% elif category == 'CPS' %}warning text-dark{% elif category == 'PPR' %}success{% else %}secondary{% endif %} me-2">{{ category }}</span>
+                                                    <strong>{{ category }} Documents</strong>
+                                                </div>
+                                                <div class="d-flex align-items-center">
+                                                    <span class="text-muted small me-2">{{ data.completed }}/{{ data.total }}</span>
+                                                    <div class="progress" style="width: 80px; height: 8px;">
+                                                        <div class="progress-bar bg-{% if category == 'MIT' %}info{% elif category == 'CPS' %}warning{% elif category == 'PPR' %}success{% else %}secondary{% endif %}" style="width: {{ data.percent }}%;"></div>
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div class="card-body py-2">
+                                                {% for item in data.items %}
+                                                <div class="form-check py-2 border-bottom checklist-item {% if item.is_completed %}completed{% endif %}">
+                                                    <input class="form-check-input checklist-checkbox" type="checkbox" name="item_{{ item.id }}" id="item_{{ item.id }}" {% if item.is_completed %}checked{% endif %} data-item-id="{{ item.id }}">
+                                                    <label class="form-check-label {% if item.is_completed %}text-decoration-line-through text-muted{% endif %}" for="item_{{ item.id }}">
+                                                        {{ item.get_document_type_display }}
+                                                    </label>
+                                                </div>
+                                                {% endfor %}
+                                            </div>
+                                        </div>
+                                        {% empty %}
+                                        <div class="alert alert-info">
+                                            <i class="fas fa-info-circle"></i> No checklist items available. Enable claim types (MIT, CPS, or PPR) to see checklists.
+                                        </div>
+                                        {% endfor %}
+
+                                        {% if checklist_by_category %}
+                                        <div class="d-grid mt-3">
+                                            <button type="submit" class="btn btn-primary">
+                                                <i class="fas fa-save"></i> Save Checklist
+                                            </button>
+                                        </div>
+                                        {% endif %}
+                                    </form>
+                                </div>
+
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Right Column: Folder Structure Browser -->
+                <div class="col-md-6">
+                    <div class="card mb-4">
+                        <div class="card-header d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0">
+                                <i class="fas fa-folder-open"></i> Claim Folder Structure
+                            </h5>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-warning" id="regenerateBtn" onclick="regenerateTemplates()">
+                                    <i class="fas fa-sync-alt"></i> Regenerate Files
+                                </button>
+                                <button class="btn btn-sm btn-success" onclick="openUploadModal('', 'Root Folder')">
+                                    <i class="fas fa-upload"></i> Upload
+                                </button>
+                            </div>
+                        </div>
+                        <div class="card-body" style="max-height: 850px; overflow-y: auto;">
+                            <div id="folder-browser">
+                                <div class="text-center py-5">
+                                    <div class="spinner-border text-primary" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                    <p class="mt-2 text-muted">Loading folder structure...</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+<style>
+    .folder-tree {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+        font-size: 14px;
+        font-weight: 400;
+        line-height: 1.6;
+    }
+    .folder-item, .file-item {
+        padding: 8px 12px;
+        cursor: pointer;
+        transition: all 0.2s ease;
+        border-radius: 6px;
+        margin-bottom: 4px;
+    }
+    .folder-item:hover, .file-item:hover {
+        background-color: #f8f9fa;
+        transform: translateX(2px);
+    }
+    .folder-item {
+        font-weight: 500;
+        color: #0d6efd;
+        letter-spacing: 0.3px;
+    }
+    .file-item {
+        color: #495057;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        font-weight: 400;
+    }
+    .folder-children {
+        margin-left: 20px;
+        border-left: 2px solid #e9ecef;
+        padding-left: 12px;
+        margin-top: 4px;
+    }
+    .folder-toggle {
+        display: inline-block;
+        width: 16px;
+        text-align: center;
+        margin-right: 8px;
+        user-select: none;
+        transition: transform 0.2s ease;
+    }
+    .file-size {
+        font-size: 11px;
+        color: #6c757d;
+        font-weight: 400;
+    }
+    .download-btn, .upload-btn, .download-all-btn {
+        padding: 4px 10px;
+        font-size: 12px;
+        border-radius: 4px;
+        transition: all 0.2s ease;
+    }
+    .upload-btn {
+        margin-left: 6px;
+    }
+    .download-all-btn {
+        margin-left: 6px;
+    }
+    .folder-actions {
+        display: inline-flex;
+        gap: 4px;
+        margin-left: 10px;
+    }
+    .collapsed > .folder-children {
+        display: none;
+    }
+    .folder-toggle.collapsed::before {
+        content: '▶';
+    }
+    .folder-toggle.expanded::before {
+        content: '▼';
+    }
+    /* Upload Modal Styles */
+    .upload-dropzone {
+        border: 2px dashed #dee2e6;
+        border-radius: 8px;
+        padding: 40px 20px;
+        text-align: center;
+        background-color: #f8f9fa;
+        cursor: pointer;
+        transition: all 0.3s ease;
+    }
+    .upload-dropzone:hover, .upload-dropzone.dragover {
+        border-color: #0d6efd;
+        background-color: #e7f1ff;
+    }
+    .upload-dropzone i {
+        font-size: 48px;
+        color: #6c757d;
+        margin-bottom: 15px;
+    }
+    .upload-progress {
+        display: none;
+    }
+    .upload-progress.active {
+        display: block;
+    }
+    /* Drag-and-drop file move */
+    .file-item[draggable="true"] {
+        cursor: grab;
+    }
+    .file-item[draggable="true"]:active {
+        cursor: grabbing;
+    }
+    .file-item.dragging {
+        opacity: 0.4;
+    }
+    .folder-item-container.drag-over > .folder-item {
+        background-color: #d0e8ff;
+        outline: 2px dashed #0d6efd;
+        border-radius: 6px;
+    }
+    .file-modified {
+        font-size: 11px;
+        color: #adb5bd;
+        margin-left: 6px;
+        white-space: nowrap;
+    }
+    .delete-file-btn {
+        padding: 2px 7px;
+        font-size: 11px;
+        border-radius: 4px;
+        margin-left: 4px;
+        line-height: 1.4;
+    }
+</style>
+
+<!-- File Upload Modal -->
+<div class="modal fade" id="uploadModal" tabindex="-1" aria-labelledby="uploadModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="uploadModalLabel">
+                    <i class="fas fa-upload"></i> Upload File
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-3">
+                    Uploading to: <strong id="uploadTargetFolder"></strong>
+                </p>
+                <div class="upload-dropzone" id="uploadDropzone">
+                    <i class="fas fa-cloud-upload-alt"></i>
+                    <p class="mb-2">Drag and drop files here</p>
+                    <p class="text-muted small">or click to browse</p>
+                    <input type="file" id="fileInput" class="d-none" multiple>
+                </div>
+                <div class="upload-progress mt-3" id="uploadProgress">
+                    <div class="d-flex justify-content-between mb-1">
+                        <span id="uploadFileName">Uploading...</span>
+                        <span id="uploadPercent">0%</span>
+                    </div>
+                    <div class="progress">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                    </div>
+                </div>
+                <div id="uploadResults" class="mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Global variables for upload functionality
+const claimId = {{ client.id }};
+let currentUploadFolder = '';
+
+// Global upload functions (need to be accessible from onclick handlers)
+function openUploadModal(folderPath, folderName) {
+    currentUploadFolder = folderPath;
+    document.getElementById('uploadTargetFolder').textContent = folderName || 'Root';
+    document.getElementById('uploadResults').innerHTML = '';
+    document.getElementById('uploadProgress').classList.remove('active');
+    // Clear file input
+    document.getElementById('fileInput').value = '';
+
+    const modal = new bootstrap.Modal(document.getElementById('uploadModal'));
+    modal.show();
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Global store for pending overwrite files
+let pendingFiles = {};
+
+// Confirm replacement of an existing file
+function confirmReplaceFile(fileName) {
+    const file = pendingFiles[fileName];
+    if (!file) {
+        console.error('No pending file found for:', fileName);
+        return;
+    }
+    // Remove the overwrite prompt
+    const prompt = document.getElementById('overwrite-prompt-' + CSS.escape(fileName));
+    if (prompt) prompt.remove();
+    // Re-upload with overwrite=true
+    window._uploadFile(file, true);
+}
+
+// Cancel file replacement
+function cancelReplace(fileName) {
+    delete pendingFiles[fileName];
+    const prompt = document.getElementById('overwrite-prompt-' + CSS.escape(fileName));
+    if (prompt) prompt.remove();
+}
+
+// Regenerate all templates from latest claim data
+function regenerateTemplates() {
+    const btn = document.getElementById('regenerateBtn');
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Regenerating...';
+
+    fetch(`/claims/${claimId}/regenerate-templates/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json',
+        },
+    })
+    .then(response => response.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        if (data.success) {
+            // Show success feedback
+            const folderBrowser = document.getElementById('folder-browser');
+            const alert = document.createElement('div');
+            alert.className = 'alert alert-success alert-dismissible fade show mb-2';
+            alert.innerHTML = `
+                <i class="fas fa-check-circle"></i> ${data.message}
+                ${data.errors && data.errors.length > 0 ? '<br><small class="text-muted">Warnings: ' + data.errors.join(', ') + '</small>' : ''}
+                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+            `;
+            folderBrowser.parentNode.insertBefore(alert, folderBrowser);
+            // Reload folder structure to reflect changes
+            if (window._loadFolderStructure) window._loadFolderStructure();
+        } else {
+            alert('Failed to regenerate templates: ' + (data.error || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        console.error('Error regenerating templates:', error);
+        alert('Error regenerating templates. Please try again.');
+    });
+}
+
+document.addEventListener('DOMContentLoaded', function() {
+    loadFolderStructure();
+    setupFormSubmissions();
+    setupRoomManagement();
+    setupUploadDropzone();
+
+    // Expose inner functions for global onclick handlers
+    window._loadFolderStructure = loadFolderStructure;
+    window._uploadFile = uploadFile;
+
+    // ===== FOLDER BROWSER =====
+    function loadFolderStructure() {
+        fetch(`/claims/${claimId}/folder-structure/`)
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    renderFolderTree(data.structure);
+                } else {
+                    showError(data.error || 'Failed to load folder structure');
+                }
+            })
+            .catch(error => {
+                console.error('Error loading folder structure:', error);
+                showError('Failed to load folder structure. Please try again.');
+            });
+    }
+
+    function renderFolderTree(structure) {
+        const container = document.getElementById('folder-browser');
+        container.innerHTML = '';
+        const tree = document.createElement('div');
+        tree.className = 'folder-tree';
+        renderNode(structure, tree, true);
+        container.appendChild(tree);
+    }
+
+    function renderNode(node, parentElement, isRoot = false) {
+        if (node.type === 'folder') {
+            const folderDiv = document.createElement('div');
+            folderDiv.className = 'folder-item-container';
+            folderDiv.dataset.folderPath = node.path;
+            const folderHeader = document.createElement('div');
+            folderHeader.className = 'folder-item d-flex align-items-center';
+            const toggle = document.createElement('span');
+            toggle.className = 'folder-toggle expanded';
+            toggle.onclick = (e) => {
+                e.stopPropagation();
+                toggleFolder(folderDiv);
+            };
+            const icon = document.createElement('i');
+            icon.className = 'fas fa-folder text-warning me-1';
+            const name = document.createElement('strong');
+            name.textContent = node.name;
+
+            // Add upload and download all buttons for folders
+            const actionsDiv = document.createElement('span');
+            actionsDiv.className = 'folder-actions';
+
+            const uploadBtn = document.createElement('button');
+            uploadBtn.className = 'btn btn-sm btn-outline-success upload-btn';
+            uploadBtn.innerHTML = '<i class="fas fa-upload"></i> Upload';
+            uploadBtn.title = 'Upload file to this folder';
+            uploadBtn.onclick = (e) => {
+                e.stopPropagation();
+                openUploadModal(node.path, node.name);
+            };
+
+            const downloadAllBtn = document.createElement('button');
+            downloadAllBtn.className = 'btn btn-sm btn-outline-primary download-all-btn';
+            downloadAllBtn.innerHTML = '<i class="fas fa-download"></i> Download All';
+            downloadAllBtn.title = 'Download all files in this folder';
+            downloadAllBtn.onclick = (e) => {
+                e.stopPropagation();
+                downloadFolder(node.path, node.name);
+            };
+
+            actionsDiv.appendChild(uploadBtn);
+            actionsDiv.appendChild(downloadAllBtn);
+
+            folderHeader.appendChild(toggle);
+            folderHeader.appendChild(icon);
+            folderHeader.appendChild(name);
+            folderHeader.appendChild(actionsDiv);
+            folderDiv.appendChild(folderHeader);
+            if (node.children && node.children.length > 0) {
+                const childrenContainer = document.createElement('div');
+                childrenContainer.className = 'folder-children';
+                node.children.forEach(child => {
+                    renderNode(child, childrenContainer);
+                });
+                folderDiv.appendChild(childrenContainer);
+            }
+
+            // Make folder a drop target for file moves
+            folderDiv.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                folderDiv.classList.add('drag-over');
+            });
+            folderDiv.addEventListener('dragleave', (e) => {
+                // Only remove if leaving the folderDiv itself, not a child
+                if (!folderDiv.contains(e.relatedTarget)) {
+                    folderDiv.classList.remove('drag-over');
+                }
+            });
+            folderDiv.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                folderDiv.classList.remove('drag-over');
+                const sourcePath = e.dataTransfer.getData('text/plain');
+                if (sourcePath) {
+                    moveFile(sourcePath, node.path);
+                }
+            });
+
+            parentElement.appendChild(folderDiv);
+        } else if (node.type === 'file') {
+            const fileDiv = document.createElement('div');
+            fileDiv.className = 'file-item';
+            fileDiv.draggable = true;
+            fileDiv.dataset.filePath = node.path;
+
+            fileDiv.addEventListener('dragstart', (e) => {
+                e.dataTransfer.setData('text/plain', node.path);
+                fileDiv.classList.add('dragging');
+            });
+            fileDiv.addEventListener('dragend', () => {
+                fileDiv.classList.remove('dragging');
+            });
+
+            const fileInfo = document.createElement('div');
+            fileInfo.className = 'd-flex align-items-center flex-wrap';
+            const icon = document.createElement('i');
+            icon.className = `fas ${node.icon} me-1`;
+            const name = document.createElement('span');
+            name.textContent = node.name;
+            const size = document.createElement('span');
+            size.className = 'file-size ms-2';
+            size.textContent = `(${formatFileSize(node.size)})`;
+            const modified = document.createElement('span');
+            modified.className = 'file-modified';
+            modified.title = 'Last modified';
+            modified.textContent = node.last_modified ? `· ${node.last_modified}` : '';
+
+            fileInfo.appendChild(icon);
+            fileInfo.appendChild(name);
+            fileInfo.appendChild(size);
+            fileInfo.appendChild(modified);
+
+            const btnGroup = document.createElement('div');
+            btnGroup.className = 'd-flex align-items-center ms-auto';
+
+            const downloadBtn = document.createElement('button');
+            downloadBtn.className = 'btn btn-sm btn-outline-primary download-btn';
+            downloadBtn.innerHTML = '<i class="fas fa-download"></i>';
+            downloadBtn.title = 'Download file';
+            downloadBtn.onclick = (e) => { e.stopPropagation(); downloadFile(node.path, node.name); };
+
+            const deleteBtn = document.createElement('button');
+            deleteBtn.className = 'btn btn-sm btn-outline-danger delete-file-btn';
+            deleteBtn.innerHTML = '<i class="fas fa-trash"></i>';
+            deleteBtn.title = 'Delete file';
+            deleteBtn.onclick = (e) => { e.stopPropagation(); deleteFile(node.path, node.name); };
+
+            btnGroup.appendChild(downloadBtn);
+            btnGroup.appendChild(deleteBtn);
+
+            fileDiv.appendChild(fileInfo);
+            fileDiv.appendChild(btnGroup);
+            parentElement.appendChild(fileDiv);
+        }
+    }
+
+    function toggleFolder(folderDiv) {
+        const toggle = folderDiv.querySelector('.folder-toggle');
+        folderDiv.classList.toggle('collapsed');
+        if (folderDiv.classList.contains('collapsed')) {
+            toggle.classList.remove('expanded');
+            toggle.classList.add('collapsed');
+        } else {
+            toggle.classList.remove('collapsed');
+            toggle.classList.add('expanded');
+        }
+    }
+
+    function formatFileSize(bytes) {
+        if (bytes === 0) return '0 B';
+        const k = 1024;
+        const sizes = ['B', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+    }
+
+    function downloadFile(filePath, fileName) {
+        const url = `/claims/${claimId}/download/?path=${encodeURIComponent(filePath)}`;
+        window.location.href = url;
+    }
+
+    function downloadFolder(folderPath, folderName) {
+        // Download entire folder as a zip file
+        const url = `/claims/${claimId}/download-folder/?path=${encodeURIComponent(folderPath)}`;
+        window.location.href = url;
+    }
+
+    // ===== FILE UPLOAD =====
+    function setupUploadDropzone() {
+        const dropzone = document.getElementById('uploadDropzone');
+        const fileInput = document.getElementById('fileInput');
+
+        if (dropzone && fileInput) {
+            dropzone.addEventListener('click', () => fileInput.click());
+
+            dropzone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropzone.classList.add('dragover');
+            });
+
+            dropzone.addEventListener('dragleave', () => {
+                dropzone.classList.remove('dragover');
+            });
+
+            dropzone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropzone.classList.remove('dragover');
+                const files = e.dataTransfer.files;
+                if (files.length > 0) {
+                    handleFileUpload(files);
+                }
+            });
+
+            fileInput.addEventListener('change', () => {
+                if (fileInput.files.length > 0) {
+                    handleFileUpload(fileInput.files);
+                }
+            });
+        }
+    }
+
+    function handleFileUpload(files) {
+        const resultsDiv = document.getElementById('uploadResults');
+        resultsDiv.innerHTML = '';
+
+        Array.from(files).forEach(file => {
+            uploadFile(file);
+        });
+    }
+
+    function uploadFile(file, overwrite = false) {
+        const progressDiv = document.getElementById('uploadProgress');
+        const progressBar = progressDiv.querySelector('.progress-bar');
+        const fileNameSpan = document.getElementById('uploadFileName');
+        const percentSpan = document.getElementById('uploadPercent');
+        const resultsDiv = document.getElementById('uploadResults');
+
+        progressDiv.classList.add('active');
+        fileNameSpan.textContent = file.name;
+        percentSpan.textContent = '0%';
+        progressBar.style.width = '0%';
+
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('folder_path', currentUploadFolder);
+        formData.append('overwrite', overwrite ? 'true' : 'false');
+
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', `/claims/${claimId}/upload/`, true);
+        xhr.setRequestHeader('X-CSRFToken', getCookie('csrftoken'));
+
+        xhr.upload.onprogress = (e) => {
+            if (e.lengthComputable) {
+                const percent = Math.round((e.loaded / e.total) * 100);
+                progressBar.style.width = percent + '%';
+                percentSpan.textContent = percent + '%';
+            }
+        };
+
+        xhr.onload = () => {
+            progressDiv.classList.remove('active');
+            const response = JSON.parse(xhr.responseText);
+
+            if (xhr.status === 200 && response.success) {
+                // Remove any pending file reference
+                delete pendingFiles[file.name];
+                resultsDiv.innerHTML += `
+                    <div class="alert alert-success py-2 mb-2">
+                        <i class="fas fa-check-circle"></i> ${file.name} ${overwrite ? 'replaced' : 'uploaded'} successfully
+                    </div>
+                `;
+                // Reload folder structure to show new/updated file
+                loadFolderStructure();
+            } else if (xhr.status === 409 && response.file_exists) {
+                // File exists - store the file and ask to replace
+                pendingFiles[file.name] = file;
+                const safeFileName = file.name.replace(/'/g, "\\'").replace(/"/g, '&quot;');
+                resultsDiv.innerHTML += `
+                    <div class="alert alert-warning py-2 mb-2" id="overwrite-prompt-${CSS.escape(file.name)}">
+                        <i class="fas fa-exclamation-triangle"></i>
+                        <strong>${file.name}</strong> already exists in this folder.
+                        <div class="mt-2">
+                            <button class="btn btn-sm btn-warning" onclick="confirmReplaceFile('${safeFileName}')">
+                                <i class="fas fa-exchange-alt"></i> Replace Existing File
+                            </button>
+                            <button class="btn btn-sm btn-secondary ms-1" onclick="cancelReplace('${safeFileName}')">
+                                Cancel
+                            </button>
+                        </div>
+                    </div>
+                `;
+            } else {
+                resultsDiv.innerHTML += `
+                    <div class="alert alert-danger py-2 mb-2">
+                        <i class="fas fa-times-circle"></i> Failed to upload ${file.name}: ${response.error || 'Unknown error'}
+                    </div>
+                `;
+            }
+        };
+
+        xhr.onerror = () => {
+            progressDiv.classList.remove('active');
+            resultsDiv.innerHTML += `
+                <div class="alert alert-danger py-2 mb-2">
+                    <i class="fas fa-times-circle"></i> Network error uploading ${file.name}
+                </div>
+            `;
+        };
+
+        xhr.send(formData);
+    }
+
+    function deleteFile(filePath, fileName) {
+        if (!confirm(`Delete "${fileName}"? This cannot be undone.`)) return;
+
+        fetch(`/claims/${claimId}/delete-file/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: JSON.stringify({ path: filePath }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadFolderStructure();
+            } else {
+                alert('Failed to delete file: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Delete error:', err);
+            alert('Error deleting file. Please try again.');
+        });
+    }
+
+    function moveFile(sourcePath, destFolder) {
+        fetch(`/claims/${claimId}/move-file/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken'),
+            },
+            body: JSON.stringify({ source_path: sourcePath, dest_folder: destFolder }),
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                loadFolderStructure();
+            } else {
+                alert('Failed to move file: ' + (data.error || 'Unknown error'));
+            }
+        })
+        .catch(err => {
+            console.error('Move error:', err);
+            alert('Error moving file. Please try again.');
+        });
+    }
+
+    function showError(message) {
+        const container = document.getElementById('folder-browser');
+        container.innerHTML = `
+            <div class="alert alert-warning mb-0">
+                <i class="fas fa-exclamation-triangle"></i>
+                ${message}
+            </div>
+        `;
+    }
+
+    // ===== FORM SUBMISSIONS =====
+    function setupFormSubmissions() {
+        const forms = document.querySelectorAll('.claim-edit-form');
+        forms.forEach(form => {
+            form.addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveClaimData(new FormData(this));
+            });
+        });
+
+        // Setup checklist form
+        const checklistForm = document.getElementById('checklist-form');
+        if (checklistForm) {
+            checklistForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                saveChecklistData(new FormData(this));
+            });
+
+            // Auto-save individual checkbox changes
+            document.querySelectorAll('.checklist-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', function() {
+                    const form = document.getElementById('checklist-form');
+                    saveChecklistData(new FormData(form));
+
+                    // Update visual state immediately
+                    const label = this.nextElementSibling;
+                    const item = this.closest('.checklist-item');
+                    if (this.checked) {
+                        label.classList.add('text-decoration-line-through', 'text-muted');
+                        item.classList.add('completed');
+                    } else {
+                        label.classList.remove('text-decoration-line-through', 'text-muted');
+                        item.classList.remove('completed');
+                    }
+                });
+            });
+        }
+    }
+
+    function saveChecklistData(formData) {
+        showSavingIndicator();
+        fetch('/update_checklist/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSaveSuccess();
+                // Update progress displays
+                const overallPercent = data.completion_percent || 0;
+                document.getElementById('overall-percent').textContent = overallPercent + '%';
+                document.getElementById('overall-progress-bar').style.width = overallPercent + '%';
+
+                // Update the tab badge
+                const tabBadge = document.querySelector('#checklist-tab .badge');
+                if (tabBadge) {
+                    tabBadge.textContent = overallPercent + '%';
+                    tabBadge.className = 'badge ms-1 bg-' + (overallPercent === 100 ? 'success' : (overallPercent > 0 ? 'warning' : 'secondary'));
+                }
+
+                // Update category progress bars
+                updateCategoryProgress();
+            } else {
+                showSaveError(data.error || 'Failed to save checklist');
+            }
+        })
+        .catch(error => {
+            console.error('Error saving checklist:', error);
+            showSaveError('Failed to save checklist. Please try again.');
+        });
+    }
+
+    function updateCategoryProgress() {
+        document.querySelectorAll('.checklist-category').forEach(category => {
+            const checkboxes = category.querySelectorAll('.checklist-checkbox');
+            const total = checkboxes.length;
+            const completed = Array.from(checkboxes).filter(cb => cb.checked).length;
+            const percent = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+            const countSpan = category.querySelector('.text-muted.small');
+            if (countSpan) {
+                countSpan.textContent = completed + '/' + total;
+            }
+
+            const progressBar = category.querySelector('.progress-bar');
+            if (progressBar) {
+                progressBar.style.width = percent + '%';
+            }
+        });
+    }
+
+    function saveClaimData(formData) {
+        showSavingIndicator();
+        fetch(`/claims/${claimId}/update/`, {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest',
+                'X-CSRFToken': getCookie('csrftoken')
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                showSaveSuccess();
+                if (data.regenerating_files) {
+                    showRegenBadge();
+                }
+                setTimeout(() => {
+                    location.reload();
+                }, 2500);
+            } else {
+                showSaveError(data.error || 'Failed to save changes');
+            }
+        })
+        .catch(error => {
+            console.error('Error saving claim:', error);
+            showSaveError('Failed to save changes. Please try again.');
+        });
+    }
+
+    // ===== ROOM MANAGEMENT =====
+    function setupRoomManagement() {
+        // Make rooms sortable
+        $('#rooms-container').sortable({
+            handle: '.drag-handle',
+            placeholder: 'ui-sortable-placeholder',
+            update: function(event, ui) {
+                saveRoomOrder();
+            }
+        });
+
+        // Add room button
+        document.getElementById('add-room-btn')?.addEventListener('click', addNewRoom);
+
+        // Room name editing
+        document.querySelectorAll('.room-name-input').forEach(input => {
+            input.addEventListener('blur', function() {
+                updateRoomName(this.dataset.roomId, this.value);
+            });
+        });
+
+        // Delete room buttons
+        document.querySelectorAll('.delete-room-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                deleteRoom(this.dataset.roomId);
+            });
+        });
+    }
+
+    function addNewRoom() {
+        // This would need a backend endpoint - for now just show message
+        alert('Add room functionality will be implemented. Refresh page to see changes.');
+    }
+
+    function updateRoomName(roomId, newName) {
+        // Send AJAX request to update room name
+        fetch(`/rooms/${roomId}/update/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ room_name: newName })
+        });
+    }
+
+    function deleteRoom(roomId) {
+        if (confirm('Are you sure you want to delete this room?')) {
+            fetch(`/rooms/${roomId}/delete/`, {
+                method: 'DELETE',
+                headers: {
+                    'X-CSRFToken': getCookie('csrftoken')
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    location.reload();
+                }
+            });
+        }
+    }
+
+    function saveRoomOrder() {
+        const roomOrder = [];
+        document.querySelectorAll('.room-item').forEach((item, index) => {
+            roomOrder.push({
+                id: item.dataset.roomId,
+                sequence: index + 1
+            });
+            item.querySelector('.room-number').textContent = index + 1;
+        });
+
+        fetch(`/claims/${claimId}/rooms/reorder/`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({ rooms: roomOrder })
+        });
+    }
+
+    // ===== UTILITY FUNCTIONS =====
+    // getCookie is defined globally above
+
+    function showSavingIndicator() {
+        let indicator = document.getElementById('save-indicator');
+        if (!indicator) {
+            indicator = document.createElement('div');
+            indicator.id = 'save-indicator';
+            indicator.style.cssText = `
+                position: fixed;
+                top: 20px;
+                right: 20px;
+                background: #FFA500;
+                color: white;
+                padding: 12px 20px;
+                border-radius: 4px;
+                z-index: 9999;
+                font-size: 14px;
+                font-weight: 600;
+                box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+            `;
+            document.body.appendChild(indicator);
+        }
+        indicator.textContent = 'Saving...';
+        indicator.style.background = '#FFA500';
+        indicator.style.display = 'block';
+    }
+
+    function showSaveSuccess() {
+        const indicator = document.getElementById('save-indicator');
+        if (indicator) {
+            indicator.innerHTML = '<i class="fas fa-check-circle"></i> Saved!';
+            indicator.style.background = '#4CC790';
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 2000);
+        }
+    }
+
+    function showRegenBadge() {
+        let badge = document.getElementById('regen-badge');
+        if (!badge) {
+            badge = document.createElement('div');
+            badge.id = 'regen-badge';
+            badge.style.cssText = `
+                position:fixed;bottom:20px;right:20px;z-index:9999;
+                background:#1a73e8;color:#fff;padding:10px 18px;
+                border-radius:8px;font-size:13px;font-weight:600;
+                display:flex;align-items:center;gap:8px;
+                box-shadow:0 4px 12px rgba(0,0,0,.25);`;
+            badge.innerHTML = '<span style="display:inline-block;width:12px;height:12px;border:2px solid #fff;border-top-color:transparent;border-radius:50%;animation:spin .8s linear infinite"></span> Regenerating Excel files…';
+            document.body.appendChild(badge);
+        }
+        badge.style.display = 'flex';
+        // auto-hide after reload; but add CSS spin if not present
+        if (!document.getElementById('regen-spin-style')) {
+            const s = document.createElement('style');
+            s.id = 'regen-spin-style';
+            s.textContent = '@keyframes spin{to{transform:rotate(360deg)}}';
+            document.head.appendChild(s);
+        }
+    }
+
+    function showSaveError(message) {
+        const indicator = document.getElementById('save-indicator');
+        if (indicator) {
+            indicator.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${message}`;
+            indicator.style.background = '#FF6B6B';
+            setTimeout(() => {
+                indicator.style.display = 'none';
+            }, 4000);
+        }
+    }
+});
+</script>
+{% endblock %}

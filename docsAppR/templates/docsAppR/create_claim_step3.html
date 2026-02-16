@@ -1,0 +1,217 @@
+{% extends "account/base.html" %}
+
+{% block title %}Create Claim - Step 3{% endblock %}
+{% block page_title %}Create New Claim - Step 3{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+
+            <!-- Stepper -->
+            <div class="stepper mb-4">
+                <div class="stepper-item completed">
+                    <div class="stepper-icon"><i class="fas fa-check"></i></div>
+                    <div class="stepper-label">Client Info</div>
+                </div>
+                <div class="stepper-item completed">
+                    <div class="stepper-icon"><i class="fas fa-check"></i></div>
+                    <div class="stepper-label">Rooms</div>
+                </div>
+                <div class="stepper-item active">
+                    <div class="stepper-icon">3</div>
+                    <div class="stepper-label">Review & Create</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-check-circle"></i> Step 3: Review & Create Claim
+                    </h4>
+                </div>
+                <div class="card-body">
+
+                    <!-- Client Summary -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="fas fa-user"></i> Client Information
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-5">Property Owner:</dt>
+                                        <dd class="col-sm-7">{{ client.pOwner }}</dd>
+
+                                        <dt class="col-sm-5">Address:</dt>
+                                        <dd class="col-sm-7">
+                                            {{ client.pAddress }}<br>
+                                            {{ client.pCityStateZip }}
+                                        </dd>
+
+                                        <dt class="col-sm-5">Email:</dt>
+                                        <dd class="col-sm-7">{{ client.cEmail|default:"—" }}</dd>
+
+                                        <dt class="col-sm-5">Phone:</dt>
+                                        <dd class="col-sm-7">{{ client.cPhone|default:"—" }}</dd>
+                                    </dl>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-5">Insurance Co:</dt>
+                                        <dd class="col-sm-7">{{ client.insuranceCo_Name }}</dd>
+
+                                        <dt class="col-sm-5">Claim #:</dt>
+                                        <dd class="col-sm-7">{{ client.claimNumber }}</dd>
+
+                                        <dt class="col-sm-5">Cause of Loss:</dt>
+                                        <dd class="col-sm-7">{{ client.get_causeOfLoss_display|default:"—" }}</dd>
+
+                                        <dt class="col-sm-5">Date of Loss:</dt>
+                                        <dd class="col-sm-7">{{ client.dateOfLoss|default:"—" }}</dd>
+                                    </dl>
+                                </div>
+                            </div>
+
+                            <div class="text-end">
+                                <a href="{% url 'create_claim_step1' %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-edit"></i> Edit Client Info
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Server Folder Structure Preview -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="fas fa-server"></i> Server Folder Structure to be Created
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                The following will be created automatically on the server:
+                            </div>
+
+                            <div style="font-family: monospace; font-size: 13px; line-height: 1.8;">
+                                <div><i class="fas fa-folder text-primary"></i> <strong>Server/claims/</strong></div>
+                                <div class="ms-3"><i class="fas fa-folder text-warning"></i> <strong>{{ client.pOwner }}@{{ client.pAddress }}</strong></div>
+                                <div class="ms-5"><i class="fas fa-file-excel text-success"></i> 01-INFO-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5"><i class="fas fa-file-pdf text-danger"></i> w9.pdf</div>
+
+                                <!-- EXT EMS Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> EXT EMS {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- MIT Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> MIT {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- CPS Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> CPS {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- BASIC DOCS OUT Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> BASIC DOCS OUT {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- REBUILD Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> REBUILD {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- Templates Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-info"></i> <strong>Templates {{ client.pOwner }}@{{ client.pAddress }}</strong></div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 01-ROOMS-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 02-INS-CO-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 30-MASTER-Insurer-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 50-2-CONTRACT-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 51-NOTARY-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 60_scope_form-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 60-SCOPE-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT 3-DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT-3DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT-5DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT-7DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 92-CPS-LABELS-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 92-MOBILE-CPS-LABELS-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 94-2-CPS-INVOICE-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 998-Release-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 1000-ALL-CLAIMS-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+
+                                <!-- BU Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> BU {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+                            </div>
+
+                            <div class="alert alert-success mt-3 mb-0">
+                                <i class="fas fa-check-circle"></i> <strong>Total:</strong> 7 main folders, 12 subfolders, 21 text files, and 17 Excel templates with auto-populated data
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Confirmation -->
+                    <div class="card border-success">
+                        <div class="card-body text-center">
+                            <h4 class="text-success mb-3">
+                                <i class="fas fa-check-circle"></i> Ready to Create
+                            </h4>
+                            <p class="lead">
+                                Click "Create Claim" to:
+                            </p>
+                            <ul class="text-start d-inline-block">
+                                <li>Save all claim information to database</li>
+                                <li>Create complete server folder structure</li>
+                                <li>Generate Excel templates with populated data</li>
+                                <li>Create JSON data files for rooms and client info</li>
+                            </ul>
+
+                            <form method="post" class="mt-4">
+                                {% csrf_token %}
+                                <div class="d-flex justify-content-center gap-3">
+                                    <a href="{% url 'create_claim_step2' %}" class="btn btn-secondary btn-lg">
+                                        <i class="fas fa-arrow-left"></i> Back
+                                    </a>
+                                    <button type="submit" class="btn btn-success btn-lg">
+                                        <i class="fas fa-rocket"></i> Create Claim
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

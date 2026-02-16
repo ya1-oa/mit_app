@@ -1,0 +1,1736 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Scope Checklist{% endblock %}
+
+{% block page_title %}
+<i class="fas fa-clipboard-list me-2"></i> Interior Inspection Work Scope
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ==================== MOBILE-FIRST BASE STYLES ==================== */
+    .scope-container {
+        padding: 10px;
+    }
+
+    @media (min-width: 768px) {
+        .scope-container {
+            padding: 20px;
+        }
+    }
+
+    /* ==================== WELCOME/GUIDE MODAL ==================== */
+    .guide-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.8);
+        z-index: 10000;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 20px;
+        opacity: 0;
+        visibility: hidden;
+        transition: all 0.3s ease;
+    }
+
+    .guide-overlay.active {
+        opacity: 1;
+        visibility: visible;
+    }
+
+    .guide-modal {
+        background: white;
+        border-radius: 16px;
+        max-width: 600px;
+        width: 100%;
+        max-height: 90vh;
+        overflow-y: auto;
+        transform: scale(0.9);
+        transition: transform 0.3s ease;
+    }
+
+    .guide-overlay.active .guide-modal {
+        transform: scale(1);
+    }
+
+    .guide-header {
+        background: linear-gradient(135deg, #0066cc 0%, #004999 100%);
+        color: white;
+        padding: 30px;
+        text-align: center;
+        border-radius: 16px 16px 0 0;
+    }
+
+    .guide-header i {
+        font-size: 48px;
+        margin-bottom: 15px;
+        animation: bounce 2s infinite;
+    }
+
+    @keyframes bounce {
+        0%, 20%, 50%, 80%, 100% { transform: translateY(0); }
+        40% { transform: translateY(-10px); }
+        60% { transform: translateY(-5px); }
+    }
+
+    .guide-body {
+        padding: 30px;
+    }
+
+    .guide-step {
+        display: flex;
+        align-items: flex-start;
+        margin-bottom: 20px;
+        padding: 15px;
+        background: #f8f9fa;
+        border-radius: 10px;
+        border-left: 4px solid #0066cc;
+    }
+
+    .guide-step-number {
+        width: 32px;
+        height: 32px;
+        background: #0066cc;
+        color: white;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        margin-right: 15px;
+        flex-shrink: 0;
+    }
+
+    .guide-step-content h5 {
+        margin: 0 0 5px 0;
+        color: #333;
+    }
+
+    .guide-step-content p {
+        margin: 0;
+        color: #666;
+        font-size: 14px;
+    }
+
+    .guide-footer {
+        padding: 20px 30px;
+        border-top: 1px solid #eee;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .guide-footer label {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        font-size: 14px;
+        color: #666;
+        cursor: pointer;
+    }
+
+    /* ==================== HELP BUTTON ==================== */
+    .help-fab {
+        position: fixed;
+        bottom: 20px;
+        right: 20px;
+        width: 56px;
+        height: 56px;
+        background: #0066cc;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        font-size: 24px;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,102,204,0.4);
+        z-index: 1000;
+        transition: all 0.3s ease;
+    }
+
+    .help-fab:hover {
+        transform: scale(1.1);
+        background: #0052a3;
+    }
+
+    /* ==================== TOOLTIPS ==================== */
+    .info-tooltip {
+        position: relative;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        width: 18px;
+        height: 18px;
+        background: #0066cc;
+        color: white;
+        border-radius: 50%;
+        font-size: 11px;
+        cursor: help;
+        margin-left: 5px;
+    }
+
+    .info-tooltip:hover::after {
+        content: attr(data-tip);
+        position: absolute;
+        bottom: 100%;
+        left: 50%;
+        transform: translateX(-50%);
+        background: #333;
+        color: white;
+        padding: 8px 12px;
+        border-radius: 6px;
+        font-size: 12px;
+        white-space: nowrap;
+        z-index: 100;
+        margin-bottom: 5px;
+        max-width: 250px;
+        white-space: normal;
+        text-align: left;
+    }
+
+    @media (max-width: 768px) {
+        .info-tooltip:hover::after {
+            left: auto;
+            right: 0;
+            transform: none;
+        }
+    }
+
+    /* ==================== PROGRESS INDICATOR ==================== */
+    .progress-bar-container {
+        background: #e9ecef;
+        border-radius: 10px;
+        height: 8px;
+        overflow: hidden;
+        margin-bottom: 20px;
+    }
+
+    .progress-bar-fill {
+        height: 100%;
+        background: linear-gradient(90deg, #28a745, #20c997);
+        border-radius: 10px;
+        transition: width 0.5s ease;
+    }
+
+    .progress-text {
+        text-align: center;
+        font-size: 14px;
+        color: #666;
+        margin-bottom: 10px;
+    }
+
+    /* ==================== ROOM TABS ==================== */
+    .room-tabs-container {
+        position: relative;
+        margin-bottom: 20px;
+    }
+
+    .room-tabs-scroll {
+        display: flex;
+        gap: 8px;
+        overflow-x: auto;
+        padding: 10px 0;
+        -webkit-overflow-scrolling: touch;
+        scrollbar-width: none;
+    }
+
+    .room-tabs-scroll::-webkit-scrollbar {
+        display: none;
+    }
+
+    .room-tab {
+        padding: 12px 20px;
+        border: 2px solid #dee2e6;
+        border-radius: 25px;
+        cursor: pointer;
+        background: white;
+        transition: all 0.3s ease;
+        font-size: 14px;
+        font-weight: 500;
+        white-space: nowrap;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .room-tab:hover {
+        border-color: #0066cc;
+        transform: translateY(-2px);
+    }
+
+    .room-tab.active {
+        background: #0066cc;
+        color: white;
+        border-color: #0066cc;
+        box-shadow: 0 4px 12px rgba(0,102,204,0.3);
+    }
+
+    .room-tab.completed {
+        background: #28a745;
+        color: white;
+        border-color: #28a745;
+    }
+
+    .room-tab .tab-icon {
+        font-size: 16px;
+    }
+
+    .scroll-hint {
+        display: none;
+        position: absolute;
+        right: 0;
+        top: 50%;
+        transform: translateY(-50%);
+        background: linear-gradient(90deg, transparent, white);
+        padding: 10px 20px 10px 40px;
+        color: #666;
+        font-size: 12px;
+        animation: pulse 2s infinite;
+    }
+
+    @media (max-width: 768px) {
+        .scroll-hint {
+            display: block;
+        }
+    }
+
+    @keyframes pulse {
+        0%, 100% { opacity: 1; }
+        50% { opacity: 0.5; }
+    }
+
+    /* ==================== CHECKLIST SECTIONS ==================== */
+    .checklist-section {
+        background: white;
+        border-radius: 12px;
+        margin-bottom: 16px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        overflow: hidden;
+        animation: slideIn 0.3s ease;
+    }
+
+    @keyframes slideIn {
+        from {
+            opacity: 0;
+            transform: translateY(20px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    .section-header {
+        background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+        padding: 15px 20px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        cursor: pointer;
+        border-bottom: 1px solid #eee;
+    }
+
+    .section-header:hover {
+        background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+    }
+
+    .section-title {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 600;
+        color: #333;
+        margin: 0;
+    }
+
+    .section-title i {
+        width: 36px;
+        height: 36px;
+        background: #0066cc;
+        color: white;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+
+    .section-badge {
+        background: #28a745;
+        color: white;
+        padding: 4px 12px;
+        border-radius: 20px;
+        font-size: 12px;
+        display: none;
+    }
+
+    .section-badge.visible {
+        display: inline-block;
+    }
+
+    .section-toggle {
+        font-size: 20px;
+        color: #666;
+        transition: transform 0.3s ease;
+    }
+
+    .section-header.collapsed .section-toggle {
+        transform: rotate(-90deg);
+    }
+
+    .section-body {
+        padding: 20px;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 16px;
+    }
+
+    @media (max-width: 576px) {
+        .section-body {
+            grid-template-columns: 1fr 1fr;
+            gap: 12px;
+            padding: 15px;
+        }
+    }
+
+    .section-body.collapsed {
+        display: none;
+    }
+
+    /* ==================== FORM FIELDS ==================== */
+    .scope-field {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .scope-field label {
+        font-size: 11px;
+        font-weight: 600;
+        color: #666;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 6px;
+        display: flex;
+        align-items: center;
+    }
+
+    .scope-field select,
+    .scope-field input {
+        padding: 10px 12px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 14px;
+        transition: all 0.2s ease;
+        background: white;
+    }
+
+    .scope-field select:focus,
+    .scope-field input:focus {
+        border-color: #0066cc;
+        outline: none;
+        box-shadow: 0 0 0 3px rgba(0,102,204,0.15);
+    }
+
+    .scope-field select.has-value,
+    .scope-field input.has-value {
+        border-color: #28a745;
+        background: #f8fff9;
+    }
+
+    /* ==================== ACTIVITY NOTES ==================== */
+    .activity-notes-section {
+        background: #fff8e1;
+        border: 2px dashed #ffc107;
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 20px;
+    }
+
+    .activity-notes-section label {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-weight: 600;
+        color: #856404;
+        margin-bottom: 10px;
+    }
+
+    .activity-notes-section textarea {
+        width: 100%;
+        min-height: 100px;
+        padding: 15px;
+        border: 2px solid #ffeeba;
+        border-radius: 8px;
+        font-size: 14px;
+        resize: vertical;
+    }
+
+    .activity-notes-section textarea:focus {
+        border-color: #ffc107;
+        outline: none;
+    }
+
+    /* ==================== CLAIM INFO BANNER ==================== */
+    .claim-info-banner {
+        background: linear-gradient(135deg, #0066cc 0%, #004999 100%);
+        color: white;
+        padding: 20px;
+        border-radius: 12px;
+        margin-bottom: 20px;
+        display: none;
+    }
+
+    .claim-info-banner.visible {
+        display: block;
+        animation: slideIn 0.3s ease;
+    }
+
+    .claim-info-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+        gap: 15px;
+        margin-top: 15px;
+    }
+
+    .claim-info-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        font-size: 14px;
+    }
+
+    .claim-info-item i {
+        opacity: 0.8;
+    }
+
+    /* ==================== ACTION BUTTONS ==================== */
+    .action-bar {
+        background: white;
+        border-radius: 12px;
+        padding: 20px;
+        margin-top: 20px;
+        box-shadow: 0 -4px 20px rgba(0,0,0,0.1);
+        position: sticky;
+        bottom: 0;
+        z-index: 100;
+    }
+
+    .action-bar-title {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        margin-bottom: 15px;
+        font-weight: 600;
+        color: #333;
+    }
+
+    .email-inputs {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 15px;
+        margin-bottom: 15px;
+    }
+
+    @media (max-width: 768px) {
+        .email-inputs {
+            grid-template-columns: 1fr;
+        }
+    }
+
+    .email-inputs input {
+        padding: 12px 15px;
+        border: 2px solid #e9ecef;
+        border-radius: 8px;
+        font-size: 14px;
+    }
+
+    .email-inputs input:focus {
+        border-color: #0066cc;
+        outline: none;
+    }
+
+    .action-buttons {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+    }
+
+    .btn-action {
+        flex: 1;
+        min-width: 140px;
+        padding: 14px 20px;
+        border: none;
+        border-radius: 8px;
+        font-size: 14px;
+        font-weight: 600;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        transition: all 0.3s ease;
+    }
+
+    .btn-save {
+        background: #6c757d;
+        color: white;
+    }
+
+    .btn-save:hover {
+        background: #5a6268;
+        transform: translateY(-2px);
+    }
+
+    .btn-pdf {
+        background: #28a745;
+        color: white;
+    }
+
+    .btn-pdf:hover {
+        background: #218838;
+        transform: translateY(-2px);
+    }
+
+    .btn-email {
+        background: #0066cc;
+        color: white;
+    }
+
+    .btn-email:hover {
+        background: #0052a3;
+        transform: translateY(-2px);
+    }
+
+    /* ==================== EMPTY STATE ==================== */
+    .empty-state {
+        text-align: center;
+        padding: 60px 20px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+    }
+
+    .empty-state i {
+        font-size: 64px;
+        color: #dee2e6;
+        margin-bottom: 20px;
+    }
+
+    .empty-state h4 {
+        color: #333;
+        margin-bottom: 10px;
+    }
+
+    .empty-state p {
+        color: #666;
+        max-width: 400px;
+        margin: 0 auto;
+    }
+
+    /* ==================== LOADING OVERLAY ==================== */
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.95);
+        display: none;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        flex-direction: column;
+    }
+
+    .loading-overlay.active {
+        display: flex;
+    }
+
+    .loading-spinner {
+        width: 60px;
+        height: 60px;
+        border: 4px solid #e9ecef;
+        border-top: 4px solid #0066cc;
+        border-radius: 50%;
+        animation: spin 1s linear infinite;
+        margin-bottom: 20px;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .loading-text {
+        font-size: 16px;
+        color: #333;
+        font-weight: 500;
+    }
+
+    /* ==================== TOAST NOTIFICATIONS ==================== */
+    .toast-container {
+        position: fixed;
+        bottom: 100px;
+        right: 20px;
+        z-index: 9999;
+    }
+
+    .toast {
+        background: #333;
+        color: white;
+        padding: 15px 25px;
+        border-radius: 8px;
+        margin-top: 10px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        animation: slideInRight 0.3s ease;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+    }
+
+    .toast.success {
+        background: #28a745;
+    }
+
+    .toast.error {
+        background: #dc3545;
+    }
+
+    @keyframes slideInRight {
+        from {
+            opacity: 0;
+            transform: translateX(100px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+    /* ==================== QUICK REFERENCE PANEL ==================== */
+    .quick-ref-toggle {
+        position: fixed;
+        bottom: 90px;
+        right: 20px;
+        background: #ffc107;
+        color: #333;
+        border: none;
+        padding: 10px 15px;
+        border-radius: 25px;
+        font-size: 13px;
+        font-weight: 600;
+        cursor: pointer;
+        box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        z-index: 999;
+        display: flex;
+        align-items: center;
+        gap: 8px;
+    }
+
+    .quick-ref-panel {
+        position: fixed;
+        bottom: 140px;
+        right: 20px;
+        width: 320px;
+        max-height: 400px;
+        background: white;
+        border-radius: 12px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        z-index: 998;
+        display: none;
+        overflow: hidden;
+    }
+
+    .quick-ref-panel.active {
+        display: block;
+        animation: slideInRight 0.3s ease;
+    }
+
+    @media (max-width: 576px) {
+        .quick-ref-panel {
+            right: 10px;
+            left: 10px;
+            width: auto;
+        }
+    }
+
+    .quick-ref-header {
+        background: #ffc107;
+        color: #333;
+        padding: 15px;
+        font-weight: 600;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+    }
+
+    .quick-ref-body {
+        padding: 15px;
+        max-height: 300px;
+        overflow-y: auto;
+    }
+
+    .code-category {
+        margin-bottom: 15px;
+    }
+
+    .code-category h6 {
+        font-size: 12px;
+        color: #666;
+        text-transform: uppercase;
+        margin-bottom: 8px;
+        border-bottom: 1px solid #eee;
+        padding-bottom: 5px;
+    }
+
+    .code-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+    }
+
+    .code-chip {
+        background: #e9ecef;
+        padding: 4px 10px;
+        border-radius: 15px;
+        font-size: 11px;
+        font-weight: 500;
+    }
+
+    .code-chip .code {
+        color: #0066cc;
+        font-weight: 700;
+    }
+
+    /* ==================== ROOM CONTENT ==================== */
+    .room-content {
+        display: none;
+    }
+
+    .room-content.active {
+        display: block;
+        animation: fadeIn 0.3s ease;
+    }
+
+    @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="scope-container">
+    <!-- Claim Selection Card -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="d-flex align-items-center gap-2 mb-3">
+                <i class="fas fa-search text-primary"></i>
+                <h5 class="mb-0">Step 1: Select a Claim</h5>
+                <span class="info-tooltip" data-tip="Choose the claim you want to create a scope checklist for. Rooms will load automatically.">?</span>
+            </div>
+            <select id="claim-select" class="form-select form-select-lg">
+                <option value="">-- Select a Claim to Begin --</option>
+                {% for claim in claims %}
+                <option value="{{ claim.id }}"
+                        data-name="{{ claim.pOwner }}"
+                        data-address="{{ claim.pAddress }}"
+                        data-city="{{ claim.pCityStateZip }}"
+                        data-phone="{{ claim.cPhone }}"
+                        data-insurance="{{ claim.insuranceCo_Name }}"
+                        data-cause="{{ claim.causeOfLoss }}">
+                    {{ claim.pOwner }} - {{ claim.pAddress }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- Claim Info Banner -->
+    <div class="claim-info-banner" id="claim-info-banner">
+        <h4 id="claim-name-display"><i class="fas fa-user me-2"></i><span></span></h4>
+        <div class="claim-info-grid">
+            <div class="claim-info-item">
+                <i class="fas fa-map-marker-alt"></i>
+                <span id="claim-address-display"></span>
+            </div>
+            <div class="claim-info-item">
+                <i class="fas fa-phone"></i>
+                <span id="claim-phone-display"></span>
+            </div>
+            <div class="claim-info-item">
+                <i class="fas fa-building"></i>
+                <span id="claim-insurance-display"></span>
+            </div>
+            <div class="claim-info-item">
+                <i class="fas fa-exclamation-triangle"></i>
+                <span id="claim-cause-display"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content Container -->
+    <div id="rooms-container" style="display: none;">
+        <!-- Progress Bar -->
+        <div class="progress-text">
+            <i class="fas fa-tasks me-2"></i>
+            Room Progress: <strong><span id="progress-count">0</span> of <span id="total-rooms">0</span></strong> completed
+        </div>
+        <div class="progress-bar-container">
+            <div class="progress-bar-fill" id="progress-bar" style="width: 0%"></div>
+        </div>
+
+        <!-- Room Tabs -->
+        <div class="room-tabs-container">
+            <div class="d-flex align-items-center gap-2 mb-2">
+                <i class="fas fa-door-open text-primary"></i>
+                <h5 class="mb-0">Step 2: Select a Room</h5>
+                <span class="info-tooltip" data-tip="Click on each room tab to fill out its checklist. Green tabs indicate completed rooms.">?</span>
+            </div>
+            <div class="room-tabs-scroll" id="room-tabs">
+                <!-- Tabs populated by JS -->
+            </div>
+            <div class="scroll-hint">
+                <i class="fas fa-chevron-right"></i> Swipe for more
+            </div>
+        </div>
+
+        <!-- Room Checklists -->
+        <div id="room-checklists">
+            <!-- Content populated by JS -->
+        </div>
+
+        <!-- Action Bar -->
+        <div class="action-bar">
+            <div class="action-bar-title">
+                <i class="fas fa-paper-plane text-primary"></i>
+                <span>Step 3: Save or Send</span>
+                <span class="info-tooltip" data-tip="Save your progress, generate a PDF, or email the completed checklist.">?</span>
+            </div>
+            <div class="email-inputs">
+                <input type="email" id="email-recipients" placeholder="Email recipients (comma separated)">
+                <input type="text" id="email-subject" placeholder="Email subject">
+            </div>
+            <div class="action-buttons">
+                <button class="btn-action btn-save" onclick="saveProgress()">
+                    <i class="fas fa-save"></i>
+                    <span>Save</span>
+                </button>
+                <button class="btn-action btn-pdf" onclick="generatePDF()">
+                    <i class="fas fa-file-pdf"></i>
+                    <span>PDF</span>
+                </button>
+                <button class="btn-action btn-email" onclick="sendEmail()">
+                    <i class="fas fa-envelope"></i>
+                    <span>Email</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Empty State -->
+    <div id="empty-state" class="empty-state">
+        <i class="fas fa-clipboard-list"></i>
+        <h4>Welcome to Scope Checklist</h4>
+        <p>Select a claim from the dropdown above to load rooms and start filling out the interior inspection scope.</p>
+    </div>
+</div>
+
+<!-- Welcome Guide Modal -->
+<div class="guide-overlay" id="guide-overlay">
+    <div class="guide-modal">
+        <div class="guide-header">
+            <i class="fas fa-clipboard-check"></i>
+            <h3>Welcome to Scope Checklist</h3>
+            <p>Interior Inspection Made Easy</p>
+        </div>
+        <div class="guide-body">
+            <div class="guide-step">
+                <div class="guide-step-number">1</div>
+                <div class="guide-step-content">
+                    <h5><i class="fas fa-search me-2"></i>Select a Claim</h5>
+                    <p>Choose the claim from the dropdown. All rooms for that claim will load automatically.</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <div class="guide-step-number">2</div>
+                <div class="guide-step-content">
+                    <h5><i class="fas fa-door-open me-2"></i>Fill Out Each Room</h5>
+                    <p>Click room tabs to switch between rooms. Select materials, activities, and quantities using the dropdowns.</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <div class="guide-step-number">3</div>
+                <div class="guide-step-content">
+                    <h5><i class="fas fa-code me-2"></i>Use Xactimate Codes</h5>
+                    <p>All dropdowns use standard Xactimate codes (DRY, FCC, R&R, etc.). Click the yellow "Codes" button for a quick reference.</p>
+                </div>
+            </div>
+            <div class="guide-step">
+                <div class="guide-step-number">4</div>
+                <div class="guide-step-content">
+                    <h5><i class="fas fa-paper-plane me-2"></i>Save or Send</h5>
+                    <p>Save progress anytime. Generate a PDF or email the completed checklist directly from the app.</p>
+                </div>
+            </div>
+        </div>
+        <div class="guide-footer">
+            <label>
+                <input type="checkbox" id="dont-show-again">
+                Don't show this again
+            </label>
+            <button class="btn btn-primary" onclick="closeGuide()">
+                <i class="fas fa-check me-2"></i>Got it!
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Quick Reference Panel -->
+<button class="quick-ref-toggle" onclick="toggleQuickRef()">
+    <i class="fas fa-book"></i> Codes
+</button>
+
+<div class="quick-ref-panel" id="quick-ref-panel">
+    <div class="quick-ref-header">
+        <span><i class="fas fa-book me-2"></i>Xactimate Codes</span>
+        <button class="btn btn-sm btn-light" onclick="toggleQuickRef()"><i class="fas fa-times"></i></button>
+    </div>
+    <div class="quick-ref-body">
+        <div class="code-category">
+            <h6>Materials</h6>
+            <div class="code-list">
+                <span class="code-chip"><span class="code">ACT</span> Tiles</span>
+                <span class="code-chip"><span class="code">DRY</span> Drywall</span>
+                <span class="code-chip"><span class="code">PLA</span> Plaster</span>
+                <span class="code-chip"><span class="code">T&G</span> Tongue&Groove</span>
+                <span class="code-chip"><span class="code">PNL</span> Paneling</span>
+                <span class="code-chip"><span class="code">CNC</span> Concrete</span>
+            </div>
+        </div>
+        <div class="code-category">
+            <h6>Floor Types</h6>
+            <div class="code-list">
+                <span class="code-chip"><span class="code">FCC</span> Carpet</span>
+                <span class="code-chip"><span class="code">FCS</span> Stone</span>
+                <span class="code-chip"><span class="code">FCV</span> Vinyl</span>
+                <span class="code-chip"><span class="code">FCW</span> Hardwood</span>
+                <span class="code-chip"><span class="code">LAM</span> Laminate</span>
+            </div>
+        </div>
+        <div class="code-category">
+            <h6>Finish</h6>
+            <div class="code-list">
+                <span class="code-chip"><span class="code">SMH</span> Smooth</span>
+                <span class="code-chip"><span class="code">TEX</span> Texture</span>
+                <span class="code-chip"><span class="code">POP</span> Popcorn</span>
+            </div>
+        </div>
+        <div class="code-category">
+            <h6>Activity</h6>
+            <div class="code-list">
+                <span class="code-chip"><span class="code">ALL</span> Repair All</span>
+                <span class="code-chip"><span class="code">R&R</span> Replace</span>
+                <span class="code-chip"><span class="code">D&R</span> Detach/Reset</span>
+                <span class="code-chip"><span class="code">CLN</span> Clean</span>
+                <span class="code-chip"><span class="code">PNT</span> Paint</span>
+                <span class="code-chip"><span class="code">S++</span> Prime/Seal</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Help FAB -->
+<button class="help-fab" onclick="showGuide()">
+    <i class="fas fa-question"></i>
+</button>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loading-overlay">
+    <div class="loading-spinner"></div>
+    <div class="loading-text" id="loading-text">Loading...</div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container" id="toast-container"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ==================== SCOPE CODES ====================
+const SCOPE_CODES = {
+    buildingMaterials: [
+        { code: 'ACT', label: 'CLG TILES' },
+        { code: 'DRY', label: 'DRYWALL' },
+        { code: 'PLA', label: 'PLASTER' },
+        { code: 'T&G', label: 'TONGUE & GROOVE' },
+        { code: 'PNL', label: 'PANELING' },
+        { code: 'WPR', label: 'WALLPAPER' },
+        { code: 'CNC', label: 'CONCRETE' },
+        { code: 'MAS', label: 'BRICK/MASONRY' }
+    ],
+    constructionType: [
+        { code: 'FLT', label: 'FLAT' },
+        { code: 'VLT', label: 'VAULTED' },
+        { code: 'TRY', label: 'TRAY' },
+        { code: 'FRM', label: 'OPEN FRAME' }
+    ],
+    finish: [
+        { code: 'SMH', label: 'SMOOTH' },
+        { code: 'TEX', label: 'TEXTURE' },
+        { code: 'POP', label: 'POPCORN' }
+    ],
+    floorTypes: [
+        { code: 'FCC', label: 'CARPET' },
+        { code: 'FCS', label: 'STONE' },
+        { code: 'FCV', label: 'VINYL' },
+        { code: 'FCW', label: 'HARDWOOD' },
+        { code: 'LAM', label: 'LAMINATE' }
+    ],
+    windowTypes: [
+        { code: 'WDW', label: 'WOOD' },
+        { code: 'WDV', label: 'VINYL' },
+        { code: 'WDA', label: 'ALUMINUM' },
+        { code: 'BAY', label: 'BAY/BOW' }
+    ],
+    windowCovers: [
+        { code: 'WDT', label: 'COVERS' },
+        { code: 'BLN', label: 'BLINDS' },
+        { code: 'DRP', label: 'DRAPERY' }
+    ],
+    baseboard: [
+        { code: '3', label: '3 inch' },
+        { code: '4', label: '4 inch' },
+        { code: '5', label: '5 inch' },
+        { code: '6', label: '6 inch' }
+    ],
+    doorTypes: [
+        { code: 'STD', label: 'STANDARD' },
+        { code: 'BFD', label: 'BIFOLD' },
+        { code: 'BYD', label: 'BYPASS' },
+        { code: 'BPM', label: 'MIRROR' }
+    ],
+    electrical: [
+        { code: 'LIT', label: 'LIGHT' },
+        { code: 'FNL', label: 'FAN/LIGHT' },
+        { code: 'CHD', label: 'CHANDELIER' },
+        { code: 'SMK', label: 'SMOKE ALARM' }
+    ],
+    activity: [
+        { code: 'ALL', label: 'REPAIR ALL' },
+        { code: 'CLN', label: 'CLEAN' },
+        { code: 'R&R', label: 'REPLACE' },
+        { code: 'D&R', label: 'DETACH/RESET' },
+        { code: 'PNT', label: 'PAINT' },
+        { code: 'S++', label: 'PRIME/SEAL' },
+        { code: 'STN', label: 'STAIN' },
+        { code: 'SND', label: 'SAND' }
+    ],
+    yesNo: [
+        { code: 'YES', label: 'YES' },
+        { code: 'NO', label: 'NO' }
+    ]
+};
+
+// ==================== STATE ====================
+let allRoomData = {};
+let currentClaimId = null;
+let currentRoomId = null;
+
+// ==================== INITIALIZATION ====================
+document.addEventListener('DOMContentLoaded', function() {
+    // Check if guide should show
+    if (!localStorage.getItem('scopeGuideHidden')) {
+        setTimeout(() => showGuide(), 500);
+    }
+});
+
+// ==================== GUIDE FUNCTIONS ====================
+function showGuide() {
+    document.getElementById('guide-overlay').classList.add('active');
+}
+
+function closeGuide() {
+    document.getElementById('guide-overlay').classList.remove('active');
+    if (document.getElementById('dont-show-again').checked) {
+        localStorage.setItem('scopeGuideHidden', 'true');
+    }
+}
+
+function toggleQuickRef() {
+    document.getElementById('quick-ref-panel').classList.toggle('active');
+}
+
+// ==================== HELPER FUNCTIONS ====================
+function generateOptions(codes) {
+    let html = '<option value="">-- Select --</option>';
+    codes.forEach(item => {
+        html += `<option value="${item.code}">${item.code} - ${item.label}</option>`;
+    });
+    return html;
+}
+
+function showLoading(text) {
+    document.getElementById('loading-text').textContent = text || 'Loading...';
+    document.getElementById('loading-overlay').classList.add('active');
+}
+
+function hideLoading() {
+    document.getElementById('loading-overlay').classList.remove('active');
+}
+
+function showToast(message, type = 'success') {
+    const container = document.getElementById('toast-container');
+    const toast = document.createElement('div');
+    toast.className = `toast ${type}`;
+    toast.innerHTML = `<i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-circle'}"></i> ${message}`;
+    container.appendChild(toast);
+    setTimeout(() => toast.remove(), 3000);
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+function updateProgress() {
+    const completed = Object.values(allRoomData).filter(room => {
+        return Object.values(room).some(v => v && v.toString().trim());
+    }).length;
+    const total = Object.keys(allRoomData).length;
+
+    document.getElementById('progress-count').textContent = completed;
+    document.getElementById('total-rooms').textContent = total;
+    document.getElementById('progress-bar').style.width = total > 0 ? `${(completed/total)*100}%` : '0%';
+}
+
+// ==================== ROOM CHECKLIST GENERATOR ====================
+function generateRoomChecklist(room, index) {
+    const roomId = room.id;
+    return `
+    <div class="room-content" id="room-${roomId}" data-room-id="${roomId}">
+        <!-- CLG Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-border-top-left"></i>
+                    CLG - Ceiling
+                </h5>
+                <span class="section-badge" id="badge-clg-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Material</label>
+                    <select data-field="clg_material" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.buildingMaterials)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Construction</label>
+                    <select data-field="clg_construction" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.constructionType)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Finish</label>
+                    <select data-field="clg_finish" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.finish)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="clg_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>SF</label>
+                    <input type="number" data-field="clg_sf" placeholder="Sq Ft" onchange="onFieldChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- LIT Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-lightbulb"></i>
+                    LIT - Lights
+                </h5>
+                <span class="section-badge" id="badge-lit-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Type</label>
+                    <select data-field="lit_type" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.electrical)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="lit_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Qty</label>
+                    <input type="number" data-field="lit_qty" placeholder="Qty" onchange="onFieldChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- WAL Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-square"></i>
+                    WAL - Walls
+                </h5>
+                <span class="section-badge" id="badge-wal-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Material</label>
+                    <select data-field="wal_material" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.buildingMaterials)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Finish</label>
+                    <select data-field="wal_finish" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.finish)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="wal_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>SF</label>
+                    <input type="number" data-field="wal_sf" placeholder="Sq Ft" onchange="onFieldChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- FLR Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-th-large"></i>
+                    FLR - Floor
+                </h5>
+                <span class="section-badge" id="badge-flr-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Type</label>
+                    <select data-field="flr_type" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.floorTypes)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="flr_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>SF</label>
+                    <input type="number" data-field="flr_sf" placeholder="Sq Ft" onchange="onFieldChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- BB Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-minus"></i>
+                    BB - Baseboard
+                </h5>
+                <span class="section-badge" id="badge-bb-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Height</label>
+                    <select data-field="bb_height" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.baseboard)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="bb_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>LF</label>
+                    <input type="number" data-field="bb_lf" placeholder="Lin Ft" onchange="onFieldChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- DOR Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-door-closed"></i>
+                    DOR - Doors
+                </h5>
+                <span class="section-badge" id="badge-dor-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Type</label>
+                    <select data-field="dor_type" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.doorTypes)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="dor_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Qty</label>
+                    <input type="number" data-field="dor_qty" placeholder="Qty" onchange="onFieldChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- WDW Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-window-maximize"></i>
+                    WDW - Windows
+                </h5>
+                <span class="section-badge" id="badge-wdw-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Type</label>
+                    <select data-field="wdw_type" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.windowTypes)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Covers</label>
+                    <select data-field="wdw_covers" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.windowCovers)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="wdw_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+                <div class="scope-field">
+                    <label>Qty</label>
+                    <input type="number" data-field="wdw_qty" placeholder="Qty" onchange="onFieldChange(this)">
+                </div>
+            </div>
+        </div>
+
+        <!-- ELE Section -->
+        <div class="checklist-section">
+            <div class="section-header" onclick="toggleSection(this)">
+                <h5 class="section-title">
+                    <i class="fas fa-plug"></i>
+                    ELE - Electrical
+                </h5>
+                <span class="section-badge" id="badge-ele-${roomId}">Filled</span>
+                <i class="fas fa-chevron-down section-toggle"></i>
+            </div>
+            <div class="section-body">
+                <div class="scope-field">
+                    <label>Outlets</label>
+                    <input type="number" data-field="ele_outlets" placeholder="Qty" onchange="onFieldChange(this)">
+                </div>
+                <div class="scope-field">
+                    <label>Switches</label>
+                    <input type="number" data-field="ele_switches" placeholder="Qty" onchange="onFieldChange(this)">
+                </div>
+                <div class="scope-field">
+                    <label>Activity</label>
+                    <select data-field="ele_activity" onchange="onFieldChange(this)">${generateOptions(SCOPE_CODES.activity)}</select>
+                </div>
+            </div>
+        </div>
+
+        <!-- Activity Notes -->
+        <div class="activity-notes-section">
+            <label>
+                <i class="fas fa-sticky-note"></i>
+                Activity Notes
+            </label>
+            <textarea data-field="activity_notes" placeholder="Enter additional notes, activity codes, or special instructions for this room..." onchange="onFieldChange(this)"></textarea>
+        </div>
+    </div>
+    `;
+}
+
+// ==================== SECTION TOGGLE ====================
+function toggleSection(header) {
+    header.classList.toggle('collapsed');
+    header.nextElementSibling.classList.toggle('collapsed');
+}
+
+// ==================== FIELD CHANGE HANDLER ====================
+function onFieldChange(element) {
+    // Add visual feedback
+    if (element.value) {
+        element.classList.add('has-value');
+    } else {
+        element.classList.remove('has-value');
+    }
+
+    // Auto-save to memory
+    saveCurrentRoomData();
+    updateProgress();
+}
+
+// ==================== CLAIM SELECTION ====================
+document.getElementById('claim-select').addEventListener('change', async function() {
+    const claimId = this.value;
+    const selectedOption = this.options[this.selectedIndex];
+
+    if (!claimId) {
+        document.getElementById('rooms-container').style.display = 'none';
+        document.getElementById('empty-state').style.display = 'block';
+        document.getElementById('claim-info-banner').classList.remove('visible');
+        return;
+    }
+
+    // Update claim info banner
+    document.querySelector('#claim-name-display span').textContent = selectedOption.dataset.name;
+    document.getElementById('claim-address-display').textContent = selectedOption.dataset.address + ' ' + (selectedOption.dataset.city || '');
+    document.getElementById('claim-phone-display').textContent = selectedOption.dataset.phone || 'N/A';
+    document.getElementById('claim-insurance-display').textContent = selectedOption.dataset.insurance || 'N/A';
+    document.getElementById('claim-cause-display').textContent = selectedOption.dataset.cause || 'N/A';
+    document.getElementById('claim-info-banner').classList.add('visible');
+
+    // Update email subject
+    document.getElementById('email-subject').value = `Interior Scope - ${selectedOption.dataset.name}`;
+
+    showLoading('Loading rooms...');
+
+    try {
+        const response = await fetch(`/api/scope-checklist/rooms/${claimId}/`);
+        const data = await response.json();
+
+        if (data.success && data.rooms.length > 0) {
+            currentClaimId = claimId;
+            allRoomData = {};
+
+            // Generate tabs and content
+            let tabsHtml = '';
+            let contentHtml = '';
+
+            data.rooms.forEach((room, index) => {
+                allRoomData[room.id] = room.scope_data || {};
+                tabsHtml += `
+                    <div class="room-tab ${index === 0 ? 'active' : ''}" data-room-id="${room.id}" onclick="switchRoom('${room.id}')">
+                        <i class="fas fa-door-open tab-icon"></i>
+                        ${room.room_name}
+                    </div>`;
+                contentHtml += generateRoomChecklist(room, index);
+            });
+
+            document.getElementById('room-tabs').innerHTML = tabsHtml;
+            document.getElementById('room-checklists').innerHTML = contentHtml;
+
+            // Show first room
+            currentRoomId = data.rooms[0].id;
+            document.getElementById(`room-${currentRoomId}`).classList.add('active');
+            loadRoomData(currentRoomId);
+
+            document.getElementById('rooms-container').style.display = 'block';
+            document.getElementById('empty-state').style.display = 'none';
+
+            updateProgress();
+        } else {
+            showToast('No rooms found for this claim', 'error');
+            document.getElementById('rooms-container').style.display = 'none';
+            document.getElementById('empty-state').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        showToast('Error loading rooms', 'error');
+    }
+
+    hideLoading();
+});
+
+// ==================== ROOM SWITCHING ====================
+function switchRoom(roomId) {
+    if (currentRoomId) {
+        saveCurrentRoomData();
+    }
+
+    // Update tabs
+    document.querySelectorAll('.room-tab').forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.roomId === roomId) {
+            tab.classList.add('active');
+        }
+    });
+
+    // Update content
+    document.querySelectorAll('.room-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById(`room-${roomId}`).classList.add('active');
+
+    currentRoomId = roomId;
+    loadRoomData(roomId);
+}
+
+// ==================== DATA MANAGEMENT ====================
+function saveCurrentRoomData() {
+    if (!currentRoomId) return;
+
+    const roomContent = document.getElementById(`room-${currentRoomId}`);
+    const inputs = roomContent.querySelectorAll('select, input, textarea');
+
+    allRoomData[currentRoomId] = {};
+    inputs.forEach(input => {
+        const field = input.dataset.field;
+        if (field) {
+            allRoomData[currentRoomId][field] = input.value;
+        }
+    });
+
+    // Update tab status
+    const hasData = Object.values(allRoomData[currentRoomId]).some(v => v && v.toString().trim());
+    const tab = document.querySelector(`.room-tab[data-room-id="${currentRoomId}"]`);
+    if (hasData) {
+        tab.classList.add('completed');
+    } else {
+        tab.classList.remove('completed');
+    }
+}
+
+function loadRoomData(roomId) {
+    if (!allRoomData[roomId]) return;
+
+    const roomContent = document.getElementById(`room-${roomId}`);
+    const inputs = roomContent.querySelectorAll('select, input, textarea');
+
+    inputs.forEach(input => {
+        const field = input.dataset.field;
+        if (field && allRoomData[roomId][field]) {
+            input.value = allRoomData[roomId][field];
+            input.classList.add('has-value');
+        }
+    });
+}
+
+// ==================== API FUNCTIONS ====================
+async function saveProgress() {
+    saveCurrentRoomData();
+    if (!currentClaimId) {
+        showToast('Please select a claim first', 'error');
+        return;
+    }
+
+    showLoading('Saving...');
+
+    try {
+        const response = await fetch('/api/scope-checklist/save/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                claim_id: currentClaimId,
+                rooms_data: allRoomData
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showToast('Progress saved!');
+        } else {
+            showToast('Error saving: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Error saving', 'error');
+    }
+
+    hideLoading();
+}
+
+async function generatePDF() {
+    saveCurrentRoomData();
+    if (!currentClaimId) {
+        showToast('Please select a claim first', 'error');
+        return;
+    }
+
+    showLoading('Generating PDF...');
+
+    try {
+        const response = await fetch('/api/scope-checklist/generate-pdf/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                claim_id: currentClaimId,
+                rooms_data: allRoomData
+            })
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            window.open(url);
+            showToast('PDF generated!');
+        } else {
+            showToast('Error generating PDF', 'error');
+        }
+    } catch (error) {
+        showToast('Error generating PDF', 'error');
+    }
+
+    hideLoading();
+}
+
+async function sendEmail() {
+    saveCurrentRoomData();
+    const recipients = document.getElementById('email-recipients').value.trim();
+    const subject = document.getElementById('email-subject').value.trim();
+
+    if (!currentClaimId) {
+        showToast('Please select a claim first', 'error');
+        return;
+    }
+
+    if (!recipients) {
+        showToast('Please enter email recipients', 'error');
+        return;
+    }
+
+    showLoading('Sending email...');
+
+    try {
+        const response = await fetch('/api/scope-checklist/send-email/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                claim_id: currentClaimId,
+                rooms_data: allRoomData,
+                recipients: recipients,
+                subject: subject
+            })
+        });
+
+        const data = await response.json();
+        if (data.success) {
+            showToast('Email sent!');
+        } else {
+            showToast('Error: ' + data.error, 'error');
+        }
+    } catch (error) {
+        showToast('Error sending email', 'error');
+    }
+
+    hideLoading();
+}
+</script>
+{% endblock %}

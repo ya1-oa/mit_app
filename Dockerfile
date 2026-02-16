@@ -28,54 +28,48 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gnupg \
     ca-certificates \
     unzip \
+    libpq-dev \
+    gcc \
     curl \
     jq \
     # LibreOffice dependencies
     libreoffice-writer \
     libreoffice-calc \
     libreoffice-core \
+    python3-uno \
     && wget -q -O - https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
     && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
     && apt-get update \
     && apt-get install -y google-chrome-stable \
     && rm -rf /var/lib/apt/lists/*
 
-# Install ChromeDriver using Chrome for Testing API (NEW METHOD)
+# Replace the entire ChromeDriver installation section with:
 RUN echo "=== Installing ChromeDriver using Chrome for Testing ===" \
-    && CHROME_VERSION=$(google-chrome --version | awk '{print $3}') \
-    && echo "Detected Chrome version: $CHROME_VERSION" \
-    # Fetch the Chrome for Testing JSON API to get the correct download URL
-    && echo "Fetching Chrome for Testing versions..." \
+    && CHROME_VERSION=$(google-chrome --version | awk '{print $3}' | cut -d'.' -f1-3) \
+    && echo "Detected Chrome major version: $CHROME_VERSION" \
+    # Fetch all versions
     && curl -s "https://googlechromelabs.github.io/chrome-for-testing/known-good-versions-with-downloads.json" > /tmp/versions.json \
-    # Extract the ChromeDriver download URL for our exact Chrome version
+    # Find the latest patch version that matches our major version
     && CHROMEDRIVER_URL=$(jq -r --arg version "$CHROME_VERSION" \
-        '.versions[] | select(.version == $version) | .downloads.chromedriver[]? | select(.platform == "linux64") | .url' \
-        /tmp/versions.json) \
-    && echo "ChromeDriver URL: $CHROMEDRIVER_URL" \
-    # If exact version not found, get the latest stable
+        '.versions[] | select(.version | startswith($version)) | .downloads.chromedriver[]? | select(.platform == "linux64") | .url' \
+        /tmp/versions.json | tail -1) \
+    && echo "Matching ChromeDriver URL: $CHROMEDRIVER_URL" \
+    # Fallback to latest stable
     && if [ -z "$CHROMEDRIVER_URL" ] || [ "$CHROMEDRIVER_URL" = "null" ]; then \
-        echo "Exact version not found, using latest stable..." \
+        echo "Matching version not found, using latest stable..." \
         && curl -s "https://googlechromelabs.github.io/chrome-for-testing/last-known-good-versions-with-downloads.json" > /tmp/latest.json \
-        && CHROMEDRIVER_URL=$(jq -r '.channels.Stable.downloads.chromedriver[]? | select(.platform == "linux64") | .url' /tmp/latest.json) \
-        && echo "Latest stable ChromeDriver URL: $CHROMEDRIVER_URL"; \
+        && CHROMEDRIVER_URL=$(jq -r '.channels.Stable.downloads.chromedriver[]? | select(.platform == "linux64") | .url' /tmp/latest.json); \
     fi \
-    # Download and install ChromeDriver
-    && if [ -n "$CHROMEDRIVER_URL" ] && [ "$CHROMEDRIVER_URL" != "null" ]; then \
-        echo "Downloading ChromeDriver from: $CHROMEDRIVER_URL" \
-        && wget --no-verbose --tries=3 --timeout=30 "$CHROMEDRIVER_URL" -O /tmp/chromedriver.zip \
-        && echo "Extracting ChromeDriver..." \
-        && unzip /tmp/chromedriver.zip -d /tmp/ \
-        && find /tmp -name "chromedriver" -type f -exec cp {} /usr/local/bin/chromedriver \; \
-        && chmod +x /usr/local/bin/chromedriver \
-        && rm -rf /tmp/chromedriver* /tmp/*.json \
-        && echo "=== ChromeDriver Installation Successful ===" \
-        && /usr/local/bin/chromedriver --version \
-        && echo "=== Chrome and ChromeDriver Versions ===" \
-        && google-chrome --version \
-        && /usr/local/bin/chromedriver --version; \
-    else \
-        echo "ERROR: Failed to find ChromeDriver download URL" && exit 1; \
-    fi
+    # Download and install
+    && echo "Downloading ChromeDriver from: $CHROMEDRIVER_URL" \
+    && wget --no-verbose --tries=3 --timeout=30 "$CHROMEDRIVER_URL" -O /tmp/chromedriver.zip \
+    && unzip /tmp/chromedriver.zip -d /tmp/ \
+    && find /tmp -name "chromedriver" -type f -exec cp {} /usr/local/bin/chromedriver \; \
+    && chmod +x /usr/local/bin/chromedriver \
+    && rm -rf /tmp/chromedriver* /tmp/*.json \
+    && echo "=== Versions ===" \
+    && google-chrome --version \
+    && /usr/local/bin/chromedriver --version
 
 # Set environment variables
 ENV CHROME_DRIVER_PATH=/usr/local/bin/chromedriver \

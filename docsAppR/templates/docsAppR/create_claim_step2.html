@@ -1,0 +1,569 @@
+{% extends "account/base.html" %}
+
+{% block title %}Create Claim - Step 2{% endblock %}
+{% block page_title %}Create New Claim - Step 2{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://code.jquery.com/ui/1.13.2/themes/base/jquery-ui.css">
+<style>
+.room-item {
+    transition: all 0.2s;
+    border-left: 3px solid #dee2e6;
+    cursor: move;
+}
+
+.room-item:hover {
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    border-left-color: #007bff;
+}
+
+.drag-handle {
+    font-size: 1.2rem;
+    cursor: grab;
+}
+
+.drag-handle:hover {
+    color: #007bff !important;
+}
+
+.drag-handle:active {
+    cursor: grabbing;
+}
+
+.room-name-input {
+    border: 1px solid #dee2e6;
+    transition: border-color 0.15s ease-in-out;
+}
+
+.room-name-input:focus {
+    border-color: #80bdff;
+    outline: 0;
+    box-shadow: 0 0 0 0.2rem rgba(0,123,255,.25);
+}
+
+.work-type-select {
+    cursor: pointer;
+}
+
+.ui-sortable-placeholder {
+    background-color: #e3f2fd !important;
+    border: 2px dashed #007bff !important;
+    margin-bottom: 0.5rem !important;
+    min-height: 60px !important;
+    visibility: visible !important;
+}
+
+.ui-sortable-helper {
+    opacity: 0.8 !important;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.2) !important;
+    cursor: grabbing !important;
+}
+
+.work-type-config-item {
+    border-left: 3px solid #28a745;
+}
+
+.modal-xl {
+    max-width: 90%;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+
+            <!-- Stepper -->
+            <div class="stepper mb-4">
+                <div class="stepper-item completed">
+                    <div class="stepper-icon"><i class="fas fa-check"></i></div>
+                    <div class="stepper-label">Client Info</div>
+                </div>
+                <div class="stepper-item active">
+                    <div class="stepper-icon">2</div>
+                    <div class="stepper-label">Rooms</div>
+                </div>
+                <div class="stepper-item">
+                    <div class="stepper-icon">3</div>
+                    <div class="stepper-label">Review & Create</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-door-open"></i> Step 2: Add Rooms
+                    </h4>
+                </div>
+                <div class="card-body">
+
+                    <!-- Client Info Summary -->
+                    <div class="alert alert-info mb-4">
+                        <strong>{{ client.pOwner }}</strong> - {{ client.claimNumber }}
+                        <br>
+                        <small>{{ client.pAddress }}, {{ client.pCityStateZip }}</small>
+                    </div>
+
+                    <!-- Load from Existing Claim -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h6 class="mb-0">
+                                <i class="fas fa-copy"></i> Quick Start: Load Rooms from Existing Claim
+                            </h6>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-8">
+                                    <form id="load-rooms-form">
+                                        {% csrf_token %}
+                                        {{ selection_form.as_p }}
+                                    </form>
+                                </div>
+                                <div class="col-md-4 d-flex align-items-end">
+                                    <button type="button" class="btn btn-outline-primary w-100" id="load-rooms-btn">
+                                        <i class="fas fa-download"></i> Load Rooms
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Room Management -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-list"></i> Room List (<span id="room-count">0</span>)
+                            </h6>
+                            <button type="button" class="btn btn-sm btn-success" id="add-room-btn">
+                                <i class="fas fa-plus"></i> Add Room
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-light border mb-3">
+                                <i class="fas fa-info-circle text-primary"></i>
+                                <strong>Instructions:</strong> Enter room names and drag the <i class="fas fa-grip-vertical"></i> icon to reorder.
+                                When ready, click "Configure Work Types & Continue" to set LOS/TRAVEL/NA values.
+                            </div>
+
+                            <!-- Rooms Container -->
+                            <div id="rooms-container" class="mb-3">
+                                <div class="alert alert-secondary text-center" id="no-rooms-message">
+                                    <i class="fas fa-info-circle"></i> No rooms added yet. Click "Add Room" to get started.
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Navigation Buttons -->
+                    <div class="d-flex justify-content-between mt-4">
+                        <a href="{% url 'create_claim_step1' %}" class="btn btn-secondary">
+                            <i class="fas fa-arrow-left"></i> Back
+                        </a>
+                        <div>
+                            <button type="button" class="btn btn-outline-primary me-2" id="skip-rooms-btn">
+                                Skip Rooms - Continue <i class="fas fa-arrow-right"></i>
+                            </button>
+                            <button type="button" class="btn btn-primary btn-lg" id="configure-work-types-btn" style="display:none;">
+                                Configure Work Types & Continue <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+
+<!-- Room Template -->
+<template id="room-template">
+    <div class="room-item card mb-2" data-room-index="">
+        <div class="card-body p-3">
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="d-flex align-items-center flex-grow-1">
+                    <i class="fas fa-grip-vertical text-muted me-3 drag-handle" title="Drag to reorder"></i>
+                    <span class="room-number badge bg-primary me-3" style="min-width: 35px;">1</span>
+                    <input type="text" class="form-control room-name-input" placeholder="Enter room name (e.g., Living Room, Bedroom 1)">
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger delete-room-btn ms-2">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    </div>
+</template>
+
+<!-- Work Type Configuration Modal -->
+<div class="modal fade" id="workTypeModal" tabindex="-1" aria-labelledby="workTypeModalLabel" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="workTypeModalLabel">
+                    <i class="fas fa-cog"></i> Configure Work Types for Each Room
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-info">
+                    <i class="fas fa-info-circle"></i>
+                    <strong>Configure work type values for each room:</strong>
+                    <ul class="mb-0 mt-2">
+                        <li><span class="badge bg-light text-dark">No Value</span> Empty - Not yet assigned (Default)</li>
+                        <li><span class="badge bg-info">TBD</span> To Be Determined - Pending assignment</li>
+                        <li><span class="badge bg-secondary">NA</span> Not Applicable - No impact</li>
+                        <li><span class="badge bg-success">LOS</span> Line of Sight - Direct view/access to affected area</li>
+                        <li><span class="badge bg-warning text-dark">TRAVEL</span> Travel Area - Area we travel through to reach affected space</li>
+                    </ul>
+                </div>
+
+                <div class="mb-3">
+                    <button type="button" class="btn btn-sm btn-outline-light border" id="set-all-empty-btn">
+                        <i class="fas fa-eraser"></i> Set All Empty
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-info" id="set-all-tbd-btn">
+                        <i class="fas fa-question-circle"></i> Set All to TBD
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-secondary" id="set-all-na-btn">
+                        <i class="fas fa-ban"></i> Set All to NA
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary" id="set-all-los-btn">
+                        <i class="fas fa-check-square"></i> Set All to LOS
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" id="set-all-travel-btn">
+                        <i class="fas fa-route"></i> Set All to TRAVEL
+                    </button>
+                </div>
+
+                <!-- Work Type Configuration Container -->
+                <div id="modal-work-type-container"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="modal-back-btn">
+                    <i class="fas fa-arrow-left"></i> Back to Rooms
+                </button>
+                <button type="button" class="btn btn-success btn-lg" id="modal-save-btn">
+                    <i class="fas fa-save"></i> Save Rooms & Continue
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Work Type Config Template for Modal -->
+<template id="work-type-config-template">
+    <div class="work-type-config-item card mb-3" data-room-index="">
+        <div class="card-header bg-white">
+            <div class="d-flex justify-content-between align-items-center">
+                <strong class="room-name-display">Room Name</strong>
+                <span class="room-sequence-badge badge bg-primary">Room #</span>
+            </div>
+        </div>
+        <div class="card-body">
+            <div class="row work-types-container">
+                {% for work_type in work_types %}
+                <div class="col-md-3 mb-2">
+                    <label class="form-label small mb-1">
+                        <span class="badge bg-dark">{{ work_type.work_type_id }}</span>
+                        {{ work_type.name }}
+                    </label>
+                    <select class="form-select form-select-sm work-type-select" data-work-type="{{ work_type.work_type_id }}"{% if work_type.work_type_id != 100 %} data-follows-master="true"{% endif %}>
+                        <option value="" selected>No Value</option>
+                        <option value="TBD">TBD</option>
+                        <option value="NA">NA</option>
+                        <option value="LOS">LOS</option>
+                        <option value="TRAVEL">TRAVEL</option>
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</template>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://code.jquery.com/ui/1.13.2/jquery-ui.min.js"></script>
+
+<script>
+$(document).ready(function() {
+    let roomIndex = 0;
+
+    console.log('Step 2 initialized');
+
+    // Initialize sortable for drag-and-drop reordering
+    function initSortable() {
+        if ($("#rooms-container").hasClass('ui-sortable')) {
+            $("#rooms-container").sortable('destroy');
+        }
+
+        $("#rooms-container").sortable({
+            items: '.room-item',
+            handle: '.drag-handle',
+            placeholder: 'ui-sortable-placeholder',
+            forcePlaceholderSize: true,
+            cursor: 'grabbing',
+            tolerance: 'pointer',
+            opacity: 0.8,
+            start: function(e, ui) {
+                ui.placeholder.height(ui.item.height());
+                console.log('Drag started');
+            },
+            update: function(event, ui) {
+                updateRoomNumbers();
+                console.log('Rooms reordered');
+            },
+            stop: function(e, ui) {
+                console.log('Drag stopped');
+            }
+        });
+
+        console.log('Sortable initialized');
+    }
+
+    // Add new room
+    $('#add-room-btn').click(function() {
+        console.log('Adding room');
+        addRoom();
+    });
+
+    function addRoom(roomData = null) {
+        const template = document.getElementById('room-template');
+        const clone = template.content.cloneNode(true);
+        const roomDiv = clone.querySelector('.room-item');
+
+        roomIndex++;
+        roomDiv.setAttribute('data-room-index', roomIndex);
+
+        if (roomData) {
+            roomDiv.querySelector('.room-name-input').value = roomData.name || '';
+        }
+
+        $('#rooms-container').append(roomDiv);
+        $('#no-rooms-message').hide();
+        updateRoomNumbers();
+        updateButtons();
+        initSortable();
+
+        // Focus on the room name input
+        setTimeout(() => {
+            $(roomDiv).find('.room-name-input').focus();
+        }, 100);
+
+        console.log('Room added, index:', roomIndex);
+    }
+
+    // Delete room
+    $(document).on('click', '.delete-room-btn', function() {
+        if (confirm('Are you sure you want to delete this room?')) {
+            $(this).closest('.room-item').remove();
+            updateRoomNumbers();
+            updateButtons();
+
+            if ($('.room-item').length === 0) {
+                $('#no-rooms-message').show();
+            }
+            console.log('Room deleted');
+        }
+    });
+
+    // Update room numbers
+    function updateRoomNumbers() {
+        $('.room-item').each(function(index) {
+            $(this).find('.room-number').text(index + 1);
+        });
+        $('#room-count').text($('.room-item').length);
+    }
+
+    // Update button visibility
+    function updateButtons() {
+        if ($('.room-item').length > 0) {
+            $('#configure-work-types-btn').show();
+            $('#skip-rooms-btn').hide();
+        } else {
+            $('#configure-work-types-btn').hide();
+            $('#skip-rooms-btn').show();
+        }
+    }
+
+    // Load rooms from existing claim
+    $('#load-rooms-btn').click(function() {
+        const sourceClaimId = $('select[name="source_claim"]').val();
+
+        if (!sourceClaimId) {
+            alert('Please select a claim to load rooms from.');
+            return;
+        }
+
+        $.ajax({
+            url: '{% url "load_rooms_from_claim" %}',
+            type: 'POST',
+            data: {
+                'source_claim_id': sourceClaimId,
+                'csrfmiddlewaretoken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Clear existing rooms
+                    $('#rooms-container .room-item').remove();
+
+                    // Add loaded rooms
+                    response.rooms.forEach(function(room) {
+                        addRoom(room);
+                    });
+
+                    alert(response.message);
+                } else {
+                    alert('Error: ' + response.error);
+                }
+            },
+            error: function() {
+                alert('Failed to load rooms. Please try again.');
+            }
+        });
+    });
+
+    // Skip rooms
+    $('#skip-rooms-btn').click(function() {
+        window.location.href = '{% url "create_claim_step3" %}';
+    });
+
+    // Configure Work Types button - Open Modal
+    $('#configure-work-types-btn').click(function() {
+        // Validate room names
+        let hasError = false;
+        $('.room-item').each(function(index) {
+            const roomName = $(this).find('.room-name-input').val().trim();
+            if (!roomName) {
+                alert('Please enter a name for room ' + (index + 1));
+                hasError = true;
+                return false;
+            }
+        });
+
+        if (hasError) return;
+
+        // Build work type configuration in modal
+        buildWorkTypeModal();
+
+        // Show modal
+        const modal = new bootstrap.Modal(document.getElementById('workTypeModal'));
+        modal.show();
+    });
+
+    // Build work type configuration modal
+    function buildWorkTypeModal() {
+        const container = $('#modal-work-type-container');
+        container.empty();
+
+        $('.room-item').each(function(index) {
+            const roomName = $(this).find('.room-name-input').val() || `Room ${index + 1}`;
+            const roomIndex = $(this).data('room-index');
+
+            const template = document.getElementById('work-type-config-template');
+            const clone = template.content.cloneNode(true);
+            const configDiv = clone.querySelector('.work-type-config-item');
+
+            configDiv.setAttribute('data-room-index', roomIndex);
+            configDiv.querySelector('.room-name-display').textContent = roomName;
+            configDiv.querySelector('.room-sequence-badge').textContent = `Room ${index + 1}`;
+
+            container.append(configDiv);
+        });
+    }
+
+    // Set all work types buttons
+    $('#set-all-empty-btn').click(function() {
+        $('.work-type-select[data-work-type="100"]').val('').trigger('change');
+    });
+
+    $('#set-all-tbd-btn').click(function() {
+        $('.work-type-select[data-work-type="100"]').val('TBD').trigger('change');
+    });
+
+    $('#set-all-na-btn').click(function() {
+        $('.work-type-select[data-work-type="100"]').val('NA').trigger('change');
+    });
+
+    $('#set-all-los-btn').click(function() {
+        $('.work-type-select[data-work-type="100"]').val('LOS').trigger('change');
+    });
+
+    $('#set-all-travel-btn').click(function() {
+        $('.work-type-select[data-work-type="100"]').val('TRAVEL').trigger('change');
+    });
+
+    // Back button in modal
+    $('#modal-back-btn').click(function() {
+        bootstrap.Modal.getInstance(document.getElementById('workTypeModal')).hide();
+    });
+
+    // Save rooms from modal
+    $('#modal-save-btn').click(function() {
+        const rooms = [];
+
+        $('.room-item').each(function(index) {
+            const roomName = $(this).find('.room-name-input').val().trim();
+            const roomIndex = $(this).data('room-index');
+
+            // Get work type values from modal
+            const configDiv = $(`.work-type-config-item[data-room-index="${roomIndex}"]`);
+            const workTypes = {};
+
+            configDiv.find('.work-type-select').each(function() {
+                const wtId = $(this).data('work-type');
+                const value = $(this).val();
+                workTypes[wtId] = value;
+            });
+
+            rooms.push({
+                sequence: index + 1,
+                name: roomName,
+                work_types: workTypes
+            });
+        });
+
+        // Show loading state
+        const btn = $(this);
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Saving...');
+
+        // Save via AJAX
+        $.ajax({
+            url: '{% url "save_rooms" %}',
+            type: 'POST',
+            data: {
+                'rooms_data': JSON.stringify(rooms),
+                'csrfmiddlewaretoken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    window.location.href = '{% url "create_claim_step3" %}';
+                } else {
+                    alert('Error: ' + response.error);
+                    btn.prop('disabled', false).html('<i class="fas fa-save"></i> Save Rooms & Continue');
+                }
+            },
+            error: function() {
+                alert('Failed to save rooms. Please try again.');
+                btn.prop('disabled', false).html('<i class="fas fa-save"></i> Save Rooms & Continue');
+            }
+        });
+    });
+
+    // Handle master work type (WT100) changes - all other work types follow it
+    $(document).on('change', '.work-type-select[data-work-type="100"]', function() {
+        const masterValue = $(this).val();
+        const configContainer = $(this).closest('.work-type-config-item');
+
+        // Update all follower work types in this room
+        configContainer.find('.work-type-select[data-follows-master="true"]').each(function() {
+            $(this).val(masterValue);
+        });
+    });
+
+    // Initialize
+    initSortable();
+    updateButtons();
+});
+</script>
+{% endblock %}

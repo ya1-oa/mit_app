@@ -1,0 +1,1904 @@
+{% extends "account/base.html" %}
+{% load static humanize %}
+
+{% block title %}Claims Manager{% endblock %}
+{% block page_title %}Claims Manager{% endblock %}
+
+{% block content %}
+<div class="container-fluid claims-manager">
+    <!-- Header -->
+    <div class="manager-header">
+        <div class="header-left">
+            <h1 class="subtitle">Manage claims, edit details, and track checklist progress</h1>
+        </div>
+        <div class="header-right d-flex gap-2 align-items-center">
+            <button class="btn btn-outline-info btn-lg" id="dataCheckBtn" onclick="runDataCheck()">
+                <i class="fas fa-clipboard-check"></i> Data Check
+            </button>
+            <a href="{% url 'create_claim_step1' %}" class="btn btn-primary btn-lg">
+                <i class="fas fa-plus"></i> New Claim
+            </a>
+        </div>
+    </div>
+
+    <!-- Search and Filter Bar -->
+    <div class="search-filter-bar">
+        <form method="get" class="search-form">
+            <div class="search-controls">
+                <input type="text" name="search" class="form-control search-input"
+                       placeholder="Search by name, claim #, address..." value="{{ search }}">
+
+                <select name="sort" class="form-control filter-select">
+                    <option value="-created_at" {% if sort_by == '-created_at' %}selected{% endif %}>Newest First</option>
+                    <option value="created_at" {% if sort_by == 'created_at' %}selected{% endif %}>Oldest First</option>
+                    <option value="-completion_percent" {% if sort_by == '-completion_percent' %}selected{% endif %}>Most Complete</option>
+                    <option value="completion_percent" {% if sort_by == 'completion_percent' %}selected{% endif %}>Least Complete</option>
+                    <option value="pOwner" {% if sort_by == 'pOwner' %}selected{% endif %}>Name A-Z</option>
+                    <option value="-pOwner" {% if sort_by == '-pOwner' %}selected{% endif %}>Name Z-A</option>
+                    <option value="-updated_at" {% if sort_by == '-updated_at' %}selected{% endif %}>Recently Updated</option>
+                </select>
+
+                <select name="completion" class="form-control filter-select">
+                    <option value="" {% if not filter_completion %}selected{% endif %}>All Status</option>
+                    <option value="complete" {% if filter_completion == 'complete' %}selected{% endif %}>Complete (100%)</option>
+                    <option value="in_progress" {% if filter_completion == 'in_progress' %}selected{% endif %}>In Progress</option>
+                    <option value="not_started" {% if filter_completion == 'not_started' %}selected{% endif %}>Not Started</option>
+                    <option value="incomplete" {% if filter_completion == 'incomplete' %}selected{% endif %}>Incomplete</option>
+                </select>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-search"></i> Search
+                </button>
+                <a href="{% url 'claim_list' %}" class="btn btn-secondary">
+                    <i class="fas fa-times"></i> Clear
+                </a>
+            </div>
+        </form>
+    </div>
+
+    <!-- Main Content Area -->
+    <div class="main-content-area">
+        <!-- Claims List Section -->
+        <div class="claims-section" id="claimsSection">
+            <div class="section-header">
+                <h2>Claims <span class="badge bg-secondary">{{ page_obj.paginator.count }}</span></h2>
+                <div class="pagination-info">
+                    {% if page_obj %}
+                    Showing {{ page_obj.start_index }} - {{ page_obj.end_index }} of {{ page_obj.paginator.count }}
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Claims List -->
+            <div class="claims-list-container">
+                <div class="claims-list">
+                    {% for claim in page_obj %}
+                    <div class="claim-card" data-claim-id="{{ claim.id }}" onclick="selectClaim('{{ claim.id }}', this)">
+                        <div class="claim-card-header">
+                            <div class="claim-avatar">
+                                <span class="avatar">{{ claim.pOwner|first|upper|default:"?" }}</span>
+                            </div>
+                            <div class="claim-info">
+                                <div class="claim-name">{{ claim.pOwner|default:"Unknown Owner" }}</div>
+                                <div class="claim-meta">
+                                    {% if claim.claimNumber %}<code>{{ claim.claimNumber }}</code>{% endif %}
+                                    {% if claim.insuranceCo_Name %} - {{ claim.insuranceCo_Name }}{% endif %}
+                                </div>
+                            </div>
+                            <div class="claim-completion">
+                                <div class="completion-circle">
+                                    <svg viewBox="0 0 36 36" class="circular-chart">
+                                        <path class="circle-bg"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        <path class="circle-fill"
+                                            stroke-dasharray="{{ claim.completion_percent|default:0 }}, 100"
+                                            d="M18 2.0845 a 15.9155 15.9155 0 0 1 0 31.831 a 15.9155 15.9155 0 0 1 0 -31.831"/>
+                                        <text x="18" y="20.35" class="percentage">{{ claim.completion_percent|default:0 }}%</text>
+                                    </svg>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="claim-details">
+                            <div class="detail-row">
+                                <span class="detail-label"><i class="fas fa-map-marker-alt"></i></span>
+                                <span class="detail-value">{{ claim.pAddress|truncatewords:5|default:"No address" }}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label"><i class="fas fa-fire"></i></span>
+                                <span class="detail-value">{{ claim.causeOfLoss|default:"—" }}</span>
+                            </div>
+                            <div class="detail-row">
+                                <span class="detail-label"><i class="fas fa-calendar"></i></span>
+                                <span class="detail-value">{{ claim.dateOfLoss|date:"M d, Y"|default:"—" }}</span>
+                            </div>
+                        </div>
+
+                        <!-- Category Progress Indicators -->
+                        <div class="category-progress">
+                            {% if claim.mitigation and claim.mit_total > 0 %}
+                            <div class="category-item" title="MIT: {{ claim.mit_completed }}/{{ claim.mit_total }}">
+                                <span class="category-label mit">MIT</span>
+                                <div class="mini-progress">
+                                    <div class="mini-progress-fill mit" style="width: {% widthratio claim.mit_completed claim.mit_total 100 %}%"></div>
+                                </div>
+                                <span class="category-count">{{ claim.mit_completed }}/{{ claim.mit_total }}</span>
+                            </div>
+                            {% endif %}
+                            {% if claim.CPSCLNCONCGN and claim.cps_total > 0 %}
+                            <div class="category-item" title="CPS: {{ claim.cps_completed }}/{{ claim.cps_total }}">
+                                <span class="category-label cps">CPS</span>
+                                <div class="mini-progress">
+                                    <div class="mini-progress-fill cps" style="width: {% widthratio claim.cps_completed claim.cps_total 100 %}%"></div>
+                                </div>
+                                <span class="category-count">{{ claim.cps_completed }}/{{ claim.cps_total }}</span>
+                            </div>
+                            {% endif %}
+                            {% if claim.replacement and claim.ppr_total > 0 %}
+                            <div class="category-item" title="PPR: {{ claim.ppr_completed }}/{{ claim.ppr_total }}">
+                                <span class="category-label ppr">PPR</span>
+                                <div class="mini-progress">
+                                    <div class="mini-progress-fill ppr" style="width: {% widthratio claim.ppr_completed claim.ppr_total 100 %}%"></div>
+                                </div>
+                                <span class="category-count">{{ claim.ppr_completed }}/{{ claim.ppr_total }}</span>
+                            </div>
+                            {% endif %}
+                        </div>
+
+                        <div class="claim-footer">
+                            <div class="footer-left">
+                                <div class="claim-types">
+                                    {% if claim.CPSCLNCONCGN %}<span class="type-badge cps">CPS</span>{% endif %}
+                                    {% if claim.mitigation %}<span class="type-badge mit">MIT</span>{% endif %}
+                                    {% if claim.replacement %}<span class="type-badge ppr">PPR</span>{% endif %}
+                                </div>
+                            </div>
+                            <div class="footer-right">
+                                <span class="text-muted small">
+                                    <i class="fas fa-clock"></i> Updated {{ claim.updated_at|naturaltime }}
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    {% empty %}
+                    <div class="empty-state">
+                        <i class="fas fa-folder-open fa-4x"></i>
+                        <h3>No claims found</h3>
+                        <p>Try adjusting your search or create a new claim.</p>
+                        <a href="{% url 'create_claim_step1' %}" class="btn btn-primary">
+                            <i class="fas fa-plus"></i> Create New Claim
+                        </a>
+                    </div>
+                    {% endfor %}
+                </div>
+
+                <!-- Pagination -->
+                {% if page_obj.has_other_pages %}
+                <div class="pagination-bar">
+                    <nav>
+                        <ul class="pagination justify-content-center mb-0">
+                            {% if page_obj.has_previous %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page=1&search={{ search }}&sort={{ sort_by }}&completion={{ filter_completion }}">
+                                    <i class="fas fa-angle-double-left"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.previous_page_number }}&search={{ search }}&sort={{ sort_by }}&completion={{ filter_completion }}">
+                                    <i class="fas fa-angle-left"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+
+                            <li class="page-item disabled">
+                                <span class="page-link">Page {{ page_obj.number }} of {{ page_obj.paginator.num_pages }}</span>
+                            </li>
+
+                            {% if page_obj.has_next %}
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.next_page_number }}&search={{ search }}&sort={{ sort_by }}&completion={{ filter_completion }}">
+                                    <i class="fas fa-angle-right"></i>
+                                </a>
+                            </li>
+                            <li class="page-item">
+                                <a class="page-link" href="?page={{ page_obj.paginator.num_pages }}&search={{ search }}&sort={{ sort_by }}&completion={{ filter_completion }}">
+                                    <i class="fas fa-angle-double-right"></i>
+                                </a>
+                            </li>
+                            {% endif %}
+                        </ul>
+                    </nav>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Side Panel for Claim Details -->
+        <div class="side-panel" id="sidePanel">
+            <div class="side-panel-header">
+                <h3><i class="fas fa-file-alt"></i> Claim Details</h3>
+                <button class="close-panel" onclick="closeSidePanel()">&times;</button>
+            </div>
+
+            <div class="side-panel-content" id="sidePanelContent">
+                <div class="side-panel-placeholder" id="sidePanelPlaceholder">
+                    <div class="placeholder-content">
+                        <i class="fas fa-hand-pointer fa-3x"></i>
+                        <h3>Select a Claim</h3>
+                        <p>Click on a claim from the list to view and edit details.</p>
+                    </div>
+                </div>
+
+                <div class="side-panel-details" id="sidePanelDetails" style="display: none;">
+                    <!-- Content loaded via AJAX -->
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- JavaScript -->
+<script>
+// Global variables
+let currentSelectedClient = null;
+let saveTimeout = null;
+
+// Select claim and load details
+function selectClaim(clientId, element) {
+    console.log('Navigating to claim:', clientId);
+    // Navigate to the claim detail page
+    window.location.href = `/claims/${clientId}/`;
+}
+
+// Load client details via AJAX
+function loadClientDetails(clientId) {
+    const placeholder = document.getElementById('sidePanelPlaceholder');
+    const details = document.getElementById('sidePanelDetails');
+
+    placeholder.style.display = 'none';
+    details.innerHTML = '<div class="loading"><i class="fas fa-spinner fa-spin fa-2x"></i><p>Loading...</p></div>';
+    details.style.display = 'block';
+
+    fetch(`/api/client-details/${clientId}/`)
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displayClientDetails(data.client);
+                openSidePanel();
+            } else {
+                throw new Error(data.error || 'Failed to load');
+            }
+        })
+        .catch(error => {
+            details.innerHTML = `
+                <div class="error-state">
+                    <i class="fas fa-exclamation-triangle fa-3x"></i>
+                    <h3>Error Loading</h3>
+                    <p>${error.message}</p>
+                </div>
+            `;
+        });
+}
+
+// Display client details with tabs
+function displayClientDetails(clientData) {
+    const details = document.getElementById('sidePanelDetails');
+
+    function timeAgo(isoString) {
+        if (!isoString) return 'Never';
+        const date = new Date(isoString);
+        const now = new Date();
+        const seconds = Math.floor((now - date) / 1000);
+        if (seconds < 60) return `${seconds}s ago`;
+        const minutes = Math.floor(seconds / 60);
+        if (minutes < 60) return `${minutes}m ago`;
+        const hours = Math.floor(minutes / 60);
+        if (hours < 24) return `${hours}h ago`;
+        const days = Math.floor(hours / 24);
+        return `${days}d ago`;
+    }
+
+    details.innerHTML = `
+        <div class="edit-claim-tabs">
+            <div class="mini-tabs">
+                <button class="mini-tab-btn active" data-tab="info"><i class="fas fa-user"></i> Info</button>
+                <button class="mini-tab-btn" data-tab="claim"><i class="fas fa-file-contract"></i> Claim</button>
+                <button class="mini-tab-btn" data-tab="insurance"><i class="fas fa-shield-alt"></i> Insurance</button>
+                <button class="mini-tab-btn" data-tab="mortgage"><i class="fas fa-home"></i> Mortgage</button>
+                <button class="mini-tab-btn" data-tab="files"><i class="fas fa-folder"></i> Files</button>
+                <button class="mini-tab-btn" data-tab="rooms"><i class="fas fa-door-open"></i> Rooms</button>
+                <button class="mini-tab-btn" data-tab="checklist"><i class="fas fa-tasks"></i> Checklist</button>
+            </div>
+
+            <form id="edit-claim-form" class="edit-form">
+                <input type="hidden" name="client_id" value="${clientData.id}">
+
+                <!-- Info Tab -->
+                <div class="mini-tab-pane active" id="info-pane">
+                    ${createFieldGroup('Owner', 'pOwner', clientData.pOwner, 'text')}
+                    ${createFieldGroup('Address', 'pAddress', clientData.pAddress, 'text')}
+                    ${createFieldGroup('City/State/Zip', 'pCityStateZip', clientData.pCityStateZip, 'text')}
+                    ${createFieldGroup('Email', 'cEmail', clientData.cEmail, 'email')}
+                    ${createFieldGroup('Phone', 'cPhone', clientData.cPhone, 'text')}
+                    ${createFieldGroup('Co-Owner', 'coOwner2', clientData.coOwner2, 'text')}
+                </div>
+
+                <!-- Claim Tab -->
+                <div class="mini-tab-pane" id="claim-pane">
+                    ${createFieldGroup('Cause of Loss', 'causeOfLoss', clientData.causeOfLoss, 'text')}
+                    ${createFieldGroup('Date of Loss', 'dateOfLoss', clientData.dateOfLoss ? clientData.dateOfLoss.split('T')[0] : '', 'date')}
+                    ${createFieldGroup('Claim Number', 'claimNumber', clientData.claimNumber, 'text')}
+                    ${createFieldGroup('Policy Number', 'policyNumber', clientData.policyNumber, 'text')}
+                    ${createFieldGroup('Year Built', 'yearBuilt', clientData.yearBuilt, 'text')}
+                    ${createFieldGroup('Contract Date', 'contractDate', clientData.contractDate ? clientData.contractDate.split('T')[0] : '', 'date')}
+                    <div class="field-group">
+                        <label>Claim Types</label>
+                        <div class="claim-types-checkboxes">
+                            <label><input type="checkbox" name="mitigation" ${clientData.mitigation ? 'checked' : ''}> Mitigation</label>
+                            <label><input type="checkbox" name="CPSCLNCONCGN" ${clientData.CPSCLNCONCGN ? 'checked' : ''}> CPS</label>
+                            <label><input type="checkbox" name="replacement" ${clientData.replacement ? 'checked' : ''}> Replacement</label>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Insurance Tab -->
+                <div class="mini-tab-pane" id="insurance-pane">
+                    ${createFieldGroup('Insurance Company', 'insuranceCo_Name', clientData.insuranceCo_Name, 'text')}
+                    ${createFieldGroup('Desk Adjuster', 'deskAdjusterDA', clientData.deskAdjusterDA, 'text')}
+                    ${createFieldGroup('DA Email', 'DAEmail', clientData.DAEmail, 'email')}
+                    ${createFieldGroup('DA Phone', 'DAPhone', clientData.DAPhone, 'text')}
+                    ${createFieldGroup('Field Adjuster', 'fieldAdjusterName', clientData.fieldAdjusterName, 'text')}
+                    ${createFieldGroup('FA Email', 'fieldAdjEmail', clientData.fieldAdjEmail, 'email')}
+                    ${createFieldGroup('FA Phone', 'phoneFieldAdj', clientData.phoneFieldAdj, 'text')}
+                </div>
+
+                <!-- Mortgage Tab -->
+                <div class="mini-tab-pane" id="mortgage-pane">
+                    ${createFieldGroup('Mortgage Company', 'mortgageCo', clientData.mortgageCo, 'text')}
+                    ${createFieldGroup('Account Number', 'mortgageAccountCo', clientData.mortgageAccountCo, 'text')}
+                    ${createFieldGroup('Contact Person', 'mortgageContactPerson', clientData.mortgageContactPerson, 'text')}
+                    ${createFieldGroup('Phone', 'mortgagePhoneContact', clientData.mortgagePhoneContact, 'text')}
+                    ${createFieldGroup('Email', 'mortgageEmail', clientData.mortgageEmail, 'email')}
+                </div>
+
+                <!-- OneDrive Tab -->
+                <div class="mini-tab-pane" id="onedrive-pane">
+                    <div class="onedrive-section">
+                        <h4><i class="fas fa-folder"></i> OneDrive Folders</h4>
+                        ${clientData.onedrive_folders && clientData.onedrive_folders.length > 0 ?
+                            `<div class="onedrive-list">
+                                ${clientData.onedrive_folders.map(folder => `
+                                    <div class="onedrive-item">
+                                        <div class="item-icon"><i class="fas fa-folder-open"></i></div>
+                                        <div class="item-info">
+                                            <div class="item-name">${folder.folder_path}</div>
+                                            <div class="item-meta">Last synced: ${timeAgo(folder.last_synced)}</div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>` :
+                            '<div class="empty-state-mini"><i class="fas fa-folder-open"></i><p>No folders tracked</p></div>'
+                        }
+                    </div>
+
+                    <div class="onedrive-section">
+                        <h4><i class="fas fa-file"></i> OneDrive Files <span class="badge bg-primary">${clientData.onedrive_files ? clientData.onedrive_files.length : 0}</span></h4>
+                        ${clientData.onedrive_files && clientData.onedrive_files.length > 0 ?
+                            `<div class="onedrive-list">
+                                ${clientData.onedrive_files.map(file => `
+                                    <div class="onedrive-item">
+                                        <div class="item-icon"><i class="fas fa-file-excel"></i></div>
+                                        <div class="item-info">
+                                            <div class="item-name">${file.file_name}</div>
+                                            <div class="item-meta">
+                                                <span class="file-type">${file.file_type}</span>
+                                                <span class="sync-status-badge ${file.sync_status.toLowerCase().replace(/ /g, '-')}">${file.sync_status}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>` :
+                            '<div class="empty-state-mini"><i class="fas fa-file"></i><p>No files tracked yet</p></div>'
+                        }
+                    </div>
+
+                    <div class="onedrive-section">
+                        <h4><i class="fas fa-history"></i> Recent Sync Activity</h4>
+                        ${clientData.sync_logs && clientData.sync_logs.length > 0 ?
+                            `<div class="sync-logs-list">
+                                ${clientData.sync_logs.map(log => `
+                                    <div class="sync-log-item ${log.sync_status.toLowerCase()}">
+                                        <div class="log-icon">
+                                            <i class="fas ${log.sync_status === 'Success' ? 'fa-check-circle' : 'fa-exclamation-circle'}"></i>
+                                        </div>
+                                        <div class="log-info">
+                                            <div class="log-direction">${log.sync_direction}</div>
+                                            <div class="log-meta">
+                                                <span class="log-status">${log.sync_status}</span>
+                                                <span class="log-time">${timeAgo(log.timestamp)}</span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                `).join('')}
+                            </div>` :
+                            '<div class="empty-state-mini"><i class="fas fa-history"></i><p>No sync activity</p></div>'
+                        }
+                    </div>
+                </div>
+
+                <!-- Rooms Tab -->
+                <div class="mini-tab-pane" id="rooms-pane">
+                    <div class="rooms-header">
+                        <h4><i class="fas fa-door-open"></i> Rooms</h4>
+                        <span class="badge bg-primary">${clientData.rooms ? clientData.rooms.length : 0}</span>
+                    </div>
+                    ${clientData.rooms && clientData.rooms.length > 0 ?
+                        `<div class="rooms-list">
+                            ${clientData.rooms.map((room, index) => `
+                                <div class="room-item">
+                                    <div class="room-header">
+                                        <span class="room-number">#${room.sequence || index + 1}</span>
+                                        <span class="room-name">${room.room_name}</span>
+                                    </div>
+                                    <div class="room-work-types">
+                                        ${Object.entries(room.work_types || {}).map(([wtId, value]) => `
+                                            <span class="work-type-badge ${value.toLowerCase()}">${wtId}: ${value}</span>
+                                        `).join('')}
+                                    </div>
+                                </div>
+                            `).join('')}
+                        </div>` :
+                        '<div class="empty-state-mini"><i class="fas fa-door-open"></i><p>No rooms defined</p></div>'
+                    }
+                </div>
+
+                <!-- Checklist Tab -->
+                <div class="mini-tab-pane" id="checklist-pane">
+                    <div class="progress-container">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="overallProgress" style="width: ${clientData.completion_percent || 0}%"></div>
+                        </div>
+                        <div class="progress-text" id="progressText">${clientData.completion_percent || 0}% Complete</div>
+                    </div>
+
+                    <div class="checklist-items">
+                        ${clientData.checklist_items && clientData.checklist_items.length > 0 ?
+                            clientData.checklist_items.map(category => `
+                            <div class="checklist-category">
+                                <h5>${category.grouper}</h5>
+                                ${category.items.map(item => `
+                                <div class="checklist-item ${item.is_completed ? 'completed' : ''}" data-item-id="${item.id}">
+                                    <label class="checkbox-container">
+                                        <input type="checkbox" name="item_${item.id}" ${item.is_completed ? 'checked' : ''} onchange="updateChecklist(${item.id}, this.checked)">
+                                        <span class="checkmark"></span>
+                                        <span class="item-text">${item.document_type_display}</span>
+                                    </label>
+                                </div>
+                                `).join('')}
+                            </div>
+                            `).join('') :
+                            '<div class="empty-state-mini"><i class="fas fa-tasks"></i><p>No checklist items</p></div>'
+                        }
+                    </div>
+                </div>
+
+                <!-- Save Button -->
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-lg w-100">
+                        <i class="fas fa-save"></i> Save Changes
+                    </button>
+                </div>
+            </form>
+        </div>
+    `;
+
+    setupMiniTabs();
+    setupClaimFormSubmit();
+}
+
+// Helper to create field groups
+function createFieldGroup(label, name, value, type) {
+    return `
+        <div class="field-group">
+            <label>${label}</label>
+            <div class="field-with-edit">
+                <input type="${type}" name="${name}" value="${value || ''}" class="form-control" disabled>
+                <button type="button" class="edit-field-btn" onclick="toggleFieldEdit(this)"><i class="fas fa-edit"></i></button>
+            </div>
+        </div>
+    `;
+}
+
+// Toggle field edit mode
+function toggleFieldEdit(button) {
+    const fieldContainer = button.parentElement;
+    const input = fieldContainer.querySelector('input, textarea, select');
+
+    if (input.disabled) {
+        input.disabled = false;
+        input.focus();
+        input.select();
+        button.innerHTML = '<i class="fas fa-check"></i>';
+        button.classList.add('active');
+    } else {
+        input.disabled = true;
+        button.innerHTML = '<i class="fas fa-edit"></i>';
+        button.classList.remove('active');
+
+        // Auto-save on field blur
+        const form = document.getElementById('edit-claim-form');
+        if (form) saveClaimData(new FormData(form));
+    }
+}
+
+// Setup mini-tab switching
+function setupMiniTabs() {
+    const tabs = document.querySelectorAll('.mini-tab-btn');
+    const panes = document.querySelectorAll('.mini-tab-pane');
+
+    tabs.forEach(tab => {
+        tab.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+
+            tabs.forEach(t => t.classList.remove('active'));
+            panes.forEach(p => p.classList.remove('active'));
+
+            this.classList.add('active');
+            document.getElementById(targetTab + '-pane').classList.add('active');
+        });
+    });
+}
+
+// Setup claim form submission
+function setupClaimFormSubmit() {
+    const form = document.getElementById('edit-claim-form');
+    if (form) {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            saveClaimData(new FormData(this));
+        });
+    }
+}
+
+// Save claim data via AJAX
+function saveClaimData(formData) {
+    const clientId = formData.get('client_id');
+    showSavingIndicator();
+
+    fetch(`/claims/${clientId}/update/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSaveSuccess();
+            setTimeout(() => loadClientDetails(clientId), 1000);
+        } else {
+            throw new Error(data.error || 'Save failed');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showSaveError();
+    });
+}
+
+// Update checklist item
+function updateChecklist(itemId, isCompleted) {
+    const clientId = currentSelectedClient;
+    if (!clientId) return;
+
+    showSavingIndicator();
+
+    const formData = new FormData();
+    formData.append('item_id', itemId);
+    formData.append('is_completed', isCompleted);
+
+    fetch(`/claims/${clientId}/update/`, {
+        method: 'POST',
+        body: formData,
+        headers: {
+            'X-Requested-With': 'XMLHttpRequest',
+            'X-CSRFToken': getCookie('csrftoken')
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSaveSuccess();
+            // Update progress bar
+            const progressFill = document.getElementById('overallProgress');
+            const progressText = document.getElementById('progressText');
+            if (progressFill) progressFill.style.width = data.completion_percent + '%';
+            if (progressText) progressText.textContent = data.completion_percent + '% Complete';
+        } else {
+            throw new Error(data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showSaveError();
+    });
+}
+
+// Sync to OneDrive
+function syncToOneDrive(clientId) {
+    showSavingIndicator();
+    fetch(`/onedrive/sync/${clientId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSaveSuccess();
+            if (currentSelectedClient === clientId) {
+                setTimeout(() => loadClientDetails(clientId), 1000);
+            }
+        } else {
+            throw new Error(data.error);
+        }
+    })
+    .catch(error => {
+        showSaveError();
+        alert('Sync failed: ' + error.message);
+    });
+}
+
+// Push to OneDrive
+function pushToOneDrive(clientId) {
+    showSavingIndicator();
+    fetch(`/onedrive/push/${clientId}/`, {
+        method: 'POST',
+        headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showSaveSuccess();
+            if (currentSelectedClient === clientId) {
+                setTimeout(() => loadClientDetails(clientId), 1000);
+            }
+        } else {
+            throw new Error(data.error);
+        }
+    })
+    .catch(error => {
+        showSaveError();
+        alert('Push failed: ' + error.message);
+    });
+}
+
+// Open/close side panel
+function openSidePanel() {
+    document.getElementById('sidePanel').classList.add('active');
+    document.getElementById('claimsSection').classList.add('with-sidepanel');
+}
+
+function closeSidePanel() {
+    document.getElementById('sidePanel').classList.remove('active');
+    document.getElementById('claimsSection').classList.remove('with-sidepanel');
+    document.querySelectorAll('.claim-card').forEach(card => card.classList.remove('active'));
+    document.getElementById('sidePanelPlaceholder').style.display = 'flex';
+    document.getElementById('sidePanelDetails').style.display = 'none';
+    currentSelectedClient = null;
+}
+
+// Status indicators
+function showSavingIndicator() {
+    let indicator = document.getElementById('save-indicator');
+    if (!indicator) {
+        indicator = document.createElement('div');
+        indicator.id = 'save-indicator';
+        indicator.className = 'save-indicator';
+        document.body.appendChild(indicator);
+    }
+    indicator.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Saving...';
+    indicator.className = 'save-indicator saving';
+    indicator.style.display = 'block';
+}
+
+function showSaveSuccess() {
+    const indicator = document.getElementById('save-indicator');
+    if (indicator) {
+        indicator.innerHTML = '<i class="fas fa-check"></i> Saved!';
+        indicator.className = 'save-indicator success';
+        setTimeout(() => indicator.style.display = 'none', 2000);
+    }
+}
+
+function showSaveError() {
+    const indicator = document.getElementById('save-indicator');
+    if (indicator) {
+        indicator.innerHTML = '<i class="fas fa-times"></i> Error!';
+        indicator.className = 'save-indicator error';
+        setTimeout(() => indicator.style.display = 'none', 3000);
+    }
+}
+
+// Get CSRF token
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+
+// Data Check Audit
+function runDataCheck() {
+    const btn = document.getElementById('dataCheckBtn');
+    const origHTML = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Creating test claim...';
+
+    fetch("{% url 'data_check_audit' %}", {
+        method: 'POST',
+        headers: {'X-CSRFToken': getCookie('csrftoken'), 'Content-Type': 'application/json'},
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        if (!data.success) {
+            alert('Data Check failed: ' + (data.error || 'Unknown error'));
+            return;
+        }
+        showDataCheckResults(data);
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = origHTML;
+        alert('Data Check error: ' + err.message);
+    });
+}
+
+function showDataCheckResults(data) {
+    // Remove old modal if exists
+    let old = document.getElementById('dataCheckModal');
+    if (old) old.remove();
+
+    const testValues = data.test_values;
+    const files = data.files;
+
+    // Build summary counts
+    let totalMatches = 0, totalCells = 0;
+    files.forEach(f => f.cells && f.cells.forEach(c => { totalCells++; if (c.match) totalMatches++; }));
+
+    // Build per-field tracking: which fields appeared in which files
+    const fieldLocations = {};
+    Object.keys(testValues).forEach(k => { fieldLocations[k] = []; });
+    files.forEach(f => {
+        if (!f.cells) return;
+        f.cells.forEach(c => {
+            if (c.matched_field) {
+                fieldLocations[c.matched_field].push({
+                    file: f.filename, row: c.row, label: c.label
+                });
+            }
+        });
+    });
+
+    // Build HTML
+    let html = `
+    <div class="modal fade" id="dataCheckModal" tabindex="-1">
+      <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+          <div class="modal-header bg-info text-white">
+            <h5 class="modal-title"><i class="fas fa-clipboard-check"></i> Data Check Results — ${data.test_name}</h5>
+            <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div class="alert alert-${totalMatches === Object.keys(testValues).length ? 'success' : 'warning'} mb-3">
+              <strong>Test Claim:</strong> ${data.test_name} (ID: ${data.claim_id}) &mdash;
+              <strong>${totalMatches}</strong> / ${Object.keys(testValues).length} fields matched across ${files.length} files
+            </div>
+
+            <!-- Tab nav -->
+            <ul class="nav nav-tabs" id="dcTabs">
+              <li class="nav-item"><a class="nav-link active" data-bs-toggle="tab" href="#dcFields">By Field</a></li>
+              <li class="nav-item"><a class="nav-link" data-bs-toggle="tab" href="#dcFiles">By File</a></li>
+            </ul>
+            <div class="tab-content pt-3" id="dcTabContent">
+
+              <!-- BY FIELD TAB -->
+              <div class="tab-pane fade show active" id="dcFields">
+                <table class="table table-sm table-bordered" style="font-size:0.85em">
+                  <thead class="table-light"><tr>
+                    <th>Field</th><th>Test Value</th><th>Found In</th>
+                  </tr></thead>
+                  <tbody>`;
+
+    Object.keys(testValues).sort().forEach(field => {
+        const val = testValues[field];
+        const locs = fieldLocations[field] || [];
+        const cls = locs.length > 0 ? '' : 'table-danger';
+        const locStr = locs.length > 0
+            ? locs.map(l => `<small>${l.file} R${l.row} <span class="text-muted">[${l.label}]</span></small>`).join('<br>')
+            : '<span class="text-danger">NOT FOUND</span>';
+        html += `<tr class="${cls}"><td><code>${field}</code></td><td><small>${val}</small></td><td>${locStr}</td></tr>`;
+    });
+
+    html += `</tbody></table></div>
+
+              <!-- BY FILE TAB -->
+              <div class="tab-pane fade" id="dcFiles">`;
+
+    files.forEach(f => {
+        if (f.error) {
+            html += `<div class="alert alert-danger"><strong>${f.filename}</strong>: ${f.error}</div>`;
+            return;
+        }
+        const cells = f.cells || [];
+        const matched = cells.filter(c => c.match).length;
+        const unmatched = cells.filter(c => c.value && !c.match).length;
+        html += `
+        <details class="mb-2">
+          <summary style="cursor:pointer">
+            <strong>${f.filename}</strong> &mdash;
+            <span class="text-success">${matched} matched</span>,
+            <span class="${unmatched ? 'text-warning' : 'text-muted'}">${unmatched} unmatched</span>,
+            ${cells.length} total cells
+          </summary>
+          <table class="table table-sm table-bordered mt-1" style="font-size:0.8em">
+            <thead class="table-light"><tr><th>Row</th><th>Label (Col B)</th><th>Value (Col C)</th><th>Mapped Field</th></tr></thead>
+            <tbody>`;
+        cells.forEach(c => {
+            const cls = c.match ? 'table-success' : (c.value ? 'table-warning' : '');
+            html += `<tr class="${cls}"><td>${c.row}</td><td>${c.label}</td><td><small>${c.value}</small></td><td>${c.matched_field || ''}</td></tr>`;
+        });
+        html += `</tbody></table></details>`;
+    });
+
+    html += `</div></div></div>
+          <div class="modal-footer">
+            <a href="/claims/${data.claim_id}/" class="btn btn-sm btn-outline-primary" target="_blank">
+              <i class="fas fa-external-link-alt"></i> Open Test Claim
+            </a>
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div></div></div>`;
+
+    document.body.insertAdjacentHTML('beforeend', html);
+    new bootstrap.Modal(document.getElementById('dataCheckModal')).show();
+}
+</script>
+
+<style>
+/* Claims Manager Styles */
+.claims-manager {
+    padding: 20px;
+    max-width: 1800px;
+    margin: 0 auto;
+}
+
+.manager-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 2px solid #eee;
+}
+
+.breadcrumb-nav {
+    margin-bottom: 12px;
+}
+
+.back-to-site-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    color: #495057;
+    text-decoration: none;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.back-to-site-link:hover {
+    background: #e9ecef;
+    border-color: #adb5bd;
+    color: #212529;
+    transform: translateX(-2px);
+}
+
+.back-to-site-link i {
+    font-size: 12px;
+}
+
+.manager-header h1 {
+    margin: 0;
+    color: #333;
+    font-size: 1.8em;
+}
+
+.manager-header h1 i {
+    margin-right: 10px;
+    color: #4CC790;
+}
+
+.manager-header .subtitle {
+    margin: 5px 0 0;
+    color: #666;
+    font-size: 14px;
+}
+
+/* Search Bar */
+.search-filter-bar {
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    margin-bottom: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    border: 1px solid #eaeaea;
+}
+
+.search-controls {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.search-input {
+    flex: 1;
+    min-width: 250px;
+}
+
+.filter-select {
+    min-width: 150px;
+}
+
+/* Main Content Area */
+.main-content-area {
+    display: flex;
+    gap: 20px;
+    min-height: 700px;
+}
+
+.claims-section {
+    flex: 1;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    border: 1px solid #eaeaea;
+    transition: flex 0.3s ease;
+    display: flex;
+    flex-direction: column;
+}
+
+.claims-section.with-sidepanel {
+    flex: 0 0 55%;
+}
+
+.section-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.section-header h2 {
+    margin: 0;
+    font-size: 1.3em;
+    color: #333;
+}
+
+/* Claims List */
+.claims-list-container {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+}
+
+.claims-list {
+    flex: 1;
+    overflow-y: auto;
+    max-height: 600px;
+}
+
+.claim-card {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    border-left: 3px solid transparent;
+}
+
+.claim-card:hover {
+    background: #f8f9fa;
+    border-left-color: #4CC790;
+}
+
+.claim-card.active {
+    background: #e8f4fd;
+    border-left-color: #007bff;
+}
+
+.claim-card-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    margin-bottom: 12px;
+}
+
+.claim-avatar .avatar {
+    width: 45px;
+    height: 45px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #4CC790, #36a2eb);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.claim-info {
+    flex: 1;
+}
+
+.claim-name {
+    font-weight: 600;
+    color: #333;
+    font-size: 16px;
+    margin-bottom: 3px;
+}
+
+.claim-meta {
+    font-size: 12px;
+    color: #777;
+}
+
+.claim-meta code {
+    background: #f0f0f0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-size: 11px;
+}
+
+/* Completion Circle */
+.completion-circle {
+    width: 50px;
+    height: 50px;
+}
+
+.circular-chart {
+    display: block;
+    max-width: 100%;
+}
+
+.circle-bg {
+    fill: none;
+    stroke: #eee;
+    stroke-width: 3;
+}
+
+.circle-fill {
+    fill: none;
+    stroke: #4CC790;
+    stroke-width: 3;
+    stroke-linecap: round;
+}
+
+.percentage {
+    fill: #666;
+    font-size: 0.35em;
+    text-anchor: middle;
+}
+
+/* Claim Details */
+.claim-details {
+    margin-bottom: 12px;
+}
+
+.detail-row {
+    display: flex;
+    align-items: center;
+    margin-bottom: 6px;
+    font-size: 13px;
+}
+
+.detail-label {
+    width: 25px;
+    color: #999;
+}
+
+.detail-label i {
+    width: 16px;
+    height: 16px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.detail-value {
+    color: #555;
+}
+
+/* Claim Footer */
+.claim-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.footer-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.claim-types {
+    display: flex;
+    gap: 5px;
+}
+
+.type-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 10px;
+    color: white;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.type-badge.mit { background: #FFA500; }
+.type-badge.cps { background: #4CC790; }
+.type-badge.ppr { background: #FF6B6B; }
+
+/* Category Progress Indicators */
+.category-progress {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 12px;
+    padding: 10px;
+    background: #f8f9fa;
+    border-radius: 6px;
+}
+
+.category-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 120px;
+}
+
+.category-label {
+    padding: 2px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    color: white;
+    text-transform: uppercase;
+    min-width: 32px;
+    text-align: center;
+}
+
+.category-label.mit { background: #FFA500; }
+.category-label.cps { background: #4CC790; }
+.category-label.ppr { background: #FF6B6B; }
+
+.mini-progress {
+    flex: 1;
+    height: 6px;
+    background: #e9ecef;
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.mini-progress-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s ease;
+}
+
+.mini-progress-fill.mit { background: linear-gradient(90deg, #FFA500, #FFB733); }
+.mini-progress-fill.cps { background: linear-gradient(90deg, #4CC790, #5ED9A3); }
+.mini-progress-fill.ppr { background: linear-gradient(90deg, #FF6B6B, #FF8585); }
+
+.category-count {
+    font-size: 11px;
+    color: #666;
+    font-weight: 600;
+    min-width: 35px;
+    text-align: right;
+}
+
+.sync-badge {
+    padding: 3px 10px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.sync-badge.synced { background: #d4edda; color: #155724; }
+.sync-badge.pending { background: #fff3cd; color: #856404; }
+.sync-badge.error { background: #f8d7da; color: #721c24; }
+.sync-badge.manual { background: #e9ecef; color: #6c757d; }
+
+.footer-right {
+    display: flex;
+    gap: 8px;
+}
+
+/* Icon Buttons - CENTERED PROPERLY */
+.icon-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8f9fa;
+    border: 1px solid #dee2e6;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+}
+
+.icon-btn i {
+    font-size: 14px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.icon-btn:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.15);
+}
+
+.icon-btn.sync-btn { color: #4CC790; }
+.icon-btn.sync-btn:hover { background: #4CC790; color: white; border-color: #4CC790; }
+
+.icon-btn.push-btn { color: #007bff; }
+.icon-btn.push-btn:hover { background: #007bff; color: white; border-color: #007bff; }
+
+/* Side Panel */
+.side-panel {
+    flex: 0 0 45%;
+    background: white;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+    border: 1px solid #eaeaea;
+    display: flex;
+    flex-direction: column;
+    transform: translateX(100%);
+    opacity: 0;
+    transition: all 0.3s ease;
+    position: relative;
+}
+
+.side-panel.active {
+    transform: translateX(0);
+    opacity: 1;
+}
+
+.side-panel-header {
+    padding: 20px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.side-panel-header h3 {
+    margin: 0;
+    font-size: 1.2em;
+    color: #333;
+}
+
+.side-panel-header h3 i {
+    margin-right: 8px;
+    color: #4CC790;
+}
+
+.close-panel {
+    background: none;
+    border: none;
+    font-size: 28px;
+    cursor: pointer;
+    color: #999;
+    line-height: 1;
+    padding: 0;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.close-panel:hover {
+    color: #333;
+}
+
+.side-panel-content {
+    flex: 1;
+    overflow-y: auto;
+}
+
+.side-panel-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    text-align: center;
+    color: #999;
+    padding: 40px;
+}
+
+.placeholder-content i {
+    margin-bottom: 20px;
+    color: #ddd;
+}
+
+.placeholder-content h3 {
+    margin: 0 0 10px;
+    color: #666;
+}
+
+/* Loading/Error States */
+.loading, .error-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 20px;
+    text-align: center;
+    color: #666;
+}
+
+.loading i, .error-state i {
+    margin-bottom: 15px;
+}
+
+.error-state {
+    color: #dc3545;
+}
+
+/* Edit Form Tabs */
+.edit-claim-tabs {
+    padding: 20px;
+}
+
+.mini-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    border-bottom: 2px solid #eee;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+}
+
+.mini-tab-btn {
+    padding: 8px 12px;
+    background: none;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    color: #777;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.mini-tab-btn i {
+    font-size: 12px;
+}
+
+.mini-tab-btn:hover {
+    background: #f0f0f0;
+    color: #333;
+}
+
+.mini-tab-btn.active {
+    background: #4CC790;
+    color: white;
+}
+
+.mini-tab-pane {
+    display: none;
+}
+
+.mini-tab-pane.active {
+    display: block;
+}
+
+/* Field Groups */
+.field-group {
+    margin-bottom: 15px;
+}
+
+.field-group label {
+    display: block;
+    font-weight: 600;
+    color: #555;
+    font-size: 12px;
+    margin-bottom: 5px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.field-with-edit {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.field-with-edit input,
+.field-with-edit select,
+.field-with-edit textarea {
+    flex: 1;
+    padding: 10px 12px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    font-size: 14px;
+}
+
+.field-with-edit input:disabled {
+    background: #f8f9fa;
+    color: #495057;
+}
+
+.field-with-edit input:not(:disabled) {
+    border-color: #4CC790;
+    box-shadow: 0 0 0 2px rgba(76, 199, 144, 0.1);
+}
+
+/* Edit Field Button - CENTERED */
+.edit-field-btn {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f0f0f0;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    padding: 0;
+    flex-shrink: 0;
+}
+
+.edit-field-btn i {
+    font-size: 14px;
+    line-height: 1;
+}
+
+.edit-field-btn:hover {
+    background: #4CC790;
+    color: white;
+    border-color: #4CC790;
+}
+
+.edit-field-btn.active {
+    background: #4CC790;
+    color: white;
+    border-color: #4CC790;
+}
+
+/* Claim Types Checkboxes */
+.claim-types-checkboxes {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 15px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 4px;
+}
+
+.claim-types-checkboxes label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+/* OneDrive Sections */
+.onedrive-section {
+    margin-bottom: 25px;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #eee;
+}
+
+.onedrive-section:last-child {
+    border-bottom: none;
+}
+
+.onedrive-section h4 {
+    margin: 0 0 15px;
+    font-size: 14px;
+    color: #333;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.onedrive-section h4 i {
+    width: 20px;
+    height: 20px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #007bff;
+}
+
+.onedrive-list, .sync-logs-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.onedrive-item, .sync-log-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.item-icon, .log-icon {
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    color: #007bff;
+    flex-shrink: 0;
+}
+
+.item-info, .log-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.item-name, .log-direction {
+    font-weight: 600;
+    color: #333;
+    font-size: 13px;
+    margin-bottom: 4px;
+    word-wrap: break-word;
+}
+
+.item-meta, .log-meta {
+    font-size: 11px;
+    color: #666;
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.file-type {
+    background: #e9ecef;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+.sync-status-badge {
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 600;
+}
+
+.sync-status-badge.synced { background: #d4edda; color: #155724; }
+.sync-status-badge.pending-upload,
+.sync-status-badge.pending-download { background: #fff3cd; color: #856404; }
+.sync-status-badge.error { background: #f8d7da; color: #721c24; }
+
+.sync-log-item.success .log-icon { color: #28a745; }
+.sync-log-item.failed .log-icon { color: #dc3545; }
+
+/* Rooms Section */
+.rooms-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+}
+
+.rooms-header h4 {
+    margin: 0;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.rooms-header h4 i {
+    color: #007bff;
+}
+
+.rooms-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.room-item {
+    padding: 12px;
+    background: #f8f9fa;
+    border-radius: 6px;
+    border: 1px solid #e9ecef;
+}
+
+.room-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 8px;
+}
+
+.room-number {
+    background: #007bff;
+    color: white;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.room-name {
+    font-weight: 600;
+    color: #333;
+}
+
+.room-work-types {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+}
+
+.work-type-badge {
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+}
+
+.work-type-badge.los { background: #d4edda; color: #155724; }
+.work-type-badge.travel { background: #fff3cd; color: #856404; }
+.work-type-badge.na { background: #e9ecef; color: #6c757d; }
+
+/* Checklist Section */
+.progress-container {
+    margin-bottom: 20px;
+}
+
+.progress-bar {
+    height: 8px;
+    background: #e9ecef;
+    border-radius: 4px;
+    overflow: hidden;
+    margin-bottom: 5px;
+}
+
+.progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #4CC790, #36a2eb);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.progress-text {
+    font-size: 12px;
+    color: #666;
+    text-align: right;
+}
+
+.checklist-items {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.checklist-category {
+    margin-bottom: 20px;
+}
+
+.checklist-category h5 {
+    margin: 0 0 12px;
+    font-size: 13px;
+    color: #333;
+    padding-bottom: 8px;
+    border-bottom: 1px solid #eee;
+}
+
+.checklist-item {
+    padding: 10px 0;
+    border-bottom: 1px solid #f5f5f5;
+}
+
+.checklist-item.completed {
+    background: #f0fff0;
+    padding-left: 10px;
+    margin-left: -10px;
+    padding-right: 10px;
+    margin-right: -10px;
+}
+
+.checkbox-container {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    font-size: 13px;
+}
+
+.checkbox-container input[type="checkbox"] {
+    margin-right: 10px;
+    width: 18px;
+    height: 18px;
+    cursor: pointer;
+}
+
+.item-text {
+    color: #555;
+}
+
+.checklist-item.completed .item-text {
+    color: #28a745;
+    text-decoration: line-through;
+}
+
+/* Form Actions */
+.form-actions {
+    margin-top: 25px;
+    padding-top: 20px;
+    border-top: 1px solid #eee;
+}
+
+/* Empty State */
+.empty-state, .empty-state-mini {
+    text-align: center;
+    padding: 40px 20px;
+    color: #999;
+}
+
+.empty-state i, .empty-state-mini i {
+    margin-bottom: 15px;
+    color: #ddd;
+}
+
+.empty-state h3 {
+    margin: 0 0 10px;
+    color: #666;
+}
+
+.empty-state-mini {
+    padding: 20px;
+}
+
+.empty-state-mini i {
+    font-size: 24px;
+}
+
+.empty-state-mini p {
+    margin: 0;
+    font-size: 12px;
+}
+
+/* Save Indicator */
+.save-indicator {
+    position: fixed;
+    top: 20px;
+    right: 20px;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-size: 14px;
+    font-weight: 600;
+    z-index: 9999;
+    display: none;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.save-indicator.saving {
+    background: #ffc107;
+    color: #212529;
+}
+
+.save-indicator.success {
+    background: #28a745;
+    color: white;
+}
+
+.save-indicator.error {
+    background: #dc3545;
+    color: white;
+}
+
+.save-indicator i {
+    margin-right: 8px;
+}
+
+/* Pagination */
+.pagination-bar {
+    padding: 15px 20px;
+    border-top: 1px solid #eee;
+    background: #fafafa;
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .main-content-area {
+        flex-direction: column;
+    }
+
+    .claims-section.with-sidepanel {
+        flex: 1;
+    }
+
+    .side-panel {
+        flex: 1;
+        transform: translateY(20px);
+    }
+
+    .side-panel.active {
+        transform: translateY(0);
+    }
+}
+
+@media (max-width: 768px) {
+    .manager-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 15px;
+    }
+
+    .search-controls {
+        flex-direction: column;
+    }
+
+    .search-input, .filter-select {
+        width: 100%;
+    }
+
+    .mini-tabs {
+        overflow-x: auto;
+        flex-wrap: nowrap;
+        padding-bottom: 15px;
+    }
+}
+</style>
+{% endblock %}

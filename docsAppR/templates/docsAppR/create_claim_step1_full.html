@@ -1,0 +1,755 @@
+{% extends "account/base.html" %}
+
+{% block title %}Create Claim - Step 1{% endblock %}
+{% block page_title %}Create New Claim - Step 1 (Full){% endblock %}
+
+{% block extra_css %}
+<style>
+    .nav-pills .nav-link {
+        color: #495057;
+    }
+    .nav-pills .nav-link.active {
+        background-color: var(--primary-color);
+    }
+    .tab-content {
+        padding: 20px;
+        background: white;
+        border: 1px solid #dee2e6;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+    }
+    .nav-pills {
+        border-bottom: 2px solid #dee2e6;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-lg-11 mx-auto">
+
+            <!-- Stepper -->
+            <div class="stepper mb-4">
+                <div class="stepper-item active">
+                    <div class="stepper-icon">1</div>
+                    <div class="stepper-label">Client Info</div>
+                </div>
+                <div class="stepper-item">
+                    <div class="stepper-icon">2</div>
+                    <div class="stepper-label">Rooms</div>
+                </div>
+                <div class="stepper-item">
+                    <div class="stepper-icon">3</div>
+                    <div class="stepper-label">Review & Create</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-user-plus"></i> Step 1: Complete Client Information
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="post" id="clientForm">
+                        {% csrf_token %}
+
+                        <!-- Navigation Tabs -->
+                        <ul class="nav nav-pills mb-0" id="formTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="customer-tab" data-bs-toggle="pill" data-bs-target="#customer" type="button" role="tab">
+                                    <i class="fas fa-user"></i> Customer
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="claim-tab" data-bs-toggle="pill" data-bs-target="#claim" type="button" role="tab">
+                                    <i class="fas fa-file-alt"></i> Claim
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="insurance-tab" data-bs-toggle="pill" data-bs-target="#insurance" type="button" role="tab">
+                                    <i class="fas fa-shield-alt"></i> Insurance
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="mortgage-tab" data-bs-toggle="pill" data-bs-target="#mortgage" type="button" role="tab">
+                                    <i class="fas fa-home"></i> Mortgage
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="contractor-tab" data-bs-toggle="pill" data-bs-target="#contractor" type="button" role="tab">
+                                    <i class="fas fa-hard-hat"></i> Contractor
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="ale-tab" data-bs-toggle="pill" data-bs-target="#ale" type="button" role="tab">
+                                    <i class="fas fa-key"></i> ALE
+                                </button>
+                            </li>
+                        </ul>
+
+                        <!-- Tab Content -->
+                        <div class="tab-content" id="formTabContent">
+
+                            <!-- Customer Tab -->
+                            <div class="tab-pane fade show active" id="customer" role="tabpanel">
+                                <h5 class="mb-3">Property Owner Information</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.pOwner.label_tag }}</label>
+                                        {{ form.pOwner }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.cEmail.label_tag }}</label>
+                                        {{ form.cEmail }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">{{ form.pAddress.label_tag }}</label>
+                                        {{ form.pAddress }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.cPhone.label_tag }}</label>
+                                        {{ form.cPhone }}
+                                    </div>
+                                </div>
+                                <div class="row mb-4">
+                                    <div class="col-md-12">
+                                        <label class="form-label">{{ form.pCityStateZip.label_tag }}</label>
+                                        {{ form.pCityStateZip }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Co-Owner (Optional)</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.coOwner2.label_tag }}</label>
+                                        {{ form.coOwner2 }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.cEmail2.label_tag }}</label>
+                                        {{ form.cEmail2 }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">{{ form.cAddress2.label_tag }}</label>
+                                        {{ form.cAddress2 }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.cPhone2.label_tag }}</label>
+                                        {{ form.cPhone2 }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label class="form-label">{{ form.cCityStateZip2.label_tag }}</label>
+                                        {{ form.cCityStateZip2 }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Claim Tab -->
+                            <div class="tab-pane fade" id="claim" role="tabpanel">
+                                <h5 class="mb-3">Claim Details</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">Cause of Loss</label>
+                                        {% with cause_value=form.causeOfLoss.value|default:'' %}
+                                        {% with is_standard=cause_value|default:'Fire' %}
+                                        <select class="form-select" id="causeOfLossSelect" onchange="handleCauseOfLossChange(this)">
+                                            <option value="">Select...</option>
+                                            <option value="Fire" {% if cause_value == 'Fire' %}selected{% endif %}>Fire</option>
+                                            <option value="Water" {% if cause_value == 'Water' %}selected{% endif %}>Water</option>
+                                            <option value="Wind" {% if cause_value == 'Wind' %}selected{% endif %}>Wind</option>
+                                            <option value="Hail" {% if cause_value == 'Hail' %}selected{% endif %}>Hail</option>
+                                            <option value="Storm" {% if cause_value == 'Storm' %}selected{% endif %}>Storm</option>
+                                            <option value="Other" {% if cause_value and cause_value != 'Fire' and cause_value != 'Water' and cause_value != 'Wind' and cause_value != 'Hail' and cause_value != 'Storm' %}selected{% endif %}>Other (specify)</option>
+                                        </select>
+                                        <input type="text" class="form-control mt-2" id="causeOfLossCustom"
+                                               placeholder="Enter custom cause of loss"
+                                               value="{{ cause_value }}"
+                                               style="{% if not cause_value or cause_value == 'Fire' or cause_value == 'Water' or cause_value == 'Wind' or cause_value == 'Hail' or cause_value == 'Storm' %}display:none;{% endif %}">
+                                        <input type="hidden" id="causeOfLossHidden" name="causeOfLoss" value="{{ cause_value }}">
+                                        {% endwith %}
+                                        {% endwith %}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.dateOfLoss.label_tag }}</label>
+                                        {{ form.dateOfLoss }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.contractDate.label_tag }}</label>
+                                        {{ form.contractDate }}
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.yearBuilt.label_tag }}</label>
+                                        {{ form.yearBuilt }}
+                                    </div>
+                                    <div class="col-md-8">
+                                        <label class="form-label">Rebuild Types</label>
+                                        <div class="row">
+                                            <div class="col-md-4">
+                                                {{ form.rebuildType1.label_tag }}
+                                                {{ form.rebuildType1 }}
+                                            </div>
+                                            <div class="col-md-4">
+                                                {{ form.rebuildType2.label_tag }}
+                                                {{ form.rebuildType2 }}
+                                            </div>
+                                            <div class="col-md-4">
+                                                {{ form.rebuildType3.label_tag }}
+                                                {{ form.rebuildType3 }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label class="form-label">Services</label>
+                                        <div class="form-check">
+                                            {{ form.demo }}
+                                            {{ form.demo.label_tag }}
+                                        </div>
+                                        <div class="form-check">
+                                            {{ form.mitigation }}
+                                            {{ form.mitigation.label_tag }}
+                                        </div>
+                                        <div class="form-check">
+                                            {{ form.otherStructures }}
+                                            {{ form.otherStructures.label_tag }}
+                                        </div>
+                                        <div class="form-check">
+                                            {{ form.replacement }}
+                                            {{ form.replacement.label_tag }}
+                                        </div>
+                                        <div class="form-check">
+                                            {{ form.CPSCLNCONCGN }}
+                                            {{ form.CPSCLNCONCGN.label_tag }}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.lossOfUse.label_tag }}</label>
+                                        {{ form.lossOfUse }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.breathingIssue.label_tag }}</label>
+                                        {{ form.breathingIssue }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.hazardMaterialRemediation.label_tag }}</label>
+                                        {{ form.hazardMaterialRemediation }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Claim Reporting</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.claimReportDate.label_tag }}</label>
+                                        {{ form.claimReportDate }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.insuranceCustomerServiceRep.label_tag }}</label>
+                                        {{ form.insuranceCustomerServiceRep }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.timeOfClaimReport.label_tag }}</label>
+                                        {{ form.timeOfClaimReport }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <div class="form-check">
+                                            {{ form.tarpExtTMPOk }}
+                                            {{ form.tarpExtTMPOk.label_tag }}
+                                        </div>
+                                        <div class="form-check">
+                                            {{ form.IntTMPOk }}
+                                            {{ form.IntTMPOk.label_tag }}
+                                        </div>
+                                        <div class="form-check">
+                                            {{ form.DRYPLACUTOUTMOLDSPRAYOK }}
+                                            {{ form.DRYPLACUTOUTMOLDSPRAYOK.label_tag }}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Insurance Tab -->
+                            <div class="tab-pane fade" id="insurance" role="tabpanel">
+                                <h5 class="mb-3">Insurance Company Information</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.insuranceCo_Name.label_tag }}</label>
+                                        {{ form.insuranceCo_Name }}
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">{{ form.claimNumber.label_tag }}</label>
+                                        {{ form.claimNumber }}
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label class="form-label">{{ form.policyNumber.label_tag }}</label>
+                                        {{ form.policyNumber }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">{{ form.insAddressOvernightMail.label_tag }}</label>
+                                        {{ form.insAddressOvernightMail }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.insuranceCoPhone.label_tag }}</label>
+                                        {{ form.insuranceCoPhone }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.insCityStateZip.label_tag }}</label>
+                                        {{ form.insCityStateZip }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.emailInsCo.label_tag }}</label>
+                                        {{ form.emailInsCo }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.insMailingAddress.label_tag }}</label>
+                                        {{ form.insMailingAddress }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.insMailCityStateZip.label_tag }}</label>
+                                        {{ form.insMailCityStateZip }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label class="form-label">{{ form.insWebsite.label_tag }}</label>
+                                        {{ form.insWebsite }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Desk Adjuster</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.deskAdjusterDA.label_tag }}</label>
+                                        {{ form.deskAdjusterDA }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.DAEmail.label_tag }}</label>
+                                        {{ form.DAEmail }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.DAPhone.label_tag }}</label>
+                                        {{ form.DAPhone }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.DAPhExt.label_tag }}</label>
+                                        {{ form.DAPhExt }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Field Adjuster</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.fieldAdjusterName.label_tag }}</label>
+                                        {{ form.fieldAdjusterName }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.fieldAdjEmail.label_tag }}</label>
+                                        {{ form.fieldAdjEmail }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-12">
+                                        <label class="form-label">{{ form.phoneFieldAdj.label_tag }}</label>
+                                        {{ form.phoneFieldAdj }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Other Adjusters</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.adjContents.label_tag }}</label>
+                                        {{ form.adjContents }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.adjCpsPhone.label_tag }}</label>
+                                        {{ form.adjCpsPhone }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.adjCpsEmail.label_tag }}</label>
+                                        {{ form.adjCpsEmail }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.emsAdj.label_tag }}</label>
+                                        {{ form.emsAdj }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.emsAdjPhone.label_tag }}</label>
+                                        {{ form.emsAdjPhone }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.emsTmpEmail.label_tag }}</label>
+                                        {{ form.emsTmpEmail }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Mortgage Tab -->
+                            <div class="tab-pane fade" id="mortgage" role="tabpanel">
+                                <h5 class="mb-3">Mortgage Company</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageCo.label_tag }}</label>
+                                        {{ form.mortgageCo }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageAccountCo.label_tag }}</label>
+                                        {{ form.mortgageAccountCo }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageContactPerson.label_tag }}</label>
+                                        {{ form.mortgageContactPerson }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgagePhoneContact.label_tag }}</label>
+                                        {{ form.mortgagePhoneContact }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageEmail.label_tag }}</label>
+                                        {{ form.mortgageEmail }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageWebsite.label_tag }}</label>
+                                        {{ form.mortgageWebsite }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageOverNightMail.label_tag }}</label>
+                                        {{ form.mortgageOverNightMail }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageCityStZipOVN.label_tag }}</label>
+                                        {{ form.mortgageCityStZipOVN }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.mortgageMailingAddress.label_tag }}</label>
+                                        {{ form.mortgageMailingAddress }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.drawRequest.label_tag }}</label>
+                                        {{ form.drawRequest }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- Contractor Tab -->
+                            <div class="tab-pane fade" id="contractor" role="tabpanel">
+                                <h5 class="mb-3">Contractor Information</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.coName.label_tag }}</label>
+                                        {{ form.coName }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.coWebsite.label_tag }}</label>
+                                        {{ form.coWebsite }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-8">
+                                        <label class="form-label">{{ form.coAddress.label_tag }}</label>
+                                        {{ form.coAddress }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.coCityState.label_tag }}</label>
+                                        {{ form.coCityState }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.coRepPH.label_tag }}</label>
+                                        {{ form.coRepPH }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.coREPEmail.label_tag }}</label>
+                                        {{ form.coREPEmail }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.TinW9.label_tag }}</label>
+                                        {{ form.TinW9 }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.fedExAccount.label_tag }}</label>
+                                        {{ form.fedExAccount }}
+                                    </div>
+                                </div>
+                            </div>
+
+                            <!-- ALE Tab -->
+                            <div class="tab-pane fade" id="ale" role="tabpanel">
+                                <h5 class="mb-3">Additional Living Expenses (ALE)</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.lossOfUseALE.label_tag }}</label>
+                                        {{ form.lossOfUseALE }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Lessee/Tenant Information</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessee_name.label_tag }}</label>
+                                        {{ form.ale_lessee_name }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessee_phone.label_tag }}</label>
+                                        {{ form.ale_lessee_phone }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessee_home_address.label_tag }}</label>
+                                        {{ form.ale_lessee_home_address }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessee_city_state_zip.label_tag }}</label>
+                                        {{ form.ale_lessee_city_state_zip }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessee_email.label_tag }}</label>
+                                        {{ form.ale_lessee_email }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Rental Information</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.ale_rental_bedrooms.label_tag }}</label>
+                                        {{ form.ale_rental_bedrooms }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.ale_rental_months.label_tag }}</label>
+                                        {{ form.ale_rental_months }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.ale_rental_amount_per_month.label_tag }}</label>
+                                        {{ form.ale_rental_amount_per_month }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_rental_start_date.label_tag }}</label>
+                                        {{ form.ale_rental_start_date }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_rental_end_date.label_tag }}</label>
+                                        {{ form.ale_rental_end_date }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Lessor Information</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_name.label_tag }}</label>
+                                        {{ form.ale_lessor_name }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_contact_person.label_tag }}</label>
+                                        {{ form.ale_lessor_contact_person }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_leased_address.label_tag }}</label>
+                                        {{ form.ale_lessor_leased_address }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_city_zip.label_tag }}</label>
+                                        {{ form.ale_lessor_city_zip }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_phone.label_tag }}</label>
+                                        {{ form.ale_lessor_phone }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_email.label_tag }}</label>
+                                        {{ form.ale_lessor_email }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_mailing_address.label_tag }}</label>
+                                        {{ form.ale_lessor_mailing_address }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_lessor_mailing_city_zip.label_tag }}</label>
+                                        {{ form.ale_lessor_mailing_city_zip }}
+                                    </div>
+                                </div>
+
+                                <hr>
+                                <h5 class="mb-3">Real Estate Company</h5>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_re_company_name.label_tag }}</label>
+                                        {{ form.ale_re_company_name }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_re_contact_person.label_tag }}</label>
+                                        {{ form.ale_re_contact_person }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_re_mailing_address.label_tag }}</label>
+                                        {{ form.ale_re_mailing_address }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_re_city_zip.label_tag }}</label>
+                                        {{ form.ale_re_city_zip }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_re_phone.label_tag }}</label>
+                                        {{ form.ale_re_phone }}
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label class="form-label">{{ form.ale_re_email.label_tag }}</label>
+                                        {{ form.ale_re_email }}
+                                    </div>
+                                </div>
+                                <div class="row mb-3">
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.ale_re_owner_broker_name.label_tag }}</label>
+                                        {{ form.ale_re_owner_broker_name }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.ale_re_owner_broker_phone.label_tag }}</label>
+                                        {{ form.ale_re_owner_broker_phone }}
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label class="form-label">{{ form.ale_re_owner_broker_email.label_tag }}</label>
+                                        {{ form.ale_re_owner_broker_email }}
+                                    </div>
+                                </div>
+                            </div>
+
+                        </div>
+
+                        <hr class="mt-4">
+
+                        <!-- Navigation Buttons -->
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{% url 'claim_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                Save & Continue to Rooms <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Handle Cause of Loss dropdown with custom value option
+function handleCauseOfLossChange(select) {
+    const customInput = document.getElementById('causeOfLossCustom');
+    const hiddenInput = document.getElementById('causeOfLossHidden');
+    const value = select.value;
+
+    if (value === 'Other') {
+        customInput.style.display = 'block';
+        customInput.required = true;
+        customInput.name = 'causeOfLoss';
+        hiddenInput.name = '';
+        customInput.focus();
+    } else {
+        customInput.style.display = 'none';
+        customInput.required = false;
+        customInput.name = '';
+        hiddenInput.name = 'causeOfLoss';
+        hiddenInput.value = value;
+    }
+}
+
+// Initialize on page load
+document.addEventListener('DOMContentLoaded', function() {
+    const select = document.getElementById('causeOfLossSelect');
+    const customInput = document.getElementById('causeOfLossCustom');
+    const hiddenInput = document.getElementById('causeOfLossHidden');
+    const currentValue = hiddenInput.value;
+
+    // Check if current value is a standard option
+    const standardOptions = ['', 'Fire', 'Water', 'Wind', 'Hail', 'Storm'];
+    if (currentValue && !standardOptions.includes(currentValue)) {
+        // It's a custom value
+        select.value = 'Other';
+        customInput.style.display = 'block';
+        customInput.value = currentValue;
+        customInput.name = 'causeOfLoss';
+        hiddenInput.name = '';
+    } else {
+        select.value = currentValue;
+        customInput.style.display = 'none';
+        hiddenInput.name = 'causeOfLoss';
+    }
+});
+
+$(document).ready(function() {
+    // Form validation
+    $('#clientForm').on('submit', function(e) {
+        // Add custom validation if needed
+    });
+
+    // Save progress to localStorage on change
+    $('#clientForm input, #clientForm select, #clientForm textarea').on('change', function() {
+        // Auto-save draft
+        console.log('Field changed:', $(this).attr('name'));
+    });
+});
+</script>
+{% endblock %}

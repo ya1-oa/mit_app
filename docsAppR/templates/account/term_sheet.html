@@ -213,7 +213,7 @@
         <div class="indented"><b><u>${{ landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
         <div class="indented"><b><u>${{ landlord.default_rent_amount|multiply:landlord.rental_months|add:landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
         {% if landlord.real_estate_company %}
-        <div class="indented"><b><u>${{ landlord.default_rent_amount|floatformat:2|intcomma }}</u></b></div>
+        <div class="indented"><b><u>${{ landlord.default_rent_amount|widthratio:"1,2"|floatformat:2|intcomma }}</u></b></div>
         <div class="indented"><b><u>${{ landlord.default_inspection_fee|floatformat:2|intcomma }}</u></b></div>
         {% endif %}
         </div>
