@@ -1,0 +1,327 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block content %}
+<div style="max-width: 860px; margin: 0 auto; padding: 30px 20px;">
+
+  <div style="margin-bottom: 28px; border-bottom: 1px solid #e0e0e0; padding-bottom: 16px;">
+    <h1 style="margin: 0 0 6px; font-size: 26px; font-weight: 700; color: #2c3e50;">Download Claim Images</h1>
+    <p style="margin: 0; color: #7f8c8d; font-size: 15px;">
+      Search your Encircle claims, select one, and download all images as a ZIP.
+    </p>
+  </div>
+
+  {% if messages %}
+    {% for message in messages %}
+      <div style="padding: 14px 18px; border-radius: 8px; margin-bottom: 20px;
+        {% if message.tags == 'error' %}background:#f8d7da;border:1px solid #f5c6cb;color:#721c24;
+        {% elif message.tags == 'warning' %}background:#fff3cd;border:1px solid #ffeeba;color:#856404;
+        {% else %}background:#d4edda;border:1px solid #c3e6cb;color:#155724;{% endif %}">
+        {{ message }}
+      </div>
+    {% endfor %}
+  {% endif %}
+
+  <form method="post" id="downloadForm" action="{% url 'claim_media_downloader' %}">
+    {% csrf_token %}
+
+    <!-- Step 1: Select Encircle Claim -->
+    <div class="imd-card">
+      <div class="imd-header"><span class="imd-badge">1</span> Select Encircle Claim</div>
+
+      <!-- Search bar -->
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <input type="text" id="claimSearch"
+               placeholder="Search by name or address…"
+               style="flex:1;padding:11px 14px;border:2px solid #ddd;border-radius:8px;
+                      font-size:14px;box-sizing:border-box;"
+               oninput="filterClaims(this.value)">
+        <button type="button" id="loadBtn" onclick="loadEncircleClaims()"
+                style="padding:11px 20px;background:#3498db;color:white;border:none;
+                       border-radius:8px;font-size:14px;font-weight:600;cursor:pointer;
+                       white-space:nowrap;transition:background 0.2s;"
+                onmouseover="this.style.background='#2980b9'"
+                onmouseout="this.style.background='#3498db'">
+          Load Claims
+        </button>
+      </div>
+
+      <!-- Loading state -->
+      <div id="claimLoading" style="display:none;text-align:center;padding:20px;color:#7f8c8d;font-size:14px;">
+        <div style="font-size:24px;margin-bottom:8px;">⏳</div>
+        Loading claims from Encircle…
+      </div>
+
+      <!-- Error state -->
+      <div id="claimError" style="display:none;padding:12px 16px;background:#f8d7da;border-radius:8px;
+           font-size:13px;color:#721c24;margin-bottom:10px;"></div>
+
+      <!-- Claims list -->
+      <div id="claimsList" style="display:none;max-height:320px;overflow-y:auto;
+           border:2px solid #ddd;border-radius:8px;background:white;"></div>
+
+      <div id="claimsCount" style="display:none;font-size:12px;color:#888;margin-top:6px;"></div>
+
+      <!-- Selected claim preview -->
+      <div id="selectedPreview" style="display:none;margin-top:14px;padding:12px 16px;
+           background:#e8f8f0;border-left:4px solid #27ae60;border-radius:6px;font-size:13px;color:#1a5c35;">
+      </div>
+
+      <!-- Hidden field submitted with form -->
+      <input type="hidden" id="encircleIdInput" name="encircle_claim_id" value="">
+    </div>
+
+    <!-- Step 2: ZIP Organization -->
+    <div class="imd-card">
+      <div class="imd-header"><span class="imd-badge">2</span> ZIP Organization</div>
+
+      <label id="organizeLabel" style="display:flex;align-items:flex-start;gap:14px;cursor:pointer;
+             padding:16px;border:2px solid #ddd;border-radius:10px;transition:all 0.2s;background:white;">
+        <input type="checkbox" id="organizeCheck" name="organize_by_rooms"
+               style="margin-top:3px;width:18px;height:18px;cursor:pointer;flex-shrink:0;"
+               onchange="toggleOrganizePreview(this)">
+        <div>
+          <div style="font-weight:600;font-size:15px;color:#333;margin-bottom:4px;">Organize by rooms</div>
+          <div style="font-size:13px;color:#666;line-height:1.5;">
+            <strong>Unchecked (default):</strong> all images go into a single <code>images/</code> folder — flat, easiest to browse.<br>
+            <strong>Checked:</strong> images sorted into <code>Main_Building/Room_Name/</code> subfolders matching Encircle's structure.
+          </div>
+        </div>
+      </label>
+
+      <div id="structurePreview" style="margin-top:14px;padding:14px;background:#f8f9fa;
+           border-radius:8px;font-family:'Courier New',monospace;font-size:12px;
+           color:#555;line-height:1.8;border:1px solid #e0e0e0;">
+        <div id="previewFlat">
+          <span style="color:#999;">ZIP (flat):</span><br>
+          📁 images/<br>
+          &nbsp;&nbsp;📷 001_photo.jpg<br>
+          &nbsp;&nbsp;📷 002_photo.jpg &nbsp;…
+        </div>
+        <div id="previewRooms" style="display:none;">
+          <span style="color:#999;">ZIP (by room):</span><br>
+          📁 Main_Building/<br>
+          &nbsp;&nbsp;📁 Living_Room/<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;📷 001_photo.jpg<br>
+          &nbsp;&nbsp;📁 Kitchen/<br>
+          &nbsp;&nbsp;&nbsp;&nbsp;📷 002_photo.jpg
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3: Download -->
+    <div class="imd-card">
+      <div class="imd-header"><span class="imd-badge">3</span> Download</div>
+
+      <div style="margin-bottom:16px;padding:14px;background:#fff8e1;
+           border-left:4px solid #f39c12;border-radius:4px;font-size:13px;color:#6d4c00;">
+        <strong>Note:</strong> Downloads all images (JPG, PNG, WEBP, HEIC, etc.) from the selected Encircle claim.
+        Large claims with hundreds of photos may take a minute or two — do not close the page.
+      </div>
+
+      <button type="submit" id="downloadBtn"
+              style="width:100%;padding:16px;font-size:16px;font-weight:700;
+                     background:linear-gradient(135deg,#2ecc71 0%,#27ae60 100%);
+                     color:white;border:none;border-radius:10px;cursor:pointer;
+                     display:flex;align-items:center;justify-content:center;gap:10px;transition:all 0.2s;"
+              onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 6px 20px rgba(39,174,96,0.4)'"
+              onmouseout="this.style.transform='';this.style.boxShadow=''">
+        <span style="font-size:20px;">⬇</span> Download Images as ZIP
+      </button>
+
+      <div id="downloadingMsg" style="display:none;margin-top:16px;text-align:center;
+           padding:16px;background:#e8f4fd;border-radius:8px;">
+        <div style="font-size:22px;margin-bottom:8px;">⏳</div>
+        <div style="font-weight:600;color:#2c3e50;margin-bottom:4px;">Packaging ZIP…</div>
+        <div style="font-size:13px;color:#7f8c8d;">Fetching images from Encircle. Do not close this page.</div>
+      </div>
+    </div>
+
+  </form>
+</div>
+
+<style>
+.imd-card {
+  background: white;
+  border: 1px solid #e0e0e0;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 20px;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.04);
+}
+.imd-header {
+  font-size: 17px;
+  font-weight: 700;
+  color: #2c3e50;
+  margin-bottom: 18px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.imd-badge {
+  background: #3498db;
+  color: white;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+.claim-row {
+  padding: 11px 16px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.claim-row:last-child { border-bottom: none; }
+.claim-row:hover { background: #f0f8ff; }
+.claim-row.selected { background: #e8f8f0; border-left: 4px solid #27ae60; }
+.claim-row .claim-name { font-weight: 600; color: #2c3e50; font-size: 14px; }
+.claim-row .claim-addr { font-size: 12px; color: #7f8c8d; margin-top: 2px; }
+.claim-row .claim-id { font-size: 11px; color: #aaa; font-family: monospace; white-space: nowrap; }
+input[type="text"]:focus { outline: none; border-color: #3498db !important; box-shadow: 0 0 0 3px rgba(52,152,219,0.15); }
+#claimsList::-webkit-scrollbar { width: 6px; }
+#claimsList::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
+#claimsList::-webkit-scrollbar-thumb { background: #bbb; border-radius: 10px; }
+</style>
+
+<script>
+let allClaims = [];
+
+async function loadEncircleClaims() {
+  const loadBtn  = document.getElementById('loadBtn');
+  const loading  = document.getElementById('claimLoading');
+  const errorDiv = document.getElementById('claimError');
+  const listDiv  = document.getElementById('claimsList');
+  const countDiv = document.getElementById('claimsCount');
+
+  loadBtn.disabled = true;
+  loadBtn.textContent = 'Loading…';
+  loading.style.display = 'block';
+  errorDiv.style.display = 'none';
+  listDiv.style.display = 'none';
+  countDiv.style.display = 'none';
+
+  try {
+    const res  = await fetch('/api/encircle/claims/simple/');
+    const data = await res.json();
+    if (data.error) throw new Error(data.error);
+    allClaims = data.claims || [];
+    renderClaims(allClaims);
+  } catch (err) {
+    errorDiv.textContent = 'Failed to load Encircle claims: ' + err.message;
+    errorDiv.style.display = 'block';
+  } finally {
+    loading.style.display = 'none';
+    loadBtn.disabled = false;
+    loadBtn.textContent = 'Refresh';
+  }
+}
+
+function filterClaims(q) {
+  if (!allClaims.length) return;
+  const lower = q.trim().toLowerCase();
+  const filtered = lower
+    ? allClaims.filter(c =>
+        (c.name  || '').toLowerCase().includes(lower) ||
+        (c.address || '').toLowerCase().includes(lower))
+    : allClaims;
+  renderClaims(filtered);
+}
+
+function renderClaims(claims) {
+  const listDiv  = document.getElementById('claimsList');
+  const countDiv = document.getElementById('claimsCount');
+  const selectedId = document.getElementById('encircleIdInput').value;
+
+  listDiv.innerHTML = '';
+
+  if (!claims.length) {
+    listDiv.innerHTML = '<div style="padding:20px;text-align:center;color:#aaa;font-size:13px;">No claims found.</div>';
+  } else {
+    claims.forEach(function(c) {
+      const row = document.createElement('div');
+      row.className = 'claim-row' + (String(c.id) === selectedId ? ' selected' : '');
+      row.dataset.id      = c.id;
+      row.dataset.name    = c.name    || '';
+      row.dataset.address = c.address || '';
+      row.innerHTML =
+        '<div style="flex:1;min-width:0;">' +
+          '<div class="claim-name">' + escHtml(c.name || '(No name)') + '</div>' +
+          (c.address ? '<div class="claim-addr">' + escHtml(c.address) + '</div>' : '') +
+        '</div>' +
+        '<div class="claim-id">#' + escHtml(String(c.id)) + '</div>';
+      row.addEventListener('click', function() { selectClaim(this); });
+      listDiv.appendChild(row);
+    });
+  }
+
+  listDiv.style.display = 'block';
+  countDiv.textContent  = claims.length + ' claim' + (claims.length !== 1 ? 's' : '');
+  countDiv.style.display = 'block';
+}
+
+function selectClaim(row) {
+  // Deselect all
+  document.querySelectorAll('.claim-row').forEach(function(r) {
+    r.classList.remove('selected');
+  });
+  row.classList.add('selected');
+
+  const id      = row.dataset.id;
+  const name    = row.dataset.name;
+  const address = row.dataset.address;
+
+  document.getElementById('encircleIdInput').value = id;
+
+  const preview = document.getElementById('selectedPreview');
+  preview.style.display = 'block';
+  preview.innerHTML =
+    '<strong>Selected:</strong> ' + escHtml(name || '(No name)') +
+    (address ? ' &nbsp;·&nbsp; ' + escHtml(address) : '') +
+    '<br><span style="font-family:monospace;color:#27ae60;font-weight:600;">Encircle ID: ' + escHtml(String(id)) + '</span>';
+}
+
+function toggleOrganizePreview(cb) {
+  document.getElementById('previewFlat').style.display   = cb.checked ? 'none'  : 'block';
+  document.getElementById('previewRooms').style.display  = cb.checked ? 'block' : 'none';
+  const lbl = document.getElementById('organizeLabel');
+  lbl.style.borderColor = cb.checked ? '#3498db' : '#ddd';
+  lbl.style.background  = cb.checked ? '#e8f4fd' : 'white';
+}
+
+function escHtml(s) {
+  return String(s || '')
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+document.getElementById('downloadForm').addEventListener('submit', function(e) {
+  const id = document.getElementById('encircleIdInput').value.trim();
+  if (!id) {
+    e.preventDefault();
+    alert('Please load claims and select one first.');
+    return;
+  }
+  document.getElementById('downloadBtn').disabled = true;
+  document.getElementById('downloadBtn').style.opacity = '0.6';
+  document.getElementById('downloadingMsg').style.display = 'block';
+  // Re-enable after 2 min in case of error redirect
+  setTimeout(function() {
+    document.getElementById('downloadBtn').disabled = false;
+    document.getElementById('downloadBtn').style.opacity = '';
+    document.getElementById('downloadingMsg').style.display = 'none';
+  }, 120000);
+});
+
+// Auto-load on page open
+loadEncircleClaims();
+</script>
+{% endblock %}

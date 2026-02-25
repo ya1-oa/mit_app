@@ -7,7 +7,7 @@
             <!-- Header -->
             <div class="mb-8">
                 <h1 class="text-2xl font-bold text-gray-800 mb-2">Room Labels Generator</h1>
-                <p class="text-sm text-gray-600">Thermal Printer (3x4")</p>
+                <p class="text-sm text-gray-600">Box Labels: 4×3" · Wall Labels: 4×6" Thermal Printer</p>
             </div>
 
             <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -19,7 +19,7 @@
                     </div>
                     <div class="ml-3">
                         <p class="text-sm text-blue-700">
-                            <strong>Room Labels Format:</strong> Each label displays the room name and claim name, designed for 3x4 inch thermal printer labels.
+                            <strong>Room Labels Format:</strong> Box labels (4×3") show room name, claim name, and box number. Wall labels (4×6") show room name and wall orientation diagram.
                         </p>
                     </div>
                 </div>
@@ -124,6 +124,43 @@
                         {% endif %}
                     </div>
 
+                    <!-- Email Labels -->
+                    {% if selected_claim_id %}
+                    <div class="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                        <h3 class="text-sm font-semibold text-gray-700 mb-3">Email Labels to Team</h3>
+                        <div class="flex flex-wrap gap-x-6 gap-y-2 mb-3">
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" id="chk-georgia" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium">Georgia Team</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" id="chk-ohio" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium">Ohio Team</span>
+                            </label>
+                        </div>
+                        <textarea
+                            id="custom-emails"
+                            placeholder="Or enter email addresses separated by commas..."
+                            rows="2"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-3"
+                        ></textarea>
+                        <div class="flex items-center gap-3">
+                            <button
+                                type="button"
+                                id="email-labels-btn"
+                                class="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                Email Labels
+                            </button>
+                            <div id="email-labels-spinner" class="hidden w-5 h-5 border-2 border-t-2 border-gray-300 border-t-indigo-600 rounded-full animate-spin"></div>
+                        </div>
+                        <div id="email-labels-result" class="hidden mt-3 text-sm rounded-md px-4 py-2"></div>
+                    </div>
+                    {% endif %}
+
                     <!-- Success banner shown after generation -->
                     <div id="generation-success" class="hidden mt-6 p-4 bg-green-50 border border-green-300 rounded-lg">
                         <p class="text-green-800 font-medium">
@@ -143,6 +180,69 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
         document.addEventListener('DOMContentLoaded', function() {
+
+    // ── Email Labels ──────────────────────────────────────────────────
+    const emailBtn = document.getElementById('email-labels-btn');
+    if (emailBtn) {
+        emailBtn.addEventListener('click', async function () {
+            const spinner = document.getElementById('email-labels-spinner');
+            const resultBox = document.getElementById('email-labels-result');
+            const claimInput = document.querySelector('input[name="claim"]');
+            const georgiaChk = document.getElementById('chk-georgia');
+            const ohioChk = document.getElementById('chk-ohio');
+            const customEmails = document.getElementById('custom-emails');
+
+            const claimId = claimInput ? claimInput.value : '';
+            const georgia = georgiaChk && georgiaChk.checked;
+            const ohio = ohioChk && ohioChk.checked;
+            const custom = customEmails ? customEmails.value.trim() : '';
+
+            if (!georgia && !ohio && !custom) {
+                resultBox.textContent = 'Please select a team or enter at least one email address.';
+                resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-yellow-50 text-yellow-800 border border-yellow-300';
+                resultBox.classList.remove('hidden');
+                return;
+            }
+
+            emailBtn.disabled = true;
+            spinner.classList.remove('hidden');
+            resultBox.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('claim', claimId);
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            if (georgia) formData.append('georgia', '1');
+            if (ohio) formData.append('ohio', '1');
+            if (custom) formData.append('custom_emails', custom);
+
+            try {
+                const response = await fetch('{% url "email_labels_to_group" %}', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    resultBox.textContent = '✓ ' + data.message;
+                    resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-green-50 text-green-800 border border-green-300';
+                } else {
+                    resultBox.textContent = '✗ ' + (data.message || 'Failed to send email.');
+                    resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-red-50 text-red-800 border border-red-300';
+                }
+                resultBox.classList.remove('hidden');
+            } catch (err) {
+                resultBox.textContent = '✗ Network error: ' + err.message;
+                resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-red-50 text-red-800 border border-red-300';
+                resultBox.classList.remove('hidden');
+            } finally {
+                emailBtn.disabled = false;
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    // ── Generate Labels Form ──────────────────────────────────────────
     const roomLabelsForm = document.getElementById('room-labels-form');
     
     if (roomLabelsForm) {

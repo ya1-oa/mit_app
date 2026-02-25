@@ -1783,3 +1783,21 @@ class RoomScopeChecklist(models.Model):
             'frm_lf': str(self.frm_lf) if self.frm_lf else '',
             'activity_notes': self.activity_notes,
         }
+
+
+class EncirclePushedRoom(models.Model):
+    """
+    Tracks every room entry our system pushes to Encircle.
+    Allows direct targeted deletion without regex guessing.
+    """
+    encircle_claim_id = models.CharField(max_length=255, db_index=True)
+    structure_id      = models.CharField(max_length=255, blank=True)
+    room_id           = models.CharField(max_length=255)   # Encircle-assigned ID
+    room_name         = models.CharField(max_length=1000)
+    pushed_at         = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['pushed_at']
+
+    def __str__(self):
+        return f"{self.encircle_claim_id} / {self.room_name[:60]}"

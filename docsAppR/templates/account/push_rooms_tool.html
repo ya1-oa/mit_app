@@ -1,0 +1,757 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Push Rooms to Encircle{% endblock %}
+
+{% block content %}
+<main>
+  <h1>
+    <button class="menu-toggle"><span></span><span></span><span></span></button>
+    Push Rooms to Encircle
+  </h1>
+
+  <div class="container-fluid px-3 py-3">
+
+    <!-- ── TOP: Two pickers + template selection ─────────────────────── -->
+    <div class="row g-3 mb-3">
+
+      <!-- Local Claim picker -->
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header fw-bold" style="background:#404040;color:#fff;">
+            <i class="fa fa-folder-open me-1"></i> 1. Select Local Claim
+          </div>
+          <div class="card-body p-2">
+            <input type="text" id="localSearch" class="form-control form-control-sm mb-2"
+                   placeholder="Search by name, address or claim #…">
+            <div id="localList" style="max-height:280px;overflow-y:auto;">
+              {% for c in clients %}
+              <div class="local-item p-2 rounded mb-1"
+                   style="cursor:pointer;border:1px solid #ddd;"
+                   data-id="{{ c.id }}"
+                   data-name="{{ c.pOwner|default:'' }}"
+                   data-addr="{{ c.pAddress|default:'' }}"
+                   data-claim="{{ c.claimNumber|default:'' }}">
+                <div class="fw-semibold" style="color:#333;font-size:.88rem;">{{ c.pOwner|default:"(no name)" }}</div>
+                <div style="font-size:.75rem;color:#666;">{{ c.pAddress|default:"" }}</div>
+                {% if c.claimNumber %}<div style="font-size:.72rem;color:#999;">Claim # {{ c.claimNumber }}</div>{% endif %}
+              </div>
+              {% empty %}
+              <p class="text-muted small">No local claims found.</p>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="card-footer p-2" style="background:#f8f9fa;font-size:.8rem;color:#555;">
+            Selected: <strong id="selectedLocalName">—</strong>
+            <input type="hidden" id="selectedLocalId">
+          </div>
+        </div>
+      </div>
+
+      <!-- Encircle Claim picker -->
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header fw-bold" style="background:#0066cc;color:#fff;">
+            <i class="fa fa-cloud me-1"></i> 2. Select Target Encircle Claim
+          </div>
+          <div class="card-body p-2">
+            <div class="input-group input-group-sm mb-2">
+              <input type="text" id="encircleSearch" class="form-control"
+                     placeholder="Search by name or address…">
+              <button class="btn btn-outline-secondary" id="btnLoadEncircle" type="button">
+                <i class="fa fa-sync-alt"></i> Load
+              </button>
+            </div>
+            <div id="encircleLoading" class="text-center py-3 d-none">
+              <div class="spinner-border spinner-border-sm text-primary"></div>
+              <span class="ms-2 small">Loading Encircle claims…</span>
+            </div>
+            <div id="encircleHint" class="text-muted small text-center py-4">
+              Click <strong>Load</strong> to fetch Encircle claims, then search.
+            </div>
+            <div id="encircleList" style="max-height:280px;overflow-y:auto;display:none;"></div>
+          </div>
+          <div class="card-footer p-2" style="background:#f8f9fa;font-size:.8rem;color:#555;">
+            Selected: <strong id="selectedEncircleName">—</strong>
+            <input type="hidden" id="selectedEncircleId">
+          </div>
+        </div>
+      </div>
+
+      <!-- Template checkboxes + action buttons -->
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header fw-bold" style="background:#333;color:#fff;">
+            <i class="fa fa-list-check me-1"></i> 3. Templates &amp; Actions
+          </div>
+          <div class="card-body p-3">
+            <p class="small text-muted mb-2">Choose which room lists to include:</p>
+            <div class="form-check mb-2">
+              <input class="form-check-input tpl-check" type="checkbox" value="basic" id="tplBasic" checked>
+              <label class="form-check-label" for="tplBasic">
+                <strong>Basic</strong>
+                <span class="text-muted" style="font-size:.78rem;"> — 100–700s overview, source-of-loss, CPS, PPR, demo, WTR, HMR</span>
+              </label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input tpl-check" type="checkbox" value="readings" id="tplReadings" checked>
+              <label class="form-check-label" for="tplReadings">
+                <strong>Readings</strong>
+                <span class="text-muted" style="font-size:.78rem;"> — 8000–9000s MC day readings + dry chambers</span>
+              </label>
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input tpl-check" type="checkbox" value="readings default" id="tplReadingsDefault">
+              <label class="form-check-label" for="tplReadingsDefault">
+                <strong>Readings Default</strong>
+                <span class="text-muted" style="font-size:.78rem;"> — Day 0 stabilization only</span>
+              </label>
+            </div>
+
+            <hr>
+            <div class="d-grid gap-2">
+              <button class="btn btn-outline-primary btn-sm" id="btnPreview" disabled>
+                <i class="fa fa-eye me-1"></i> Preview Room Entries
+              </button>
+              <button class="btn btn-success" id="btnPush" disabled>
+                <i class="fa fa-paper-plane me-1"></i> Push Rooms to Encircle
+              </button>
+            </div>
+          </div>
+          <div class="card-footer p-2" style="font-size:.78rem;">
+            <span class="text-muted">Rooms are <em>appended</em> to the existing "Main Building" structure. Existing rooms are not deleted.</span>
+          </div>
+        </div>
+      </div>
+    </div><!-- /row -->
+
+    <!-- ── Tool row: Duplicate + Migrate ───────────────────────────────── -->
+    <div class="row g-3 mb-3">
+
+      <!-- ── Duplicate Claim ── -->
+      <div class="col-md-6">
+        <div class="card h-100" style="border-left:4px solid #0d6efd;">
+          <div class="card-header fw-bold" style="background:#e7f0ff;color:#0d3b8c;">
+            <i class="fa fa-copy me-1"></i> Duplicate Encircle Claim
+            <span class="badge bg-primary ms-2" style="font-size:.7rem;font-weight:normal;">Step 1 — Test first</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Creates a full copy of any Encircle claim — same metadata, all rooms duplicated.
+              Use this to safely test migration on the copy before touching the real claim.
+            </p>
+            <div class="mb-2">
+              <label class="form-label small fw-bold">Source Encircle Claim ID</label>
+              <div class="input-group input-group-sm">
+                <input type="text" id="dupEncircleId" class="form-control"
+                       placeholder="Paste ID, or select above then Copy">
+                <button class="btn btn-outline-primary" id="btnCopyForDup" type="button">
+                  <i class="fa fa-arrow-left"></i> Use selected
+                </button>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Suffix for copy name</label>
+              <input type="text" id="dupSuffix" class="form-control form-control-sm"
+                     value="(TEST COPY)">
+            </div>
+            <button class="btn btn-primary w-100" id="btnDuplicate" type="button">
+              <i class="fa fa-copy me-1"></i> Duplicate Claim
+            </button>
+            <div id="dupStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Migrate Old Rooms ── -->
+      <div class="col-md-6">
+        <div class="card h-100" style="border-left:4px solid #dc3545;">
+          <div class="card-header fw-bold" style="background:#fff3cd;color:#856404;">
+            <i class="fa fa-exchange-alt me-1"></i> Migrate Old Rooms
+            <span class="badge bg-warning text-dark ms-2" style="font-size:.7rem;font-weight:normal;">Step 2 — Move photos &amp; delete old rooms</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Detects rooms containing <strong>DAY0</strong> / <strong>DAY&nbsp;#&nbsp;0</strong>
+              (e.g. <code style="font-size:.72rem;">8101 TRAVEL .0 …. FOYER ... DAY0 MC READINGS ..</code>),
+              moves any photos to the matching new-format room, then deletes the old room.
+              Run on the <em>duplicate</em> first to verify, then on the real claim.
+            </p>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Encircle Claim ID to migrate</label>
+              <div class="input-group input-group-sm">
+                <input type="text" id="migrateEncircleId" class="form-control"
+                       placeholder="Paste ID, or select above then Copy">
+                <button class="btn btn-outline-danger" id="btnCopyEncircleId" type="button">
+                  <i class="fa fa-arrow-left"></i> Use selected
+                </button>
+              </div>
+            </div>
+            <button class="btn btn-danger w-100" id="btnMigrate" type="button">
+              <i class="fa fa-exchange-alt me-1"></i> Run Migration
+            </button>
+            <div id="migrateStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tool row -->
+
+    <!-- ── Manage Pushed Rooms ──────────────────────────────────────────── -->
+    <div class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="card" style="border-left:4px solid #6f42c1;">
+          <div class="card-header fw-bold" style="background:#f3eeff;color:#3d1f8c;">
+            <i class="fa fa-database me-1"></i> Manage Pushed Rooms
+            <span class="badge bg-secondary ms-2" style="font-size:.7rem;font-weight:normal;">Delete rooms our system pushed</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Shows every room entry our system pushed to an Encircle claim — looked up from our database,
+              not from Encircle directly. Use this to remove rooms that were pushed to the wrong claim.
+            </p>
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold mb-1">Encircle Claim ID</label>
+                <div class="input-group input-group-sm">
+                  <input type="text" id="mgClaimId" class="form-control"
+                         placeholder="Paste claim ID, or use 'Use selected' above">
+                  <button class="btn btn-outline-secondary" id="btnCopyForMg" type="button">
+                    <i class="fa fa-arrow-left"></i> Use selected
+                  </button>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <button class="btn btn-outline-primary w-100" id="btnLoadPushed" type="button">
+                  <i class="fa fa-list me-1"></i> Load Pushed Rooms
+                </button>
+              </div>
+              <div class="col-md-3">
+                <button class="btn btn-danger w-100" id="btnDeletePushed" type="button" disabled>
+                  <i class="fa fa-trash-alt me-1"></i> Delete All Listed
+                </button>
+              </div>
+            </div>
+
+            <div id="mgPreview" class="d-none">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-semibold small">
+                  Rooms pushed to this claim:
+                  <span id="mgCount" class="badge bg-primary ms-1">0</span>
+                </span>
+                <span class="text-muted" style="font-size:.75rem;">
+                  Claim: <code id="mgClaimDisplay"></code>
+                </span>
+              </div>
+              <div id="mgRoomsList"
+                   style="max-height:260px;overflow-y:auto;background:#1e1e1e;
+                          color:#d4d4d4;font-size:.75rem;padding:10px;
+                          border-radius:4px;font-family:monospace;"></div>
+            </div>
+            <div id="mgStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /manage pushed rooms row -->
+
+    <!-- ── Status banner ────────────────────────────────────────────────── -->
+    <div id="statusBanner" class="alert d-none mb-3" role="alert"></div>
+
+    <!-- ── Preview panel ────────────────────────────────────────────────── -->
+    <div id="previewPanel" class="d-none">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center"
+             style="background:#222;color:#fff;">
+          <span>
+            <i class="fa fa-list me-1"></i>
+            Room Entry Preview —
+            <span id="previewClientName"></span>
+            &nbsp;·&nbsp;
+            <span id="previewCount" class="badge bg-light text-dark"></span> entries
+          </span>
+          <button class="btn btn-sm btn-outline-light" id="btnCollapsePreview">
+            <i class="fa fa-chevron-up"></i> Collapse
+          </button>
+        </div>
+        <div class="card-body p-0" id="previewBody">
+          <div class="p-2 pb-0" style="background:#1e1e1e;">
+            <span class="badge bg-secondary me-1">Rooms in local claim</span>
+            <span id="previewRoomCount" class="text-light" style="font-size:.8rem;"></span>
+          </div>
+          <pre id="previewList"
+               style="background:#1e1e1e;color:#d4d4d4;font-size:.74rem;
+                      line-height:1.55;padding:12px;margin:0;
+                      max-height:480px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;"></pre>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /container -->
+</main>
+
+<style>
+  .local-item:hover  { background:#eef3ff; border-color:#0066cc !important; }
+  .local-item.active { background:#dceeff; border-color:#0066cc !important; }
+  .enc-item { cursor:pointer; border:1px solid #ddd; padding:8px 10px; border-radius:4px; margin-bottom:4px; }
+  .enc-item:hover  { background:#e8f4ff; border-color:#0066cc !important; }
+  .enc-item.active { background:#cce3ff; border-color:#0066cc !important; }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  const CSRF = '{{ csrf_token }}';
+
+  /* ── State ── */
+  let allEncircleClaims = [];   // cached after load
+  let selectedLocalId   = null;
+  let selectedEncircleId = null;
+
+  /* ── DOM refs ── */
+  const localSearch   = document.getElementById('localSearch');
+  const localList     = document.getElementById('localList');
+  const encircleSearch = document.getElementById('encircleSearch');
+  const encircleList  = document.getElementById('encircleList');
+  const encircleHint  = document.getElementById('encircleHint');
+  const encircleLoading = document.getElementById('encircleLoading');
+  const selectedLocalName   = document.getElementById('selectedLocalName');
+  const selectedEncircleName = document.getElementById('selectedEncircleName');
+  const btnPreview    = document.getElementById('btnPreview');
+  const btnPush       = document.getElementById('btnPush');
+  const btnLoad       = document.getElementById('btnLoadEncircle');
+  const previewPanel  = document.getElementById('previewPanel');
+  const previewList   = document.getElementById('previewList');
+  const previewCount  = document.getElementById('previewCount');
+  const previewClientName = document.getElementById('previewClientName');
+  const previewRoomCount  = document.getElementById('previewRoomCount');
+  const statusBanner  = document.getElementById('statusBanner');
+
+  /* ── Helpers ── */
+  function setStatus(msg, type) {
+    statusBanner.className = `alert alert-${type} mb-3`;
+    statusBanner.innerHTML = msg;
+    statusBanner.classList.remove('d-none');
+  }
+  function clearStatus() { statusBanner.classList.add('d-none'); }
+
+  function getSelectedTemplates() {
+    return [...document.querySelectorAll('.tpl-check:checked')].map(el => el.value);
+  }
+
+  function checkButtons() {
+    const ready = selectedLocalId && selectedEncircleId && getSelectedTemplates().length > 0;
+    btnPreview.disabled = !selectedLocalId || getSelectedTemplates().length === 0;
+    btnPush.disabled    = !ready;
+  }
+
+  /* ── Local claim search & selection ── */
+  localSearch.addEventListener('input', () => {
+    const q = localSearch.value.toLowerCase();
+    localList.querySelectorAll('.local-item').forEach(el => {
+      const match = el.dataset.name.toLowerCase().includes(q)
+                 || el.dataset.addr.toLowerCase().includes(q)
+                 || el.dataset.claim.toLowerCase().includes(q);
+      el.style.display = match ? '' : 'none';
+    });
+  });
+
+  localList.addEventListener('click', e => {
+    const item = e.target.closest('.local-item');
+    if (!item) return;
+    localList.querySelectorAll('.local-item').forEach(el => el.classList.remove('active'));
+    item.classList.add('active');
+    selectedLocalId = item.dataset.id;
+    selectedLocalName.textContent = item.dataset.name || `(id ${selectedLocalId})`;
+    previewPanel.classList.add('d-none');
+    clearStatus();
+    checkButtons();
+  });
+
+  /* ── Load Encircle claims ── */
+  btnLoad.addEventListener('click', loadEncircle);
+
+  async function loadEncircle() {
+    encircleHint.classList.add('d-none');
+    encircleList.style.display = 'none';
+    encircleLoading.classList.remove('d-none');
+    try {
+      const q   = encircleSearch.value.trim();
+      const url = `/api/encircle/claims/simple/${q ? '?q=' + encodeURIComponent(q) : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      allEncircleClaims = data.claims || [];
+      renderEncircleClaims(allEncircleClaims);
+    } catch (err) {
+      setStatus(`<i class="fa fa-exclamation-triangle me-1"></i> Failed to load Encircle claims: ${err.message}`, 'danger');
+    } finally {
+      encircleLoading.classList.add('d-none');
+    }
+  }
+
+  encircleSearch.addEventListener('input', () => {
+    if (!allEncircleClaims.length) return;
+    const q = encircleSearch.value.toLowerCase();
+    const filtered = q
+      ? allEncircleClaims.filter(c =>
+          c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q))
+      : allEncircleClaims;
+    renderEncircleClaims(filtered);
+  });
+
+  function renderEncircleClaims(list) {
+    encircleList.innerHTML = '';
+    if (!list.length) {
+      encircleList.innerHTML = '<p class="text-muted small text-center py-3">No results.</p>';
+    } else {
+      list.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'enc-item';
+        div.dataset.id = c.id;
+        div.dataset.name = c.name;
+        div.innerHTML = `
+          <div class="fw-semibold" style="color:#333;font-size:.88rem;">${c.name || '(no name)'}</div>
+          <div style="font-size:.75rem;color:#666;">${c.address || ''}</div>
+          <div style="font-size:.7rem;color:#999;">ID: ${c.id}</div>`;
+        encircleList.appendChild(div);
+        // re-highlight if already selected
+        if (c.id == selectedEncircleId) div.classList.add('active');
+      });
+    }
+    encircleList.style.display = 'block';
+    encircleHint.classList.add('d-none');
+  }
+
+  encircleList.addEventListener('click', e => {
+    const item = e.target.closest('.enc-item');
+    if (!item) return;
+    encircleList.querySelectorAll('.enc-item').forEach(el => el.classList.remove('active'));
+    item.classList.add('active');
+    selectedEncircleId = item.dataset.id;
+    selectedEncircleName.textContent = item.dataset.name || `(id ${selectedEncircleId})`;
+    previewPanel.classList.add('d-none');
+    clearStatus();
+    checkButtons();
+  });
+
+  /* ── Template checkboxes ── */
+  document.querySelectorAll('.tpl-check').forEach(cb => {
+    cb.addEventListener('change', checkButtons);
+  });
+
+  /* ── Preview ── */
+  btnPreview.addEventListener('click', async () => {
+    if (!selectedLocalId) return;
+    const tpls = getSelectedTemplates().join(',');
+    btnPreview.disabled = true;
+    btnPreview.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Loading…';
+    try {
+      const res  = await fetch(`/claims/${selectedLocalId}/preview-rooms/?templates=${encodeURIComponent(tpls)}`);
+      const data = await res.json();
+      previewClientName.textContent = data.client_name || '';
+      previewRoomCount.textContent  = `${data.room_count} local room(s)`;
+      previewCount.textContent      = `${data.entry_count} entries`;
+
+      // Number each entry in the preview
+      previewList.textContent = data.entries
+        .map((e, i) => `${String(i + 1).padStart(3, ' ')}  ${e}`)
+        .join('\n');
+
+      previewPanel.classList.remove('d-none');
+      previewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      setStatus(`<i class="fa fa-exclamation-triangle me-1"></i> Preview failed: ${err.message}`, 'danger');
+    } finally {
+      btnPreview.disabled = false;
+      btnPreview.innerHTML = '<i class="fa fa-eye me-1"></i> Preview Room Entries';
+    }
+  });
+
+  /* ── Collapse preview ── */
+  document.getElementById('btnCollapsePreview').addEventListener('click', () => {
+    const body = document.getElementById('previewBody');
+    const icon = document.querySelector('#btnCollapsePreview i');
+    const collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? '' : 'none';
+    icon.className = collapsed ? 'fa fa-chevron-up' : 'fa fa-chevron-down';
+  });
+
+  /* ── Push ── */
+  btnPush.addEventListener('click', async () => {
+    if (!selectedLocalId || !selectedEncircleId) return;
+    const tpls = getSelectedTemplates();
+    const localName    = selectedLocalName.textContent;
+    const encircleName = selectedEncircleName.textContent;
+
+    if (!confirm(
+      `Push rooms from:\n  LOCAL: ${localName}\nTO ENCIRCLE CLAIM:\n  ${encircleName} (id: ${selectedEncircleId})\n\nTemplates: ${tpls.join(', ')}\n\nRooms will be APPENDED to the existing structure. Continue?`
+    )) return;
+
+    btnPush.disabled = true;
+    btnPush.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Queuing…';
+    clearStatus();
+
+    try {
+      const res = await fetch(`/claims/${selectedLocalId}/push-rooms-to-encircle/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': CSRF,
+        },
+        body: JSON.stringify({
+          encircle_claim_id: selectedEncircleId,
+          selected_templates: tpls,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus(
+          `<i class="fa fa-check-circle me-1"></i> <strong>Queued!</strong> ${data.message}` +
+          `<br><small class="text-muted">Task ID: ${data.task_id}</small>`,
+          'success'
+        );
+      } else {
+        setStatus(`<i class="fa fa-times-circle me-1"></i> Error: ${data.error}`, 'danger');
+      }
+    } catch (err) {
+      setStatus(`<i class="fa fa-times-circle me-1"></i> Request failed: ${err.message}`, 'danger');
+    } finally {
+      btnPush.disabled = false;
+      btnPush.innerHTML = '<i class="fa fa-paper-plane me-1"></i> Push Rooms to Encircle';
+      checkButtons();
+    }
+  });
+
+  /* ── Duplicate panel ── */
+  const dupInput  = document.getElementById('dupEncircleId');
+  const dupSuffix = document.getElementById('dupSuffix');
+  const dupStatus = document.getElementById('dupStatus');
+  const btnDup    = document.getElementById('btnDuplicate');
+  const btnCopyForDup = document.getElementById('btnCopyForDup');
+
+  btnCopyForDup.addEventListener('click', () => {
+    if (selectedEncircleId) {
+      dupInput.value = selectedEncircleId;
+    }
+  });
+
+  btnDup.addEventListener('click', async () => {
+    const eid    = dupInput.value.trim();
+    const suffix = dupSuffix.value.trim() || '(TEST COPY)';
+    if (!eid) {
+      dupStatus.className = 'alert alert-warning mt-3';
+      dupStatus.textContent = 'Enter or paste an Encircle claim ID first.';
+      dupStatus.classList.remove('d-none');
+      return;
+    }
+    if (!confirm(
+      `Duplicate Encircle claim:\n  ${eid}\n\nNew claim will be named with suffix "${suffix}".\nAll rooms will be copied.\n\nThe original claim will NOT be modified. Continue?`
+    )) return;
+
+    btnDup.disabled = true;
+    btnDup.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Duplicating…';
+    dupStatus.classList.add('d-none');
+
+    try {
+      const res = await fetch('/claims/duplicate-encircle-claim/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ encircle_claim_id: eid, suffix }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // ── Auto-populate the migrate input with the new claim ID ──
+        migrateInput.value = data.new_claim_id;
+
+        dupStatus.className = 'alert alert-success mt-3';
+        dupStatus.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Done!</strong> ${data.message}` +
+          `<br><span class="badge bg-primary mt-1" style="font-size:.85rem;">New Claim ID: ${data.new_claim_id}</span>` +
+          `<br><small class="text-muted mt-1 d-block">` +
+            `Rooms copied: <strong>${data.rooms_copied}</strong>` +
+            (data.rooms_failed && data.rooms_failed.length
+              ? ` &nbsp;·&nbsp; <span class="text-danger">Failed: ${data.rooms_failed.join(', ')}</span>`
+              : '') +
+          `</small>` +
+          `<small class="text-success d-block mt-1"><i class="fa fa-arrow-down me-1"></i>The migrate field below has been auto-filled with the new claim ID.</small>`;
+      } else {
+        dupStatus.className = 'alert alert-danger mt-3';
+        dupStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${data.error}`;
+      }
+    } catch (err) {
+      dupStatus.className = 'alert alert-danger mt-3';
+      dupStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${err.message}`;
+    } finally {
+      dupStatus.classList.remove('d-none');
+      btnDup.disabled = false;
+      btnDup.innerHTML = '<i class="fa fa-copy me-1"></i> Duplicate Claim';
+    }
+  });
+
+  /* ── Migrate panel ── */
+  const migrateInput  = document.getElementById('migrateEncircleId');
+  const migrateStatus = document.getElementById('migrateStatus');
+  const btnMigrate    = document.getElementById('btnMigrate');
+  const btnCopyId     = document.getElementById('btnCopyEncircleId');
+
+  btnCopyId.addEventListener('click', () => {
+    if (selectedEncircleId) {
+      migrateInput.value = selectedEncircleId;
+    }
+  });
+
+  btnMigrate.addEventListener('click', async () => {
+    const eid = migrateInput.value.trim();
+    if (!eid) {
+      migrateStatus.className = 'alert alert-warning mt-3';
+      migrateStatus.textContent = 'Enter or copy an Encircle claim ID first.';
+      migrateStatus.classList.remove('d-none');
+      return;
+    }
+
+    if (!confirm(
+      `Migrate rooms on Encircle claim:\n  ${eid}\n\n` +
+      `This will:\n` +
+      `  • Move photos from old-format rooms → matching new-format rooms\n` +
+      `  • Delete all old-format rooms\n\n` +
+      `This cannot be undone. Continue?`
+    )) return;
+
+    btnMigrate.disabled = true;
+    btnMigrate.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Queuing…';
+    migrateStatus.classList.add('d-none');
+
+    try {
+      const res = await fetch('/claims/migrate-encircle-rooms/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ encircle_claim_id: eid }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        migrateStatus.className = 'alert alert-success mt-3';
+        migrateStatus.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Queued!</strong> ${data.message}` +
+          `<br><small class="text-muted">Task ID: ${data.task_id}</small>`;
+      } else {
+        migrateStatus.className = 'alert alert-danger mt-3';
+        migrateStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> Error: ${data.error}`;
+      }
+    } catch (err) {
+      migrateStatus.className = 'alert alert-danger mt-3';
+      migrateStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> Request failed: ${err.message}`;
+    } finally {
+      migrateStatus.classList.remove('d-none');
+      btnMigrate.disabled = false;
+      btnMigrate.innerHTML = '<i class="fa fa-exchange-alt me-1"></i> Run Migration';
+    }
+  });
+
+  /* ── Manage Pushed Rooms panel ── */
+  const mgClaimInput  = document.getElementById('mgClaimId');
+  const btnCopyForMg  = document.getElementById('btnCopyForMg');
+  const btnLoadPushed = document.getElementById('btnLoadPushed');
+  const btnDelPushed  = document.getElementById('btnDeletePushed');
+  const mgPreview     = document.getElementById('mgPreview');
+  const mgCount       = document.getElementById('mgCount');
+  const mgClaimDisp   = document.getElementById('mgClaimDisplay');
+  const mgRoomsList   = document.getElementById('mgRoomsList');
+  const mgStatus      = document.getElementById('mgStatus');
+
+  let _mgClaimId  = null;
+  let _mgRoomIds  = [];
+
+  btnCopyForMg.addEventListener('click', () => {
+    if (selectedEncircleId) mgClaimInput.value = selectedEncircleId;
+  });
+
+  btnLoadPushed.addEventListener('click', async () => {
+    const eid = mgClaimInput.value.trim();
+    if (!eid) {
+      mgStatus.className = 'alert alert-warning mt-3';
+      mgStatus.textContent = 'Enter a claim ID first.';
+      mgStatus.classList.remove('d-none');
+      return;
+    }
+
+    btnLoadPushed.disabled = true;
+    btnLoadPushed.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Loading…';
+    btnDelPushed.disabled = true;
+    mgPreview.classList.add('d-none');
+    mgStatus.classList.add('d-none');
+
+    try {
+      const res  = await fetch(`/claims/pushed-rooms/?encircle_claim_id=${encodeURIComponent(eid)}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      _mgClaimId = eid;
+      _mgRoomIds = data.rooms.map(r => r.id);
+
+      mgCount.textContent   = data.count;
+      mgClaimDisp.textContent = eid;
+
+      if (data.rooms.length === 0) {
+        mgRoomsList.textContent = '— No pushed rooms found for this claim in our database.';
+        btnDelPushed.disabled = true;
+      } else {
+        mgRoomsList.textContent = data.rooms
+          .map((r, i) => `${String(i + 1).padStart(3, ' ')}  [${r.id}]  ${r.pushed_at}  ${r.name}`)
+          .join('\n');
+        btnDelPushed.disabled = false;
+      }
+      mgPreview.classList.remove('d-none');
+    } catch (err) {
+      mgStatus.className = 'alert alert-danger mt-3';
+      mgStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> Load failed: ${err.message}`;
+      mgStatus.classList.remove('d-none');
+    } finally {
+      btnLoadPushed.disabled = false;
+      btnLoadPushed.innerHTML = '<i class="fa fa-list me-1"></i> Load Pushed Rooms';
+    }
+  });
+
+  btnDelPushed.addEventListener('click', async () => {
+    if (!_mgRoomIds.length) return;
+    if (!confirm(
+      `Delete ${_mgRoomIds.length} room(s) from Encircle claim:\n  ${_mgClaimId}\n\n` +
+      `These are rooms our system pushed. This cannot be undone. Continue?`
+    )) return;
+
+    btnDelPushed.disabled = true;
+    btnDelPushed.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Deleting…';
+    mgStatus.classList.add('d-none');
+
+    try {
+      const res = await fetch('/claims/delete-pushed-rooms/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ encircle_claim_id: _mgClaimId, room_ids: _mgRoomIds }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        mgStatus.className = 'alert alert-success mt-3';
+        mgStatus.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Done!</strong> ${data.message}` +
+          (data.failed_count
+            ? `<br><small class="text-danger">Failed: ${data.failed.map(f => f.id).join(', ')}</small>`
+            : '');
+        _mgRoomIds = [];
+        mgPreview.classList.add('d-none');
+      } else {
+        mgStatus.className = 'alert alert-danger mt-3';
+        mgStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${data.error}`;
+      }
+    } catch (err) {
+      mgStatus.className = 'alert alert-danger mt-3';
+      mgStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${err.message}`;
+    } finally {
+      mgStatus.classList.remove('d-none');
+      btnDelPushed.innerHTML = '<i class="fa fa-trash-alt me-1"></i> Delete All Listed';
+    }
+  });
+
+})();
+</script>
+{% endblock %}

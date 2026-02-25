@@ -785,11 +785,13 @@ class EncircleAPIClient:
 
     def get_account_ids(self):
         """
-        Fetch organization_id and brand_id from the first existing claim.
-        Both are per-organization constants required when creating new claims.
-        Returns dict with 'organization_id' and 'brand_id' (both may be None).
+        Fetch organization_id, brand_id, and contractor_identifier from the
+        first existing claim.  These are per-organization constants required
+        when creating new claims.
+        Returns dict with 'organization_id', 'brand_id', and
+        'contractor_identifier' (all may be None).
         """
-        result = {'organization_id': None, 'brand_id': None}
+        result = {'organization_id': None, 'brand_id': None, 'contractor_identifier': None}
         try:
             resp = self._make_request("property_claims", params={"limit": 1})
             claims = resp.get("list", []) if isinstance(resp, dict) else []
@@ -797,7 +799,11 @@ class EncircleAPIClient:
                 c = claims[0]
                 result['organization_id'] = str(c['organization_id']) if c.get('organization_id') else None
                 result['brand_id'] = str(c['brand_id']) if c.get('brand_id') else None
-                logger.info(f"get_account_ids: organization_id={result['organization_id']}, brand_id={result['brand_id']}")
+                result['contractor_identifier'] = str(c['contractor_identifier']) if c.get('contractor_identifier') else None
+                logger.info(
+                    f"get_account_ids: organization_id={result['organization_id']}, "
+                    f"brand_id={result['brand_id']}, contractor_identifier={result['contractor_identifier']}"
+                )
             else:
                 logger.warning("get_account_ids: no existing claims to extract IDs from")
         except Exception as exc:
@@ -824,13 +830,21 @@ class EncircleAPIClient:
         Returns the newly created claim dict (includes 'id').
         """
         payload = dict(claim_data)
-        # organization_id and brand_id are required — fetch from an existing claim
-        if not payload.get('organization_id') or not payload.get('brand_id'):
+        # organization_id, brand_id, and contractor_identifier are required —
+        # fetch from an existing claim if not already provided.
+        needs_ids = (
+            not payload.get('organization_id')
+            or not payload.get('brand_id')
+            or not payload.get('contractor_identifier')
+        )
+        if needs_ids:
             ids = self.get_account_ids()
             if ids['organization_id'] and not payload.get('organization_id'):
                 payload['organization_id'] = ids['organization_id']
             if ids['brand_id'] and not payload.get('brand_id'):
                 payload['brand_id'] = ids['brand_id']
+            if ids['contractor_identifier'] and not payload.get('contractor_identifier'):
+                payload['contractor_identifier'] = ids['contractor_identifier']
             if not payload.get('organization_id'):
                 logger.error("create_claim: organization_id could not be resolved — request will likely fail")
         # type_of_loss is required — default to 'Other' if not provided
@@ -865,6 +879,50 @@ class EncircleAPIClient:
         return self._make_post_request(
             f"property_claims/{encircle_claim_id}/structures/{structure_id}/rooms",
             room_payload
+        )
+
+    def get_room_media(self, claim_id, structure_id, room_id):
+        """
+        Fetch all media items attached to a specific room (paginated).
+        Returns list of media dicts.
+        """
+        import requests as _req
+        all_media = []
+        after_cursor = None
+        while True:
+            params = {'limit': 100}
+            if after_cursor:
+                params['after'] = after_cursor
+            resp = self._make_request(
+                f"property_claims/{claim_id}/structures/{structure_id}/rooms/{room_id}/media",
+                params=params,
+            )
+            items = resp.get('list', []) if isinstance(resp, dict) else []
+            all_media.extend(items)
+            after_cursor = (resp.get('cursor') or {}).get('after') if isinstance(resp, dict) else None
+            if not after_cursor:
+                break
+        return all_media
+
+    def delete_room(self, claim_id, structure_id, room_id):
+        """
+        Delete a room from a structure.
+        Returns the HTTP status code (204 on success).
+        """
+        import requests as _req
+        url = f"{self.base_url}/property_claims/{claim_id}/structures/{structure_id}/rooms/{room_id}"
+        resp = _req.delete(url, headers=self.headers)
+        resp.raise_for_status()
+        return resp.status_code
+
+    def reassign_media(self, claim_id, media_id, new_room_id):
+        """
+        Move a media item to a different room by PATCHing its source.
+        new_room_id must be the Encircle room id (string).
+        """
+        return self._make_patch_request(
+            f"property_claims/{claim_id}/media/{media_id}",
+            {"source": {"type": "room", "primary_id": str(new_room_id)}},
         )
 
 class EncircleDataProcessor:
@@ -2142,51 +2200,60 @@ class ZipMediaDownloader:
     Downloads media files from Encircle API and organizes them in a zip file by room labels.
     """
     
-    def __init__(self, api_client, target_rooms=None, zip_file=None):
+    IMAGE_CONTENT_TYPES = {
+        'image/jpeg', 'image/jpg', 'image/png', 'image/gif',
+        'image/webp', 'image/heic', 'image/heif', 'image/tiff',
+    }
+
+    def __init__(self, api_client, target_rooms=None, zip_file=None,
+                 organize_by_rooms=True, images_only=False):
         self.api_client = api_client
         self.target_rooms = target_rooms or []
         self.downloaded_files = 0
         self.failed_downloads = 0
         self.zip_file = zip_file
-        
+        self.organize_by_rooms = organize_by_rooms
+        self.images_only = images_only
+
     def download_claim_media(self, property_claim_id):
         """
         Main method to download all media for a specific claim into the zip file
         """
         print(f"\nStarting media download for claim ID: {property_claim_id}")
         print("="*60)
-        
+
         try:
-            # Get media list from API
             media_list = self._get_media_list(property_claim_id)
-            
+
             if not media_list:
                 print("No media found for this claim.")
                 return
-            
-            # Process each media item
+
             for idx, media_item in enumerate(media_list, 1):
                 if self._should_download(media_item):
                     self._process_media_item(media_item, idx, len(media_list))
                 else:
-                    print(f"Skipping {media_item['filename']} - not in target rooms")
+                    print(f"Skipping {media_item['filename']}")
 
         except Exception as e:
             logging.error(f"Error downloading media for claim {property_claim_id}: {str(e)}")
             raise
-            
+
         print("\nDownload Summary:")
         print(f"- Successfully downloaded: {self.downloaded_files}")
         print(f"- Failed downloads: {self.failed_downloads}")
-    
+
     def _should_download(self, media_item):
-        """Check if media belongs to target room(s)"""
+        """Check if media passes type filter and optional room filter."""
+        if self.images_only:
+            ct = (media_item.get('content_type') or '').lower().split(';')[0].strip()
+            if not ct.startswith('image/'):
+                return False
         if not self.target_rooms:
-            return True  # Download all if no filter
-        
+            return True
         labels = media_item.get('labels', [])
-        return any(room.lower() in [label.lower() for label in labels] 
-               for room in self.target_rooms)
+        return any(room.lower() in [label.lower() for label in labels]
+                   for room in self.target_rooms)
 
     def _get_media_list(self, property_claim_id):
         """Fetch media list from API with pagination support"""
@@ -2250,7 +2317,9 @@ class ZipMediaDownloader:
             print(f"Error processing item {current_index}: {str(e)}")
             
     def _get_folder_name(self, media_item):
-        """Create nested folder structure from all labels, handling edge cases"""
+        """Return folder path inside ZIP. Flat dump uses images/, room mode uses label hierarchy."""
+        if not self.organize_by_rooms:
+            return "images"
         labels = media_item.get('labels', [])
         
         if not labels:
@@ -2317,6 +2386,62 @@ class ZipMediaDownloader:
         
         metadata_path = f"{file_path}.meta.json"
         self.zip_file.writestr(metadata_path, json.dumps(metadata, indent=2))
+
+
+@login_required
+def claim_media_downloader_view(request):
+    """
+    Image downloader page: select a local claim, optionally organize output
+    by Encircle room labels, and download all images as a ZIP.
+    """
+    from .models import Client
+
+    if request.method == 'POST':
+        encircle_claim_id = request.POST.get('encircle_claim_id', '').strip()
+        organize_by_rooms = request.POST.get('organize_by_rooms') == 'on'
+
+        if not encircle_claim_id:
+            messages.error(request, "Please select a claim or enter an Encircle claim ID.")
+            return redirect('claim_media_downloader')
+
+        try:
+            claim_id_int = int(encircle_claim_id)
+        except (ValueError, TypeError):
+            messages.error(request, f"Invalid Encircle claim ID: {encircle_claim_id!r}")
+            return redirect('claim_media_downloader')
+
+        try:
+            zip_buffer = io.BytesIO()
+            with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                api_client = EncircleAPIClient()
+                downloader = ZipMediaDownloader(
+                    api_client,
+                    zip_file=zip_file,
+                    organize_by_rooms=organize_by_rooms,
+                    images_only=True,
+                )
+                downloader.download_claim_media(claim_id_int)
+
+            if downloader.downloaded_files == 0:
+                messages.warning(request, f"No images found for Encircle claim {encircle_claim_id}.")
+                return redirect('claim_media_downloader')
+
+            zip_data = zip_buffer.getvalue()
+            org_label = "by_room" if organize_by_rooms else "flat"
+            response = HttpResponse(zip_data, content_type='application/zip')
+            response['Content-Disposition'] = (
+                f'attachment; filename="claim_{encircle_claim_id}_images_{org_label}.zip"'
+            )
+            return response
+
+        except Exception as exc:
+            logger.error(f"claim_media_downloader_view POST error: {exc}", exc_info=True)
+            messages.error(request, f"Download failed: {exc}")
+            return redirect('claim_media_downloader')
+
+    # GET – claims are loaded client-side from /api/encircle/claims/simple/
+    return render(request, 'account/claim_image_downloader.html')
+
 
 @login_required
 def export_claims_to_excel(request, claim_id=None):
@@ -4992,7 +5117,7 @@ def generate_combined_labels(request, claim_id):
     from .tasks import _create_combined_wall_labels_pdf, _create_combined_box_labels_pdf
 
     try:
-        client = Client.objects.get(id=claim_id)
+        client = Client.objects.get(pOwner=claim_id)
     except Client.DoesNotExist:
         raise Http404
 
@@ -5036,7 +5161,174 @@ def generate_combined_labels(request, claim_id):
     return response
 
 
+def generate_wall_labels_download(request, claim_id):
+    """Return a wall-labels-only PDF for every room in the given claim."""
+    import io
+    from django.http import HttpResponse, Http404
+    from .tasks import _create_combined_wall_labels_pdf
+
+    try:
+        client = Client.objects.get(pOwner=claim_id)
+    except Client.DoesNotExist:
+        raise Http404
+
+    rooms = client.rooms.all().order_by('sequence')
+    if not rooms.exists():
+        return HttpResponse("No rooms configured for this claim.", status=400)
+
+    buf = io.BytesIO()
+    _create_combined_wall_labels_pdf(buf, client, rooms)
+    buf.seek(0)
+
+    safe_name = "".join(
+        c for c in (client.pOwner or 'Claim') if c.isalnum() or c in (' ', '-', '_')
+    ).strip().replace(' ', '_')
+
+    response = HttpResponse(buf.read(), content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{safe_name}_Wall_Labels.pdf"'
+    return response
+
+
+GEORGIA_TEAM_EMAILS = [
+    "galaxielsaga@gmail.com",
+    "wsbjoe9@gmail.com",
+    "natebrownlee6@gmail.com",
+    "ashleyabernathy3001@gmail.com",
+    "tonyjonesteam365@gmail.com",
+    "wejones729@yahoo.com",
+    "owen7768@att.net",
+    "jonesmlc5907@gmail.com",
+    "bryanworking4joe@gmail.com",
+    "calcompany.cle@gmail.com",
+    "lavernebrownlee107@gmail.com",
+    "tdeonte17@gmail.com",
+    "robbybrowniii@gmail.com",
+    "mcgheemarcellus@gmail.com",
+    "ihsaankhatim@gmail.com",
+]
+
+OHIO_TEAM_EMAILS = [
+    "galaxielsaga@gmail.com",
+    "wsbjoe9@gmail.com",
+    "wejones729@yahoo.com",
+    "owen7768@att.net",
+    "ihsaankhatim@gmail.com",
+]
+
+
 @login_required
+def email_labels_to_group(request):
+    """Email combined wall + box labels PDFs to selected teams and/or custom addresses."""
+    if request.method != 'POST':
+        return HttpResponseNotAllowed(['POST'])
+
+    import io
+    from django.core.mail import EmailMessage
+    from django.conf import settings
+    from .tasks import _create_combined_wall_labels_pdf, _create_combined_box_labels_pdf
+
+    claim_id = request.POST.get('claim', '').strip()
+    if not claim_id:
+        return JsonResponse({'status': 'error', 'message': 'Missing claim ID'}, status=400)
+
+    try:
+        client = get_object_or_404(Client, pOwner=claim_id)
+        rooms = client.rooms.all().order_by('sequence')
+
+        if not rooms.exists():
+            return JsonResponse({'status': 'error', 'message': 'No rooms found for this claim'}, status=400)
+
+        # Build recipient list from selected teams + custom addresses
+        recipients = set()
+        if request.POST.get('georgia'):
+            recipients.update(GEORGIA_TEAM_EMAILS)
+        if request.POST.get('ohio'):
+            recipients.update(OHIO_TEAM_EMAILS)
+        custom_raw = request.POST.get('custom_emails', '').strip()
+        if custom_raw:
+            for addr in custom_raw.split(','):
+                addr = addr.strip()
+                if addr:
+                    recipients.add(addr)
+
+        recipients = list(recipients)
+        if not recipients:
+            return JsonResponse(
+                {'status': 'error', 'message': 'Please select a team or enter at least one email address.'},
+                status=400
+            )
+
+        # Generate PDFs
+        wall_buffer = io.BytesIO()
+        _create_combined_wall_labels_pdf(wall_buffer, client, rooms)
+        wall_buffer.seek(0)
+
+        box_buffer = io.BytesIO()
+        _create_combined_box_labels_pdf(box_buffer, client, rooms)
+        box_buffer.seek(0)
+
+        claim_name = client.pOwner or 'Unknown'
+        safe_claim_name = "".join(
+            c for c in claim_name if c.isalnum() or c in (' ', '-', '_')
+        ).strip()
+        sender_name = request.user.get_full_name() or request.user.email
+
+        teams_sent = []
+        if request.POST.get('georgia'):
+            teams_sent.append('Georgia Team')
+        if request.POST.get('ohio'):
+            teams_sent.append('Ohio Team')
+        if custom_raw:
+            teams_sent.append('custom addresses')
+        teams_label = ', '.join(teams_sent) if teams_sent else 'custom addresses'
+
+        subject = f'[LABELS] {claim_name} – Wall & Box Labels'
+        body = f"""<html>
+<body style="font-family: Arial, sans-serif; color: #333;">
+    <h2 style="color: #1e88e5;">Labels – {claim_name}</h2>
+    <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin: 15px 0;">
+        <p><strong>Claim:</strong> {claim_name}</p>
+        <p><strong>Rooms:</strong> {rooms.count()}</p>
+        <p><strong>Sent to:</strong> {teams_label}</p>
+        <p><strong>Sent by:</strong> {sender_name}</p>
+    </div>
+    <h3>Attached Files:</h3>
+    <ul>
+        <li><strong>Wall Labels PDF</strong> – 4×6" thermal labels with wall orientation diagram</li>
+        <li><strong>Box Labels PDF</strong> – 4×3" thermal labels with room name and box numbers</li>
+    </ul>
+    <p style="color: #888; font-size: 12px; margin-top: 20px;">
+        Sent from the Claims Management System.
+    </p>
+</body>
+</html>"""
+
+        email = EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=recipients,
+        )
+        email.content_subtype = 'html'
+        email.attach(f'{safe_claim_name}_Wall_Labels.pdf', wall_buffer.read(), 'application/pdf')
+        email.attach(f'{safe_claim_name}_Box_Labels.pdf', box_buffer.read(), 'application/pdf')
+        email.send()
+
+        logger.info(
+            f"Labels emailed for claim '{claim_id}' to {teams_label} "
+            f"({len(recipients)} recipients) by {request.user.email}"
+        )
+        return JsonResponse({
+            'status': 'success',
+            'message': f'Labels sent to {len(recipients)} recipient(s) ({teams_label})',
+            'recipients_count': len(recipients),
+        })
+
+    except Exception as e:
+        logger.error(f"Failed to email labels for claim '{claim_id}': {str(e)}", exc_info=True)
+        return JsonResponse({'status': 'error', 'message': 'Failed to send email. Please try again.'}, status=500)
+
+
 @login_required
 def labels(request):
     logger.info(f"Labels function called - method: {request.method}")
@@ -5071,10 +5363,13 @@ def labels(request):
                     logger.error(f"Unexpected error loading rooms for claim {selected_claim_id}: {str(e)}")
                     logger.debug(f"Traceback: {traceback.format_exc()}")
             
+            from django.contrib.auth.models import Group
+            user_groups = Group.objects.all().order_by('name')
             context = {
                 'claims': claims,
                 'rooms': rooms,
-                'selected_claim_id': selected_claim_id
+                'selected_claim_id': selected_claim_id,
+                'user_groups': user_groups,
             }
             return render(request, 'account/labels.html', context)
             
@@ -5326,7 +5621,7 @@ def wall_labels(request):
                 'claims': claims,
                 'rooms': rooms,
                 'selected_claim_id': selected_claim_id,
-                'label_type': 'wall'  # Indicate this is wall labels
+                'label_type': 'wall',
             }
             return render(request, 'account/wall_labels.html', context)
         except Exception as e:
@@ -5454,122 +5749,232 @@ def wall_labels(request):
         return HttpResponseNotAllowed(['GET', 'POST'])
 
 
-def create_room_label_pdf_thermal(pdf_path, room_name, claim_name, num_labels):
+def create_room_label_pdf_thermal(pdf_path, room_name, claim_name, num_labels,
+                                  start_box_number=1):
     """
-    Create thermal printer PDF for room/box labels (3x4 inch)
-    Simple design with room name and claim name
+    Box labels — 4×3 inch thermal.
+    Two-column layout: Col A (75%) = room name + claim name, Col B (25%) = BOX # + number.
+    All text auto-fits within its column.
     """
-    from reportlab.lib.pagesizes import inch
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch as INCH
     from reportlab.lib import colors
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
-    # 3x4 inch label size for thermal printer
-    LABEL_WIDTH = 4 * INCH
-    LABEL_HEIGHT = 3 * INCH
+    W = 4 * INCH
+    H = 3 * INCH
+    MARGIN = 0.15 * INCH
 
-    c = canvas.Canvas(pdf_path, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    col_a_w = W * 0.75          # left column width
+    col_b_x = col_a_w           # right column starts here
+    col_b_w = W * 0.25          # right column width
+    b_cx    = col_b_x + col_b_w / 2  # right column centre-x
 
-    # Generate the requested number of labels
-    for label_num in range(num_labels):
-        # Room Name (large, centered)
-        c.setFont("Helvetica-Bold", 36)
-        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 + 0.2 * INCH, room_name.upper())
+    def fit_text(text, max_width, x, y, max_fs, min_fs=7,
+                 font="Helvetica-Bold", centered=True):
+        fs = max_fs
+        while fs >= min_fs and stringWidth(text, font, fs) > max_width:
+            fs -= 1
+        c.setFont(font, fs)
+        if centered:
+            c.drawCentredString(x, y, text)
+        else:
+            c.drawString(x, y, text)
 
-        # Claim Name (smaller, below room name)
-        c.setFont("Helvetica", 14)
-        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 - 0.4 * INCH, claim_name)
+    c = canvas.Canvas(pdf_path, pagesize=(W, H))
 
-        # Add decorative border
+    for i in range(num_labels):
+        box_num = start_box_number + i
+
+        # ── Col A: room name + claim name ─────────────────────────────
+        fit_text(room_name.upper(),
+                 max_width=col_a_w - MARGIN * 2,
+                 x=col_a_w / 2, y=H * 0.60,
+                 max_fs=36, font="Helvetica-Bold")
+
+        fit_text(claim_name,
+                 max_width=col_a_w - MARGIN * 2,
+                 x=col_a_w / 2, y=H * 0.33,
+                 max_fs=15, font="Helvetica")
+
+        # ── Vertical divider ───────────────────────────────────────────
         c.setStrokeColor(colors.black)
-        c.setLineWidth(2)
-        c.rect(0.2 * INCH, 0.2 * INCH, LABEL_WIDTH - 0.4 * INCH, LABEL_HEIGHT - 0.4 * INCH)
+        c.setLineWidth(0.8)
+        c.line(col_b_x, MARGIN, col_b_x, H - MARGIN)
 
-        # Add page break if more labels are needed
-        if label_num < num_labels - 1:
+        # ── Col B: "BOX #" header ──────────────────────────────────────
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 9)
+        c.drawCentredString(b_cx, H * 0.76, "BOX #")
+
+        c.setLineWidth(0.5)
+        c.line(col_b_x + MARGIN * 0.3, H * 0.69,
+               W - MARGIN * 0.3, H * 0.69)
+
+        # ── Col B: box number (large, auto-fit) ───────────────────────
+        fit_text(str(box_num),
+                 max_width=col_b_w - MARGIN,
+                 x=b_cx, y=H * 0.24,
+                 max_fs=52, min_fs=16, font="Helvetica-Bold")
+
+        if i < num_labels - 1:
             c.showPage()
 
     c.save()
-    logger.info(f"Created room label PDF: {pdf_path} with {num_labels} label(s)")
+    logger.info(f"Box labels saved: {pdf_path} ({num_labels} labels, "
+                f"#{start_box_number}–{start_box_number + num_labels - 1})")
 
 
 def create_wall_label_pdf(pdf_path, room_name, claim_name, num_labels):
     """
-    Create thermal printer PDF for wall labels (3x4 inch)
-    Shows room name and wall orientation diagram matching the FOYER structure
+    Wall orientation labels — 4×6 inch thermal.
+    Layout: claim name (small, top-left) → room name (large, centred) →
+    dotted separator → compass grid (W=2 top, W=1 left, CENTER, W=3 right, W=4 bottom).
+    No arrow graphics — clean text only.
     """
-    from reportlab.lib.pagesizes import inch
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch as INCH
-    from reportlab.pdfbase import pdfmetrics
-    from reportlab.pdfbase.ttfonts import TTFont
     from reportlab.lib import colors
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
-    # 3x4 inch label size for thermal printer
-    LABEL_WIDTH = 4 * INCH
-    LABEL_HEIGHT = 3 * INCH
+    W = 4 * INCH
+    H = 6 * INCH
 
-    c = canvas.Canvas(pdf_path, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    def fit_text(text, max_width, x, y, max_fs, min_fs=7,
+                 font="Helvetica-Bold", centered=True):
+        fs = max_fs
+        while fs >= min_fs and stringWidth(text, font, fs) > max_width:
+            fs -= 1
+        c.setFont(font, fs)
+        if centered:
+            c.drawCentredString(x, y, text)
+        else:
+            c.drawString(x, y, text)
 
-    # Generate the requested number of labels
-    for label_num in range(num_labels):
-        # Room Name (large, centered at top)
-        c.setFont("Helvetica-Bold", 28)
-        c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 0.5 * INCH, room_name)
+    c = canvas.Canvas(pdf_path, pagesize=(W, H))
 
-        # Orientation diagram - matching your FOYER image structure
-        center_y = LABEL_HEIGHT / 2 - 0.1 * INCH
-        center_x = LABEL_WIDTH / 2
+    for i in range(num_labels):
+        cx = W / 2
 
-        # Draw orientation boxes/sections
-        # W=1 (left side)
-        c.setFont("Helvetica", 10)
-        c.drawCentredString(center_x - 1.2 * INCH, center_y, "W=1")
+        # ── Claim name — small, top-left ──────────────────────────────
+        c.setFillColor(colors.black)
+        fit_text(claim_name,
+                 max_width=W - 0.5 * INCH,
+                 x=0.22 * INCH, y=H - 0.28 * INCH,
+                 max_fs=10, font="Helvetica", centered=False)
 
-        # CENTER (middle, with arrow pointing up)
-        c.setFont("Helvetica-Bold", 12)
-        c.drawCentredString(center_x, center_y + 0.3 * INCH, "CENTER")
-        # Draw up arrow
-        c.line(center_x, center_y, center_x, center_y + 0.2 * INCH)
-        c.line(center_x - 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
-        c.line(center_x + 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
+        # ── Room name — large, centred ────────────────────────────────
+        fit_text(room_name,
+                 max_width=W - 0.4 * INCH,
+                 x=cx, y=H - 0.72 * INCH,
+                 max_fs=32, font="Helvetica-Bold")
 
-        # W=3 (right side)
-        c.setFont("Helvetica", 10)
-        c.drawCentredString(center_x + 1.2 * INCH, center_y, "W=3")
-
-        # W=4 (bottom)
-        c.drawCentredString(center_x, center_y - 0.5 * INCH, "W=4")
-
-        # Draw circular arrows around the orientation (optional decoration)
-        # This adds the curved arrow effect from your image
-        c.setStrokeColor(colors.blue)
-        c.setLineWidth(2)
-        # Left curved arrow
-        c.arc(center_x - 1.5 * INCH, center_y - 0.15 * INCH,
-              center_x - 0.9 * INCH, center_y + 0.15 * INCH,
-              startAng=30, extent=120)
-        # Right curved arrow
-        c.arc(center_x + 0.9 * INCH, center_y - 0.15 * INCH,
-              center_x + 1.5 * INCH, center_y + 0.15 * INCH,
-              startAng=30, extent=120)
-
-        # Reset stroke color
+        # ── Dotted separator ──────────────────────────────────────────
         c.setStrokeColor(colors.black)
-        c.setLineWidth(1)
-
-        # Add dotted separator line (matching your image)
+        c.setLineWidth(0.8)
         c.setDash(3, 3)
-        c.line(0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH,
-               LABEL_WIDTH - 0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH)
-        c.setDash()  # Reset to solid line
+        c.line(0.3 * INCH, H - 1.02 * INCH, W - 0.3 * INCH, H - 1.02 * INCH)
+        c.setDash()
 
-        # Add page break if more labels are needed
-        if label_num < num_labels - 1:
+        # ── Compass diagram ───────────────────────────────────────────
+        from reportlab.lib.colors import HexColor as _HexColor
+        import math as _math
+
+        col_w = W / 3
+        c0_cx = col_w * 0.5          # left col centre  (W=1)
+        c1_cx = W / 2                # middle col centre
+        c2_cx = col_w * 2.5          # right col centre  (W=3)
+
+        diag_top = H - 1.15 * INCH
+        diag_bot = 0.25 * INCH
+        diag_mid = (diag_top + diag_bot) / 2
+
+        # ── Helper: solid upward arrow ────────────────────────────────
+        def _up_arrow(cx, base_y, tip_y):
+            aw = 0.20 * INCH
+            sw = 0.07 * INCH
+            hh = min(0.18 * INCH, (tip_y - base_y) * 0.42)
+            p = c.beginPath()
+            p.moveTo(cx,       tip_y)
+            p.lineTo(cx+aw/2,  tip_y - hh)
+            p.lineTo(cx+sw/2,  tip_y - hh)
+            p.lineTo(cx+sw/2,  base_y)
+            p.lineTo(cx-sw/2,  base_y)
+            p.lineTo(cx-sw/2,  tip_y - hh)
+            p.lineTo(cx-aw/2,  tip_y - hh)
+            p.close()
+            c.setFillColor(_HexColor('#2E75B6'))
+            c.setStrokeColor(_HexColor('#1A4472'))
+            c.setLineWidth(0.4)
+            c.drawPath(p, fill=1, stroke=1)
+
+        # ── Helper: simple thin arc arrow ─────────────────────────────
+        def _c_arrow(cx, cy, R, open_right):
+            gap_half = 45
+            extent   = 360 - gap_half * 2   # 270°
+            arc_s    = gap_half if open_right else 180 + gap_half
+            arc_e    = arc_s + extent
+            ah_ang   = _math.radians(arc_e if open_right else arc_s)
+            tx = -_math.sin(ah_ang) if open_right else  _math.sin(ah_ang)
+            ty =  _math.cos(ah_ang) if open_right else -_math.cos(ah_ang)
+            # thin arc
+            c.saveState()
+            c.setStrokeColor(_HexColor('#2E75B6')); c.setLineWidth(1.2); c.setLineCap(0)
+            p = c.beginPath()
+            p.arc(cx - R, cy - R, cx + R, cy + R, arc_s, extent)
+            c.drawPath(p, fill=0, stroke=1)
+            c.restoreState()
+            # filled arrowhead triangle
+            hx = cx + R*_math.cos(ah_ang); hy = cy + R*_math.sin(ah_ang)
+            hs = R*0.18; pw = R*0.12; px = -ty; py = tx
+            p2 = c.beginPath()
+            p2.moveTo(hx + tx*hs,              hy + ty*hs)
+            p2.lineTo(hx - tx*hs + px*pw,  hy - ty*hs + py*pw)
+            p2.lineTo(hx - tx*hs - px*pw,  hy - ty*hs - py*pw)
+            p2.close()
+            c.setFillColor(_HexColor('#2E75B6')); c.setStrokeColor(_HexColor('#2E75B6')); c.setLineWidth(0.3)
+            c.drawPath(p2, fill=1, stroke=1)
+
+        # ── W=2 — top centre ─────────────────────────────────────────
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(c1_cx, diag_mid + 0.95 * INCH, "W=2")
+
+        # ── Up arrow (center box → W=2) ───────────────────────────────
+        _up_arrow(c1_cx,
+                  base_y=diag_mid + 0.27 * INCH,
+                  tip_y =diag_mid + 0.77 * INCH)
+
+        # ── Left C-arrow (W=1) — large ribbon arc, text in hollow ─────
+        _c_arrow(c0_cx, diag_mid, R=0.38 * INCH, open_right=True)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawCentredString(c0_cx, diag_mid - 0.055 * INCH, "W=1")
+
+        # ── CENTER rectangle ──────────────────────────────────────────
+        box_h = 0.45 * INCH; box_w = 0.85 * INCH
+        c.setStrokeColor(colors.black); c.setLineWidth(1.2)
+        c.rect(c1_cx - box_w / 2, diag_mid - box_h / 2, box_w, box_h)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 10)
+        c.drawCentredString(c1_cx, diag_mid - 0.06 * INCH, "CENTER")
+
+        # ── Right C-arrow (W=3) — large ribbon arc, text in hollow ────
+        _c_arrow(c2_cx, diag_mid, R=0.38 * INCH, open_right=False)
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 13)
+        c.drawCentredString(c2_cx, diag_mid - 0.055 * INCH, "W=3")
+
+        # ── W=4 — bottom centre ───────────────────────────────────────
+        c.setFillColor(colors.black)
+        c.setFont("Helvetica-Bold", 14)
+        c.drawCentredString(c1_cx, diag_mid - 0.95 * INCH, "W=4")
+
+        if i < num_labels - 1:
             c.showPage()
 
     c.save()
-    logger.info(f"Created wall label PDF: {pdf_path} with {num_labels} label(s)")
+    logger.info(f"Wall labels saved: {pdf_path} ({num_labels} labels)")
 
 
 def convert_excel_to_pdf_with_pages(excel_path, pdf_path, sheet_name, room_name, p_owner, num_labels):
@@ -8828,53 +9233,42 @@ def generate_room_entries_from_configs(request):
 
 def generate_8000_9000_entries(rooms, configs):
     """
-    Generate 6000-7000s Readings List entries
+    Generate 8000-9000s Readings List entries
     ALWAYS USES 100s CONFIG FOR LOS VALUES
     """
     entries = []
-    
-    # Section labels for readings - 8000-9000 FORMAT
-    readings_section_labels = {
-        8100: "8100.0 . ..... DAY 1 MC READINGS ..... ======================",
-        8200: "8200.0 . ..... DAY 2 MC READINGS ..... ======================",
-        8300: "8300.0 . ..... DAY 3 MC READINGS ..... ======================",
-        8400: "8400.0 . ..... DAY 4 MC READINGS ..... ======================",
+
+    def _los(room_name):
+        cfg = configs.get(room_name, {})
+        v = cfg.get(100, cfg.get('100', '.'))
+        return "…........." if v in ('.', '', None) else v
+
+    # ── Day 0: Stabilization ─────────────────────────────────────────
+    entries.append("8000 ….. ======= MC READINGS STABILIZATION ===============")
+    for idx, room_name in enumerate(rooms):
+        entries.append(f"{8001 + idx}.0 . {room_name} … MC READINGS STABILIZATION  {_los(room_name)}")
+
+    # ── Day 1-4 sections ─────────────────────────────────────────────
+    section_labels = {
+        8100: "8100.0 . ...  DAY1    MC READINGS ..  =========  ===============  =====",
+        8200: "8200.0 . ...  DAY2    MC READINGS ..  ===============  ======",
+        8300: "8300.0 . ….. DAY 3 …..  =====================  ======",
+        8400: "8400.0 . ….. DAY 4 …..  ===============   =======",
     }
-    
-    # 6000s sections (use user room data with 100s LOS values)
+    descs = {
+        8100: "   ...  DAY1    MC READINGS .. ",
+        8200: "  ...  DAY2    MC READINGS ..",
+        8300: "  ...  DAY3    MC READINGS ..",
+        8400: "  ...  DAY4    MC READINGS",
+    }
+
     for work_type in [8100, 8200, 8300, 8400]:
-        # ADD SECTION LABEL FIRST
-        entries.append(readings_section_labels[work_type])
-        
+        entries.append(section_labels[work_type])
+        day_num = str(work_type)[3]
         for idx, room_name in enumerate(rooms):
-            room_number = work_type + idx + 1
-            
-            # ALWAYS USE 100s CONFIG FOR LOS VALUES
-            room_config = configs.get(room_name, {})
-            config_value = None
-            
-            if 100 in room_config:
-                config_value = room_config[100]
-            elif '100' in room_config:
-                config_value = room_config['100']
-            else:
-                config_value = '.'
-            
-            display_value = "…........." if config_value == "." else config_value
-            
-            # Format for 6000s - ORIGINAL FORMAT
-            if work_type == 8100:
-                desc = "   ...  DAY1    MC READINGS .. "
-            elif work_type == 8200:
-                desc = "  ...  DAY2    MC READINGS .."
-            elif work_type == 8300:
-                desc = "  ...  DAY3    MC READINGS .."
-            else:  # 6400
-                desc = "  ...  DAY4    MC READINGS"
-            
-            # ORIGINAL FORMAT: {number} …. {room_name} {description} {los_value}
-            entry = f"{room_number} {display_value} .{str(work_type)[3]} …. {room_name} {desc}"
-            entries.append(entry)
+            entries.append(
+                f"{work_type + idx + 1}.{day_num} . {room_name} {descs[work_type]}  {_los(room_name)}"
+            )
     
     # 7000s section label - ORIGINAL FORMAT
     entries.append("9000 RH &T & GPP  DRY CHAMBERS [DC] . READINGS ==================")

@@ -17,7 +17,7 @@ from .models import Client, Room, WorkType, RoomWorkTypeValue, ChecklistItem
 # OneDrive models removed: OneDriveFolder, OneDriveFile, SyncLog
 from .forms import OneDriveClientForm, RoomSelectionForm, BulkWorkTypeForm
 # UPDATED: Use server-side tasks instead of OneDrive tasks
-from .tasks import create_server_folder_structure_task, copy_templates_to_server_task, push_claim_to_encircle_task, generate_and_email_labels_task
+from .tasks import create_server_folder_structure_task, copy_templates_to_server_task, push_claim_to_encircle_task, push_rooms_to_encircle_task, migrate_encircle_rooms_task, generate_and_email_labels_task
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -687,6 +687,51 @@ def push_to_encircle(request, claim_id):
         })
     except Exception as exc:
         logger.error(f"push_to_encircle view error for claim {claim_id}: {exc}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
+
+
+@login_required
+@require_POST
+def push_rooms_to_encircle(request, claim_id):
+    """
+    Push rooms from a local Client to a SPECIFIC existing Encircle claim.
+    Use this to correct a claim that was previously synced with wrong rooms.
+
+    POST body (JSON):
+        encircle_claim_id  – target Encircle claim id (required)
+        selected_templates – list of template keys, e.g. ["basic", "readings"]
+                             Defaults to ["basic", "readings"] if omitted.
+    """
+    import json
+    client = get_object_or_404(Client, id=claim_id)
+
+    try:
+        body = json.loads(request.body or '{}')
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Invalid JSON body'}, status=400)
+
+    encircle_claim_id = (body.get('encircle_claim_id') or '').strip()
+    if not encircle_claim_id:
+        return JsonResponse({'success': False, 'error': 'encircle_claim_id is required'}, status=400)
+
+    selected_templates = body.get('selected_templates') or ['basic', 'readings']
+
+    try:
+        task = push_rooms_to_encircle_task.delay(
+            str(client.id),
+            encircle_claim_id,
+            selected_templates,
+        )
+        return JsonResponse({
+            'success': True,
+            'message': (
+                f'Room push queued for {client.pOwner} → Encircle claim {encircle_claim_id}. '
+                f'Templates: {selected_templates}.'
+            ),
+            'task_id': task.id,
+        })
+    except Exception as exc:
+        logger.error(f"push_rooms_to_encircle view error for claim {claim_id}: {exc}", exc_info=True)
         return JsonResponse({'success': False, 'error': str(exc)}, status=500)
 
 
@@ -1669,3 +1714,382 @@ def move_claim_file(request, claim_id):
 
     except Exception as e:
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Push-Rooms Tool  (correction / manual room push UI)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@login_required
+def push_rooms_page(request):
+    """
+    Renders the room-push correction tool page.
+    Passes all local clients for the left-panel selector.
+    """
+    clients = (
+        Client.objects
+        .only('id', 'pOwner', 'pAddress', 'claimNumber', 'encircle_claim_id')
+        .order_by('pOwner')
+    )
+    return render(request, 'account/push_rooms_tool.html', {'clients': clients})
+
+
+@login_required
+def preview_rooms_entries(request, claim_id):
+    """
+    GET  /claims/<claim_id>/preview-rooms/?templates=basic,readings
+    Returns the exact list of room entry strings that would be pushed,
+    without making any Encircle API call.
+    """
+    from .tasks import build_room_entries
+    from .models import Room
+
+    client = get_object_or_404(Client, id=claim_id)
+    templates_param = request.GET.get('templates', 'basic,readings')
+    selected_templates = [t.strip() for t in templates_param.split(',') if t.strip()]
+
+    rooms_qs = (
+        Room.objects
+        .filter(client=client)
+        .prefetch_related('work_type_values__work_type')
+        .order_by('sequence')
+    )
+    room_names = []
+    configs = {}
+    for room in rooms_qs:
+        room_names.append(room.room_name)
+        configs[room.room_name] = {
+            wtv.work_type.work_type_id: wtv.value_type
+            for wtv in room.work_type_values.all()
+        }
+
+    entries = build_room_entries(room_names, configs, selected_templates)
+    return JsonResponse({
+        'client_name': client.pOwner,
+        'room_count': len(room_names),
+        'entry_count': len(entries),
+        'entries': entries,
+    })
+
+
+@login_required
+def encircle_claims_simple(request):
+    """
+    GET  /api/encircle/claims/simple/?q=<search>
+    Returns a lightweight list of Encircle claims: [{id, name, address}]
+    filtered by the optional ?q= query.
+    Used to populate the Encircle claim selector on the push-rooms tool.
+    """
+    from .views import EncircleAPIClient, EncircleDataProcessor
+    q = (request.GET.get('q') or '').strip().lower()
+    try:
+        api = EncircleAPIClient()
+        processor = EncircleDataProcessor()
+        raw = api.get_all_claims()
+        processed = processor.process_claims_list(raw)
+        claims = [
+            {
+                'id': c['id'],
+                'name': c.get('policyholder_name') or '',
+                'address': c.get('full_address') or '',
+            }
+            for c in processed
+        ]
+        if q:
+            claims = [
+                c for c in claims
+                if q in c['name'].lower() or q in c['address'].lower()
+            ]
+        claims.sort(key=lambda c: c['name'].lower())
+        return JsonResponse({'claims': claims})
+    except Exception as exc:
+        logger.error(f"encircle_claims_simple error: {exc}", exc_info=True)
+        return JsonResponse({'error': str(exc)}, status=500)
+
+
+@login_required
+@require_POST
+def migrate_encircle_rooms(request):
+    """
+    POST  /claims/migrate-encircle-rooms/
+    Body (JSON):  { "encircle_claim_id": "abc123" }
+
+    Queues migrate_encircle_rooms_task which:
+      1. Identifies old-format rooms (name doesn't start with a digit).
+      2. Moves their photos to the best-matching new-format room.
+      3. Deletes all old-format rooms.
+    """
+    import json
+    try:
+        body = json.loads(request.body or '{}')
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Invalid JSON body'}, status=400)
+
+    encircle_claim_id = (body.get('encircle_claim_id') or '').strip()
+    if not encircle_claim_id:
+        return JsonResponse({'success': False, 'error': 'encircle_claim_id is required'}, status=400)
+
+    try:
+        task = migrate_encircle_rooms_task.delay(encircle_claim_id)
+        return JsonResponse({
+            'success': True,
+            'message': (
+                f'Migration queued for Encircle claim {encircle_claim_id}. '
+                'Old rooms will have their photos moved to matching new rooms, '
+                'then be deleted.'
+            ),
+            'task_id': task.id,
+        })
+    except Exception as exc:
+        logger.error(f"migrate_encircle_rooms view error: {exc}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
+
+
+@login_required
+@require_POST
+def duplicate_encircle_claim(request):
+    """
+    POST  /claims/duplicate-encircle-claim/
+    Body (JSON):
+        {
+            "encircle_claim_id": "abc123",
+            "suffix": "(TEST COPY)"   ← optional, defaults to "(TEST COPY)"
+        }
+
+    Synchronously creates a new Encircle claim with the same metadata and a
+    copy of all room entries, returning the new_claim_id immediately so the
+    user can proceed to migration without manual lookup.
+
+    The source claim is NEVER written to — only GET calls are made against it.
+    """
+    import json as _json
+    from .views import EncircleAPIClient
+
+    try:
+        body = _json.loads(request.body or '{}')
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Invalid JSON body'}, status=400)
+
+    encircle_claim_id = (body.get('encircle_claim_id') or '').strip()
+    if not encircle_claim_id:
+        return JsonResponse({'success': False, 'error': 'encircle_claim_id is required'}, status=400)
+
+    suffix = (body.get('suffix') or '(TEST COPY)').strip()
+
+    try:
+        api = EncircleAPIClient()
+
+        # ── 1. Fetch source claim (READ ONLY — source is never modified) ──────
+        src = api.get_claim_details(encircle_claim_id)
+
+        # ── 2. Build new claim payload ────────────────────────────────────────
+        base_name = (src.get('policyholder_name') or '').strip()
+        new_name  = f"{base_name} {suffix}".strip()
+
+        # Normalize date_of_loss: Encircle GET returns "2024-03-15T00:00:00Z",
+        # but create_claim requires "YYYY-MM-DD" only.
+        date_raw = src.get('date_of_loss') or ''
+        date_normalized = date_raw[:10] if date_raw else ''
+
+        new_payload = {
+            'policyholder_name':      new_name,
+            'full_address':           src.get('full_address') or '',
+            'type_of_loss':           src.get('type_of_loss') or 'Other',
+            'date_of_loss':           date_normalized,
+            'adjuster_name':          src.get('adjuster_name') or '',
+            'insurance_company_name': src.get('insurance_company_name') or '',
+            'policy_number':          src.get('policy_number') or '',
+            # At least one identifier is required by the API — copy from source
+            'contractor_identifier':  str(src['contractor_identifier']) if src.get('contractor_identifier') else '',
+            'assignment_identifier':  str(src['assignment_identifier']) if src.get('assignment_identifier') else '',
+            'insurer_identifier':     str(src['insurer_identifier']) if src.get('insurer_identifier') else '',
+        }
+        # Strip empty strings so we don't send blank optional fields
+        new_payload = {k: v for k, v in new_payload.items() if v}
+
+        new_claim = api.create_claim(new_payload)
+        new_claim_id = str(new_claim.get('id') or '')
+        if not new_claim_id:
+            raise ValueError(f"Encircle did not return an id for the new claim: {new_claim}")
+
+        logger.info(f"duplicate_encircle_claim: created new claim {new_claim_id} ('{new_name}')")
+
+        # ── 3. Copy rooms from source into new claim ──────────────────────────
+        rooms_copied = 0
+        rooms_failed = []
+        try:
+            # READ-ONLY fetch for source — intentionally NOT using
+            # get_or_create_default_structure so we never write to the source claim.
+            src_structures_resp = api.get_claim_structures(encircle_claim_id)
+            src_structures = (
+                src_structures_resp.get('list', src_structures_resp)
+                if isinstance(src_structures_resp, dict)
+                else src_structures_resp
+            )
+            if not src_structures:
+                raise ValueError(
+                    f"Source claim {encircle_claim_id} has no structures — cannot copy rooms. "
+                    "The source claim was NOT modified."
+                )
+            src_structure    = src_structures[0]
+            src_structure_id = str(src_structure.get('id') or '')
+
+            src_rooms_resp = api.get_claim_rooms(encircle_claim_id, src_structure_id)
+            src_rooms = (
+                src_rooms_resp.get('list', [])
+                if isinstance(src_rooms_resp, dict)
+                else []
+            )
+
+            dst_structure    = api.get_or_create_default_structure(new_claim_id)
+            dst_structure_id = str(dst_structure.get('id') or '')
+
+            for room in src_rooms:
+                room_name = (room.get('name') or '').strip()
+                if not room_name:
+                    continue
+                try:
+                    api.create_room(new_claim_id, dst_structure_id, {'name': room_name})
+                    rooms_copied += 1
+                except Exception as room_exc:
+                    logger.warning(
+                        f"duplicate_encircle_claim: failed to copy room '{room_name}': {room_exc}"
+                    )
+                    rooms_failed.append(room_name)
+        except Exception as rooms_exc:
+            logger.warning(f"duplicate_encircle_claim: room copy error — {rooms_exc}", exc_info=True)
+
+        logger.info(
+            f"duplicate_encircle_claim done: source={encircle_claim_id} → "
+            f"new={new_claim_id}, rooms_copied={rooms_copied}"
+        )
+
+        return JsonResponse({
+            'success': True,
+            'new_claim_id': new_claim_id,
+            'new_claim_name': new_name,
+            'rooms_copied': rooms_copied,
+            'rooms_failed': rooms_failed,
+            'message': (
+                f'Claim duplicated successfully. '
+                f'New claim "{new_name}" (ID: {new_claim_id}) created with {rooms_copied} room(s) copied.'
+            ),
+        })
+
+    except Exception as exc:
+        logger.error(f"duplicate_encircle_claim view error: {exc}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
+
+
+@login_required
+def get_pushed_rooms(request):
+    """
+    GET  /claims/pushed-rooms/?encircle_claim_id=...
+
+    Returns all rooms our system has pushed to the given Encircle claim,
+    looked up from the EncirclePushedRoom tracking table.
+    Does NOT call the Encircle API — instant, no network cost.
+    """
+    from .models import EncirclePushedRoom
+
+    encircle_claim_id = (request.GET.get('encircle_claim_id') or '').strip()
+    if not encircle_claim_id:
+        return JsonResponse({'success': False, 'error': 'encircle_claim_id is required'}, status=400)
+
+    try:
+        records = EncirclePushedRoom.objects.filter(
+            encircle_claim_id=encircle_claim_id
+        ).values('room_id', 'room_name', 'structure_id', 'pushed_at')
+
+        rooms = [
+            {
+                'id':           r['room_id'],
+                'name':         r['room_name'],
+                'structure_id': r['structure_id'],
+                'pushed_at':    r['pushed_at'].strftime('%Y-%m-%d %H:%M') if r['pushed_at'] else '',
+            }
+            for r in records
+        ]
+        return JsonResponse({
+            'success': True,
+            'count':   len(rooms),
+            'rooms':   rooms,
+        })
+    except Exception as exc:
+        logger.error(f"get_pushed_rooms error: {exc}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
+
+
+@login_required
+@require_POST
+def delete_pushed_rooms(request):
+    """
+    POST  /claims/delete-pushed-rooms/
+    Body (JSON):
+        {
+            "encircle_claim_id": "abc123",
+            "room_ids": ["encircle_room_id1", ...]   ← Encircle room IDs to delete
+        }
+
+    Deletes the specified rooms from Encircle and removes them from the
+    EncirclePushedRoom tracking table.  structure_id is resolved from the
+    tracking table — no need to pass it from the frontend.
+    """
+    import json as _json
+    from .views import EncircleAPIClient
+    from .models import EncirclePushedRoom
+
+    try:
+        body = _json.loads(request.body or '{}')
+    except (ValueError, TypeError):
+        return JsonResponse({'success': False, 'error': 'Invalid JSON body'}, status=400)
+
+    encircle_claim_id = (body.get('encircle_claim_id') or '').strip()
+    room_ids          = body.get('room_ids') or []
+
+    if not encircle_claim_id:
+        return JsonResponse({'success': False, 'error': 'encircle_claim_id is required'}, status=400)
+    if not room_ids:
+        return JsonResponse({'success': False, 'error': 'No room_ids provided'}, status=400)
+
+    try:
+        api     = EncircleAPIClient()
+        deleted = []
+        failed  = []
+
+        for room_id in room_ids:
+            room_id = str(room_id)
+            # Look up structure_id from tracking table
+            record = EncirclePushedRoom.objects.filter(
+                encircle_claim_id=encircle_claim_id, room_id=room_id
+            ).first()
+            structure_id = record.structure_id if record else ''
+            if not structure_id:
+                logger.warning(f"delete_pushed_rooms: no structure_id for room {room_id}, skipping")
+                failed.append({'id': room_id, 'error': 'structure_id not found in tracking table'})
+                continue
+            try:
+                api.delete_room(encircle_claim_id, structure_id, room_id)
+                deleted.append(room_id)
+                EncirclePushedRoom.objects.filter(
+                    encircle_claim_id=encircle_claim_id, room_id=room_id
+                ).delete()
+                logger.info(f"delete_pushed_rooms: deleted room {room_id} from claim {encircle_claim_id}")
+            except Exception as exc:
+                logger.warning(f"delete_pushed_rooms: failed to delete room {room_id}: {exc}")
+                failed.append({'id': room_id, 'error': str(exc)})
+
+        return JsonResponse({
+            'success':       True,
+            'deleted_count': len(deleted),
+            'failed_count':  len(failed),
+            'failed':        failed,
+            'message': (
+                f'Deleted {len(deleted)} room(s) from claim {encircle_claim_id}.'
+                + (f' {len(failed)} failed.' if failed else '')
+            ),
+        })
+
+    except Exception as exc:
+        logger.error(f"delete_pushed_rooms error: {exc}", exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)

@@ -2320,17 +2320,35 @@ def generate_and_email_labels_task(self, client_id):
 
 
 def _create_combined_wall_labels_pdf(buffer, client, rooms):
-    """Create a combined PDF with wall labels for all rooms."""
+    """
+    Combined wall labels PDF for all rooms — 4×6 inch thermal.
+    Layout: claim name (small, top-left) → room name (large, centred) →
+    dotted separator → compass grid (W=2 top, W=1 left, CENTER box, W=3 right, W=4 bottom).
+    No arrow graphics — clean text only.
+    """
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch as INCH
     from reportlab.lib import colors
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
-    LABEL_WIDTH = 4 * INCH
-    LABEL_HEIGHT = 3 * INCH
+    W = 4 * INCH
+    H = 6 * INCH
+
+    def fit_text(text, max_width, x, y, max_fs, min_fs=7,
+                 font="Helvetica-Bold", centered=True):
+        fs = max_fs
+        while fs >= min_fs and stringWidth(text, font, fs) > max_width:
+            fs -= 1
+        c.setFont(font, fs)
+        if centered:
+            c.drawCentredString(x, y, text)
+        else:
+            c.drawString(x, y, text)
 
     WALL_COPIES = 2
+    claim_name = client.pOwner or 'Unknown'
 
-    c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    c = canvas.Canvas(buffer, pagesize=(W, H))
 
     total_labels = len(rooms) * WALL_COPIES
     label_count = 0
@@ -2338,41 +2356,119 @@ def _create_combined_wall_labels_pdf(buffer, client, rooms):
     for room in rooms:
         room_name = room.room_name
         for _ in range(WALL_COPIES):
-            c.setFont("Helvetica-Bold", 28)
-            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT - 0.5 * INCH, room_name)
+            cx = W / 2
 
-            center_y = LABEL_HEIGHT / 2 - 0.1 * INCH
-            center_x = LABEL_WIDTH / 2
+            # Claim name — small, top-left
+            c.setFillColor(colors.black)
+            fit_text(claim_name,
+                     max_width=W - 0.5 * INCH,
+                     x=0.22 * INCH, y=H - 0.28 * INCH,
+                     max_fs=10, font="Helvetica", centered=False)
 
-            c.setFont("Helvetica", 10)
-            c.drawCentredString(center_x - 1.2 * INCH, center_y, "W=1")
+            # Room name — large, centred
+            fit_text(room_name,
+                     max_width=W - 0.4 * INCH,
+                     x=cx, y=H - 0.72 * INCH,
+                     max_fs=32, font="Helvetica-Bold")
 
-            c.setFont("Helvetica-Bold", 12)
-            c.drawCentredString(center_x, center_y + 0.3 * INCH, "CENTER")
-            c.line(center_x, center_y, center_x, center_y + 0.2 * INCH)
-            c.line(center_x - 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
-            c.line(center_x + 0.05 * INCH, center_y + 0.15 * INCH, center_x, center_y + 0.2 * INCH)
-
-            c.setFont("Helvetica", 10)
-            c.drawCentredString(center_x + 1.2 * INCH, center_y, "W=3")
-            c.drawCentredString(center_x, center_y - 0.5 * INCH, "W=4")
-
-            c.setStrokeColor(colors.blue)
-            c.setLineWidth(2)
-            c.arc(center_x - 1.5 * INCH, center_y - 0.15 * INCH,
-                  center_x - 0.9 * INCH, center_y + 0.15 * INCH,
-                  startAng=30, extent=120)
-            c.arc(center_x + 0.9 * INCH, center_y - 0.15 * INCH,
-                  center_x + 1.5 * INCH, center_y + 0.15 * INCH,
-                  startAng=30, extent=120)
-
+            # Dotted separator
             c.setStrokeColor(colors.black)
-            c.setLineWidth(1)
-
+            c.setLineWidth(0.8)
             c.setDash(3, 3)
-            c.line(0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH,
-                   LABEL_WIDTH - 0.5 * INCH, LABEL_HEIGHT - 0.9 * INCH)
+            c.line(0.3 * INCH, H - 1.02 * INCH, W - 0.3 * INCH, H - 1.02 * INCH)
             c.setDash()
+
+            # Compass diagram
+            import math as _math
+            from reportlab.lib.colors import HexColor as _HexColor
+
+            col_w = W / 3
+            c0_cx = col_w * 0.5
+            c1_cx = W / 2
+            c2_cx = col_w * 2.5
+
+            diag_top = H - 1.15 * INCH
+            diag_bot = 0.25 * INCH
+            diag_mid = (diag_top + diag_bot) / 2
+
+            def _up_arrow(cx, base_y, tip_y):
+                aw = 0.20 * INCH
+                sw = 0.07 * INCH
+                hh = min(0.18 * INCH, (tip_y - base_y) * 0.42)
+                p = c.beginPath()
+                p.moveTo(cx,       tip_y)
+                p.lineTo(cx+aw/2,  tip_y - hh)
+                p.lineTo(cx+sw/2,  tip_y - hh)
+                p.lineTo(cx+sw/2,  base_y)
+                p.lineTo(cx-sw/2,  base_y)
+                p.lineTo(cx-sw/2,  tip_y - hh)
+                p.lineTo(cx-aw/2,  tip_y - hh)
+                p.close()
+                c.setFillColor(_HexColor('#2E75B6'))
+                c.setStrokeColor(_HexColor('#1A4472'))
+                c.setLineWidth(0.4)
+                c.drawPath(p, fill=1, stroke=1)
+
+            def _c_arrow(cx, cy, R, open_right):
+                gap_half = 45
+                extent   = 360 - gap_half * 2   # 270°
+                arc_s    = gap_half if open_right else 180 + gap_half
+                arc_e    = arc_s + extent
+                ah_ang   = _math.radians(arc_e if open_right else arc_s)
+                tx = -_math.sin(ah_ang) if open_right else  _math.sin(ah_ang)
+                ty =  _math.cos(ah_ang) if open_right else -_math.cos(ah_ang)
+                # thin arc
+                c.saveState()
+                c.setStrokeColor(_HexColor('#2E75B6')); c.setLineWidth(1.2); c.setLineCap(0)
+                p = c.beginPath()
+                p.arc(cx - R, cy - R, cx + R, cy + R, arc_s, extent)
+                c.drawPath(p, fill=0, stroke=1)
+                c.restoreState()
+                # filled arrowhead triangle
+                hx = cx + R*_math.cos(ah_ang); hy = cy + R*_math.sin(ah_ang)
+                hs = R*0.18; pw = R*0.12; px = -ty; py = tx
+                p2 = c.beginPath()
+                p2.moveTo(hx + tx*hs,           hy + ty*hs)
+                p2.lineTo(hx - tx*hs + px*pw,  hy - ty*hs + py*pw)
+                p2.lineTo(hx - tx*hs - px*pw,  hy - ty*hs - py*pw)
+                p2.close()
+                c.setFillColor(_HexColor('#2E75B6')); c.setStrokeColor(_HexColor('#2E75B6')); c.setLineWidth(0.3)
+                c.drawPath(p2, fill=1, stroke=1)
+
+            # W=2 — top centre
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 14)
+            c.drawCentredString(c1_cx, diag_mid + 0.95 * INCH, "W=2")
+
+            # Up arrow (center box → W=2)
+            _up_arrow(c1_cx,
+                      base_y=diag_mid + 0.27 * INCH,
+                      tip_y =diag_mid + 0.77 * INCH)
+
+            # Left C-arrow (W=1) — large ribbon arc, text in hollow
+            _c_arrow(c0_cx, diag_mid, R=0.38 * INCH, open_right=True)
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 13)
+            c.drawCentredString(c0_cx, diag_mid - 0.055 * INCH, "W=1")
+
+            # CENTER box
+            box_h = 0.45 * INCH; box_w = 0.85 * INCH
+            c.setStrokeColor(colors.black); c.setLineWidth(1.2)
+            c.rect(c1_cx - box_w / 2, diag_mid - box_h / 2, box_w, box_h)
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 10)
+            c.drawCentredString(c1_cx, diag_mid - 0.06 * INCH, "CENTER")
+
+            # Right C-arrow (W=3) — large ribbon arc, text in hollow
+            _c_arrow(c2_cx, diag_mid, R=0.38 * INCH, open_right=False)
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 13)
+            c.drawCentredString(c2_cx, diag_mid - 0.055 * INCH, "W=3")
+
+            # W=4 — bottom centre
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 14)
+            c.drawCentredString(c1_cx, diag_mid - 0.95 * INCH, "W=4")
 
             label_count += 1
             if label_count < total_labels:
@@ -2382,17 +2478,38 @@ def _create_combined_wall_labels_pdf(buffer, client, rooms):
 
 
 def _create_combined_box_labels_pdf(buffer, client, rooms):
-    """Create a combined PDF with box/room labels for all rooms."""
+    """
+    Combined box labels PDF for all rooms — 4×3 inch thermal.
+    Two-column layout: Col A (75%) = room name + claim name, Col B (25%) = BOX # + number.
+    Box numbers restart at 1 for each room.
+    """
     from reportlab.pdfgen import canvas
     from reportlab.lib.units import inch as INCH
     from reportlab.lib import colors
+    from reportlab.pdfbase.pdfmetrics import stringWidth
 
-    LABEL_WIDTH = 4 * INCH
-    LABEL_HEIGHT = 3 * INCH
+    W = 4 * INCH
+    H = 3 * INCH
+    MARGIN = 0.15 * INCH
+
+    col_a_w = W * 0.75
+    col_b_x = col_a_w
+    col_b_w = W * 0.25
+    b_cx    = col_b_x + col_b_w / 2
+
+    def fit_text(text, max_width, x, y, max_fs, min_fs=7,
+                 font="Helvetica-Bold", centered=True):
+        fs = max_fs
+        while fs >= min_fs and stringWidth(text, font, fs) > max_width:
+            fs -= 1
+        c.setFont(font, fs)
+        if centered:
+            c.drawCentredString(x, y, text)
+        else:
+            c.drawString(x, y, text)
 
     BOX_COPIES = 20
-
-    c = canvas.Canvas(buffer, pagesize=(LABEL_WIDTH, LABEL_HEIGHT))
+    c = canvas.Canvas(buffer, pagesize=(W, H))
     claim_name = client.pOwner or 'Unknown'
 
     total_labels = len(rooms) * BOX_COPIES
@@ -2400,16 +2517,37 @@ def _create_combined_box_labels_pdf(buffer, client, rooms):
 
     for room in rooms:
         room_name = room.room_name
-        for _ in range(BOX_COPIES):
-            c.setFont("Helvetica-Bold", 36)
-            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 + 0.2 * INCH, room_name.upper())
+        for box_num in range(1, BOX_COPIES + 1):
+            # Col A: room name + claim name
+            fit_text(room_name.upper(),
+                     max_width=col_a_w - MARGIN * 2,
+                     x=col_a_w / 2, y=H * 0.60,
+                     max_fs=36, font="Helvetica-Bold")
 
-            c.setFont("Helvetica", 14)
-            c.drawCentredString(LABEL_WIDTH / 2, LABEL_HEIGHT / 2 - 0.4 * INCH, claim_name)
+            fit_text(claim_name,
+                     max_width=col_a_w - MARGIN * 2,
+                     x=col_a_w / 2, y=H * 0.33,
+                     max_fs=15, font="Helvetica")
 
+            # Vertical divider
             c.setStrokeColor(colors.black)
-            c.setLineWidth(2)
-            c.rect(0.2 * INCH, 0.2 * INCH, LABEL_WIDTH - 0.4 * INCH, LABEL_HEIGHT - 0.4 * INCH)
+            c.setLineWidth(0.8)
+            c.line(col_b_x, MARGIN, col_b_x, H - MARGIN)
+
+            # Col B: "BOX #" header
+            c.setFillColor(colors.black)
+            c.setFont("Helvetica-Bold", 9)
+            c.drawCentredString(b_cx, H * 0.76, "BOX #")
+
+            c.setLineWidth(0.5)
+            c.line(col_b_x + MARGIN * 0.3, H * 0.69,
+                   W - MARGIN * 0.3, H * 0.69)
+
+            # Col B: box number (large, auto-fit)
+            fit_text(str(box_num),
+                     max_width=col_b_w - MARGIN,
+                     x=b_cx, y=H * 0.24,
+                     max_fs=52, min_fs=16, font="Helvetica-Bold")
 
             label_count += 1
             if label_count < total_labels:
@@ -2700,24 +2838,38 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None):
 
         # --- readings (8000-9000s MC Day Readings) ---
         def _build_readings_entries():
-            readings_section_labels = {
-                8100: "8100.0 . ..... DAY 1 MC READINGS ..... ======================",
-                8200: "8200.0 . ..... DAY 2 MC READINGS ..... ======================",
-                8300: "8300.0 . ..... DAY 3 MC READINGS ..... ======================",
-                8400: "8400.0 . ..... DAY 4 MC READINGS ..... ======================",
-            }
+            def _los(room_name):
+                cfg = configs.get(room_name, {})
+                v = cfg.get(100, cfg.get('100', '.'))
+                return "…........." if v in ('.', '', None) else v
+
             entries = []
+
+            # Day 0: Stabilization
+            entries.append("8000 ….. ======= MC READINGS STABILIZATION ===============")
+            for idx, room_name in enumerate(room_names):
+                entries.append(f"{8001 + idx}.0 {_los(room_name)} . {room_name} … MC READINGS STABILIZATION")
+
+            # Day 1-4 sections
+            section_labels = {
+                8100: "8100.0 . ...  DAY1    MC READINGS ..  =========  ===============  =====",
+                8200: "8200.0 . ...  DAY2    MC READINGS ..  ===============  ======",
+                8300: "8300.0 . ….. DAY 3 …..  =====================  ======",
+                8400: "8400.0 . ….. DAY 4 …..  ===============   =======",
+            }
+            descs = {
+                8100: "   ...  DAY1    MC READINGS .. ",
+                8200: "  ...  DAY2    MC READINGS ..",
+                8300: "  ...  DAY3    MC READINGS ..",
+                8400: "  ...  DAY4    MC READINGS",
+            }
             for work_type in [8100, 8200, 8300, 8400]:
-                entries.append(readings_section_labels[work_type])
+                entries.append(section_labels[work_type])
+                day_num = str(work_type)[3]
                 for idx, room_name in enumerate(room_names):
-                    room_number = work_type + idx + 1
-                    room_cfg = configs.get(room_name, {})
-                    config_value = room_cfg.get(100, room_cfg.get('100', '.'))
-                    display_value = "" if config_value in ('.', '', None) else config_value
-                    day_num = str(work_type)[3]
-                    desc = f"  ...  DAY{day_num}    MC READINGS .."
-                    prefix = f"{display_value} " if display_value else ""
-                    entries.append(f"{room_number} {prefix}.{day_num} …. {room_name} {desc}")
+                    entries.append(
+                        f"{work_type + idx + 1}.{day_num} {_los(room_name)} . {room_name} {descs[work_type]}"
+                    )
             entries.append("9000 RH &T & GPP  DRY CHAMBERS [DC] . READINGS ==================")
             entries.extend([
                 "9100.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 1 ….. ",
@@ -2748,17 +2900,15 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None):
             ])
             return entries
 
-        # --- readings default (70000s Stabilization) ---
+        # --- readings default (8000s Stabilization only) ---
         def _build_readings_default_entries():
-            entries = ["70000 ….. ======= DAY # 0  …..  MC READINGS STABILIZATION ==============="]
+            entries = ["8000 ….. ======= MC READINGS STABILIZATION ==============="]
             for idx, room_name in enumerate(room_names):
-                room_number = 70101 + idx
                 room_cfg = configs.get(room_name, {})
                 config_value = room_cfg.get(100, room_cfg.get('100', '.'))
-                display_value = "" if config_value in ('.', '', None) else config_value
-                suffix = f" … {display_value}" if display_value else ""
+                los_value = "…........." if config_value in ('.', '', None) else config_value
                 entries.append(
-                    f"{room_number} …. {room_name} … DAY # 0  … MC READINGS STABILIZATION{suffix}"
+                    f"{8001 + idx}.0 {los_value} . {room_name} … MC READINGS STABILIZATION"
                 )
             return entries
 
@@ -2790,8 +2940,18 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None):
             )
             for entry in all_entries:
                 try:
-                    api.create_room(encircle_claim_id, structure_id, {'name': entry})
+                    room_resp = api.create_room(encircle_claim_id, structure_id, {'name': entry})
                     rooms_pushed += 1
+                    try:
+                        from .models import EncirclePushedRoom
+                        EncirclePushedRoom.objects.create(
+                            encircle_claim_id=encircle_claim_id,
+                            structure_id=structure_id,
+                            room_id=str(room_resp.get('id') or ''),
+                            room_name=entry,
+                        )
+                    except Exception as track_exc:
+                        logger.warning(f"Could not track pushed room '{entry[:60]}': {track_exc}")
                 except Exception as room_exc:
                     logger.warning(
                         f"Could not push room '{entry[:60]}' to claim {encircle_claim_id}: {room_exc}"
@@ -2816,4 +2976,536 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None):
         'success': True,
         'encircle_claim_id': encircle_claim_id,
         'rooms_pushed': rooms_pushed,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Shared helper – build Encircle room entry strings (no I/O, no Celery)
+# ──────────────────────────────────────────────────────────────────────────────
+
+def build_room_entries(room_names, configs, selected_templates=None):
+    """
+    Pure function: build the ordered list of Encircle room entry strings.
+
+    Args:
+        room_names:         ordered list of room name strings
+        configs:            dict  {room_name: {work_type_id: value_type, ...}}
+        selected_templates: list of 'basic', 'readings', 'readings default'
+                            Defaults to ['basic', 'readings'].
+
+    Returns:
+        list[str]  – entries ready to POST as room names to Encircle
+    """
+    if not selected_templates:
+        selected_templates = ['basic', 'readings']
+
+    def _los(room_name):
+        cfg = configs.get(room_name, {})
+        v = cfg.get(100, cfg.get('100', '.'))
+        return "…........." if v in ('.', '', None) else v
+
+    # ── basic (100–700s) ─────────────────────────────────────────────────────
+    work_type_descs = {
+        100: "= … JOB/ROOMS OVERVIEW PICS ..",
+        200: "….. SOURCE of LOSS PICS …..",
+        300: "….. C.P.S. …...",
+        400: "….. PPR …..",
+        500: "…… DMO = DEMOLITION …....",
+        600: "… WTR MITIGATION EQUIPMENT & W.I.P . ...",
+        700: "… HMR = HAZARDOUS MATERIALS ...",
+    }
+    section_labels_basic = {
+        100: "100 .... = ... JOB/ROOMS OVERVIEW PICS .. ==========================",
+        200: "200 .... ..... SOURCE of LOSS PICS ..... ===========================",
+        300: "300 .... ..... C.P.S. ...... =======================================",
+        400: "400 .... PPR ===================================================",
+        500: "500 .... ...... DMO = DEMOLITION ....... ===========================",
+        600: "600 . WTR MITIGATION EQUIPMENT & W.I.P. ============================",
+        700: "700 . HMR = HAZARDOUS MATERIALS ====================================",
+    }
+
+    basic_entries = [
+        "0.0001 ….. JOBSITE VERIFICATION",
+        "0.0002 . MECHANICALS = WATER METER READING & PLUMBING REPORT/INVOICE",
+        "0.0003 . MECHANICALS = ELECTRICAL HAZARDS",
+        "0.0004 . EXT DAMAGE IF APPLICABLE ROOF TARPS",
+        "1997 . LEAD & HMR TESTING LAB RESULTS",
+        "1998 . KITCHEN CABINETS SIZES U & L =LF/ CT = SF; APPLIANCES",
+        "1999 . BATHROOM FIXTURES CAB SIZE & FIXTURES & TYPE",
+    ]
+    for work_type in [100, 200, 300, 400, 500, 600, 700]:
+        basic_entries.append(section_labels_basic[work_type])
+        for idx, room_name in enumerate(room_names):
+            room_cfg = configs.get(room_name, {})
+            config_value = room_cfg.get(100, room_cfg.get('100', '.'))
+            display_value = "" if config_value in ('.', '', None) else config_value
+            prefix = f"{display_value} " if display_value else ""
+            basic_entries.append(f"{work_type + idx + 1} {prefix}…. {room_name} {work_type_descs[work_type]}")
+        if work_type == 300:
+            basic_entries.extend([
+                "3222 . CPS DAY2 WIP OVERVIEW WIP BOXES PACKOUT PICS",
+                "3322 . CPS3 DAY3 STORAGE OVERVIEW STORAGE MOVE OUT PICS",
+                "3444 . CPS4 DAY4 PACKBACK OVERVIEW PACK-BACK / RESET PICS",
+            ])
+        elif work_type == 400:
+            basic_entries.extend([
+                "4111.1 . REPLACEMENT 1 CON OVERVIEW DAY PICS",
+                "4222.2 . REPLACEMENT 2 CON WIP",
+                "4333.3 . REPLACEMENT 3 CON STORAGE",
+                "4444.4 . REPLACEMENT 4 CON DISPOSAL",
+            ])
+    basic_entries.extend([
+        "9998.0 . REBUILD OVERVIEW WORK IN PROGRESS.......WIP",
+        "9999.0 . REBUILD INTERIOR COMPLETED WORK",
+    ])
+
+    # ── readings (8000–9000s) ────────────────────────────────────────────────
+    def _build_readings():
+        entries = []
+        entries.append("8000 ….. ======= MC READINGS STABILIZATION ===============")
+        for idx, room_name in enumerate(room_names):
+            entries.append(f"{8001 + idx}.0 {_los(room_name)} . {room_name} … MC READINGS STABILIZATION")
+        section_labels = {
+            8100: "8100.0 . ...  DAY1    MC READINGS ..  =========  ===============  =====",
+            8200: "8200.0 . ...  DAY2    MC READINGS ..  ===============  ======",
+            8300: "8300.0 . ….. DAY 3 …..  =====================  ======",
+            8400: "8400.0 . ….. DAY 4 …..  ===============   =======",
+        }
+        descs = {
+            8100: "   ...  DAY1    MC READINGS .. ",
+            8200: "  ...  DAY2    MC READINGS ..",
+            8300: "  ...  DAY3    MC READINGS ..",
+            8400: "  ...  DAY4    MC READINGS",
+        }
+        for work_type in [8100, 8200, 8300, 8400]:
+            entries.append(section_labels[work_type])
+            day_num = str(work_type)[3]
+            for idx, room_name in enumerate(room_names):
+                entries.append(
+                    f"{work_type + idx + 1}.{day_num} {_los(room_name)} . {room_name} {descs[work_type]}"
+                )
+        entries.append("9000 RH &T & GPP  DRY CHAMBERS [DC] . READINGS ==================")
+        entries.extend([
+            "9100.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 1 ….. ",
+            "9100.0 …. EXTERIOR & UNAFFECTED AREA  ….. DAY 1 ….. ",
+            "9101.0 …. DRY CHAMBER # 1 ….. DAY 1 …..  RH &T & GPP ",
+            "9102.0 …. DRY CHAMBER # 2 ….. DAY 1 …..  RH &T & GPP ",
+            "9103.0 …. DRY CHAMBER # 3 ….. DAY 1 …..  RH &T & GPP ",
+            "9104.0 …. DRY CHAMBER # 4 ….. DAY 1 …..  RH &T & GPP ",
+            "9200.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 2 ….. ",
+            "9200.2 …. EXTERIOR & UNAFFECTED AREA ….. DAY 2 ….. ",
+            "9201.2 …. DRY CHAMBER # 1 ….. DAY 2 …..  RH &T & GPP ",
+            "9202.2 …. DRY CHAMBER # 2 ….. DAY 2 …..  RH &T & GPP ",
+            "9203.2 …. DRY CHAMBER # 3 ….. DAY 2 …..  RH &T & GPP ",
+            "9204.2 …. DRY CHAMBER # 4 ….. DAY 2 …..  RH &T & GPP ",
+            "9205.2 …. DRY CHAMBER # 5 ….. DAY 2 …..  RH &T & GPP ",
+            "9300.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 3 ….. ",
+            "9300.0 …. EXTERIOR & UNAFFECTED AREA ….. DAY 3 ….. ",
+            "9301.0 …. DRY CHAMBER # 1 ….. DAY 3 …..  RH &T & GPP ",
+            "9302.0 …. DRY CHAMBER # 2 ….. DAY 3 …..  RH &T & GPP ",
+            "9303.0 …. DRY CHAMBER # 3 ….. DAY 3 …..  RH &T & GPP ",
+            "9304.0 …. DRY CHAMBER # 4 ….. DAY 3 …..  RH &T & GPP ",
+            "9400.0 RH &T & GPP  DRY CHAMBERS [DC] . READINGS  =========== ….. DAY 4 ….. ",
+            "9400.0 …. EXTERIOR & UNAFFECTED AREA ….. DAY 4 ….. ",
+            "9401.0 …. DRY CHAMBER # 1 ….. DAY 4 …..  RH &T & GPP ",
+            "9402.0 …. DRY CHAMBER # 2 ….. DAY 4 …..  RH &T & GPP ",
+            "9403.0 …. DRY CHAMBER # 3 ….. DAY 4 …..  RH &T & GPP ",
+            "9404.0 …. DRY CHAMBER # 4 ….. DAY 4 …..  RH &T & GPP ",
+        ])
+        return entries
+
+    def _build_readings_default():
+        entries = ["8000 ….. ======= MC READINGS STABILIZATION ==============="]
+        for idx, room_name in enumerate(room_names):
+            entries.append(f"{8001 + idx}.0 {_los(room_name)} . {room_name} … MC READINGS STABILIZATION")
+        return entries
+
+    # ── Assemble in priority order ───────────────────────────────────────────
+    template_priority = {'readings': 1, 'extended': 2, 'basic': 3, 'readings default': 5, 'job_types': 0}
+    sorted_tpls = sorted(selected_templates, key=lambda x: template_priority.get(x, 99))
+
+    all_entries = []
+    for tpl in sorted_tpls:
+        if tpl == 'basic':
+            all_entries.extend(basic_entries)
+        elif tpl == 'readings':
+            all_entries.extend(_build_readings())
+        elif tpl == 'readings default':
+            all_entries.extend(_build_readings_default())
+
+    return all_entries
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Encircle – push rooms only to an EXISTING Encircle claim (correction tool)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=3)
+def push_rooms_to_encircle_task(self, client_id, encircle_claim_id, selected_templates=None):
+    """
+    Push room entries from a local Client to a specific existing Encircle claim,
+    without touching the claim's metadata.  Use this to correct a claim that was
+    previously pushed with wrong rooms.
+
+    Args:
+        client_id:         UUID/int of the local Client record.
+        encircle_claim_id: The target Encircle claim id (string).
+        selected_templates: list of template keys — same as push_claim_to_encircle_task.
+                            Defaults to ['basic', 'readings'].
+    """
+    from .models import Client, Room
+    from .views import EncircleAPIClient
+
+    if not selected_templates:
+        selected_templates = ['basic', 'readings']
+
+    try:
+        client = Client.objects.get(id=client_id)
+    except Client.DoesNotExist:
+        logger.error(f"push_rooms_to_encircle_task: Client {client_id} not found")
+        return {'success': False, 'error': f'Client {client_id} not found'}
+
+    api = EncircleAPIClient()
+
+    # ── Build room names + LOS configs ────────────────────────────────────────
+    rooms_qs = (
+        Room.objects
+        .filter(client=client)
+        .prefetch_related('work_type_values__work_type')
+        .order_by('sequence')
+    )
+
+    room_names = []
+    configs = {}
+    for room in rooms_qs:
+        room_names.append(room.room_name)
+        room_config = {}
+        for wtv in room.work_type_values.all():
+            room_config[wtv.work_type.work_type_id] = wtv.value_type
+        configs[room.room_name] = room_config
+
+    if not room_names:
+        return {'success': False, 'error': f'Client {client_id} has no rooms'}
+
+    all_entries = build_room_entries(room_names, configs, selected_templates)
+
+    # ── Push to the specified Encircle claim ──────────────────────────────────
+    rooms_pushed = 0
+    try:
+        structure = api.get_or_create_default_structure(encircle_claim_id)
+        structure_id = str(structure.get('id') or structure.get('structure_id') or '')
+        if not structure_id:
+            raise ValueError(f"Could not resolve structure id from: {structure}")
+
+        logger.info(
+            f"push_rooms_to_encircle_task: pushing {len(all_entries)} entries "
+            f"to Encircle claim {encircle_claim_id} (client {client_id})"
+        )
+        for entry in all_entries:
+            try:
+                room_resp = api.create_room(encircle_claim_id, structure_id, {'name': entry})
+                rooms_pushed += 1
+                try:
+                    from .models import EncirclePushedRoom
+                    EncirclePushedRoom.objects.create(
+                        encircle_claim_id=encircle_claim_id,
+                        structure_id=structure_id,
+                        room_id=str(room_resp.get('id') or ''),
+                        room_name=entry,
+                    )
+                except Exception as track_exc:
+                    logger.warning(f"Could not track pushed room '{entry[:60]}': {track_exc}")
+            except Exception as room_exc:
+                logger.warning(
+                    f"Could not push room '{entry[:60]}' to claim {encircle_claim_id}: {room_exc}"
+                )
+    except Exception as exc:
+        logger.error(
+            f"push_rooms_to_encircle_task failed for claim {encircle_claim_id}: {exc}",
+            exc_info=True,
+        )
+        raise self.retry(exc=exc, countdown=60)
+
+    logger.info(
+        f"push_rooms_to_encircle_task done: client={client_id}, "
+        f"encircle_claim_id={encircle_claim_id}, rooms_pushed={rooms_pushed}"
+    )
+    return {
+        'success': True,
+        'encircle_claim_id': encircle_claim_id,
+        'rooms_pushed': rooms_pushed,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Encircle – migrate photos from old rooms → new rooms, then delete old rooms
+# ──────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2)
+def migrate_encircle_rooms_task(self, encircle_claim_id):
+    """
+    For a given Encircle claim, clean up the old-format DAY0 rooms:
+
+    OLD format (to delete):
+        "8101 TRAVEL .0 …. FOYER ... DAY0 MC READINGS .."
+        "8103 LOS .0 …. DINING ROOM ... DAY0 MC READINGS .."
+        Detected by: name contains 'DAY0' or 'DAY # 0' (case-insensitive)
+
+    NEW format (to keep):
+        "8001.0 . FOYER … MC READINGS STABILIZATION  TRAVEL"
+        "8101.1 . FOYER    ...  DAY1    MC READINGS ..   TRAVEL"
+        These do NOT contain 'DAY0'.
+
+    For each old room with media:
+        1. Extract the embedded room name from between '….' and '...' in the old entry.
+        2. Find the best-matching new room: the lowest-numbered new room whose
+           name contains the extracted room name tokens (case-insensitive).
+        3. Move all media there.
+    Then delete the old room.
+
+    Returns:
+        {
+            'success': True,
+            'old_rooms_found': N,
+            'old_rooms_deleted': N,
+            'photos_moved': N,
+            'photos_failed': N,
+            'unmatched_rooms': ['old room name', ...],
+        }
+    """
+    import re as _re
+    from .views import EncircleAPIClient
+
+    api = EncircleAPIClient()
+
+    # ── 1. Get structure ──────────────────────────────────────────────────────
+    try:
+        structure = api.get_or_create_default_structure(encircle_claim_id)
+        structure_id = str(structure.get('id') or structure.get('structure_id') or '')
+        if not structure_id:
+            raise ValueError(f"Could not resolve structure id: {structure}")
+    except Exception as exc:
+        logger.error(f"migrate_encircle_rooms_task: cannot get structure — {exc}", exc_info=True)
+        raise self.retry(exc=exc, countdown=30)
+
+    # ── 2. List all rooms ─────────────────────────────────────────────────────
+    try:
+        rooms_resp = api.get_claim_rooms(encircle_claim_id, structure_id)
+        all_rooms = rooms_resp.get('list', []) if isinstance(rooms_resp, dict) else []
+    except Exception as exc:
+        logger.error(f"migrate_encircle_rooms_task: cannot list rooms — {exc}", exc_info=True)
+        raise self.retry(exc=exc, countdown=30)
+
+    # ── 3. Partition: old = contains DAY0 / DAY # 0, new = everything else ───
+    _day0_re = _re.compile(r'DAY\s*#?\s*0', _re.IGNORECASE)
+    old_rooms = [r for r in all_rooms if _day0_re.search(r.get('name', ''))]
+    new_rooms = [r for r in all_rooms if not _day0_re.search(r.get('name', ''))]
+
+    logger.info(
+        f"migrate_encircle_rooms_task: claim={encircle_claim_id}, "
+        f"old(DAY0)={len(old_rooms)}, new={len(new_rooms)}"
+    )
+
+    if not old_rooms:
+        return {
+            'success': True,
+            'message': 'No old DAY0-format rooms found — nothing to migrate.',
+            'old_rooms_found': 0,
+            'old_rooms_deleted': 0,
+            'photos_moved': 0,
+            'photos_failed': 0,
+            'unmatched_rooms': [],
+        }
+
+    def _norm_tokens(s):
+        """Return sorted uppercase word tokens, stripping punctuation/ellipsis."""
+        return _re.sub(r'[^A-Z0-9]', ' ', s.upper()).split()
+
+    def _extract_room_name(old_name):
+        """
+        Extract the embedded local room name from the old DAY0 entry.
+        Old format:  "8101 TRAVEL .0 …. FOYER ... DAY0 MC READINGS .."
+        The room name sits between the first '….' (or '....') and ' ...'
+        e.g. → "FOYER"
+        """
+        # Match text between …. / .... and the following ' ...' or ' DAY'
+        m = _re.search(r'[…\.]{2,}\s+(.+?)\s+(?:\.{3}|DAY)', old_name, _re.IGNORECASE)
+        if m:
+            return m.group(1).strip()
+        return ''
+
+    # ── 4. Move photos & collect unmatched ───────────────────────────────────
+    photos_moved    = 0
+    photos_failed   = 0
+    unmatched_rooms = []
+    old_rooms_deleted = 0
+
+    for old_room in old_rooms:
+        old_id   = str(old_room.get('id', ''))
+        old_name = old_room.get('name', '').strip()
+
+        # -- fetch media for this old room --
+        try:
+            media_items = api.get_room_media(encircle_claim_id, structure_id, old_id)
+        except Exception as exc:
+            logger.warning(f"migrate: cannot fetch media for old room '{old_name}' ({old_id}): {exc}")
+            media_items = []
+
+        if media_items:
+            # Extract the core room name from the old entry
+            extracted = _extract_room_name(old_name)
+            extracted_tokens = _norm_tokens(extracted) if extracted else []
+
+            # Find the first new room whose name contains all extracted tokens
+            target_room = None
+            if extracted_tokens:
+                for new_room in new_rooms:
+                    new_tokens = _norm_tokens(new_room.get('name', ''))
+                    if all(tok in new_tokens for tok in extracted_tokens):
+                        target_room = new_room
+                        break
+
+            if target_room is None:
+                logger.warning(
+                    f"migrate: no matching new room for old room '{old_name}' "
+                    f"(extracted: '{extracted}') — {len(media_items)} item(s) unmatched"
+                )
+                unmatched_rooms.append(old_name)
+            else:
+                target_id = str(target_room.get('id', ''))
+                logger.info(
+                    f"migrate: moving {len(media_items)} item(s) "
+                    f"'{old_name}' → '{target_room.get('name', '')}'"
+                )
+                for media in media_items:
+                    media_id = str(media.get('id', ''))
+                    try:
+                        api.reassign_media(encircle_claim_id, media_id, target_id)
+                        photos_moved += 1
+                    except Exception as exc:
+                        logger.warning(
+                            f"migrate: failed to move media {media_id} "
+                            f"from '{old_name}': {exc}"
+                        )
+                        photos_failed += 1
+
+        # -- delete the old room regardless of whether it had media --
+        try:
+            api.delete_room(encircle_claim_id, structure_id, old_id)
+            old_rooms_deleted += 1
+            logger.info(f"migrate: deleted old room '{old_name}' ({old_id})")
+        except Exception as exc:
+            logger.warning(f"migrate: failed to delete old room '{old_name}' ({old_id}): {exc}")
+
+    logger.info(
+        f"migrate_encircle_rooms_task done: claim={encircle_claim_id}, "
+        f"deleted={old_rooms_deleted}/{len(old_rooms)}, "
+        f"photos_moved={photos_moved}, photos_failed={photos_failed}, "
+        f"unmatched={unmatched_rooms}"
+    )
+    return {
+        'success': True,
+        'old_rooms_found': len(old_rooms),
+        'old_rooms_deleted': old_rooms_deleted,
+        'photos_moved': photos_moved,
+        'photos_failed': photos_failed,
+        'unmatched_rooms': unmatched_rooms,
+    }
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# Encircle – duplicate a claim (for safe test-before-run workflow)
+# ──────────────────────────────────────────────────────────────────────────────
+
+@shared_task(bind=True, max_retries=2)
+def duplicate_encircle_claim_task(self, source_claim_id, suffix='(TEST COPY)'):
+    """
+    Create a duplicate of an existing Encircle claim so migrations can be
+    tested on the copy before touching the real claim.
+
+    Steps:
+      1. Fetch source claim metadata.
+      2. Create a new claim with the same fields but policyholder_name
+         suffixed with `suffix` (default: '(TEST COPY)').
+      3. Copy every room name from the source structure into the new claim.
+
+    Returns:
+        {
+            'success': True,
+            'source_claim_id': ...,
+            'new_claim_id': ...,
+            'new_claim_name': ...,
+            'rooms_copied': N,
+        }
+    """
+    from .views import EncircleAPIClient
+
+    api = EncircleAPIClient()
+
+    # ── 1. Fetch source claim ─────────────────────────────────────────────────
+    try:
+        src = api.get_claim_details(source_claim_id)
+    except Exception as exc:
+        logger.error(f"duplicate_encircle_claim_task: cannot fetch source claim {source_claim_id} — {exc}", exc_info=True)
+        raise self.retry(exc=exc, countdown=30)
+
+    # ── 2. Build new claim payload ────────────────────────────────────────────
+    base_name = (src.get('policyholder_name') or '').strip()
+    new_name  = f"{base_name} {suffix}".strip()
+
+    new_payload = {
+        'policyholder_name':      new_name,
+        'full_address':           src.get('full_address') or '',
+        'type_of_loss':           src.get('type_of_loss') or 'Other',
+        'date_of_loss':           src.get('date_of_loss') or '',
+        'adjuster_name':          src.get('adjuster_name') or '',
+        'insurance_company_name': src.get('insurance_company_name') or '',
+        'policy_number':          src.get('policy_number') or '',
+    }
+    new_payload = {k: v for k, v in new_payload.items() if v}
+
+    try:
+        new_claim = api.create_claim(new_payload)
+        new_claim_id = str(new_claim.get('id') or '')
+        if not new_claim_id:
+            raise ValueError(f"No id returned: {new_claim}")
+        logger.info(f"duplicate_encircle_claim_task: created new claim {new_claim_id} ('{new_name}')")
+    except Exception as exc:
+        logger.error(f"duplicate_encircle_claim_task: create_claim failed — {exc}", exc_info=True)
+        raise self.retry(exc=exc, countdown=30)
+
+    # ── 3. Copy rooms from source ─────────────────────────────────────────────
+    rooms_copied = 0
+    try:
+        src_structure = api.get_or_create_default_structure(source_claim_id)
+        src_structure_id = str(src_structure.get('id') or '')
+
+        src_rooms_resp = api.get_claim_rooms(source_claim_id, src_structure_id)
+        src_rooms = src_rooms_resp.get('list', []) if isinstance(src_rooms_resp, dict) else []
+
+        dst_structure = api.get_or_create_default_structure(new_claim_id)
+        dst_structure_id = str(dst_structure.get('id') or '')
+
+        for room in src_rooms:
+            room_name = (room.get('name') or '').strip()
+            if not room_name:
+                continue
+            try:
+                api.create_room(new_claim_id, dst_structure_id, {'name': room_name})
+                rooms_copied += 1
+            except Exception as exc:
+                logger.warning(f"duplicate_encircle_claim_task: failed to copy room '{room_name}': {exc}")
+    except Exception as exc:
+        logger.warning(f"duplicate_encircle_claim_task: room copy failed — {exc}", exc_info=True)
+
+    logger.info(
+        f"duplicate_encircle_claim_task done: source={source_claim_id} → "
+        f"new={new_claim_id}, rooms_copied={rooms_copied}"
+    )
+    return {
+        'success': True,
+        'source_claim_id': source_claim_id,
+        'new_claim_id': new_claim_id,
+        'new_claim_name': new_name,
+        'rooms_copied': rooms_copied,
     }
