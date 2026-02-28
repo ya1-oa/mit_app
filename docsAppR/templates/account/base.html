@@ -330,8 +330,8 @@
                 <li><a href="/readings/" class="{% if '/readings' in request.path %}active{% endif %}">
                     <i class="fas fa-camera"></i> Reading Browser
                 </a></li>
-                <li><a href="/encircle" class="{% if '/encircle' in request.path and 'push-rooms' not in request.path %}active{% endif %}">
-                    <i class="fas fa-circle"></i> Encircle
+                <li><a href="/encircle" class="{% if '/claim-images/download' in request.path and 'push-rooms' not in request.path %}active{% endif %}">
+                    <i class="fas fa-circle"></i> Encircle Download
                 </a></li>
                 <li><a href="/claims/push-rooms/" class="{% if 'push-rooms' in request.path %}active{% endif %}">
                     <i class="fas fa-upload"></i> Push Rooms
