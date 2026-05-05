@@ -115,11 +115,16 @@ The system is fully containerized, runs on a production VPS, and handles real pa
 
 ---
 
+
+
 ## AI Integration
 
 This is where the platform's core value is delivered. Three distinct AI-powered pipelines, each solving a real problem in the claims workflow.
 
 ### 1. CPS Schedule of Loss Generator
+
+
+<img width="1887" height="858" alt="replacement value" src="https://github.com/user-attachments/assets/bd41d2ce-a0d6-4827-8c57-ba0eaeef5861" />
 
 The most complex pipeline. A Celery task fetches all claim media from Encircle (~5,000+ items for large claims), filters images per room by label matching, downloads them, and sends them to Claude Vision in batches of 20.
 
@@ -157,6 +162,8 @@ Claude returns structured JSON per room:
 }
 ```
 
+<img width="1857" height="841" alt="image analyzing 0percent" src="https://github.com/user-attachments/assets/d5c05067-d4e0-41ee-8c98-c0702b47960f" />
+
 The session processes rooms sequentially (Celery task), persisting items to the DB in real time so the frontend can poll for progress. When complete, the user downloads a submission-ready PDF or Excel.
 
 **Design decisions:**
@@ -164,6 +171,9 @@ The session processes rooms sequentially (Celery task), persisting items to the 
 - **Label-prefix matching** to correctly isolate one room's photos from a 5,000-item media pool
 - **8,192 token responses** to prevent JSON truncation on large rooms
 - **Batching** with inter-batch sleep to respect API rate limits
+
+<img width="1375" height="786" alt="completed report" src="https://github.com/user-attachments/assets/8ce40c4d-d060-436e-8e11-58bc90a32236" />
+
 
 ### 2. Box Calculator (Pack-Out Estimation)
 
