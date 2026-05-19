@@ -1,0 +1,279 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Home{% endblock %}
+
+{% block extra_css %}
+<style>
+    /* ── HERO GREETING ──────────────────────────────────────────── */
+    .hero {
+        background: linear-gradient(135deg, #1e40af 0%, #0ea5e9 100%);
+        border-radius: 14px;
+        padding: 32px 36px;
+        color: #fff;
+        margin-bottom: 32px;
+        display: flex;
+        align-items: center;
+        gap: 20px;
+    }
+    .hero-icon {
+        width: 64px;
+        height: 64px;
+        background: rgba(255,255,255,.15);
+        border-radius: 16px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 28px;
+        flex-shrink: 0;
+    }
+    .hero-text h2 {
+        font-size: 22px;
+        font-weight: 700;
+        margin-bottom: 4px;
+    }
+    .hero-text p {
+        font-size: 14px;
+        opacity: .85;
+        margin: 0;
+    }
+
+    /* ── SECTION LABEL ──────────────────────────────────────────── */
+    .section-label {
+        font-size: 11px;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 1.2px;
+        color: #94a3b8;
+        margin-bottom: 14px;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #e2e8f0;
+    }
+
+    /* ── APP GRID ───────────────────────────────────────────────── */
+    .app-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+        gap: 16px;
+        margin-bottom: 36px;
+    }
+
+    /* ── APP CARD ───────────────────────────────────────────────── */
+    .app-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 22px 20px 18px;
+        text-decoration: none;
+        color: inherit;
+        box-shadow: 0 1px 4px rgba(0,0,0,.08);
+        border: 1px solid #f1f5f9;
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+        transition: transform .15s, box-shadow .15s, border-color .15s;
+        position: relative;
+        overflow: hidden;
+    }
+    .app-card::before {
+        content: '';
+        position: absolute;
+        top: 0; left: 0; right: 0;
+        height: 3px;
+        background: var(--app-color, #3b82f6);
+        border-radius: 12px 12px 0 0;
+        opacity: 0;
+        transition: opacity .15s;
+    }
+    .app-card:hover {
+        transform: translateY(-3px);
+        box-shadow: 0 8px 24px rgba(0,0,0,.12);
+        border-color: #e2e8f0;
+        color: inherit;
+        text-decoration: none;
+    }
+    .app-card:hover::before { opacity: 1; }
+
+    .app-card-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+        color: #fff;
+        background: var(--app-color, #3b82f6);
+        flex-shrink: 0;
+    }
+
+    .app-card-name {
+        font-size: 14px;
+        font-weight: 700;
+        color: #0f172a;
+        line-height: 1.3;
+    }
+    .app-card-desc {
+        font-size: 12px;
+        color: #64748b;
+        line-height: 1.5;
+        flex: 1;
+    }
+    .app-card-arrow {
+        font-size: 11px;
+        color: #94a3b8;
+        margin-top: 4px;
+        display: flex;
+        align-items: center;
+        gap: 4px;
+        transition: color .15s, gap .15s;
+    }
+    .app-card:hover .app-card-arrow {
+        color: var(--app-color, #3b82f6);
+        gap: 8px;
+    }
+
+    /* ── RESPONSIVE ──────────────────────────────────────────────── */
+    @media (max-width: 500px) {
+        .app-grid { grid-template-columns: 1fr 1fr; gap: 10px; }
+        .hero { padding: 20px; }
+        .hero-icon { display: none; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero greeting -->
+<div class="hero">
+    <div class="hero-icon">
+        <i class="fas fa-bolt"></i>
+    </div>
+    <div class="hero-text">
+        <h2>Welcome back{% if user.is_authenticated %}, {{ user.email|truncatechars:22 }}{% endif %}</h2>
+        <p>Select an app below to get started, or go to your <a href="{% url 'dashboard' %}" style="color:#bfdbfe;font-weight:600;">Dashboard</a> for a claims overview.</p>
+    </div>
+</div>
+
+<!-- Claims & Documents group -->
+<div class="section-label">Claims &amp; Documents</div>
+<div class="app-grid">
+
+    <a href="{% url 'claim_list' %}" class="app-card" style="--app-color:#3b82f6;">
+        <div class="app-card-icon"><i class="fas fa-folder-open"></i></div>
+        <div class="app-card-name">Claims Manager</div>
+        <div class="app-card-desc">Create, track and manage all insurance claims and their files.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'scope_checklist' %}" class="app-card" style="--app-color:#10b981;">
+        <div class="app-card-icon"><i class="fas fa-clipboard-list"></i></div>
+        <div class="app-card-name">Scope Checklist</div>
+        <div class="app-card-desc">Room-by-room scope of work checklists with PDF &amp; email export.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'lease_manager' %}" class="app-card" style="--app-color:#8b5cf6;">
+        <div class="app-card-icon"><i class="fas fa-file-contract"></i></div>
+        <div class="app-card-name">Lease Manager</div>
+        <div class="app-card-desc">Manage ALE leases, generate documents and track activity.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'emails' %}" class="app-card" style="--app-color:#f59e0b;">
+        <div class="app-card-icon"><i class="fas fa-envelope"></i></div>
+        <div class="app-card-name">Email Manager</div>
+        <div class="app-card-desc">Send, schedule and track open rates for client emails.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+</div>
+
+<!-- Labels & Media group -->
+<div class="section-label">Labels &amp; Media</div>
+<div class="app-grid">
+
+    <a href="{% url 'labels' %}" class="app-card" style="--app-color:#ef4444;">
+        <div class="app-card-icon"><i class="fas fa-tags"></i></div>
+        <div class="app-card-name">Box Labels</div>
+        <div class="app-card-desc">Generate printable box labels per room for any claim.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'wall_labels' %}" class="app-card" style="--app-color:#ec4899;">
+        <div class="app-card-icon"><i class="fas fa-compass"></i></div>
+        <div class="app-card-name">Wall Labels</div>
+        <div class="app-card-desc">Create directional wall labels for equipment placement.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'reading_browser' %}" class="app-card" style="--app-color:#06b6d4;">
+        <div class="app-card-icon"><i class="fas fa-camera"></i></div>
+        <div class="app-card-name">Reading Browser</div>
+        <div class="app-card-desc">Browse, sort, rename and export moisture reading images.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'claim_media_downloader' %}" class="app-card" style="--app-color:#64748b;">
+        <div class="app-card-icon"><i class="fas fa-images"></i></div>
+        <div class="app-card-name">Claim Images</div>
+        <div class="app-card-desc">Download and organise photo sets from Encircle claims.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+</div>
+
+<!-- AI Tools group -->
+<div class="section-label">AI Tools</div>
+<div class="app-grid">
+
+    <a href="{% url 'sensor_image_renamer' %}" class="app-card" style="--app-color:#84cc16;">
+        <div class="app-card-icon"><i class="fas fa-microscope"></i></div>
+        <div class="app-card-name">Sensor Renamer</div>
+        <div class="app-card-desc">AI-powered tool that reads sensor images and renames files automatically.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'equipment_checker' %}" class="app-card" style="--app-color:#f97316;">
+        <div class="app-card-icon"><i class="fas fa-clipboard-check"></i></div>
+        <div class="app-card-name">Equipment Checker</div>
+        <div class="app-card-desc">Verify equipment documentation photos using Claude Vision AI.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'cps_report_home' %}" class="app-card" style="--app-color:#059669;">
+        <div class="app-card-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="app-card-name">CPS Schedule of Loss</div>
+        <div class="app-card-desc">AI-powered contents pricing from Encircle room photos for pack-out claims.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+</div>
+
+<!-- Encircle group -->
+<div class="section-label">Encircle Integration</div>
+<div class="app-grid">
+
+    <a href="{% url 'encircle_dashboard' %}" class="app-card" style="--app-color:#0ea5e9;">
+        <div class="app-card-icon"><i class="fas fa-circle-nodes"></i></div>
+        <div class="app-card-name">Encircle Dashboard</div>
+        <div class="app-card-desc">View all Encircle claims, sync with OneDrive and export reports.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'push_rooms_page' %}" class="app-card" style="--app-color:#7c3aed;">
+        <div class="app-card-icon"><i class="fas fa-upload"></i></div>
+        <div class="app-card-name">Push Rooms</div>
+        <div class="app-card-desc">Push room entries directly to Encircle claims in bulk.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'push_rooms_page' %}#photo-copy-tool" class="app-card" style="--app-color:#6366f1;">
+        <div class="app-card-icon"><i class="fas fa-copy"></i></div>
+        <div class="app-card-name">Copy Photos</div>
+        <div class="app-card-desc">Copy photos between rooms and claims inside Encircle.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+</div>
+
+{% endblock %}

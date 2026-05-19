@@ -1,0 +1,655 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block content %}
+<main>
+    <h1>
+        <button class="menu-toggle">
+            <span></span><span></span><span></span>
+        </button>
+        {% if client %}Edit Claim - {{ client.pOwner }}{% else %}Create New Claim{% endif %}
+    </h1>
+
+    <!-- Form Tabs Section -->
+    <div class="form-tabs-container">
+        <div class="tabs">
+            <button class="tab-button active" data-tab="client">Client Info</button>
+            <button class="tab-button" data-tab="claim">Claim Details</button>
+            <button class="tab-button" data-tab="insurance">Insurance</button>
+            <button class="tab-button" data-tab="property">Property</button>
+            <button class="tab-button" data-tab="mortgage">Mortgage</button>
+            <button class="tab-button" data-tab="contractor">Contractor</button>
+            <button class="tab-button" data-tab="ale">ALE</button>
+            <button class="tab-button" data-tab="rooms">Rooms</button>
+        </div>
+
+        <form method="post" id="client-form">
+            {% csrf_token %}
+
+            <!-- Client Info Tab -->
+            <div class="tab-pane active" id="client-tab">
+                <div class="two-column-form">
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_pOwner">Primary Owner *</label>
+                            {{ form.pOwner }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_pAddress">Primary Address *</label>
+                            {{ form.pAddress }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_pCityStateZip">City/State/Zip</label>
+                            {{ form.pCityStateZip }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_cEmail">Email</label>
+                            {{ form.cEmail }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_cPhone">Phone</label>
+                            {{ form.cPhone }}
+                        </div>
+                    </div>
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_coOwner2">Co-Owner</label>
+                            {{ form.coOwner2 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_cAddress2">Co-Owner Address</label>
+                            {{ form.cAddress2 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_cCityStateZip2">Co-Owner City/State/Zip</label>
+                            {{ form.cCityStateZip2 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_cEmail2">Co-Owner Email</label>
+                            {{ form.cEmail2 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_cPhone2">Co-Owner Phone</label>
+                            {{ form.cPhone2 }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Claim Details Tab -->
+            <div class="tab-pane" id="claim-tab">
+                <div class="two-column-form">
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_causeOfLoss">Cause of Loss</label>
+                            {{ form.causeOfLoss }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_dateOfLoss">Date of Loss</label>
+                            {{ form.dateOfLoss }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_contractDate">Contract Date</label>
+                            {{ form.contractDate }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_yearBuilt">Year Built</label>
+                            {{ form.yearBuilt }}
+                        </div>
+                        <div class="form-row checkbox-row">
+                            {{ form.demo }} <label for="id_demo">Demo Required</label>
+                        </div>
+                        <div class="form-row checkbox-row">
+                            {{ form.mitigation }} <label for="id_mitigation">Mitigation</label>
+                        </div>
+                    </div>
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_rebuildType1">Rebuild Type 1</label>
+                            {{ form.rebuildType1 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_rebuildType2">Rebuild Type 2</label>
+                            {{ form.rebuildType2 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_rebuildType3">Rebuild Type 3</label>
+                            {{ form.rebuildType3 }}
+                        </div>
+                        <div class="form-row checkbox-row">
+                            {{ form.otherStructures }} <label for="id_otherStructures">Other Structures</label>
+                        </div>
+                        <div class="form-row checkbox-row">
+                            {{ form.replacement }} <label for="id_replacement">Replacement</label>
+                        </div>
+                        <div class="form-row checkbox-row">
+                            {{ form.CPSCLNCONCGN }} <label for="id_CPSCLNCONCGN">CPSCLNCONCGN</label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Insurance Tab -->
+            <div class="tab-pane" id="insurance-tab">
+                <div class="two-column-form">
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_insuranceCo_Name">Insurance Company *</label>
+                            {{ form.insuranceCo_Name }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_insAddressOvernightMail">Overnight Mail Address</label>
+                            {{ form.insAddressOvernightMail }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_insCityStateZip">City/State/Zip</label>
+                            {{ form.insCityStateZip }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_insuranceCoPhone">Phone</label>
+                            {{ form.insuranceCoPhone }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_insWebsite">Website</label>
+                            {{ form.insWebsite }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_claimNumber">Claim Number</label>
+                            {{ form.claimNumber }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_policyNumber">Policy Number</label>
+                            {{ form.policyNumber }}
+                        </div>
+                    </div>
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_deskAdjusterDA">Desk Adjuster</label>
+                            {{ form.deskAdjusterDA }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_DAPhone">DA Phone</label>
+                            {{ form.DAPhone }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_DAPhExt">DA Phone Ext</label>
+                            {{ form.DAPhExt }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_DAEmail">DA Email</label>
+                            {{ form.DAEmail }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_fieldAdjusterFA">Field Adjuster</label>
+                            {{ form.fieldAdjusterFA }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_FAPhone">Field Adjuster Phone</label>
+                            {{ form.FAPhone }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_FAEmail">Field Adjuster Email</label>
+                            {{ form.FAEmail }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Property Tab -->
+            <div class="tab-pane" id="property-tab">
+                <div class="two-column-form">
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_roomArea1">Room Area 1</label>
+                            {{ form.roomArea1 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea2">Room Area 2</label>
+                            {{ form.roomArea2 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea3">Room Area 3</label>
+                            {{ form.roomArea3 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea4">Room Area 4</label>
+                            {{ form.roomArea4 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea5">Room Area 5</label>
+                            {{ form.roomArea5 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea6">Room Area 6</label>
+                            {{ form.roomArea6 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea7">Room Area 7</label>
+                            {{ form.roomArea7 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea8">Room Area 8</label>
+                            {{ form.roomArea8 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea9">Room Area 9</label>
+                            {{ form.roomArea9 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea10">Room Area 10</label>
+                            {{ form.roomArea10 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea11">Room Area 11</label>
+                            {{ form.roomArea11 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea12">Room Area 12</label>
+                            {{ form.roomArea12 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea13">Room Area 13</label>
+                            {{ form.roomArea13 }}
+                        </div>
+                    </div>
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_roomArea14">Room Area 14</label>
+                            {{ form.roomArea14 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea15">Room Area 15</label>
+                            {{ form.roomArea15 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea16">Room Area 16</label>
+                            {{ form.roomArea16 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea17">Room Area 17</label>
+                            {{ form.roomArea17 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea18">Room Area 18</label>
+                            {{ form.roomArea18 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea19">Room Area 19</label>
+                            {{ form.roomArea19 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea20">Room Area 20</label>
+                            {{ form.roomArea20 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea21">Room Area 21</label>
+                            {{ form.roomArea21 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea22">Room Area 22</label>
+                            {{ form.roomArea22 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea23">Room Area 23</label>
+                            {{ form.roomArea23 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea24">Room Area 24</label>
+                            {{ form.roomArea24 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_roomArea25">Room Area 25</label>
+                            {{ form.roomArea25 }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Mortgage Tab -->
+            <div class="tab-pane" id="mortgage-tab">
+                <div class="two-column-form">
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_mortgageCo">Mortgage Company</label>
+                            {{ form.mortgageCo }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_mortgageAccountCo">Account #</label>
+                            {{ form.mortgageAccountCo }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_mortgageContactPerson">Contact Person</label>
+                            {{ form.mortgageContactPerson }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_mortgageContactPersonPhone">Phone</label>
+                            {{ form.mortgageContactPersonPhone }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_mortgageContactPersonPhoneExt">Phone Ext</label>
+                            {{ form.mortgageContactPersonPhoneExt }}
+                        </div>
+                    </div>
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_mortgageOverNightMail">Overnight Mail</label>
+                            {{ form.mortgageOverNightMail }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_mortgageCityStZipOVN">City/State/Zip</label>
+                            {{ form.mortgageCityStZipOVN }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_mortgageContactPersonEmail">Email</label>
+                            {{ form.mortgageContactPersonEmail }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_mortgageWebsite">Website</label>
+                            {{ form.mortgageWebsite }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Contractor Tab -->
+            <div class="tab-pane" id="contractor-tab">
+                <div class="two-column-form">
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_coName">Contractor Name</label>
+                            {{ form.coName }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_coAddress">Address</label>
+                            {{ form.coAddress }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_coCityState">City/State</label>
+                            {{ form.coCityState }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_coPhoneNumber">Rep Phone</label>
+                            {{ form.coPhoneNumber }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_coEmail">Rep Email</label>
+                            {{ form.coEmail }}
+                        </div>
+                    </div>
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_coWebsite">Website</label>
+                            {{ form.coWebsite }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_TinW9">TIN/W9</label>
+                            {{ form.TinW9 }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_fedExAccount">FedEx Account</label>
+                            {{ form.fedExAccount }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_licenseNumber">License Number</label>
+                            {{ form.licenseNumber }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ALE Tab -->
+            <div class="tab-pane" id="ale-tab">
+                <div class="two-column-form">
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_lossOfUseALE">Loss of Use (ALE)</label>
+                            {{ form.lossOfUseALE }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_tenantLesee">Tenant/Lessee</label>
+                            {{ form.tenantLesee }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_propertyAddressStreet">Property Address</label>
+                            {{ form.propertyAddressStreet }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_propertyCityStateZip">City/State/Zip</label>
+                            {{ form.propertyCityStateZip }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_bedrooms">Bedrooms</label>
+                            {{ form.bedrooms }}
+                        </div>
+                    </div>
+                    <div class="form-column">
+                        <div class="form-row">
+                            <label for="id_aleDateStart">Start Date</label>
+                            {{ form.aleDateStart }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_aleDateEnd">End Date</label>
+                            {{ form.aleDateEnd }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_lessor">Lessor</label>
+                            {{ form.lessor }}
+                        </div>
+                        <div class="form-row">
+                            <label for="id_aleDailyLimit">Daily Limit</label>
+                            {{ form.aleDailyLimit }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Rooms Tab -->
+            <div class="tab-pane" id="rooms-tab">
+                <div class="room-management-section">
+                    <div class="room-controls" style="margin-bottom: 20px;">
+                        <button type="button" class="options-btn" id="addRoomBtn">
+                            <i class="fa fa-plus"></i> Add Room
+                        </button>
+                        <div style="display: inline-block; margin-left: 20px;">
+                            <label style="font-weight: bold; margin-right: 10px;">Set Default for All Rooms (100s):</label>
+                            <select id="default-work-type-value" class="form-control" style="display: inline-block; width: auto;">
+                                <option value="">-- Select --</option>
+                                <option value="NA">NA</option>
+                                <option value="LOS">LOS</option>
+                                <option value="TRAVEL">TRAVEL</option>
+                            </select>
+                            <button type="button" class="options-btn" id="applyDefaultBtn" style="margin-left: 10px;">
+                                Apply to All
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="roomsContainer">
+                        <p id="noRoomsMsg" style="color: #999; text-align: center;">
+                            No rooms added yet. Click "Add Room" to get started.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div style="margin-top: 20px; padding: 20px; border-top: 1px solid #ddd;">
+                <button type="submit" class="options-btn">
+                    <i class="fa fa-save"></i> {% if client %}Update Claim{% else %}Create Claim & OneDrive Structure{% endif %}
+                </button>
+                <a href="/" class="options-btn" style="background-color: #666; margin-left: 10px;">
+                    Cancel
+                </a>
+            </div>
+        </form>
+    </div>
+</main>
+
+<!-- Room Template -->
+<template id="roomTemplate">
+    <div class="card room-card" data-room-index="" style="margin-bottom: 15px;">
+        <div class="card-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div style="display: flex; align-items: center; flex: 1;">
+                <span class="room-number" style="background-color: #404040; color: white; padding: 5px 12px; border-radius: 4px; margin-right: 10px;"></span>
+                <input type="text" class="room-name-input" placeholder="Room name (e.g., Living Room)" style="flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 4px;">
+            </div>
+            <button type="button" class="options-btn delete-room-btn" style="background-color: #e74c3c; padding: 5px 10px;">
+                <i class="fa fa-trash"></i>
+            </button>
+        </div>
+        <div style="padding: 15px;">
+            <div class="work-type-value-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px;">
+                {% for work_type in work_types %}
+                <div>
+                    <label style="font-size: 12px; color: #666; display: block; margin-bottom: 3px;">
+                        {{ work_type.work_type_id }} - {{ work_type.name }}
+                    </label>
+                    <select class="work-type-select" data-work-type="{{ work_type.work_type_id }}" style="width: 100%; padding: 5px; border: 1px solid #ddd; border-radius: 4px;">
+                        <option value="NA">NA</option>
+                        <option value="LOS">LOS</option>
+                        <option value="TRAVEL">TRAVEL</option>
+                    </select>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    let roomIndex = 0;
+
+    // Tab switching
+    const tabButtons = document.querySelectorAll('.tab-button');
+    const tabPanes = document.querySelectorAll('.tab-pane');
+
+    tabButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const targetTab = this.getAttribute('data-tab');
+
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabPanes.forEach(pane => pane.classList.remove('active'));
+
+            this.classList.add('active');
+            document.getElementById(targetTab + '-tab').classList.add('active');
+        });
+    });
+
+    // Add room
+    document.getElementById('addRoomBtn').addEventListener('click', function() {
+        addRoom();
+    });
+
+    // Delete room
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('.delete-room-btn')) {
+            if (confirm('Delete this room?')) {
+                e.target.closest('.room-card').remove();
+                updateRoomNumbers();
+                checkNoRooms();
+            }
+        }
+    });
+
+    // Apply default work type value to all rooms
+    document.getElementById('applyDefaultBtn').addEventListener('click', function() {
+        const defaultValue = document.getElementById('default-work-type-value').value;
+        if (!defaultValue) {
+            alert('Please select a default value first');
+            return;
+        }
+
+        // Apply to all 100-series work types in all rooms
+        document.querySelectorAll('.room-card').forEach(room => {
+            room.querySelectorAll('.work-type-select').forEach(select => {
+                const workTypeId = select.dataset.workType;
+                // Apply to all work types (not just 100s as per user request)
+                select.value = defaultValue;
+            });
+        });
+
+        alert(`Applied "${defaultValue}" to all work types in all rooms`);
+    });
+
+    // Form submission
+    document.getElementById('client-form').addEventListener('submit', function(e) {
+        const rooms = [];
+        document.querySelectorAll('.room-card').forEach((card, index) => {
+            const roomName = card.querySelector('.room-name-input').value.trim();
+            if (roomName) {
+                const workTypes = {};
+                card.querySelectorAll('.work-type-select').forEach(select => {
+                    const wtId = select.dataset.workType;
+                    workTypes[wtId] = select.value;
+                });
+
+                rooms.push({
+                    sequence: index + 1,
+                    name: roomName,
+                    work_types: workTypes
+                });
+            }
+        });
+
+        if (rooms.length > 0) {
+            const roomsInput = document.createElement('input');
+            roomsInput.type = 'hidden';
+            roomsInput.name = 'rooms_data';
+            roomsInput.value = JSON.stringify(rooms);
+            this.appendChild(roomsInput);
+        }
+    });
+
+    function addRoom(roomData = null) {
+        roomIndex++;
+        const template = document.getElementById('roomTemplate');
+        const clone = template.content.cloneNode(true);
+        const card = clone.querySelector('.room-card');
+
+        card.dataset.roomIndex = roomIndex;
+        card.querySelector('.room-number').textContent = '#' + roomIndex;
+
+        if (roomData) {
+            card.querySelector('.room-name-input').value = roomData.name || '';
+            if (roomData.work_types) {
+                Object.keys(roomData.work_types).forEach(wtId => {
+                    const select = card.querySelector(`[data-work-type="${wtId}"]`);
+                    if (select) select.value = roomData.work_types[wtId];
+                });
+            }
+        }
+
+        document.getElementById('roomsContainer').appendChild(card);
+        document.getElementById('noRoomsMsg').style.display = 'none';
+        updateRoomNumbers();
+    }
+
+    function updateRoomNumbers() {
+        document.querySelectorAll('.room-card').forEach((card, index) => {
+            card.querySelector('.room-number').textContent = '#' + (index + 1);
+        });
+    }
+
+    function checkNoRooms() {
+        if (document.querySelectorAll('.room-card').length === 0) {
+            document.getElementById('noRoomsMsg').style.display = 'block';
+        }
+    }
+
+    // Load existing rooms if editing
+    {% if client %}
+    {% for room in client.room_set.all %}
+    addRoom({
+        name: '{{ room.room_name }}',
+        work_types: {
+            {% for wt_value in room.work_type_values.all %}
+            '{{ wt_value.work_type.work_type_id }}': '{{ wt_value.value_type }}'{% if not forloop.last %},{% endif %}
+            {% endfor %}
+        }
+    });
+    {% endfor %}
+    {% endif %}
+});
+</script>
+
+{% endblock %}

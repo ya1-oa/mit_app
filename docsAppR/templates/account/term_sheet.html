@@ -189,10 +189,8 @@
         <div class="indented">Months</div>
         <div class="indented">Security Deposit</div>
         <div class="indented">Subtotal</div>
-        {% if landlord.real_estate_company %}
-        <div class="indented">{{ landlord.real_estate_company }} Fee:</div>
+        <div class="indented">{% if landlord.real_estate_company %}{{ landlord.real_estate_company }} — {% endif %}Real Estate Fee:</div>
         <div class="indented">Final Inspection & Clean-up:</div>
-        {% endif %}
     </div>
     <div class="content-column">
         <div>&nbsp;</div>
@@ -200,10 +198,8 @@
         <div class="indented">${{ landlord.default_rent_amount|floatformat:2 }} × {{ landlord.rental_months }}</div>
         <div class="indented">&nbsp;</div>
         <div class="indented">&nbsp;</div>
-        {% if landlord.real_estate_company %}
         <div class="indented">&nbsp;</div>
         <div class="indented">&nbsp;</div>
-        {% endif %}
     </div>
     <div class="numeric-column">
         <div>&nbsp;</div>
@@ -212,10 +208,8 @@
 
         <div class="indented"><b><u>${{ landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
         <div class="indented"><b><u>${{ landlord.default_rent_amount|multiply:landlord.rental_months|add:landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
-        {% if landlord.real_estate_company %}
         <div class="indented"><b><u>${{ landlord.default_rent_amount|floatformat:2|intcomma }}</u></b></div>
         <div class="indented"><b><u>${{ landlord.default_inspection_fee|floatformat:2|intcomma }}</u></b></div>
-        {% endif %}
         </div>
     </div>
 

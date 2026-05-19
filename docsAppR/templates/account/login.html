@@ -1,235 +1,168 @@
 {% load allauth i18n %}
-
-{% block content %}
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>APC Claimet</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <title>Sign In | Mitigation App</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root {
-            --primary: #404040;
-            --secondary: #f5f5f5;
-            --accent: #404040;
-            --text: #333333;
-            --light-gray: #e0e0e0;
-            --header-bg: #404040;
-        }
-        
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: 'Open Sans', sans-serif;
-        }
-        
+        * { box-sizing: border-box; margin: 0; padding: 0; }
         body {
-            background-color: white; /* Changed to pure white */
-            display: flex;
-            justify-content: center;
-            align-items: center;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 100%);
             min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
         }
-        
-        .login-container {
+        .auth-card {
+            background: #fff;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,.4);
             width: 100%;
-            max-width: 420px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
-            overflow: hidden; /* Ensures rounded corners clip children */
-            margin: 20px;
+            max-width: 400px;
+            overflow: hidden;
         }
-        
-        .login-header {
-            background-color: var(--header-bg);
-            padding: 30px 20px;
+        .auth-header {
+            background: linear-gradient(135deg, #1e40af, #0ea5e9);
+            padding: 32px 28px 28px;
             text-align: center;
-            color: white;
+            color: #fff;
         }
-        
-        .logo h1 {
-            color: white;
-            font-size: 24px;
-            font-weight: 700;
-            margin-bottom: 5px;
+        .auth-header .logo-icon {
+            width: 60px; height: 60px;
+            background: rgba(255,255,255,.15);
+            border-radius: 16px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 26px;
+            margin-bottom: 12px;
         }
-        
-        .logo p {
-            color: rgba(255,255,255,0.8);
+        .auth-header h1 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+        .auth-header p  { font-size: 13px; opacity: .85; margin: 0; }
+
+        .auth-body { padding: 28px 28px 24px; }
+
+        .form-label { font-size: 13px; font-weight: 600; color: #374151; }
+        .form-control {
+            border-radius: 8px;
+            border: 1px solid #d1d5db;
             font-size: 14px;
+            padding: 10px 12px;
         }
-        
-        .login-form {
-            padding: 40px;
+        .form-control:focus {
+            border-color: #1e40af;
+            box-shadow: 0 0 0 3px rgba(30,64,175,.12);
         }
-        
-        /* Rest of your form styles remain the same */
-        .form-group {
-            margin-bottom: 20px;
-        }
-        
-        label {
-            display: block;
-            margin-bottom: 8px;
-            color: var(--text);
-            font-size: 14px;
-            font-weight: 500;
-        }
-        
-        input {
+        .btn-login {
             width: 100%;
-            padding: 12px 15px;
-            border: 1px solid var(--light-gray);
-            border-radius: 4px;
-            font-size: 14px;
-            transition: border-color 0.3s;
+            padding: 12px;
+            background: linear-gradient(135deg, #1e40af, #0ea5e9);
+            border: none;
+            border-radius: 8px;
+            color: #fff;
+            font-size: 15px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: opacity .15s;
+            margin-top: 4px;
         }
-        
-        input:focus {
-            outline: none;
-            border-color: var(--accent);
+        .btn-login:hover { opacity: .9; }
+
+        .auth-footer {
+            text-align: center;
+            font-size: 13px;
+            color: #64748b;
+            padding: 0 28px 24px;
+            border-top: 1px solid #f1f5f9;
+            padding-top: 18px;
         }
-        
-        .remember-forgot {
+        .auth-footer a { color: #1e40af; font-weight: 600; text-decoration: none; }
+        .auth-footer a:hover { text-decoration: underline; }
+
+        .errorlist { list-style: none; padding: 0; margin: 0; }
+        .errorlist li { color: #dc2626; font-size: 12px; margin-top: 4px; }
+
+        .error-box {
+            background: #fef2f2;
+            border: 1px solid #fecaca;
+            border-radius: 8px;
+            padding: 10px 12px;
+            margin-bottom: 16px;
+            font-size: 13px;
+            color: #dc2626;
+        }
+
+        .links-row {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            margin-bottom: 20px;
-            font-size: 13px;
+            font-size: 12px;
+            margin-bottom: 16px;
         }
-        
-        .remember-me {
-            display: flex;
-            align-items: center;
-        }
-        
-        .remember-me input {
-            width: auto;
-            margin-right: 8px;
-        }
-        
-        .forgot-password a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-        
-        .login-button {
-            width: 100%;
-            padding: 12px;
-            background-color: var(--accent);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            font-size: 16px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            margin-bottom: 20px;
-        }
-        
-        .login-button:hover {
-            background-color: #333;
-        }
-        
-        .divider {
-            display: flex;
-            align-items: center;
-            margin: 20px 0;
-            color: #999;
-            font-size: 13px;
-        }
-        
-        .divider::before,
-        .divider::after {
-            content: "";
-            flex: 1;
-            border-bottom: 1px solid var(--light-gray);
-        }
-        
-        .divider::before {
-            margin-right: 10px;
-        }
-        
-        .divider::after {
-            margin-left: 10px;
-        }
-        
-        
-        .footer {
-            text-align: center;
-            margin-top: 30px;
-            font-size: 13px;
-            color: #777;
-        }
-        
-        .footer a {
-            color: var(--accent);
-            text-decoration: none;
-        }
-        
-        .errorlist {
-            color: #e74c3c;
-            font-size: 13px;
-            margin-top: 5px;
-            list-style: none;
-        }
+        .links-row label { color: #374151; font-weight: 500; }
+        .links-row a { color: #1e40af; text-decoration: none; }
+        .links-row a:hover { text-decoration: underline; }
     </style>
 </head>
 <body>
-    <div class="login-container">
-        <div class="login-header">
-            <div class="logo">
-                <h1>All Phase Consulting</h1>
-                <p>Back Office System</p>
-            </div>
+    <div class="auth-card">
+        <div class="auth-header">
+            <div class="logo-icon"><i class="fas fa-bolt"></i></div>
+            <h1>Mitigation App</h1>
+            <p>Back Office System</p>
         </div>
-        
-        <div class="login-form">
+
+        <div class="auth-body">
             <form method="POST" action="{% url 'account_login' %}">
                 {% csrf_token %}
-                
+
                 {% if form.errors %}
-                    <div class="errorlist">
-                        {% for error in form.non_field_errors %}
-                            <p>{{ error }}</p>
-                        {% endfor %}
-                    </div>
+                <div class="error-box">
+                    {% for error in form.non_field_errors %}{{ error }}{% endfor %}
+                    {% if not form.non_field_errors %}Incorrect email or password.{% endif %}
+                </div>
                 {% endif %}
-                
-                <div class="form-group">
-                    <label for="id_login">Email</label>
-                    <input type="email" name="login" id="id_login" placeholder="Enter your email" required autofocus>
+
+                <div class="mb-3">
+                    <label class="form-label" for="id_login">Email address</label>
+                    <input type="email" class="form-control" name="login" id="id_login"
+                           placeholder="you@example.com" required autofocus>
                 </div>
-                
-                <div class="form-group">
-                    <label for="id_password">Password</label>
-                    <input type="password" name="password" id="id_password" placeholder="Enter your password" required>
+
+                <div class="mb-3">
+                    <label class="form-label" for="id_password">Password</label>
+                    <input type="password" class="form-control" name="password" id="id_password"
+                           placeholder="••••••••" required>
                 </div>
-                
-                <div class="remember-forgot">
-                    <div class="remember-me">
+
+                <div class="links-row">
+                    <label class="d-flex align-items-center gap-2 mb-0">
                         <input type="checkbox" name="remember" id="id_remember">
-                        <label for="id_remember">Remember me</label>
-                    </div>
-                    <div class="forgot-password">
-                        <a href="{% url 'account_reset_password' %}">Forgot password?</a>
-                    </div>
+                        Remember me
+                    </label>
+                    <a href="{% url 'account_reset_password' %}">Forgot password?</a>
                 </div>
-                
-                <button type="submit" class="login-button">Sign In</button>
-                
+
+                {% if redirect_field_value %}
+                <input type="hidden" name="{{ redirect_field_name }}" value="{{ redirect_field_value }}">
+                {% endif %}
+
+                <button type="submit" class="btn-login">
+                    <i class="fas fa-sign-in-alt me-2"></i>Sign In
+                </button>
             </form>
-            
-            <div class="footer">
-                Don't have an account? <a href="{% url 'account_signup' %}">Contact admin</a>
-            </div>
+        </div>
+
+        <div class="auth-footer">
+            Don't have an account? <a href="{% url 'account_signup' %}">Sign up</a>
         </div>
     </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>
-{% endblock %}

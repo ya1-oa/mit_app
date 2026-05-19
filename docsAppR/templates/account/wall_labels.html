@@ -1,0 +1,289 @@
+{% extends "account/base.html" %}
+{% load static %}
+{% block content %}
+<main>
+    <div class="min-h-screen bg-gray-50 p-8">
+        <div class="max-w-7xl mx-auto">
+            <!-- Header -->
+            <div class="mb-8">
+                <h1 class="text-2xl font-bold text-gray-800 mb-2">Wall Labels Generator</h1>
+                <p class="text-sm text-gray-600">Wall Labels: 4×6" Thermal Printer</p>
+            </div>
+
+            <div class="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+                <div class="flex">
+                    <div class="flex-shrink-0">
+                        <svg class="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd" />
+                        </svg>
+                    </div>
+                    <div class="ml-3">
+                        <p class="text-sm text-blue-700">
+                            <strong>Wall Labels Format:</strong> Each 4×6" label shows the room name and wall orientation diagram (W=1, W=2, CENTER, W=3, W=4) for thermal printer.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Claim Selection Form -->
+            <form method="get" class="bg-white rounded-lg shadow-lg p-6 mb-6">
+                <div class="mb-6">
+                    <label for="claim-select" class="block text-sm font-medium text-gray-700 mb-2">
+                        Select Claim
+                    </label>
+                    <select
+                        id="claim-select"
+                        name="claim"
+                        class="w-full max-w-xs px-4 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                        onchange="this.form.submit()"
+                    >
+                        <option value="">Select a claim...</option>
+                        {% for claim in claims %}
+                            <option value="{{ claim.pOwner }}" {% if selected_claim_id == claim.pOwner|stringformat:"s" %}selected{% endif %}>
+                                {{ claim.pOwner }}
+                            </option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+
+            <!-- Wall Labels Form -->
+            <form method="post" id="wall-labels-form" class="bg-white rounded-lg shadow-lg p-6">
+                {% csrf_token %}
+
+                <div class="mb-4">
+                    <h2 class="text-lg font-semibold text-gray-700 mb-4">Wall Orientation Labels per Room</h2>
+                    <p class="text-sm text-gray-600 mb-6">Enter the number of wall orientation labels needed for each room below.</p>
+                </div>
+
+                {% if rooms %}
+                    <div id="rooms-container" class="space-y-6">
+                        {% for room in rooms %}
+                            <div class="room-entry p-4 border border-gray-200 rounded-lg">
+                                <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                                    <div class="font-medium text-gray-800">{{ room.name }}</div>
+                                    <div class="flex items-center">
+                                        <label for="room-{{ forloop.counter }}-labels" class="mr-3 text-sm text-gray-600">
+                                            Number of wall labels:
+                                        </label>
+                                        <input
+                                            type="number"
+                                            id="room-{{ forloop.counter }}-labels"
+                                            name="room_labels[{{ room.name }}]"
+                                            min="0"
+                                            value="2"
+                                            class="w-20 px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                        >
+                                    </div>
+                                </div>
+                            </div>
+                        {% endfor %}
+                    </div>
+
+                    <!-- Hidden claim field -->
+                    <input type="hidden" name="claim" value="{{ selected_claim_id }}">
+
+                    <!-- Action Buttons -->
+                    <div class="mt-8 flex flex-wrap gap-4 items-center">
+                        <button
+                            type="submit"
+                            id="generate-wall-labels-btn"
+                            class="px-6 py-3 bg-gray-600 text-white font-medium rounded-lg shadow-sm hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
+                        >
+                            Generate &amp; Save Wall Labels
+                        </button>
+
+                        {% if selected_claim_id %}
+                        <a
+                            id="download-all-btn"
+                            href="{% url 'generate_wall_labels_download' claim_id=selected_claim_id %}"
+                            class="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 text-white font-medium rounded-lg shadow-sm hover:bg-blue-700 transition-colors"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download All Wall Labels PDF
+                        </a>
+                        {% endif %}
+                    </div>
+
+                    <!-- Email Labels -->
+                    {% if selected_claim_id %}
+                    <div class="mt-6 p-4 bg-gray-50 border border-gray-200 rounded-lg">
+                        <h3 class="text-sm font-semibold text-gray-700 mb-3">Email Labels to Team</h3>
+                        <div class="flex flex-wrap gap-x-6 gap-y-2 mb-3">
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" id="chk-georgia" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium">Georgia Team</span>
+                            </label>
+                            <label class="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                                <input type="checkbox" id="chk-ohio" class="rounded border-gray-300 text-indigo-600 focus:ring-indigo-500">
+                                <span class="font-medium">Ohio Team</span>
+                            </label>
+                        </div>
+                        <textarea
+                            id="custom-emails"
+                            placeholder="Or enter email addresses separated by commas..."
+                            rows="2"
+                            class="w-full px-3 py-2 border border-gray-300 rounded-md text-sm focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 mb-3"
+                        ></textarea>
+                        <div class="flex items-center gap-3">
+                            <button
+                                type="button"
+                                id="email-labels-btn"
+                                class="inline-flex items-center gap-2 px-5 py-2 bg-indigo-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-indigo-500 focus:ring-offset-2 transition-colors"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                                </svg>
+                                Email Labels
+                            </button>
+                            <div id="email-labels-spinner" class="hidden w-5 h-5 border-2 border-t-2 border-gray-300 border-t-indigo-600 rounded-full animate-spin"></div>
+                        </div>
+                        <div id="email-labels-result" class="hidden mt-3 text-sm rounded-md px-4 py-2"></div>
+                    </div>
+                    {% endif %}
+
+                    <!-- Success banner shown after generation -->
+                    <div id="generation-success" class="hidden mt-6 p-4 bg-green-50 border border-green-300 rounded-lg">
+                        <p class="text-green-800 font-medium">
+                            ✓ Wall labels generated and saved to the claim folder.
+                        </p>
+                        <a id="generated-pdf-link" href="#" download
+                           class="inline-flex items-center gap-2 mt-3 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg shadow-sm hover:bg-blue-700 transition-colors">
+                            <svg xmlns="http://www.w3.org/2000/svg" class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+                            </svg>
+                            Download Wall Labels PDF
+                        </a>
+                    </div>
+
+                {% else %}
+                    <div class="text-center py-8">
+                        <p class="text-gray-500">Please select a claim to view available rooms.</p>
+                    </div>
+                {% endif %}
+            </form>
+        </div>
+    </div>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+
+    // ── Email Labels ──────────────────────────────────────────────────
+    const emailBtn = document.getElementById('email-labels-btn');
+    if (emailBtn) {
+        emailBtn.addEventListener('click', async function () {
+            const spinner = document.getElementById('email-labels-spinner');
+            const resultBox = document.getElementById('email-labels-result');
+            const claimInput = document.querySelector('input[name="claim"]');
+            const georgiaChk = document.getElementById('chk-georgia');
+            const ohioChk = document.getElementById('chk-ohio');
+            const customEmails = document.getElementById('custom-emails');
+
+            const claimId = claimInput ? claimInput.value : '';
+            const georgia = georgiaChk && georgiaChk.checked;
+            const ohio = ohioChk && ohioChk.checked;
+            const custom = customEmails ? customEmails.value.trim() : '';
+
+            if (!georgia && !ohio && !custom) {
+                resultBox.textContent = 'Please select a team or enter at least one email address.';
+                resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-yellow-50 text-yellow-800 border border-yellow-300';
+                resultBox.classList.remove('hidden');
+                return;
+            }
+
+            emailBtn.disabled = true;
+            spinner.classList.remove('hidden');
+            resultBox.classList.add('hidden');
+
+            const formData = new FormData();
+            formData.append('claim', claimId);
+            formData.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+            if (georgia) formData.append('georgia', '1');
+            if (ohio) formData.append('ohio', '1');
+            if (custom) formData.append('custom_emails', custom);
+
+            try {
+                const response = await fetch('{% url "email_labels_to_group" %}', {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    resultBox.textContent = '✓ ' + data.message;
+                    resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-green-50 text-green-800 border border-green-300';
+                } else {
+                    resultBox.textContent = '✗ ' + (data.message || 'Failed to send email.');
+                    resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-red-50 text-red-800 border border-red-300';
+                }
+                resultBox.classList.remove('hidden');
+            } catch (err) {
+                resultBox.textContent = '✗ Network error: ' + err.message;
+                resultBox.className = 'mt-3 text-sm rounded-md px-4 py-2 bg-red-50 text-red-800 border border-red-300';
+                resultBox.classList.remove('hidden');
+            } finally {
+                emailBtn.disabled = false;
+                spinner.classList.add('hidden');
+            }
+        });
+    }
+
+    // ── Generate Wall Labels Form ─────────────────────────────────────
+    const wallLabelsForm = document.getElementById('wall-labels-form');
+
+    if (wallLabelsForm) {
+        wallLabelsForm.addEventListener('submit', async function(e) {
+            e.preventDefault();
+
+            const submitButton = document.getElementById('generate-wall-labels-btn');
+            submitButton.disabled = true;
+            submitButton.innerHTML = 'Generating...';
+
+            const formData = new FormData(wallLabelsForm);
+
+            try {
+                const response = await fetch(wallLabelsForm.action || window.location.href, {
+                    method: 'POST',
+                    body: formData,
+                    headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                });
+
+                if (!response.ok) throw new Error(`Server error: ${response.status}`);
+                const responseData = await response.json();
+
+                if (responseData.status === 'success' && responseData.pdf_url) {
+                    const successBanner = document.getElementById('generation-success');
+                    const downloadLink = document.getElementById('generated-pdf-link');
+                    if (downloadLink) {
+                        downloadLink.href = responseData.pdf_url;
+                        downloadLink.download = responseData.pdf_filename || 'Wall_Labels.pdf';
+                        downloadLink.textContent = 'Download ' + (responseData.pdf_filename || 'Wall Labels PDF');
+                    }
+                    if (successBanner) successBanner.classList.remove('hidden');
+                } else if (responseData.status === 'success') {
+                    // no labels requested
+                    alert(responseData.message || 'No labels generated.');
+                } else {
+                    alert('Error: ' + (responseData.message || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                submitButton.disabled = false;
+                submitButton.innerHTML = 'Generate &amp; Save Wall Labels';
+            }
+        });
+    }
+});
+    </script>
+
+    <style>
+        .animate-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</main>
+{% endblock %}

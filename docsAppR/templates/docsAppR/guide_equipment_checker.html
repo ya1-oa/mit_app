@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Equipment Documentation Checker — User Guide</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      color: #1a1a2e;
+      background: #fff;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 30px 60px;
+    }
+
+    .guide-header {
+      border-bottom: 3px solid #198754;
+      padding-bottom: 16px;
+      margin-bottom: 28px;
+    }
+    .guide-header .company {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #198754;
+      margin-bottom: 6px;
+    }
+    .guide-header h1 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #0d1b2a;
+    }
+    .guide-header .subtitle {
+      font-size: 13px;
+      color: #555;
+      margin-top: 4px;
+    }
+
+    h2 {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #198754;
+      border-left: 4px solid #198754;
+      padding-left: 10px;
+      margin: 28px 0 12px;
+    }
+
+    ol.steps {
+      padding-left: 0;
+      list-style: none;
+      counter-reset: step;
+    }
+    ol.steps > li {
+      counter-increment: step;
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+    ol.steps > li::before {
+      content: counter(step);
+      background: #198754;
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    ol.steps > li .step-text strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 3px;
+      color: #0d1b2a;
+    }
+    ol.steps > li .step-text {
+      color: #333;
+      line-height: 1.55;
+    }
+
+    ol.steps ul, ul.bullets {
+      margin: 6px 0 0 0;
+      padding-left: 18px;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    .box {
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      line-height: 1.6;
+      font-size: 13px;
+    }
+    .box-green  { background: #eafaf1; border-left: 4px solid #198754; }
+    .box-blue   { background: #e8f4fd; border-left: 4px solid #0066cc; }
+    .box-yellow { background: #fefce8; border-left: 4px solid #f59e0b; }
+    .box strong { display: block; margin-bottom: 4px; font-size: 13px; }
+
+    /* Status badge table */
+    table.status-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+    table.status-table th {
+      background: #198754;
+      color: white;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    table.status-table td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e0e0e0;
+      vertical-align: top;
+    }
+    table.status-table tr:nth-child(even) td { background: #f5f7fa; }
+
+    .badge {
+      display: inline-block;
+      padding: 2px 10px;
+      border-radius: 12px;
+      font-weight: 700;
+      font-size: 11px;
+      text-transform: uppercase;
+    }
+    .badge-found    { background: #198754; color: white; }
+    .badge-partial  { background: #f0ad4e; color: #1a1a2e; }
+    .badge-notfound { background: #dc3545; color: white; }
+
+    /* Line item format example */
+    .format-box {
+      background: #0d1117;
+      color: #c9d1d9;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
+      border-radius: 8px;
+      padding: 14px 16px;
+      line-height: 1.8;
+      margin: 10px 0;
+    }
+    .format-box .comment { color: #6e7681; }
+
+    code {
+      background: #f0f4f8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      color: #c0392b;
+    }
+
+    .guide-footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid #ddd;
+      font-size: 11px;
+      color: #888;
+      text-align: center;
+    }
+
+    @media print {
+      body { padding: 20px; }
+      .no-print { display: none; }
+    }
+
+    .print-btn {
+      display: inline-block;
+      margin-bottom: 24px;
+      padding: 8px 18px;
+      background: #198754;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .print-btn:hover { background: #146c43; }
+  </style>
+</head>
+<body>
+
+  <div class="no-print" style="margin-bottom: 16px;">
+    <button class="print-btn" onclick="window.print()">&#128438; Print / Save as PDF</button>
+  </div>
+
+  <div class="guide-header">
+    <div class="company">All Phase Consulting &nbsp;·&nbsp; Tool Guide</div>
+    <h1>Equipment Documentation Checker</h1>
+    <div class="subtitle">Verify that your job site photos document every billable line item — before the adjuster asks.</div>
+  </div>
+
+  <div class="box box-green">
+    <strong>What does this tool do?</strong>
+    Upload your job site photos and paste in your scope of work line items. The AI reviews every photo
+    against a reference guide of water mitigation equipment and tells you — for each line item —
+    whether you have adequate photographic documentation. Insurers will only pay for items documented with pictures.
+  </div>
+
+
+  <h2>Step-by-Step Instructions</h2>
+
+  <ol class="steps">
+
+    <li>
+      <div class="step-text">
+        <strong>Open the Equipment Checker page</strong>
+        Log in to the app and click <em>Equipment Checker</em> in the left sidebar menu.
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Upload your job site photos</strong>
+        Drag and drop photos onto the upload area, or click to browse and select.
+        <ul>
+          <li>Upload all photos from the job — the more complete, the better the analysis</li>
+          <li>Accepted formats: JPG, PNG, WEBP, TIFF, BMP</li>
+          <li>Up to 50 photos per analysis</li>
+        </ul>
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Enter your work items to verify</strong>
+        In the <em>Work Items to Verify</em> text box, type or paste your scope line items — one per line.
+        Use the format: <code>Room Name | Description</code>
+        <br><br>
+        Example:
+        <div class="format-box">
+          <span class="comment"># Format: Room | Line item description</span><br>
+          BATH DN | Vinyl tile<br>
+          BATH DN | Tear out non-salv vinyl, cut &amp; bag<br>
+          REAR HALL DN | Tear out baseboard<br>
+          HVAC | Mask and cover register / air return<br>
+          <span class="comment"># No room prefix is also fine:</span><br>
+          Emergency service call - during business hours
+        </div>
+        You can copy line items directly from your Xactimate or Excel estimate and paste them here.
+        The room name prefix is optional but helps organize the results table.
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Click "Analyze Photos"</strong>
+        The AI will review all photos against your line items and the equipment reference guide.
+        A progress bar tracks each stage. Analysis typically takes 30–90 seconds depending on
+        the number of photos and line items.
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Review the results table</strong>
+        Each line item gets a status badge:
+      </div>
+    </li>
+
+  </ol>
+
+  <table class="status-table">
+    <thead>
+      <tr><th>Badge</th><th>Meaning</th><th>What to do</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><span class="badge badge-found">FOUND</span></td>
+        <td>Clear photographic evidence exists in your submitted photos</td>
+        <td>No action needed — this item is well documented</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-partial">PARTIAL</span></td>
+        <td>Some evidence visible, but documentation is limited (e.g., only 1 photo, glare, distant shot)</td>
+        <td>Read the note — consider adding a closer or clearer photo on your next site visit</td>
+      </tr>
+      <tr>
+        <td><span class="badge badge-notfound">NOT FOUND</span></td>
+        <td>No matching photo evidence found in the submitted set</td>
+        <td>This item may be at risk of denial — document it on your next visit or remove from scope</td>
+      </tr>
+    </tbody>
+  </table>
+
+  <ol class="steps" style="counter-reset: step 5;">
+    <li>
+      <div class="step-text">
+        <strong>Use the filter to focus on problem items</strong>
+        Use the <em>Status</em> dropdown to filter the table to only show <em>NOT FOUND</em> or <em>PARTIAL</em>
+        items. This quickly highlights what still needs to be documented.
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Export results as a CSV spreadsheet</strong>
+        Click <em>Export CSV</em> to download a spreadsheet with all rooms, descriptions, statuses, and
+        AI notes. Use this to share findings with your team or attach to the claim file.
+      </div>
+    </li>
+  </ol>
+
+
+  <h2>Tips for Best Results</h2>
+
+  <ul class="bullets">
+    <li>Upload photos <em>before</em> writing the scope — use the results to inform what you bill</li>
+    <li>Include photos of every room where work was performed, not just the damaged areas</li>
+    <li>Equipment photos should clearly show the device in use or in place at the job site</li>
+    <li>The AI uses an equipment reference guide (HUTCH EQPT LIST) automatically — no setup required</li>
+    <li>Paste items directly from your Excel or Xactimate estimate to save time</li>
+    <li>Run the check again after adding more photos to see if PARTIAL items upgrade to FOUND</li>
+  </ul>
+
+  <div class="box box-yellow" style="margin-top: 20px;">
+    <strong>Important: AI verification is a guide, not a guarantee</strong>
+    The AI's determination is based on the photos submitted and its knowledge of standard water mitigation
+    equipment. Always use professional judgment when reviewing results. Items marked NOT FOUND may still
+    be payable if you have other documentation (moisture logs, invoices, etc.).
+  </div>
+
+
+  <h2>Frequently Asked Questions</h2>
+
+  <ul class="bullets">
+    <li><strong>How many line items can I check at once?</strong> There is no hard limit. The AI processes all items in a single analysis. Lists of 30–60 items work well.</li>
+    <li><strong>Do I need to label my photos by room first?</strong> No — the AI reviews all photos together and matches them to your line items based on what it sees in each photo.</li>
+    <li><strong>Can I re-run with more photos?</strong> Yes. Click <em>New Check</em>, add your additional photos alongside the originals, re-enter your line items, and run again.</li>
+    <li><strong>What is the equipment reference guide?</strong> It is an internal document (HUTCH EQPT LIST) that shows photos of common water mitigation equipment. The AI uses it automatically as a reference when analyzing your photos.</li>
+    <li><strong>Can I use this for every claim?</strong> Yes — run it at the end of each job before submitting the claim to catch documentation gaps early.</li>
+  </ul>
+
+
+  <div class="guide-footer">
+    All Phase Consulting &nbsp;·&nbsp; Equipment Documentation Checker &nbsp;·&nbsp; Internal Use Guide
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,716 @@
+{% extends "account/base.html" %}
+
+{% block title %}Create Claim - Step 3{% endblock %}
+{% block page_title %}Create New Claim - Step 3{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-lg-10 mx-auto">
+
+            <!-- Stepper -->
+            <div class="stepper mb-4">
+                <div class="stepper-item completed">
+                    <div class="stepper-icon"><i class="fas fa-check"></i></div>
+                    <div class="stepper-label">Client Info</div>
+                </div>
+                <div class="stepper-item completed">
+                    <div class="stepper-icon"><i class="fas fa-check"></i></div>
+                    <div class="stepper-label">Rooms</div>
+                </div>
+                <div class="stepper-item active">
+                    <div class="stepper-icon">3</div>
+                    <div class="stepper-label">Review & Create</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-check-circle"></i> Step 3: Review & Create Claim
+                    </h4>
+                </div>
+                <div class="card-body">
+
+                    <!-- Client Summary -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="fas fa-user"></i> Client Information
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row">
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-5">Property Owner:</dt>
+                                        <dd class="col-sm-7">{{ client.pOwner }}</dd>
+
+                                        <dt class="col-sm-5">Address:</dt>
+                                        <dd class="col-sm-7">
+                                            {{ client.pAddress }}<br>
+                                            {{ client.pCityStateZip }}
+                                        </dd>
+
+                                        <dt class="col-sm-5">Email:</dt>
+                                        <dd class="col-sm-7">{{ client.cEmail|default:"—" }}</dd>
+
+                                        <dt class="col-sm-5">Phone:</dt>
+                                        <dd class="col-sm-7">{{ client.cPhone|default:"—" }}</dd>
+                                    </dl>
+                                </div>
+
+                                <div class="col-md-6">
+                                    <dl class="row">
+                                        <dt class="col-sm-5">Insurance Co:</dt>
+                                        <dd class="col-sm-7">{{ client.insuranceCo_Name }}</dd>
+
+                                        <dt class="col-sm-5">Claim #:</dt>
+                                        <dd class="col-sm-7">{{ client.claimNumber }}</dd>
+
+                                        <dt class="col-sm-5">Cause of Loss:</dt>
+                                        <dd class="col-sm-7">{{ client.get_causeOfLoss_display|default:"—" }}</dd>
+
+                                        <dt class="col-sm-5">Date of Loss:</dt>
+                                        <dd class="col-sm-7">{{ client.dateOfLoss|default:"—" }}</dd>
+                                    </dl>
+                                </div>
+                            </div>
+
+                            <div class="text-end">
+                                <a href="{% url 'create_claim_step1' %}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-edit"></i> Edit Client Info
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Rooms Summary -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-door-open"></i> Rooms ({{ rooms|length }})</h5>
+                            <a href="{% url 'create_claim_step2' %}" class="btn btn-sm btn-outline-primary">
+                                <i class="fas fa-edit"></i> Edit Rooms
+                            </a>
+                        </div>
+                        <div class="card-body py-2">
+                            {% if rooms %}
+                            <ol class="mb-0" style="columns:2; font-size:0.88rem;">
+                                {% for room in rooms %}<li>{{ room.room_name }}</li>{% endfor %}
+                            </ol>
+                            {% else %}
+                            <div class="alert alert-warning mb-0">
+                                <i class="fas fa-exclamation-triangle"></i>
+                                No rooms added. <a href="{% url 'create_claim_step2' %}">Go back to add rooms</a> —
+                                8000s and basic entries require rooms to generate Encircle entries.
+                            </div>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    <!-- Server Folder Structure Preview -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light">
+                            <h5 class="mb-0">
+                                <i class="fas fa-server"></i> Server Folder Structure to be Created
+                            </h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle"></i>
+                                The following will be created automatically on the server:
+                            </div>
+
+                            <div style="font-family: monospace; font-size: 13px; line-height: 1.8;">
+                                <div><i class="fas fa-folder text-primary"></i> <strong>Server/claims/</strong></div>
+                                <div class="ms-3"><i class="fas fa-folder text-warning"></i> <strong>{{ client.pOwner }}@{{ client.pAddress }}</strong></div>
+                                <div class="ms-5"><i class="fas fa-file-excel text-success"></i> 01-INFO-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5"><i class="fas fa-file-pdf text-danger"></i> w9.pdf</div>
+
+                                <!-- EXT EMS Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> EXT EMS {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- MIT Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> MIT {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- CPS Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> CPS {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- BASIC DOCS OUT Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> BASIC DOCS OUT {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- REBUILD Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> REBUILD {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+
+                                <!-- Templates Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-info"></i> <strong>Templates {{ client.pOwner }}@{{ client.pAddress }}</strong></div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 01-ROOMS-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 02-INS-CO-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 30-MASTER-Insurer-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 50-2-CONTRACT-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 51-NOTARY-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 60_scope_form-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 60-SCOPE-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT 3-DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT-3DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT-5DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 82-MIT-7DAY-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 92-CPS-LABELS-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 92-MOBILE-CPS-LABELS-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-info"></i> 94-2-CPS-INVOICE-{{ client.pOwner }}@{{ client.pAddress }}.xlsm</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 998-Release-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file-excel text-success"></i> 1000-ALL-CLAIMS-{{ client.pOwner }}@{{ client.pAddress }}.xlsx</div>
+
+                                <!-- BU Folder -->
+                                <div class="ms-5 mt-2"><i class="fas fa-folder text-warning"></i> BU {{ client.pOwner }}@{{ client.pAddress }}</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> FINAL V2</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-folder text-secondary"></i> SPLM</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> .0 EMAIL #1.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 7. EMAIL #2.txt</div>
+                                <div class="ms-5 ps-4"><i class="fas fa-file text-muted"></i> 11. OTHER #3.txt</div>
+                            </div>
+
+                            <div class="alert alert-success mt-3 mb-0">
+                                <i class="fas fa-check-circle"></i> <strong>Total:</strong> 7 main folders, 12 subfolders, 21 text files, and 17 Excel templates with auto-populated data
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Confirmation -->
+                    <div class="card border-success">
+                        <div class="card-body text-center">
+                            <h4 class="text-success mb-3">
+                                <i class="fas fa-check-circle"></i> Ready to Create
+                            </h4>
+                            <p class="text-muted mb-3">Clicking "Create Claim" will automatically:</p>
+                            <ul class="text-start d-inline-block mb-4">
+                                <li>Save all claim information to database</li>
+                                <li>Create complete server folder structure</li>
+                                <li>Generate all Excel templates with populated data</li>
+                                <li>Generate room labels PDF &amp; email to team</li>
+                                <li>Send room list email to team</li>
+                                <li>Push claim &amp; room lists to Encircle</li>
+                            </ul>
+
+                            <form method="post" id="create-claim-form" class="mt-2">
+                                {% csrf_token %}
+
+                                <!-- Encircle Room List Selection -->
+                                <div class="text-start mb-4 p-3 border rounded bg-light" style="max-width:520px; margin: 0 auto;">
+                                    <p class="fw-semibold mb-3 text-primary">
+                                        <i class="fas fa-list-ul me-1"></i> Encircle Room Lists to Generate
+                                    </p>
+
+                                    <!-- 100-700s Complete Room List -->
+                                    <div class="mb-2">
+                                        <div class="form-check">
+                                            <input class="form-check-input" type="checkbox"
+                                                   name="encircle_templates" value="basic"
+                                                   id="tpl-basic" onchange="toggleWorkTypePanel(this)">
+                                            <label class="form-check-label" for="tpl-basic">
+                                                <strong>100-700s Complete Room List</strong>
+                                                <span class="text-muted d-block" style="font-size:0.78rem;">Job verification, Overview, Source, CPS, PPR, Demo, Mitigation, HMR</span>
+                                            </label>
+                                        </div>
+                                        <!-- Work Type sub-selectors (shown when basic is checked) -->
+                                        <div id="wt-panel" class="ms-4 mt-2 p-2 border rounded bg-white" style="display:none;">
+                                            <small class="text-muted d-block mb-2">Deselect work types you don't need:</small>
+                                            <div class="d-flex flex-wrap gap-2">
+                                                <label class="d-flex align-items-center gap-1 small">
+                                                    <input type="checkbox" name="selected_work_types" value="100" checked>
+                                                    <span class="badge bg-secondary">100</span> Overview
+                                                </label>
+                                                <label class="d-flex align-items-center gap-1 small">
+                                                    <input type="checkbox" name="selected_work_types" value="200" checked>
+                                                    <span class="badge bg-secondary">200</span> Source
+                                                </label>
+                                                <label class="d-flex align-items-center gap-1 small">
+                                                    <input type="checkbox" name="selected_work_types" value="300" checked>
+                                                    <span class="badge bg-secondary">300</span> CPS
+                                                </label>
+                                                <label class="d-flex align-items-center gap-1 small">
+                                                    <input type="checkbox" name="selected_work_types" value="400" checked>
+                                                    <span class="badge bg-secondary">400</span> PPR
+                                                </label>
+                                                <label class="d-flex align-items-center gap-1 small">
+                                                    <input type="checkbox" name="selected_work_types" value="500" checked>
+                                                    <span class="badge bg-secondary">500</span> Demo
+                                                </label>
+                                                <label class="d-flex align-items-center gap-1 small">
+                                                    <input type="checkbox" name="selected_work_types" value="600" checked>
+                                                    <span class="badge bg-secondary">600</span> Mitigation
+                                                </label>
+                                                <label class="d-flex align-items-center gap-1 small">
+                                                    <input type="checkbox" name="selected_work_types" value="700" checked>
+                                                    <span class="badge bg-secondary">700</span> HMR
+                                                </label>
+                                            </div>
+                                            <div class="mt-2">
+                                                <button type="button" class="btn btn-link btn-sm p-0 me-2" onclick="setAllWorkTypes(true)">Select All</button>
+                                                <button type="button" class="btn btn-link btn-sm p-0" onclick="setAllWorkTypes(false)">Deselect All</button>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <hr class="my-2">
+
+                                    <!-- 8000s MC Day Readings -->
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="encircle_templates" value="readings_8000"
+                                               id="tpl-readings-8000">
+                                        <label class="form-check-label" for="tpl-readings-8000">
+                                            <strong>8000s MC Day Readings</strong>
+                                            <span class="text-muted d-block" style="font-size:0.78rem;">Stabilization + Day 1-4 MC Readings per room</span>
+                                        </label>
+                                    </div>
+
+                                    <!-- 9000s Dry Chambers -->
+                                    <div class="form-check mb-1">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="encircle_templates" value="readings_9000"
+                                               id="tpl-readings-9000"
+                                               onchange="document.getElementById('rht-chamber-options').style.display=this.checked?'':'none'">
+                                        <label class="form-check-label" for="tpl-readings-9000">
+                                            <strong>9000s Dry Chamber Readings</strong>
+                                            <span class="text-muted d-block" style="font-size:0.78rem;">RH &amp; T &amp; GPP Dry Chambers Days 1-4 (static)</span>
+                                        </label>
+                                    </div>
+                                    <div id="rht-chamber-options" class="ms-4 mb-2 d-flex align-items-center gap-2" style="display:none !important;">
+                                        <label class="form-label small fw-semibold mb-0">Drying chambers:</label>
+                                        <select name="rht_chamber_count" id="rht-chamber-count" class="form-select form-select-sm" style="width:75px;">
+                                            <option value="1">1</option>
+                                            <option value="2">2</option>
+                                            <option value="3" selected>3</option>
+                                            <option value="4">4</option>
+                                            <option value="5">5</option>
+                                            <option value="6">6</option>
+                                            <option value="7">7</option>
+                                            <option value="8">8</option>
+                                            <option value="9">9</option>
+                                        </select>
+                                        <span class="text-muted small" id="rht-chamber-preview">9100, 9200, 9300</span>
+                                    </div>
+
+                                    <!-- 10000s Siding -->
+                                    <div class="form-check mb-2">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="encircle_templates" value="siding_10000"
+                                               id="tpl-siding-10000">
+                                        <label class="form-check-label" for="tpl-siding-10000">
+                                            <strong>10000s Siding</strong>
+                                            <span class="text-muted d-block" style="font-size:0.78rem;">Door &amp; Windows Trim, Soffit &amp; Fascia, SDG Accessories, Jobsite Conditions, Down Spouts &amp; Gutters, Electrical Accessories, Demo &amp; Dumpster, Final</span>
+                                        </label>
+                                    </div>
+
+                                    <!-- 70000s Stabilization -->
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox"
+                                               name="encircle_templates" value="readings default"
+                                               id="tpl-readings-default">
+                                        <label class="form-check-label" for="tpl-readings-default">
+                                            <strong>70000s Stabilization Readings</strong>
+                                            <span class="text-muted d-block" style="font-size:0.78rem;">Day 0 MC Readings only</span>
+                                        </label>
+                                    </div>
+                                </div>
+
+                                <script>
+                                function toggleWorkTypePanel(cb) {
+                                    document.getElementById('wt-panel').style.display = cb.checked ? 'block' : 'none';
+                                }
+                                function setAllWorkTypes(checked) {
+                                    document.querySelectorAll('#wt-panel input[type=checkbox]').forEach(function(cb) {
+                                        cb.checked = checked;
+                                    });
+                                }
+                                </script>
+
+                                <div class="d-flex justify-content-center gap-3">
+                                    <a href="{% url 'create_claim_step2' %}" class="btn btn-secondary btn-lg" id="back-btn">
+                                        <i class="fas fa-arrow-left"></i> Back
+                                    </a>
+                                    <button type="submit" class="btn btn-success btn-lg" id="create-btn">
+                                        <i class="fas fa-rocket"></i> Create Claim
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+
+                    <!-- Loading overlay (shown on submit) -->
+                    <div id="creating-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.65); z-index:9999; align-items:center; justify-content:center;">
+                        <div style="background:#fff; border-radius:16px; padding:36px 40px; max-width:480px; width:92%; box-shadow:0 8px 40px rgba(0,0,0,0.3);">
+                            <h4 class="text-center mb-4" style="color:#1e88e5;">
+                                <i class="fas fa-rocket me-2"></i> Creating Claim…
+                            </h4>
+                            <ul class="list-unstyled mb-0" id="task-list">
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="db">
+                                    <span class="task-icon"><div class="spinner-border spinner-border-sm text-primary" role="status"></div></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Saving claim to database</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="email">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Sending room list email to team</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="folder">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Creating server folder structure</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="templates">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Generating Excel templates</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="labels">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Generating room labels</span>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="encircle">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Pushing rooms to Encircle</span>
+                                        <div class="task-detail text-muted small mt-1" style="display:none;"></div>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="encircle_verify">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Verifying rooms in Encircle</span>
+                                        <div class="task-detail text-muted small mt-1" style="display:none;"></div>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <!-- MIT sub-claim Encircle row — hidden until task ID is present -->
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="encircle_mit" style="display:none;">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Pushing 8000s MIT sub-claim to Encircle</span>
+                                        <div class="task-detail text-muted small mt-1" style="display:none;"></div>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <!-- RHT sub-claim Encircle row — hidden until task ID is present -->
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="encircle_rht" style="display:none;">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Pushing 9000s RHT sub-claim to Encircle</span>
+                                        <div class="task-detail text-muted small mt-1" style="display:none;"></div>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <!-- HMR sub-claim Encircle row — hidden until task ID is present -->
+                                <li class="task-item d-flex align-items-center gap-3 py-2 border-bottom" data-key="encircle_hmr" style="display:none;">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Pushing 700s HMR sub-claim to Encircle</span>
+                                        <div class="task-detail text-muted small mt-1" style="display:none;"></div>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                                <!-- SDG sub-claim Encircle row — hidden until task ID is present -->
+                                <li class="task-item d-flex align-items-center gap-3 py-2" data-key="encircle_sdg" style="display:none;">
+                                    <span class="task-icon text-secondary"><i class="fas fa-circle" style="font-size:.5rem;opacity:.4;"></i></span>
+                                    <div class="flex-grow-1">
+                                        <span class="task-label">Pushing Siding SDG sub-claim to Encircle</span>
+                                        <div class="task-detail text-muted small mt-1" style="display:none;"></div>
+                                        <div class="task-error text-danger small mt-1" style="display:none;"></div>
+                                    </div>
+                                </li>
+                            </ul>
+                            <p id="overlay-status" class="text-center mt-4 text-muted small"></p>
+                        </div>
+                    </div>
+
+                    <style>
+                    .task-item .task-icon { width: 24px; text-align:center; flex-shrink:0; }
+                    </style>
+                    <script>
+                    (function() {
+                        const form = document.getElementById('create-claim-form');
+                        const overlay = document.getElementById('creating-overlay');
+                        const createBtn = document.getElementById('create-btn');
+                        const backBtn = document.getElementById('back-btn');
+                        const statusP = document.getElementById('overlay-status');
+
+                        function getItem(key) {
+                            return document.querySelector(`.task-item[data-key="${key}"]`);
+                        }
+                        function setSpinner(key) {
+                            const el = getItem(key);
+                            if (!el) return;
+                            el.querySelector('.task-icon').innerHTML =
+                                '<div class="spinner-border spinner-border-sm text-primary" role="status"></div>';
+                        }
+                        function setDone(key) {
+                            const el = getItem(key);
+                            if (!el) return;
+                            el.querySelector('.task-icon').innerHTML =
+                                '<i class="fas fa-check-circle text-success"></i>';
+                        }
+                        function setError(key, msg) {
+                            const el = getItem(key);
+                            if (!el) return;
+                            el.querySelector('.task-icon').innerHTML =
+                                '<i class="fas fa-times-circle text-danger"></i>';
+                            const errDiv = el.querySelector('.task-error');
+                            errDiv.textContent = msg || 'Failed';
+                            errDiv.style.display = '';
+                        }
+
+                        form.addEventListener('submit', async function(e) {
+                            e.preventDefault();
+
+                            overlay.style.display = 'flex';
+                            createBtn.disabled = true;
+                            backBtn.style.pointerEvents = 'none';
+                            backBtn.style.opacity = '0.5';
+
+                            const fd = new FormData(form);
+
+                            let data;
+                            try {
+                                const resp = await fetch(window.location.href, {
+                                    method: 'POST',
+                                    headers: { 'X-Requested-With': 'XMLHttpRequest' },
+                                    body: fd,
+                                });
+                                data = await resp.json();
+                            } catch (err) {
+                                overlay.style.display = 'none';
+                                createBtn.disabled = false;
+                                backBtn.style.pointerEvents = '';
+                                backBtn.style.opacity = '';
+                                alert('Network error: ' + err.message);
+                                return;
+                            }
+
+                            if (!data.success) {
+                                overlay.style.display = 'none';
+                                createBtn.disabled = false;
+                                backBtn.style.pointerEvents = '';
+                                backBtn.style.opacity = '';
+                                alert('Error creating claim: ' + (data.error || 'Unknown error'));
+                                return;
+                            }
+
+                            // ── Sync results (instant) ──
+                            const sync = data.sync_status || {};
+                            setDone('db');
+                            setSpinner('email');
+                            setTimeout(() => {
+                                if (sync.email) {
+                                    setDone('email');
+                                } else {
+                                    setError('email', sync.email_error || 'Email send failed');
+                                }
+                            }, 400);
+
+                            // ── Background task polling ──
+                            const taskIds = data.task_ids || {};
+                            const bgKeys = ['folder', 'templates', 'labels', 'encircle', 'encircle_verify', 'encircle_mit', 'encircle_rht', 'encircle_hmr', 'encircle_sdg'];
+                            const taskStatusUrl = '{% url "claim_task_status" %}';
+                            const done = {};
+                            let redirected = false;
+
+                            // encircle_verify is a virtual step driven by encircle task result
+                            done['encircle_verify'] = true;  // hidden until encircle succeeds
+
+                            // Show and activate MIT/RHT rows only if those tasks were queued
+                            if (taskIds.encircle_mit) {
+                                getItem('encircle_mit').style.display = '';
+                            } else {
+                                done['encircle_mit'] = true;
+                            }
+                            if (taskIds.encircle_rht) {
+                                getItem('encircle_rht').style.display = '';
+                            } else {
+                                done['encircle_rht'] = true;
+                            }
+                            if (taskIds.encircle_hmr) {
+                                getItem('encircle_hmr').style.display = '';
+                            } else {
+                                done['encircle_hmr'] = true;
+                            }
+                            if (taskIds.encircle_sdg) {
+                                getItem('encircle_sdg').style.display = '';
+                            } else {
+                                done['encircle_sdg'] = true;
+                            }
+
+                            // Start spinners for background tasks after a short delay
+                            setTimeout(() => setSpinner('folder'), 600);
+                            setTimeout(() => setSpinner('templates'), 800);
+                            setTimeout(() => setSpinner('labels'), 1000);
+                            setTimeout(() => setSpinner('encircle'), 1200);
+                            if (taskIds.encircle_mit) setTimeout(() => setSpinner('encircle_mit'), 1400);
+                            if (taskIds.encircle_rht) setTimeout(() => setSpinner('encircle_rht'), 1600);
+                            if (taskIds.encircle_hmr) setTimeout(() => setSpinner('encircle_hmr'), 1800);
+                            if (taskIds.encircle_sdg) setTimeout(() => setSpinner('encircle_sdg'), 2000);
+
+                            function showDetail(key, msg) {
+                                const el = getItem(key);
+                                if (!el) return;
+                                const d = el.querySelector('.task-detail');
+                                if (d) { d.textContent = msg; d.style.display = ''; }
+                            }
+
+                            function doRedirect(msg) {
+                                if (redirected) return;
+                                redirected = true;
+                                statusP.textContent = msg;
+                                setTimeout(() => { window.location.href = data.redirect_url; }, 1500);
+                            }
+
+                            function setRunningInBg(key) {
+                                const el = getItem(key);
+                                if (!el || done[key]) return;
+                                // Replace spinner with a clock icon and note
+                                el.querySelector('.task-icon').innerHTML =
+                                    '<i class="fas fa-clock text-warning"></i>';
+                                const errDiv = el.querySelector('.task-error');
+                                errDiv.style.color = '#856404';
+                                errDiv.textContent = 'Still running in background…';
+                                errDiv.style.display = '';
+                                done[key] = true;
+                            }
+
+                            function allBgDone() {
+                                return bgKeys.every(k => done[k]);
+                            }
+
+                            // Hard timeout — redirect after 40s no matter what
+                            const hardTimeout = setTimeout(() => {
+                                bgKeys.forEach(k => setRunningInBg(k));
+                                doRedirect('Claim saved! Slow tasks still running in background — opening claim…');
+                            }, 40000);
+
+                            async function pollTasks() {
+                                if (redirected) return;
+                                const remaining = bgKeys.filter(k => !done[k] && taskIds[k]);
+                                if (!remaining.length) return;
+
+                                const params = new URLSearchParams();
+                                remaining.forEach(k => params.set(k, taskIds[k]));
+
+                                try {
+                                    const r = await fetch(taskStatusUrl + '?' + params.toString(), {
+                                        headers: { 'X-Requested-With': 'XMLHttpRequest' }
+                                    });
+                                    const j = await r.json();
+                                    const statuses = j.statuses || {};
+                                    for (const key of remaining) {
+                                        const s = statuses[key];
+                                        if (!s) continue;
+                                        if (s.state === 'SUCCESS') {
+                                            setDone(key);
+                                            done[key] = true;
+                                            // When encircle push succeeds, show details + start verify step
+                                            if (key === 'encircle' && s.result) {
+                                                const r = s.result;
+                                                const pushed = r.rooms_pushed ?? '?';
+                                                const verified = r.rooms_verified ?? null;
+                                                showDetail('encircle', `${pushed} entries pushed`);
+                                                if (verified !== null) {
+                                                    // Verification already done in task result
+                                                    done['encircle_verify'] = false;
+                                                    setSpinner('encircle_verify');
+                                                    setTimeout(() => {
+                                                        if (verified >= pushed) {
+                                                            setDone('encircle_verify');
+                                                            showDetail('encircle_verify', `${verified} rooms confirmed in Encircle`);
+                                                        } else {
+                                                            setError('encircle_verify', `Only ${verified} of ${pushed} rooms found in Encircle`);
+                                                        }
+                                                        done['encircle_verify'] = true;
+                                                    }, 800);
+                                                }
+                                            }
+                                            // Show room counts for sub-claim Encircle pushes
+                                            if (['encircle_mit', 'encircle_rht', 'encircle_hmr'].includes(key) && s.result) {
+                                                const pushed = s.result.rooms_pushed ?? '?';
+                                                const eid = s.result.encircle_claim_id ?? '';
+                                                const labelMap = { encircle_mit: 'MIT', encircle_rht: 'RHT', encircle_hmr: 'HMR', encircle_sdg: 'SDG' };
+                                                const label = labelMap[key];
+                                                showDetail(key, `${label} claim created in Encircle — ${pushed} entries pushed${eid ? ' · ID ' + eid : ''}`);
+                                            }
+                                        } else if (s.state === 'FAILURE') {
+                                            setError(key, s.error);
+                                            done[key] = true;
+                                        }
+                                        // PENDING / STARTED / RETRY → keep spinner, keep polling
+                                    }
+                                } catch (_) { /* network hiccup — keep polling */ }
+
+                                if (allBgDone()) {
+                                    clearTimeout(hardTimeout);
+                                    const hasErrors = bgKeys.some(k => {
+                                        const el = getItem(k);
+                                        return el && el.querySelector('.task-error').style.display !== 'none';
+                                    });
+                                    if (hasErrors) {
+                                        doRedirect('Some tasks had errors — opening claim page for details…');
+                                    } else {
+                                        doRedirect('All done! Opening claim…');
+                                    }
+                                } else {
+                                    setTimeout(pollTasks, 3000);
+                                }
+                            }
+
+                            // Mark any tasks with no task ID as skipped
+                            bgKeys.forEach(k => { if (!taskIds[k]) done[k] = true; });
+
+                            statusP.textContent = 'Waiting for background tasks…';
+                            setTimeout(pollTasks, 2000);
+                        });
+                    })();
+                    </script>
+
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

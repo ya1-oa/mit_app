@@ -1,0 +1,60 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+
+# Django
+*.log
+db.sqlite3
+db.sqlite3-journal
+media/
+staticfiles/
+static_root/
+local_settings.py
+
+# Secrets
+.env
+*.env
+
+# Virtual environments
+venv/
+env/
+ENV/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Testing
+.coverage
+htmlcov/
+.pytest_cache/
+coverage.xml
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Logs & temp
+logs/
+debug_logs/
+temp_uploads/
+claim_images/
+
+# Binary/PDF uploads (not source)
+*.pdf
+*.xlsx
+*.xlsm
+
+# Test scripts in root
+test_email.py
+test_email_view.py
+test_full_email_flow.py

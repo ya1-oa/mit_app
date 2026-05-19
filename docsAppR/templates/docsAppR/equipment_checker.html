@@ -1,0 +1,503 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Equipment Documentation Checker{% endblock %}
+{% block page_title %}<i class="fas fa-clipboard-check"></i> Equipment Documentation Checker{% endblock %}
+
+{% block extra_css %}
+<style>
+  .drop-zone {
+    border: 2.5px dashed #6c757d;
+    border-radius: 10px;
+    padding: 1.4rem;
+    text-align: center;
+    cursor: pointer;
+    transition: background .2s, border-color .2s;
+    background: #f8f9fa;
+  }
+  .drop-zone.dragover { background: #e8f4fd; border-color: #0066cc; }
+  .drop-zone.has-file  { border-color: #198754; background: #f0fff4; border-style: solid; }
+  .drop-zone.has-files { border-color: #198754; background: #f0fff4; border-style: solid; }
+  .drop-zone-pdf  { border-color: #dc3545; }
+  .drop-zone-pdf.dragover { border-color: #a71d2a; background: #fff0f0; }
+  .drop-zone-img  { border-color: #0066cc; }
+  .drop-zone-img.dragover { background: #dff0ff; border-color: #0044aa; }
+  .drop-zone .drop-icon { font-size: 2rem; margin-bottom: 0.4rem; }
+
+  #progress-section { display: none; }
+  .progress { height: 22px; }
+
+  #log-panel {
+    font-family: 'Courier New', monospace;
+    font-size: 0.78rem;
+    background: #0d1117;
+    color: #c9d1d9;
+    border-radius: 6px;
+    padding: 0.75rem;
+    height: 100px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+  }
+  .log-ok  { color: #3fb950; }
+  .log-warn{ color: #d29922; }
+  .log-err { color: #f85149; }
+
+  #results-section { display: none; }
+  .status-found    { background: #198754; color: #fff; }
+  .status-partial  { background: #f0ad4e; color: #000; }
+  .status-notfound { background: #dc3545; color: #fff; }
+
+  #results-table th { font-size: 0.82rem; white-space: nowrap; }
+  #results-table td { font-size: 0.83rem; vertical-align: middle; }
+
+  .stat-box { border-radius: 8px; padding: 12px 18px; text-align: center; font-weight: 700; }
+  .stat-found    { background: #d1e7dd; color: #0a3622; }
+  .stat-partial  { background: #fff3cd; color: #664d03; }
+  .stat-notfound { background: #f8d7da; color: #58151c; }
+
+  #items-textarea { font-family: 'Courier New', monospace; font-size: 0.82rem; resize: vertical; }
+
+  .ref-pdf-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #e8f0fe; border: 1px solid #aac4f6; color: #1a56db;
+    border-radius: 20px; padding: 4px 12px; font-size: 0.78rem; font-weight: 600;
+  }
+
+  .source-divider {
+    display: flex; align-items: center; gap: 10px;
+    color: #6c757d; font-size: 0.8rem; font-weight: 600; margin: 10px 0;
+  }
+  .source-divider::before, .source-divider::after {
+    content: ''; flex: 1; height: 1px; background: #dee2e6;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="row g-3">
+
+  <!-- ── LEFT PANEL ─────────────────────────────────────────────────── -->
+  <div class="col-lg-5">
+
+    <!-- PDF Report upload (primary) -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">
+        <i class="fas fa-file-pdf text-danger me-2"></i>Job Site Photo Report
+        <span class="badge bg-success ms-2" style="font-size:0.7rem;">PRIMARY</span>
+      </div>
+      <div class="card-body">
+        <div class="drop-zone drop-zone-pdf" id="pdf-drop-zone"
+             onclick="document.getElementById('pdfInput').click()">
+          <div class="drop-icon text-danger"><i class="fas fa-file-pdf"></i></div>
+          <div class="fw-semibold small">Drop Encircle/room report PDF here</div>
+          <div class="text-muted" style="font-size:0.75rem;">or click to select — PDF only</div>
+        </div>
+        <input type="file" id="pdfInput" accept=".pdf" style="display:none">
+        <div id="pdf-info" class="mt-2 small text-muted"></div>
+      </div>
+    </div>
+
+    <!-- Individual photos (optional) -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">
+        <i class="fas fa-images text-primary me-2"></i>Additional Individual Photos
+        <span class="badge bg-secondary ms-2" style="font-size:0.7rem;">OPTIONAL</span>
+      </div>
+      <div class="card-body">
+        <div class="drop-zone drop-zone-img" id="img-drop-zone"
+             onclick="document.getElementById('imageInput').click()">
+          <div class="drop-icon" style="color:#0066cc;"><i class="fas fa-cloud-upload-alt"></i></div>
+          <div class="fw-semibold small">Drop photos here or click to select</div>
+          <div class="text-muted" style="font-size:0.75rem;">JPG, PNG, WEBP, TIFF — supplements the PDF above</div>
+        </div>
+        <input type="file" id="imageInput" multiple
+               accept=".jpg,.jpeg,.png,.bmp,.tiff,.tif,.webp" style="display:none">
+        <div id="img-info" class="mt-2 small text-muted"></div>
+      </div>
+    </div>
+
+    <!-- Line items -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+        <span><i class="fas fa-list-ul text-primary me-2"></i>Work Items to Verify</span>
+        <span class="text-muted" style="font-size:0.72rem;">Room | Description &nbsp;or just Description</span>
+      </div>
+      <div class="card-body pb-2">
+        <textarea id="items-textarea" class="form-control" rows="14"
+          placeholder="BATH DN | Vinyl tile
+BATH DN | Tear out non-salv vinyl, cut &amp; bag
+REAR HALL DN | Tear out baseboard
+Administration Expenses (PER LEVEL) | Emergency service call
+Administration Expenses (PER LEVEL) | Water Extraction Technician - per hour
+HVAC | Mask and cover register / air return
+Interior General DMO Items | Emergency service call - during business hours"></textarea>
+        <div class="text-muted mt-1" style="font-size:0.75rem;">
+          One item per line. Prefix with <code>Room | </code> to group by room in the output.
+        </div>
+      </div>
+    </div>
+
+    <!-- Settings -->
+    <div class="card mb-3">
+      <div class="card-header fw-semibold">
+        <i class="fas fa-cog text-primary me-2"></i>Settings
+      </div>
+      <div class="card-body">
+        <label class="form-label small fw-semibold mb-1">Claude Model</label>
+        <select id="model-select" class="form-select form-select-sm mb-3">
+          <option value="claude-sonnet-4-6" selected>claude-sonnet-4-6 (recommended)</option>
+          <option value="claude-opus-4-6">claude-opus-4-6 (most accurate)</option>
+          <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fastest)</option>
+        </select>
+        <span class="ref-pdf-badge">
+          <i class="fas fa-file-pdf"></i> HUTCH EQPT LIST.pdf — auto-included as reference
+        </span>
+      </div>
+    </div>
+
+    <button id="start-btn" class="btn btn-primary w-100 py-2 fw-semibold" onclick="startCheck()">
+      <i class="fas fa-search me-2"></i>Analyze Documentation
+    </button>
+  </div>
+
+  <!-- ── RIGHT PANEL ────────────────────────────────────────────────── -->
+  <div class="col-lg-7">
+
+    <!-- Progress -->
+    <div id="progress-section" class="card mb-3">
+      <div class="card-header fw-semibold">
+        <i class="fas fa-spinner fa-spin me-2"></i>Analysis in Progress
+      </div>
+      <div class="card-body">
+        <div class="progress mb-2">
+          <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated"
+               style="width:0%">0%</div>
+        </div>
+        <div id="log-panel"></div>
+      </div>
+    </div>
+
+    <!-- Results -->
+    <div id="results-section">
+
+      <div class="row g-2 mb-3" id="stats-row"></div>
+
+      <div class="d-flex gap-2 mb-3">
+        <button class="btn btn-outline-secondary btn-sm" onclick="exportCsv()">
+          <i class="fas fa-download me-1"></i>Export CSV
+        </button>
+        <button class="btn btn-outline-primary btn-sm" onclick="resetPage()">
+          <i class="fas fa-redo me-1"></i>New Check
+        </button>
+      </div>
+
+      <div class="card">
+        <div class="card-header fw-semibold d-flex justify-content-between align-items-center flex-wrap gap-2">
+          <span><i class="fas fa-table me-2"></i>Verification Results</span>
+          <div class="d-flex gap-2 align-items-center">
+            <input type="text" id="filter-input" class="form-control form-control-sm"
+                   placeholder="Filter…" style="width:130px" oninput="filterResults(this.value)">
+            <select id="status-filter" class="form-select form-select-sm" style="width:130px"
+                    onchange="filterResults(document.getElementById('filter-input').value)">
+              <option value="">All statuses</option>
+              <option value="FOUND">FOUND</option>
+              <option value="PARTIAL">PARTIAL</option>
+              <option value="NOT FOUND">NOT FOUND</option>
+            </select>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div style="overflow-x:auto;">
+            <table class="table table-hover table-sm mb-0" id="results-table">
+              <thead class="table-dark">
+                <tr>
+                  <th style="width:20%">Room</th>
+                  <th style="width:32%">Description</th>
+                  <th style="width:10%">Status</th>
+                  <th>Verification Note</th>
+                </tr>
+              </thead>
+              <tbody id="results-tbody"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+let selectedImages = [];
+let selectedPdf = null;
+let currentResults = [];
+let pollInterval = null;
+
+// ── PDF drop zone ────────────────────────────────────────────────────────
+const pdfDropZone = document.getElementById('pdf-drop-zone');
+const pdfInput    = document.getElementById('pdfInput');
+
+pdfDropZone.addEventListener('dragover', e => { e.preventDefault(); pdfDropZone.classList.add('dragover'); });
+pdfDropZone.addEventListener('dragleave', () => pdfDropZone.classList.remove('dragover'));
+pdfDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  pdfDropZone.classList.remove('dragover');
+  const f = Array.from(e.dataTransfer.files).find(f => f.name.toLowerCase().endsWith('.pdf'));
+  if (f) setPdf(f); else alert('Please drop a PDF file.');
+});
+pdfInput.addEventListener('change', () => { if (pdfInput.files[0]) setPdf(pdfInput.files[0]); });
+
+function setPdf(file) {
+  selectedPdf = file;
+  pdfDropZone.classList.add('has-file');
+  const mb = (file.size / 1048576).toFixed(1);
+  document.getElementById('pdf-info').innerHTML =
+    `<i class="fas fa-check-circle text-success me-1"></i>
+     <strong>${esc(file.name)}</strong> (${mb} MB)
+     <a href="#" onclick="clearPdf(event)" class="ms-2 text-danger">Remove</a>`;
+}
+
+function clearPdf(e) {
+  e && e.preventDefault();
+  selectedPdf = null;
+  pdfInput.value = '';
+  pdfDropZone.classList.remove('has-file');
+  document.getElementById('pdf-info').innerHTML = '';
+}
+
+// ── Image drop zone ──────────────────────────────────────────────────────
+const imgDropZone = document.getElementById('img-drop-zone');
+const imageInput  = document.getElementById('imageInput');
+const validExts   = ['.jpg','.jpeg','.png','.bmp','.tiff','.tif','.webp'];
+
+imgDropZone.addEventListener('dragover', e => { e.preventDefault(); imgDropZone.classList.add('dragover'); });
+imgDropZone.addEventListener('dragleave', () => imgDropZone.classList.remove('dragover'));
+imgDropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  imgDropZone.classList.remove('dragover');
+  addImages(Array.from(e.dataTransfer.files));
+});
+imageInput.addEventListener('change', () => addImages(Array.from(imageInput.files)));
+
+function addImages(files) {
+  const newValid = files.filter(f => validExts.some(e => f.name.toLowerCase().endsWith(e)));
+  selectedImages = [...selectedImages, ...newValid];
+  updateImgInfo();
+}
+
+function updateImgInfo() {
+  const el = document.getElementById('img-info');
+  if (!selectedImages.length) {
+    el.innerHTML = '';
+    imgDropZone.classList.remove('has-files');
+    return;
+  }
+  imgDropZone.classList.add('has-files');
+  const mb = (selectedImages.reduce((s,f) => s + f.size, 0) / 1048576).toFixed(1);
+  el.innerHTML = `<i class="fas fa-check-circle text-success me-1"></i>
+    <strong>${selectedImages.length}</strong> photo${selectedImages.length !== 1 ? 's' : ''} (${mb} MB)
+    <a href="#" onclick="clearImages(event)" class="ms-2 text-danger">Clear</a>`;
+}
+
+function clearImages(e) {
+  e && e.preventDefault();
+  selectedImages = [];
+  imageInput.value = '';
+  updateImgInfo();
+}
+
+// ── Upload & start ────────────────────────────────────────────────────────
+async function startCheck() {
+  if (!selectedPdf && !selectedImages.length) {
+    alert('Please upload a PDF report or individual photos (or both).');
+    return;
+  }
+  const items = document.getElementById('items-textarea').value.trim();
+  if (!items) { alert('Please enter at least one work item to verify.'); return; }
+
+  document.getElementById('start-btn').disabled = true;
+  document.getElementById('progress-section').style.display = 'block';
+  document.getElementById('results-section').style.display = 'none';
+  setProgress(5, 'Uploading…');
+
+  const parts = [];
+  if (selectedPdf) parts.push('report PDF');
+  if (selectedImages.length) parts.push(selectedImages.length + ' photo' + (selectedImages.length !== 1 ? 's' : ''));
+  log('Uploading ' + parts.join(' + ') + '…');
+
+  const fd = new FormData();
+  if (selectedPdf) fd.append('job_pdf', selectedPdf);
+  selectedImages.forEach(f => fd.append('images', f));
+  fd.append('line_items', items);
+  fd.append('model', document.getElementById('model-select').value);
+  fd.append('csrfmiddlewaretoken', getCsrf());
+
+  try {
+    const res  = await fetch('/equipment-checker/upload/', { method: 'POST', body: fd });
+    const data = await res.json();
+    if (data.error) { showError(data.error); return; }
+    if (data.skipped && data.skipped.length) log('Skipped (unsupported): ' + data.skipped.join(', '), 'warn');
+    const summary = [];
+    if (data.has_pdf)        summary.push('report PDF');
+    if (data.image_count)    summary.push(data.image_count + ' photos');
+    log(`Queued: ${summary.join(' + ')}, ${data.item_count} line items`);
+    pollTask(data.task_id);
+  } catch (err) {
+    showError('Upload failed: ' + err.message);
+  }
+}
+
+function pollTask(taskId) {
+  pollInterval = setInterval(async () => {
+    try {
+      const res  = await fetch('/equipment-checker/status/?task_id=' + taskId);
+      const data = await res.json();
+
+      if (data.state === 'PENDING' || data.state === 'PROGRESS') {
+        setProgress(data.percent || 0, data.step || 'Working…');
+        if (data.step) log(data.step);
+        return;
+      }
+
+      clearInterval(pollInterval);
+
+      if (data.state === 'SUCCESS') {
+        if (!data.result || !data.result.success) {
+          showError(data.result ? data.result.error : 'Unknown error');
+          return;
+        }
+        setProgress(100, 'Done!');
+        log(`Complete — FOUND: ${data.result.found}  PARTIAL: ${data.result.partial}  NOT FOUND: ${data.result.not_found}`);
+        showResults(data.result);
+      } else {
+        showError('Task failed: ' + (data.error || 'Unknown error'));
+      }
+    } catch (err) {
+      clearInterval(pollInterval);
+      showError('Polling error: ' + err.message);
+    }
+  }, 2000);
+}
+
+// ── Results ───────────────────────────────────────────────────────────────
+function showResults(result) {
+  currentResults = result.results || [];
+  document.getElementById('stats-row').innerHTML = `
+    <div class="col-4"><div class="stat-box stat-found">
+      <div style="font-size:1.6rem">${result.found}</div>
+      <div style="font-size:0.78rem;font-weight:400;">FOUND</div>
+    </div></div>
+    <div class="col-4"><div class="stat-box stat-partial">
+      <div style="font-size:1.6rem">${result.partial}</div>
+      <div style="font-size:0.78rem;font-weight:400;">PARTIAL</div>
+    </div></div>
+    <div class="col-4"><div class="stat-box stat-notfound">
+      <div style="font-size:1.6rem">${result.not_found}</div>
+      <div style="font-size:0.78rem;font-weight:400;">NOT FOUND</div>
+    </div></div>`;
+  renderTableRows(currentResults);
+  document.getElementById('results-section').style.display = 'block';
+  document.getElementById('start-btn').disabled = false;
+}
+
+function renderTableRows(rows) {
+  const tbody = document.getElementById('results-tbody');
+  tbody.innerHTML = '';
+  if (!rows.length) {
+    tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-3">No results</td></tr>';
+    return;
+  }
+  rows.forEach(r => {
+    const status = (r.status || '').toUpperCase();
+    const cls = status === 'FOUND' ? 'status-found' : status === 'PARTIAL' ? 'status-partial' : 'status-notfound';
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="text-muted">${esc(r.room || '')}</td>
+      <td>${esc(r.description || '')}</td>
+      <td><span class="badge ${cls}" style="font-size:0.72rem;">${esc(status)}</span></td>
+      <td>${esc(r.note || '')}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function filterResults(q) {
+  const sf = document.getElementById('status-filter').value.toUpperCase();
+  const lower = (q || '').trim().toLowerCase();
+  renderTableRows(currentResults.filter(r => {
+    const okStatus = !sf || (r.status || '').toUpperCase() === sf;
+    const okText   = !lower ||
+      (r.room || '').toLowerCase().includes(lower) ||
+      (r.description || '').toLowerCase().includes(lower) ||
+      (r.note || '').toLowerCase().includes(lower);
+    return okStatus && okText;
+  }));
+}
+
+// ── CSV export ────────────────────────────────────────────────────────────
+async function exportCsv() {
+  if (!currentResults.length) return;
+  try {
+    const res = await fetch('/equipment-checker/export-csv/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+      body: JSON.stringify({ results: currentResults }),
+    });
+    const blob = await res.blob();
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement('a');
+    a.href = url; a.download = 'equipment_check.csv'; a.click();
+    URL.revokeObjectURL(url);
+  } catch (err) { alert('CSV export failed: ' + err.message); }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function resetPage() {
+  clearPdf(null);
+  clearImages(null);
+  document.getElementById('progress-section').style.display = 'none';
+  document.getElementById('results-section').style.display = 'none';
+  document.getElementById('log-panel').innerHTML = '';
+  document.getElementById('start-btn').disabled = false;
+  currentResults = [];
+}
+
+function setProgress(pct, label) {
+  const bar = document.getElementById('progress-bar');
+  bar.style.width = Math.max(pct, 3) + '%';
+  bar.textContent = label || pct + '%';
+  if (pct >= 100) {
+    bar.classList.remove('progress-bar-animated');
+    bar.classList.add('bg-success');
+  } else {
+    bar.classList.add('progress-bar-animated');
+    bar.classList.remove('bg-success');
+  }
+}
+
+function log(msg, type) {
+  const panel = document.getElementById('log-panel');
+  const cls = type === 'warn' ? 'log-warn' : type === 'err' ? 'log-err' : 'log-ok';
+  panel.innerHTML += `<span class="${cls}">[${new Date().toLocaleTimeString()}] ${esc(msg)}</span>\n`;
+  panel.scrollTop = panel.scrollHeight;
+}
+
+function showError(msg) {
+  clearInterval(pollInterval);
+  log('ERROR: ' + msg, 'err');
+  setProgress(0, 'Error');
+  document.getElementById('start-btn').disabled = false;
+}
+
+function getCsrf() {
+  const el = document.querySelector('[name=csrfmiddlewaretoken]');
+  if (el) return el.value;
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : '';
+}
+
+function esc(s) {
+  return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}

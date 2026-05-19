@@ -579,7 +579,7 @@ class EncircleClaimsDashboard {
             this.showLoading(true);
             this.showAlert('Loading claims data...', 'info');
             
-            const response = await fetch('/api/encircle/claims/');
+            const response = await fetch('/encircle/api/claims/');
             const data = await response.json();
             
             if (data.success) {
@@ -606,7 +606,7 @@ class EncircleClaimsDashboard {
             this.showAlert('Preparing Excel export for all claims...', 'info');
 
             // FIXED: Remove X-Requested-With header for binary downloads
-            const response = await fetch('/api/encircle/claims/export/', {
+            const response = await fetch('/encircle/api/claims/export/', {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -682,7 +682,7 @@ class EncircleClaimsDashboard {
             this.showAlert(`Preparing Excel export for claim ${claimId}...`, 'info');
             
             // Fetch the Excel file
-            const response = await fetch(`/api/encircle/claims/export/${claimId}/`, {
+            const response = await fetch(`/encircle/api/claims/export/${claimId}/`, {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -860,7 +860,7 @@ class EncircleClaimsDashboard {
             exportButton.style.display = 'inline-block';
             
             // Fetch claim details
-            const response = await fetch(`/api/encircle/claims/${claimId}/`);
+            const response = await fetch(`/encircle/api/claims/${claimId}/`);
             const data = await response.json();
             
             if (data.success) {

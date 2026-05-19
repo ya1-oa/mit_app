@@ -2,111 +2,563 @@
 
 {% block content %}
 <main>
-    <h1>Email Documents</h1>
-    
+    <h1>Email System</h1>
+
+    <!-- Django Messages -->
+    {% if messages %}
+        <div class="messages-container">
+            {% for message in messages %}
+                <div class="alert alert-{{ message.tags }}">
+                    {{ message }}
+                </div>
+            {% endfor %}
+        </div>
+    {% endif %}
+
     <div class="flex-grid">
-        <div>
-            <h2>Recently Generated Documents</h2>
-            <div class="scroll-cards">
+        <!-- Left Column - Documents -->
+        <div class="column">
+            <h2>Documents</h2>
+            
+            <!-- Filters -->
+            <div class="filters">
+                <form id="filterForm" method="GET">
+                    <div class="filter-group">
+                        <label>Category:</label>
+                        <select name="category" onchange="this.form.submit()">
+                            <option value="">All Categories</option>
+                            {% for category in categories %}
+                                <option value="{{ category.id }}" 
+                                    {% if current_filters.category_id == category.id|stringformat:"s" %}selected{% endif %}>
+                                    {{ category.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Client:</label>
+                        <input type="text" name="client" value="{{ current_filters.client_name }}" 
+                               placeholder="Filter by client..." onchange="this.form.submit()">
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label>Date Range:</label>
+                        <select name="date_range" onchange="this.form.submit()">
+                            <option value="recent" {% if current_filters.date_range == 'recent' %}selected{% endif %}>Recent (50)</option>
+                            <option value="today" {% if current_filters.date_range == 'today' %}selected{% endif %}>Today</option>
+                            <option value="week" {% if current_filters.date_range == 'week' %}selected{% endif %}>Last 7 Days</option>
+                            <option value="month" {% if current_filters.date_range == 'month' %}selected{% endif %}>Last 30 Days</option>
+                        </select>
+                    </div>
+                </form>
+            </div>
+            
+            <!-- Documents List -->
+            <div class="scroll-cards" id="documentsList">
                 {% if documents %}
                     {% for doc in documents %}
-                        <div class="card">
+                        <div class="card document-card" data-doc-id="{{ doc.id }}">
                             <div class="card-header">
-                                <span>{{ doc.filename }}</span>
-                                <button class="options-btn" onclick="toggleSelection('{{ doc.id }}')">Select</button>
+                                <input type="checkbox" name="selected_docs" value="{{ doc.id }}" 
+                                       class="doc-checkbox" id="doc-{{ doc.id }}">
+                                <label for="doc-{{ doc.id }}" class="doc-label">
+                                    <strong>{{ doc.filename }}</strong>
+                                    {% if doc.client_name %}
+                                        <span class="client-badge">{{ doc.client_name }}</span>
+                                    {% endif %}
+                                    {% if doc.category %}
+                                        <span class="category-badge">{{ doc.category.name }}</span>
+                                    {% endif %}
+                                </label>
+                            </div>
+                            <div class="card-body">
+                                {% if doc.description %}
+                                    <p class="doc-description">{{ doc.description }}</p>
+                                {% endif %}
+                                <small>Created: {{ doc.created_at|date:"M d, Y H:i" }}</small>
                             </div>
                         </div>
                     {% endfor %}
                 {% else %}
-                    <p>No recently generated documents found.</p>
+                    <p>No documents found.</p>
                 {% endif %}
             </div>
         </div>
         
-        <div>
-            <h2>Recipients</h2>
+        <!-- Middle Column - Email Form -->
+        <div class="column">
+            <h2>Compose Email</h2>
+            
             <form id="emailForm" method="POST">
                 {% csrf_token %}
-                <div class="email-recipients">
-                    <div class="recipient-group">
-                        <input type="email" name="recipients[]" class="email-input" placeholder="Enter email address">
-                        <button type="button" class="options-btn add-recipient">Add Recipient</button>
+                
+                <!-- Recipients -->
+                <div class="form-group">
+                    <label>Recipients:</label>
+                    {{ form.recipients }}
+                </div>
+                
+                <!-- Subject -->
+                <div class="form-group">
+                    <label>Subject:</label>
+                    {{ form.subject }}
+                </div>
+                
+                <!-- Message Body -->
+                <div class="form-group">
+                    <label>Message:</label>
+                    {{ form.body }}
+                </div>
+
+                <!-- Excel Data Section -->
+                <div class="excel-options">
+                    <h3>Excel Data Options</h3>
+
+                    <!-- Pasted Excel Data -->
+                    <div class="form-group">
+                        <label for="pasted_excel_data">Paste Excel Data (Optional):</label>
+                        <textarea
+                            id="pasted_excel_data"
+                            name="pasted_excel_data"
+                            class="form-control excel-textarea"
+                            rows="8"
+                            placeholder="Copy cells from Excel (Ctrl+C) and paste here (Ctrl+V)...&#10;&#10;The first row will be treated as table headers.&#10;Data will be converted to a styled HTML table in the email body."></textarea>
+                        <small class="form-text text-muted">
+                            <strong>Priority:</strong> If you paste Excel data here, it will override the message body and any Excel file embedding.
+                        </small>
+                    </div>
+
+                    <!-- Embed Excel File as HTML Checkbox -->
+                    <div class="option-group">
+                        <label>
+                            <input type="checkbox" name="embed_excel" id="embed_excel" value="1">
+                            Embed Excel files as HTML in email body (instead of attaching)
+                        </label>
+                        <small class="form-text text-muted">
+                            Only applies to selected Excel files (.xlsx, .xls) if no data is pasted above.
+                        </small>
+                    </div>
+                </div>
+
+                <!-- Scheduling Options -->
+                <div class="scheduling-options">
+                    <h3>Scheduling</h3>
+                    
+                    <div class="option-group">
+                        <label>
+                            {{ form.send_now }} Send immediately
+                        </label>
+                    </div>
+                    
+                    <div id="scheduleFields" style="display: none;">
+                        <div class="form-group">
+                            <label>Scheduled Time:</label>
+                            {{ form.scheduled_time }}
+                        </div>
                     </div>
                 </div>
                 
-                <div class="email-content">
-                    <input type="text" name="subject" placeholder="Email Subject" class="email-subject">
-                    <textarea name="message" placeholder="Email Message" class="email-message"></textarea>
+                <!-- Notification Options -->
+                <div class="notification-options">
+                    <h3>Notifications</h3>
+                    
+                    <div class="option-group">
+                        <label>
+                            {{ form.notify_on_open }} Notify me when email is opened
+                        </label>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label>Notification Email:</label>
+                        {{ form.admin_notification_email }}
+                    </div>
                 </div>
                 
-                <button type="submit" class="options-btn">Send Documents</button>
+                <button type="submit" class="btn btn-primary">Send Email</button>
+                <button type="button" class="btn btn-secondary" onclick="showScheduleForm()">Save as Schedule</button>
             </form>
+        </div>
+        
+        <!-- Right Column - Sent Emails & Schedules -->
+        <div class="column">
+            <!-- Sent Emails -->
+            <h2>Sent Emails</h2>
+            <div class="sent-emails-list">
+                {% for email in sent_emails %}
+                    <div class="email-item {% if email.is_opened %}opened{% endif %}">
+                        <div class="email-header">
+                            <strong>{{ email.subject }}</strong>
+                            <span class="status-badge {% if email.is_opened %}opened{% else %}unopened{% endif %}">
+                                {% if email.is_opened %}Opened{% else %}Unopened{% endif %}
+                            </span>
+                        </div>
+                        <div class="email-details">
+                            <small>To: {{ email.recipients|join:", "|truncatewords:3 }}</small><br>
+                            <small>Sent: {{ email.sent_at|date:"M d, Y H:i" }}</small>
+                            {% if email.is_opened %}
+                                <br><small>Opened: {{ email.opened_at|date:"M d, Y H:i" }}</small>
+                            {% endif %}
+                        </div>
+                    </div>
+                {% empty %}
+                    <p>No emails sent yet.</p>
+                {% endfor %}
+            </div>
+            
+            <!-- Active Schedules -->
+            <h2>Active Schedules</h2>
+            <div class="schedules-list">
+                {% for schedule in schedules %}
+                    <div class="schedule-item">
+                        <div class="schedule-header">
+                            <strong>{{ schedule.name }}</strong>
+                            <span class="interval-badge">{{ schedule.get_interval_display }}</span>
+                        </div>
+                        <div class="schedule-details">
+                            <small>Next: {{ schedule.start_date|date:"M d, Y H:i" }}</small><br>
+                            <small>Recipients: {{ schedule.recipients|join:", "|truncatewords:2 }}</small>
+                        </div>
+                    </div>
+                {% empty %}
+                    <p>No active schedules.</p>
+                {% endfor %}
+            </div>
         </div>
     </div>
 </main>
 
+<!-- Schedule Form Modal -->
+<div id="scheduleModal" class="modal">
+    <div class="modal-content">
+        <span class="close" onclick="closeScheduleForm()">&times;</span>
+        <h2>Save Email Schedule</h2>
+        <form id="scheduleForm" method="POST" action="{% url 'create_schedule' %}">
+            {% csrf_token %}
+            <!-- This would be populated by JavaScript -->
+        </form>
+    </div>
+</div>
+
 <style>
-.email-recipients {
-    margin-bottom: 20px;
+/* Messages styling */
+.messages-container {
+    margin: 20px 0;
+    max-width: 100%;
 }
 
-.recipient-group {
-    display: flex;
-    gap: 10px;
+.alert {
+    padding: 15px 20px;
+    margin-bottom: 10px;
+    border-radius: 8px;
+    font-size: 15px;
+    font-weight: 500;
+    border-left: 4px solid;
+    animation: slideInDown 0.3s ease;
+}
+
+.alert-success {
+    background-color: #d4edda;
+    border-color: #28a745;
+    color: #155724;
+}
+
+.alert-error {
+    background-color: #f8d7da;
+    border-color: #dc3545;
+    color: #721c24;
+}
+
+.alert-warning {
+    background-color: #fff3cd;
+    border-color: #ffc107;
+    color: #856404;
+}
+
+.alert-info {
+    background-color: #d1ecf1;
+    border-color: #17a2b8;
+    color: #0c5460;
+}
+
+@keyframes slideInDown {
+    from {
+        opacity: 0;
+        transform: translateY(-20px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.flex-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr 1fr;
+    gap: 20px;
+    margin-top: 20px;
+}
+
+.column {
+    background: #f9f9f9;
+    padding: 20px;
+    border-radius: 8px;
+    max-height: 80vh;
+    overflow-y: auto;
+}
+
+.filters {
+    background: white;
+    padding: 15px;
+    border-radius: 5px;
+    margin-bottom: 15px;
+}
+
+.filter-group {
     margin-bottom: 10px;
 }
 
-.email-input {
-    flex: 1;
-    padding: 8px;
+.filter-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.scroll-cards {
+    max-height: 300px;
+    overflow-y: auto;
+}
+
+.card {
+    background: white;
     border: 1px solid #ddd;
-    border-radius: 4px;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 10px;
+    cursor: pointer;
+    transition: all 0.3s ease;
 }
 
-.email-content {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
-    margin-bottom: 20px;
+.card:hover {
+    border-color: #404040;
 }
 
-.email-subject {
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-}
-
-.email-message {
-    padding: 8px;
-    border: 1px solid #ddd;
-    border-radius: 4px;
-    min-height: 100px;
-    resize: vertical;
-}
-
-.selected {
-    background-color: #f0f0f0;
+.card.selected {
     border-left: 4px solid #404040;
+    background-color: #f0f0f0;
+}
+
+.card-header {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+}
+
+.doc-checkbox {
+    margin-right: 10px;
+}
+
+.doc-label {
+    flex: 1;
+    cursor: pointer;
+}
+
+.client-badge, .category-badge {
+    background: #e0e0e0;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+    margin-left: 5px;
+}
+
+.category-badge {
+    background: #d4edda;
+}
+
+.form-group {
+    margin-bottom: 15px;
+}
+
+.form-group label {
+    display: block;
+    margin-bottom: 5px;
+    font-weight: bold;
+}
+
+.form-group input,
+.form-group textarea,
+.form-group select {
+    width: 100%;
+    padding: 8px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    box-sizing: border-box;
+}
+
+.scheduling-options,
+.notification-options,
+.excel-options {
+    background: white;
+    padding: 15px;
+    border-radius: 5px;
+    margin: 15px 0;
+}
+
+.excel-textarea {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    resize: vertical;
+    min-height: 120px;
+}
+
+.form-text.text-muted {
+    color: #6c757d;
+    font-size: 0.875em;
+    margin-top: 5px;
+    display: block;
+}
+
+.option-group {
+    margin-bottom: 10px;
+}
+
+.btn {
+    padding: 10px 20px;
+    border: none;
+    border-radius: 4px;
+    cursor: pointer;
+    margin-right: 10px;
+}
+
+.btn-primary {
+    background: #404040;
+    color: white;
+}
+
+.btn-secondary {
+    background: #6c757d;
+    color: white;
+}
+
+.email-item, .schedule-item {
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 5px;
+    padding: 15px;
+    margin-bottom: 10px;
+}
+
+.email-header, .schedule-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.status-badge {
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+}
+
+.status-badge.opened {
+    background: #d4edda;
+    color: #155724;
+}
+
+.status-badge.unopened {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.interval-badge {
+    background: #d1ecf1;
+    color: #0c5460;
+    padding: 2px 8px;
+    border-radius: 12px;
+    font-size: 0.8em;
+}
+
+.modal {
+    display: none;
+    position: fixed;
+    z-index: 1000;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0,0,0,0.5);
+}
+
+.modal-content {
+    background-color: white;
+    margin: 10% auto;
+    padding: 20px;
+    border-radius: 8px;
+    width: 50%;
+    max-width: 600px;
+}
+
+.close {
+    color: #aaa;
+    float: right;
+    font-size: 28px;
+    font-weight: bold;
+    cursor: pointer;
+}
+
+.close:hover {
+    color: black;
 }
 </style>
 
 <script>
 document.addEventListener('DOMContentLoaded', function() {
-    // Add recipient button functionality
-    document.querySelector('.add-recipient').addEventListener('click', function() {
-        const recipientGroup = document.createElement('div');
-        recipientGroup.className = 'recipient-group';
-        recipientGroup.innerHTML = `
-            <input type="email" name="recipients[]" class="email-input" placeholder="Enter email address">
-            <button type="button" class="options-btn" onclick="this.parentElement.remove()">Remove</button>
-        `;
-        document.querySelector('.email-recipients').appendChild(recipientGroup);
+    // Document selection
+    document.querySelectorAll('.doc-checkbox').forEach(checkbox => {
+        checkbox.addEventListener('change', function() {
+            const card = this.closest('.document-card');
+            if (this.checked) {
+                card.classList.add('selected');
+            } else {
+                card.classList.remove('selected');
+            }
+        });
     });
+    
+    // Schedule fields toggle
+    const sendNowCheckbox = document.querySelector('#id_send_now');
+    const scheduleFields = document.querySelector('#scheduleFields');
+    
+    sendNowCheckbox.addEventListener('change', function() {
+        scheduleFields.style.display = this.checked ? 'none' : 'block';
+    });
+    
+    // Initialize schedule fields visibility
+    scheduleFields.style.display = sendNowCheckbox.checked ? 'none' : 'block';
 });
 
-function toggleSelection(docId) {
-    const card = document.querySelector(`[data-doc-id="${docId}"]`);
-    card.classList.toggle('selected');
+function showScheduleForm() {
+    // Collect form data and populate schedule form
+    const emailForm = document.querySelector('#emailForm');
+    const scheduleModal = document.querySelector('#scheduleModal');
+    
+    // You would implement this to transfer data from email form to schedule form
+    // This is a simplified version
+    scheduleModal.style.display = 'block';
+}
+
+function closeScheduleForm() {
+    const scheduleModal = document.querySelector('#scheduleModal');
+    scheduleModal.style.display = 'none';
+}
+
+// Close modal when clicking outside
+window.onclick = function(event) {
+    const modal = document.querySelector('#scheduleModal');
+    if (event.target === modal) {
+        closeScheduleForm();
+    }
 }
 </script>
-{% endblock %} 
+{% endblock %}

@@ -1,0 +1,1126 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Scope Checklist{% endblock %}
+
+{% block page_title %}
+<i class="fas fa-clipboard-list me-2"></i> Interior Inspection Work Scope
+{% endblock %}
+
+{% block extra_css %}
+<style>
+    .room-tabs {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+        margin-bottom: 20px;
+        border-bottom: 2px solid #dee2e6;
+        padding-bottom: 10px;
+    }
+
+    .room-tab {
+        padding: 8px 16px;
+        border: 1px solid #dee2e6;
+        border-radius: 5px 5px 0 0;
+        cursor: pointer;
+        background: #f8f9fa;
+        transition: all 0.3s;
+        font-size: 14px;
+    }
+
+    .room-tab:hover {
+        background: #e9ecef;
+    }
+
+    .room-tab.active {
+        background: #0066cc;
+        color: white;
+        border-color: #0066cc;
+    }
+
+    .room-tab.completed {
+        background: #28a745;
+        color: white;
+        border-color: #28a745;
+    }
+
+    .checklist-section {
+        background: white;
+        border-radius: 8px;
+        padding: 20px;
+        margin-bottom: 20px;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+    }
+
+    .checklist-section h4 {
+        color: #333;
+        border-bottom: 2px solid #0066cc;
+        padding-bottom: 10px;
+        margin-bottom: 15px;
+    }
+
+    .scope-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+        gap: 15px;
+    }
+
+    .scope-item {
+        display: flex;
+        flex-direction: column;
+    }
+
+    .scope-item label {
+        font-weight: 600;
+        font-size: 12px;
+        color: #555;
+        margin-bottom: 5px;
+    }
+
+    .scope-item select, .scope-item input {
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        font-size: 13px;
+    }
+
+    .scope-item select:focus, .scope-item input:focus {
+        border-color: #0066cc;
+        outline: none;
+        box-shadow: 0 0 0 2px rgba(0,102,204,0.2);
+    }
+
+    .activity-section {
+        background: #f8f9fa;
+        padding: 15px;
+        border-radius: 8px;
+        margin-top: 15px;
+    }
+
+    .activity-section textarea {
+        width: 100%;
+        min-height: 80px;
+        padding: 10px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        resize: vertical;
+    }
+
+    .email-section {
+        background: #e8f4fd;
+        padding: 20px;
+        border-radius: 8px;
+        margin-top: 20px;
+    }
+
+    .btn-generate {
+        background: #28a745;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .btn-generate:hover {
+        background: #218838;
+    }
+
+    .btn-email {
+        background: #0066cc;
+        color: white;
+        border: none;
+        padding: 12px 24px;
+        border-radius: 5px;
+        cursor: pointer;
+        font-weight: 600;
+    }
+
+    .btn-email:hover {
+        background: #0052a3;
+    }
+
+    .room-content {
+        display: none;
+    }
+
+    .room-content.active {
+        display: block;
+    }
+
+    .claim-info-banner {
+        background: linear-gradient(135deg, #0066cc 0%, #004999 100%);
+        color: white;
+        padding: 15px 20px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
+
+    .claim-info-banner h5 {
+        margin: 0;
+        font-size: 18px;
+    }
+
+    .claim-info-banner p {
+        margin: 5px 0 0 0;
+        opacity: 0.9;
+        font-size: 14px;
+    }
+
+    .loading-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0,0,0,0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+        display: none;
+    }
+
+    .loading-content {
+        background: white;
+        padding: 30px 50px;
+        border-radius: 10px;
+        text-align: center;
+    }
+
+    .spinner {
+        border: 4px solid #f3f3f3;
+        border-top: 4px solid #0066cc;
+        border-radius: 50%;
+        width: 40px;
+        height: 40px;
+        animation: spin 1s linear infinite;
+        margin: 0 auto 15px;
+    }
+
+    @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+    }
+
+    .scope-codes-reference {
+        background: #fff3cd;
+        border: 1px solid #ffc107;
+        border-radius: 8px;
+        padding: 15px;
+        margin-bottom: 20px;
+        font-size: 12px;
+    }
+
+    .scope-codes-reference h6 {
+        color: #856404;
+        margin-bottom: 10px;
+    }
+
+    .codes-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 5px;
+    }
+
+    .code-item {
+        display: flex;
+        justify-content: space-between;
+        padding: 2px 5px;
+        background: rgba(255,255,255,0.5);
+        border-radius: 3px;
+    }
+
+    .code-item .code {
+        font-weight: bold;
+        color: #0066cc;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <!-- Claim Selection -->
+    <div class="card mb-4">
+        <div class="card-body">
+            <div class="row align-items-end">
+                <div class="col-md-4">
+                    <label for="claim-select" class="form-label fw-bold">Select Claim</label>
+                    <select id="claim-select" class="form-select form-select-lg">
+                        <option value="">-- Select a Claim --</option>
+                        {% for claim in claims %}
+                        <option value="{{ claim.id }}" data-name="{{ claim.pOwner }}" data-address="{{ claim.pAddress }}" data-phone="{{ claim.cPhone }}" data-insurance="{{ claim.insuranceCo_Name }}" data-cause="{{ claim.causeOfLoss }}">
+                            {{ claim.pOwner }} - {{ claim.pAddress }}
+                        </option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-8">
+                    <div id="claim-info-display" class="claim-info-banner" style="display: none;">
+                        <h5 id="claim-name"></h5>
+                        <p><i class="fas fa-map-marker-alt me-2"></i><span id="claim-address"></span></p>
+                        <p><i class="fas fa-phone me-2"></i><span id="claim-phone"></span> | <i class="fas fa-building ms-2 me-2"></i><span id="claim-insurance"></span></p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Room Tabs and Checklist Container -->
+    <div id="rooms-container" style="display: none;">
+        <!-- Room Tabs -->
+        <div class="room-tabs" id="room-tabs">
+            <!-- Tabs will be populated dynamically -->
+        </div>
+
+        <!-- Room Checklists -->
+        <div id="room-checklists">
+            <!-- Room content will be populated dynamically -->
+        </div>
+
+        <!-- Email Section -->
+        <div class="email-section">
+            <h5><i class="fas fa-envelope me-2"></i>Send Scope Checklist</h5>
+            <div class="row mt-3">
+                <div class="col-md-6">
+                    <label class="form-label">Email Recipients (comma separated)</label>
+                    <input type="email" id="email-recipients" class="form-control" placeholder="email@example.com, another@example.com">
+                </div>
+                <div class="col-md-6">
+                    <label class="form-label">Subject</label>
+                    <input type="text" id="email-subject" class="form-control" placeholder="Interior Inspection Scope - ">
+                </div>
+            </div>
+            <div class="row mt-3">
+                <div class="col-12">
+                    <label class="form-label">Additional Notes</label>
+                    <textarea id="email-notes" class="form-control" rows="3" placeholder="Add any additional notes for the email..."></textarea>
+                </div>
+            </div>
+            <div class="mt-3 d-flex gap-3">
+                <button type="button" class="btn-generate" onclick="generatePDF()">
+                    <i class="fas fa-file-pdf me-2"></i>Generate PDF
+                </button>
+                <button type="button" class="btn-email" onclick="sendEmail()">
+                    <i class="fas fa-paper-plane me-2"></i>Send as Email
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="saveProgress()">
+                    <i class="fas fa-save me-2"></i>Save Progress
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- No Claim Selected Message -->
+    <div id="no-claim-message" class="text-center py-5">
+        <i class="fas fa-clipboard-list fa-4x text-muted mb-3"></i>
+        <h4 class="text-muted">Select a Claim to Begin</h4>
+        <p class="text-muted">Choose a claim from the dropdown above to load the room checklist.</p>
+    </div>
+</div>
+
+<!-- Loading Overlay -->
+<div class="loading-overlay" id="loading-overlay">
+    <div class="loading-content">
+        <div class="spinner"></div>
+        <p id="loading-text">Loading...</p>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Xactimate Scope Codes Configuration
+const SCOPE_CODES = {
+    buildingMaterials: [
+        { code: 'ACT', label: 'CLG TILES (Acoustic)' },
+        { code: 'DRY', label: 'DRYWALL' },
+        { code: 'PLA', label: 'PLASTER' },
+        { code: 'T&G', label: 'TONGUE & GROOVE' },
+        { code: 'PNL', label: 'PANELING' },
+        { code: 'WPR', label: 'WALLPAPER' },
+        { code: 'CNC', label: 'CONCRETE' },
+        { code: 'MAS', label: 'BRICK/MASONRY' }
+    ],
+    constructionType: [
+        { code: 'FLT', label: 'FLAT' },
+        { code: 'VLT', label: 'VAULTED' },
+        { code: 'TRY', label: 'TRAY' },
+        { code: 'FRM', label: 'OPEN FRAME' }
+    ],
+    finish: [
+        { code: 'SMH', label: 'SMOOTH' },
+        { code: 'TEX', label: 'TEXTURE' },
+        { code: 'POP', label: 'POPCORN' }
+    ],
+    floorTypes: [
+        { code: 'FCC', label: 'FLOOR/CARPET' },
+        { code: 'FCS', label: 'FLOOR/STONE' },
+        { code: 'FCV', label: 'FLOOR/VINYL TILE' },
+        { code: 'FCW', label: 'HARDWOOD FLOOR' },
+        { code: 'LAM', label: 'LAMINATE FLOOR' }
+    ],
+    windowTypes: [
+        { code: 'WDW', label: 'WINDOW WOOD' },
+        { code: 'WDV', label: 'WINDOW VINYL' },
+        { code: 'WDA', label: 'WINDOW ALUMINUM' },
+        { code: 'BAY', label: 'BAY/BOW' }
+    ],
+    windowCovers: [
+        { code: 'WDT', label: 'WINDOW COVERS' },
+        { code: 'BLN', label: 'BLINDS' },
+        { code: 'DRP', label: 'DRAPERY' }
+    ],
+    trimFinish: [
+        { code: 'AVG', label: 'MOLDING/CASING AVG' },
+        { code: 'CRN', label: 'CROWN' },
+        { code: 'CHR', label: 'CHAIR RAIL' },
+        { code: 'MUL', label: 'MULTI' }
+    ],
+    baseboard: [
+        { code: '3', label: '3 inch' },
+        { code: '4', label: '4 inch' },
+        { code: '5', label: '5 inch' },
+        { code: '6', label: '6 inch' },
+        { code: 'MHT', label: 'MULTI HEIGHT' }
+    ],
+    doorTypes: [
+        { code: 'STD', label: 'STANDARD' },
+        { code: 'BFD', label: 'BIFOLD' },
+        { code: 'BYD', label: 'BYPASS/SLIDER' },
+        { code: 'BPM', label: 'MIRROR' }
+    ],
+    electrical: [
+        { code: 'LIT', label: 'LIGHT AVG' },
+        { code: 'LIT++', label: 'LIGHT UPGRADED' },
+        { code: 'FNL', label: 'FAN/LIGHT' },
+        { code: 'CHD', label: 'CHANDELIER' },
+        { code: 'SEC', label: 'SECURITY' },
+        { code: 'SMK', label: 'SMOKE ALARM' },
+        { code: 'CHM', label: 'BELL/CHIME' },
+        { code: 'OS', label: 'OUTLET' },
+        { code: 'SW', label: 'SWITCH' },
+        { code: 'SW3', label: '3-WAY SWITCH' }
+    ],
+    closet: [
+        { code: 'WOOD', label: 'WOOD SHELF' },
+        { code: 'WIRE', label: 'WIRE SHELF' }
+    ],
+    activity: [
+        { code: 'ALL', label: 'REPAIR ALL (C/W/F/PF)' },
+        { code: 'MN', label: 'MINIMUM' },
+        { code: 'CLN', label: 'CLEAN' },
+        { code: 'R&R', label: 'REPLACE' },
+        { code: 'D&R', label: 'DETACH & RESET' },
+        { code: 'MSK', label: 'MASK' },
+        { code: 'S++', label: 'PRIME/SEAL' },
+        { code: 'PNT', label: 'PAINT' },
+        { code: 'STN', label: 'STAIN & SEAL' },
+        { code: 'SND', label: 'SAND' }
+    ],
+    insulation: [
+        { code: 'BATT', label: 'BATT INSULATION' },
+        { code: 'LOOSE', label: 'LOOSE FILL' }
+    ],
+    hvac: [
+        { code: 'HVC', label: 'HVAC/REG/VENT/DUCT' }
+    ],
+    framing: [
+        { code: '10', label: 'SUBFLOOR (10)' },
+        { code: '12', label: 'PARTICLE BOARD (12)' },
+        { code: '15', label: 'SILL PLATE (15)' },
+        { code: '20', label: 'STUDS/CEILING (20)' }
+    ]
+};
+
+// Store all room data
+let allRoomData = {};
+let currentClaimId = null;
+let currentRoomId = null;
+
+// Generate dropdown options HTML
+function generateOptions(codes, includeEmpty = true) {
+    let html = includeEmpty ? '<option value="">-- Select --</option>' : '';
+    codes.forEach(item => {
+        html += `<option value="${item.code}">${item.code} - ${item.label}</option>`;
+    });
+    return html;
+}
+
+// Generate room checklist HTML
+function generateRoomChecklist(room, index) {
+    const roomId = room.id;
+    return `
+    <div class="room-content" id="room-${roomId}" data-room-id="${roomId}">
+        <h4 class="mb-4"><i class="fas fa-door-open me-2"></i>Room ${index + 1}: ${room.room_name}</h4>
+
+        <!-- CEILING Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-border-top-left me-2"></i>CLG - CEILING</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Material Type</label>
+                    <select name="clg_material" data-field="clg_material">
+                        ${generateOptions(SCOPE_CODES.buildingMaterials)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Construction Type</label>
+                    <select name="clg_construction" data-field="clg_construction">
+                        ${generateOptions(SCOPE_CODES.constructionType)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Finish</label>
+                    <select name="clg_finish" data-field="clg_finish">
+                        ${generateOptions(SCOPE_CODES.finish)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="clg_activity" data-field="clg_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>SF (Square Feet)</label>
+                    <input type="number" name="clg_sf" data-field="clg_sf" placeholder="Enter SF">
+                </div>
+            </div>
+        </div>
+
+        <!-- LIGHTS Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-lightbulb me-2"></i>LIT - LIGHTS</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Light Type</label>
+                    <select name="lit_type" data-field="lit_type">
+                        ${generateOptions(SCOPE_CODES.electrical)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="lit_activity" data-field="lit_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Quantity</label>
+                    <input type="number" name="lit_qty" data-field="lit_qty" placeholder="Qty">
+                </div>
+            </div>
+        </div>
+
+        <!-- HVC Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-wind me-2"></i>HVC - HVAC/REGISTER</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Type</label>
+                    <select name="hvc_type" data-field="hvc_type">
+                        ${generateOptions(SCOPE_CODES.hvac)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="hvc_activity" data-field="hvc_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Quantity</label>
+                    <input type="number" name="hvc_qty" data-field="hvc_qty" placeholder="Qty">
+                </div>
+            </div>
+        </div>
+
+        <!-- WALL Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-square me-2"></i>WAL - WALLS</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Material Type</label>
+                    <select name="wal_material" data-field="wal_material">
+                        ${generateOptions(SCOPE_CODES.buildingMaterials)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Finish</label>
+                    <select name="wal_finish" data-field="wal_finish">
+                        ${generateOptions(SCOPE_CODES.finish)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="wal_activity" data-field="wal_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>SF (Square Feet)</label>
+                    <input type="number" name="wal_sf" data-field="wal_sf" placeholder="Enter SF">
+                </div>
+            </div>
+        </div>
+
+        <!-- ELECTRICAL Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-plug me-2"></i>ELE - ELECTRICAL</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Outlets (OS)</label>
+                    <input type="number" name="ele_outlets" data-field="ele_outlets" placeholder="Qty">
+                </div>
+                <div class="scope-item">
+                    <label>Switches (SW)</label>
+                    <input type="number" name="ele_switches" data-field="ele_switches" placeholder="Qty">
+                </div>
+                <div class="scope-item">
+                    <label>3-Way Switches (SW3)</label>
+                    <input type="number" name="ele_sw3" data-field="ele_sw3" placeholder="Qty">
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="ele_activity" data-field="ele_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- FLOOR Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-th-large me-2"></i>FLR - FLOOR</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Floor Type</label>
+                    <select name="flr_type" data-field="flr_type">
+                        ${generateOptions(SCOPE_CODES.floorTypes)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="flr_activity" data-field="flr_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>SF (Square Feet)</label>
+                    <input type="number" name="flr_sf" data-field="flr_sf" placeholder="Enter SF">
+                </div>
+            </div>
+        </div>
+
+        <!-- BASEBOARD Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-minus me-2"></i>BB - BASEBOARD</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Height</label>
+                    <select name="bb_height" data-field="bb_height">
+                        ${generateOptions(SCOPE_CODES.baseboard)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="bb_activity" data-field="bb_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>LF (Linear Feet)</label>
+                    <input type="number" name="bb_lf" data-field="bb_lf" placeholder="Enter LF">
+                </div>
+            </div>
+        </div>
+
+        <!-- TRIM Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-border-style me-2"></i>TRIM - FINISH CARPENTRY</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Trim Type</label>
+                    <select name="trim_type" data-field="trim_type">
+                        ${generateOptions(SCOPE_CODES.trimFinish)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Crown Molding</label>
+                    <select name="trim_crown" data-field="trim_crown">
+                        <option value="">-- Select --</option>
+                        <option value="YES">YES</option>
+                        <option value="NO">NO</option>
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Chair Rail</label>
+                    <select name="trim_chairrail" data-field="trim_chairrail">
+                        <option value="">-- Select --</option>
+                        <option value="YES">YES</option>
+                        <option value="NO">NO</option>
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="trim_activity" data-field="trim_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+            </div>
+        </div>
+
+        <!-- DOOR Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-door-closed me-2"></i>DOR - DOORS</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Door Type</label>
+                    <select name="dor_type" data-field="dor_type">
+                        ${generateOptions(SCOPE_CODES.doorTypes)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="dor_activity" data-field="dor_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Quantity</label>
+                    <input type="number" name="dor_qty" data-field="dor_qty" placeholder="Qty">
+                </div>
+            </div>
+        </div>
+
+        <!-- OPENING Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-archway me-2"></i>OPEN - OPENINGS</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="open_activity" data-field="open_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Quantity</label>
+                    <input type="number" name="open_qty" data-field="open_qty" placeholder="Qty">
+                </div>
+            </div>
+        </div>
+
+        <!-- WINDOW Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-window-maximize me-2"></i>WDW - WINDOWS</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Window Type</label>
+                    <select name="wdw_type" data-field="wdw_type">
+                        ${generateOptions(SCOPE_CODES.windowTypes)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Window Covers (WDT)</label>
+                    <select name="wdw_covers" data-field="wdw_covers">
+                        ${generateOptions(SCOPE_CODES.windowCovers)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="wdw_activity" data-field="wdw_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Quantity</label>
+                    <input type="number" name="wdw_qty" data-field="wdw_qty" placeholder="Qty">
+                </div>
+            </div>
+        </div>
+
+        <!-- CLOSET Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-tshirt me-2"></i>CLOSET - SHELVING</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Shelf Type</label>
+                    <select name="closet_type" data-field="closet_type">
+                        ${generateOptions(SCOPE_CODES.closet)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Has Rod</label>
+                    <select name="closet_rod" data-field="closet_rod">
+                        <option value="">-- Select --</option>
+                        <option value="YES">YES</option>
+                        <option value="NO">NO</option>
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>LF (Linear Feet)</label>
+                    <input type="number" name="closet_lf" data-field="closet_lf" placeholder="Enter LF">
+                </div>
+            </div>
+        </div>
+
+        <!-- INSULATION Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-cloud me-2"></i>INS - INSULATION</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Type</label>
+                    <select name="ins_type" data-field="ins_type">
+                        ${generateOptions(SCOPE_CODES.insulation)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>R-Value</label>
+                    <input type="text" name="ins_rvalue" data-field="ins_rvalue" placeholder="R-13, R-19, etc.">
+                </div>
+                <div class="scope-item">
+                    <label>SF (Square Feet)</label>
+                    <input type="number" name="ins_sf" data-field="ins_sf" placeholder="Enter SF">
+                </div>
+            </div>
+        </div>
+
+        <!-- FRAMING Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-hammer me-2"></i>FRM - FRAMING</h4>
+            <div class="scope-grid">
+                <div class="scope-item">
+                    <label>Framing Type</label>
+                    <select name="frm_type" data-field="frm_type">
+                        ${generateOptions(SCOPE_CODES.framing)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>Activity</label>
+                    <select name="frm_activity" data-field="frm_activity">
+                        ${generateOptions(SCOPE_CODES.activity)}
+                    </select>
+                </div>
+                <div class="scope-item">
+                    <label>LF (Linear Feet)</label>
+                    <input type="number" name="frm_lf" data-field="frm_lf" placeholder="Enter LF">
+                </div>
+            </div>
+        </div>
+
+        <!-- MISC/ACTIVITY Section -->
+        <div class="checklist-section">
+            <h4><i class="fas fa-tasks me-2"></i>ACTIVITY NOTES</h4>
+            <div class="activity-section">
+                <label class="form-label fw-bold">Room Activity Notes & Comments</label>
+                <textarea name="activity_notes" data-field="activity_notes" placeholder="Enter activity codes and detailed notes for this room... (e.g., ALL C/W/F, R&R baseboard, CLN windows, etc.)"></textarea>
+            </div>
+        </div>
+    </div>
+    `;
+}
+
+// Load rooms for selected claim
+document.getElementById('claim-select').addEventListener('change', async function() {
+    const claimId = this.value;
+    const selectedOption = this.options[this.selectedIndex];
+
+    if (!claimId) {
+        document.getElementById('rooms-container').style.display = 'none';
+        document.getElementById('no-claim-message').style.display = 'block';
+        document.getElementById('claim-info-display').style.display = 'none';
+        return;
+    }
+
+    // Show claim info
+    document.getElementById('claim-name').textContent = selectedOption.dataset.name;
+    document.getElementById('claim-address').textContent = selectedOption.dataset.address;
+    document.getElementById('claim-phone').textContent = selectedOption.dataset.phone || 'N/A';
+    document.getElementById('claim-insurance').textContent = selectedOption.dataset.insurance || 'N/A';
+    document.getElementById('claim-info-display').style.display = 'block';
+
+    // Update email subject
+    document.getElementById('email-subject').value = `Interior Inspection Scope - ${selectedOption.dataset.name}`;
+
+    showLoading('Loading rooms...');
+
+    try {
+        const response = await fetch(`/scope-checklist/rooms/${claimId}/`);
+        const data = await response.json();
+
+        if (data.success && data.rooms.length > 0) {
+            currentClaimId = claimId;
+            allRoomData = {};
+
+            // Generate tabs
+            let tabsHtml = '';
+            let contentHtml = '';
+
+            data.rooms.forEach((room, index) => {
+                allRoomData[room.id] = {};
+                tabsHtml += `<div class="room-tab ${index === 0 ? 'active' : ''}" data-room-id="${room.id}" onclick="switchRoom('${room.id}')">${room.room_name}</div>`;
+                contentHtml += generateRoomChecklist(room, index);
+            });
+
+            document.getElementById('room-tabs').innerHTML = tabsHtml;
+            document.getElementById('room-checklists').innerHTML = contentHtml;
+
+            // Show first room
+            currentRoomId = data.rooms[0].id;
+            document.getElementById(`room-${currentRoomId}`).classList.add('active');
+
+            // Add event listeners to all inputs
+            attachInputListeners();
+
+            document.getElementById('rooms-container').style.display = 'block';
+            document.getElementById('no-claim-message').style.display = 'none';
+        } else {
+            alert('No rooms found for this claim. Please add rooms first.');
+            document.getElementById('rooms-container').style.display = 'none';
+            document.getElementById('no-claim-message').style.display = 'block';
+        }
+    } catch (error) {
+        console.error('Error loading rooms:', error);
+        alert('Error loading rooms. Please try again.');
+    }
+
+    hideLoading();
+});
+
+// Switch between room tabs
+function switchRoom(roomId) {
+    // Save current room data
+    if (currentRoomId) {
+        saveCurrentRoomData();
+    }
+
+    // Update tabs
+    document.querySelectorAll('.room-tab').forEach(tab => {
+        tab.classList.remove('active');
+        if (tab.dataset.roomId === roomId) {
+            tab.classList.add('active');
+        }
+    });
+
+    // Update content
+    document.querySelectorAll('.room-content').forEach(content => {
+        content.classList.remove('active');
+    });
+    document.getElementById(`room-${roomId}`).classList.add('active');
+
+    currentRoomId = roomId;
+
+    // Load saved data for this room
+    loadRoomData(roomId);
+}
+
+// Save current room data to memory
+function saveCurrentRoomData() {
+    if (!currentRoomId) return;
+
+    const roomContent = document.getElementById(`room-${currentRoomId}`);
+    const inputs = roomContent.querySelectorAll('select, input, textarea');
+
+    allRoomData[currentRoomId] = {};
+    inputs.forEach(input => {
+        const field = input.dataset.field;
+        if (field) {
+            allRoomData[currentRoomId][field] = input.value;
+        }
+    });
+
+    // Mark tab as completed if has any data
+    const hasData = Object.values(allRoomData[currentRoomId]).some(v => v && v.trim());
+    const tab = document.querySelector(`.room-tab[data-room-id="${currentRoomId}"]`);
+    if (hasData) {
+        tab.classList.add('completed');
+    }
+}
+
+// Load room data from memory
+function loadRoomData(roomId) {
+    if (!allRoomData[roomId]) return;
+
+    const roomContent = document.getElementById(`room-${roomId}`);
+    const inputs = roomContent.querySelectorAll('select, input, textarea');
+
+    inputs.forEach(input => {
+        const field = input.dataset.field;
+        if (field && allRoomData[roomId][field]) {
+            input.value = allRoomData[roomId][field];
+        }
+    });
+}
+
+// Attach event listeners to inputs for auto-save
+function attachInputListeners() {
+    document.querySelectorAll('#room-checklists select, #room-checklists input, #room-checklists textarea').forEach(input => {
+        input.addEventListener('change', function() {
+            saveCurrentRoomData();
+        });
+    });
+}
+
+// Generate PDF
+async function generatePDF() {
+    saveCurrentRoomData();
+
+    if (!currentClaimId) {
+        alert('Please select a claim first.');
+        return;
+    }
+
+    showLoading('Generating PDF...');
+
+    try {
+        const response = await fetch('/scope-checklist/generate-pdf/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                claim_id: currentClaimId,
+                rooms_data: allRoomData
+            })
+        });
+
+        if (response.ok) {
+            const blob = await response.blob();
+            const url = window.URL.createObjectURL(blob);
+            window.open(url);
+        } else {
+            const error = await response.json();
+            alert('Error generating PDF: ' + (error.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error generating PDF. Please try again.');
+    }
+
+    hideLoading();
+}
+
+// Send Email with PDF
+async function sendEmail() {
+    saveCurrentRoomData();
+
+    const recipients = document.getElementById('email-recipients').value.trim();
+    const subject = document.getElementById('email-subject').value.trim();
+    const notes = document.getElementById('email-notes').value.trim();
+
+    if (!currentClaimId) {
+        alert('Please select a claim first.');
+        return;
+    }
+
+    if (!recipients) {
+        alert('Please enter at least one email recipient.');
+        return;
+    }
+
+    showLoading('Sending email...');
+
+    try {
+        const response = await fetch('/scope-checklist/send-email/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                claim_id: currentClaimId,
+                rooms_data: allRoomData,
+                recipients: recipients,
+                subject: subject,
+                notes: notes
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            alert('Email sent successfully!');
+        } else {
+            alert('Error sending email: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error sending email. Please try again.');
+    }
+
+    hideLoading();
+}
+
+// Save progress to server
+async function saveProgress() {
+    saveCurrentRoomData();
+
+    if (!currentClaimId) {
+        alert('Please select a claim first.');
+        return;
+    }
+
+    showLoading('Saving...');
+
+    try {
+        const response = await fetch('/scope-checklist/save/', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRFToken': getCookie('csrftoken')
+            },
+            body: JSON.stringify({
+                claim_id: currentClaimId,
+                rooms_data: allRoomData
+            })
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+            // Show success indicator
+            const indicator = document.createElement('div');
+            indicator.className = 'position-fixed bottom-0 end-0 m-3 p-3 bg-success text-white rounded';
+            indicator.innerHTML = '<i class="fas fa-check me-2"></i>Progress saved!';
+            document.body.appendChild(indicator);
+            setTimeout(() => indicator.remove(), 2000);
+        } else {
+            alert('Error saving: ' + (data.error || 'Unknown error'));
+        }
+    } catch (error) {
+        console.error('Error:', error);
+        alert('Error saving progress. Please try again.');
+    }
+
+    hideLoading();
+}
+
+// Utility functions
+function showLoading(text) {
+    document.getElementById('loading-text').textContent = text || 'Loading...';
+    document.getElementById('loading-overlay').style.display = 'flex';
+}
+
+function hideLoading() {
+    document.getElementById('loading-overlay').style.display = 'none';
+}
+
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+</script>
+{% endblock %}

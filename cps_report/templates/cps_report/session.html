@@ -1,0 +1,565 @@
+{% extends "account/base.html" %}
+{% load static humanize %}
+
+{% block title %}CPS Report — {{ session.insured_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Report — {{ session.insured_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .room-section { margin-bottom: 2rem; }
+  .room-header { background: #d6e4bc; font-weight: 600; padding: .5rem 1rem; border-radius: 6px 6px 0 0; border-bottom: 2px solid #a4c265; }
+  .item-table th { font-size: .78rem; background: #1f3864; color: #fff; position: sticky; top: 0; }
+  .item-table td { font-size: .82rem; vertical-align: middle; }
+  .item-row.even-item td { background: #f8f9fa; }
+  .item-row.even-item + .notes-row td { background: #f3f5f2; }
+  .notes-row td {
+    font-size: .77rem;
+    color: #555;
+    font-style: italic;
+    padding: 1px 8px 4px 44px !important;
+    border-top: none !important;
+    background: #fafafa;
+  }
+  .notes-row td:focus { font-style: normal; }
+  .editable-cell { cursor: pointer; }
+  .editable-cell:hover { background: #fff8c4 !important; }
+  .inline-edit { width: 100%; min-width: 80px; font-size: .82rem; padding: 1px 4px; }
+  .rv-col { color: #155724; font-weight: 600; }
+  .totals-row td { background: #fffde7 !important; font-weight: 600; }
+  .grand-total-row td { background: #1f3864 !important; color: #fff !important; font-size: .9rem; font-weight: 700; }
+  .confidence-badge { font-size: .72rem; }
+  .no-items-msg { color: #999; font-style: italic; }
+  .item-num { color: #aaa; font-size: .72rem; font-weight: 600; text-align: center; width: 32px; user-select: none; }
+  .sig-status-bar { border-radius: 0 0 6px 6px; padding: .4rem 1rem; font-size: .82rem; display: flex; align-items: center; gap: .5rem; }
+  .sig-status-bar.signed { background: #d1fae5; border-top: 1px solid #6ee7b7; color: #065f46; }
+  .sig-status-bar.unsigned { background: #fef9c3; border-top: 1px solid #fde047; color: #854d0e; }
+  .sig-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
+  .sig-panel .progress { height: 8px; border-radius: 4px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <!-- Report Header -->
+  <div class="card shadow-sm mb-3">
+    <div class="card-body py-2">
+      <div class="row align-items-center">
+        <div class="col-md-8">
+          <h5 class="mb-0">{{ session.insured_name }}</h5>
+          <div class="text-muted small">
+            Claim #: {{ session.claim_number|default:"—" }} &nbsp;|&nbsp;
+            Encircle: {{ session.encircle_claim_id }} &nbsp;|&nbsp;
+            Loss Type: {{ session.loss_type|default:"—" }} &nbsp;|&nbsp;
+            Date: {{ session.updated_at|date:"M d, Y" }}
+          </div>
+        </div>
+        <div class="col-md-4 text-end">
+          <a href="{% url 'cps_report_export_pdf' session.id %}" class="btn btn-danger btn-sm me-1">
+            <i class="fas fa-file-pdf me-1"></i> PDF
+          </a>
+          <a href="{% url 'cps_report_export' session.id %}" class="btn btn-success btn-sm me-1">
+            <i class="fas fa-file-excel me-1"></i> Excel
+          </a>
+          <button class="btn btn-outline-primary btn-sm me-1" onclick="copyShareLink(this)" title="Copy client signature link">
+            <i class="fas fa-link me-1"></i> Share Link
+          </button>
+          <a href="{% url 'cps_report_home' %}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left me-1"></i> Back
+          </a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grand Total Banner -->
+  <div class="alert alert-info py-2 mb-3" id="grand-total-banner">
+    <div class="text-center">
+      <div class="small text-muted">Total Replacement Value</div>
+      <div class="fw-bold fs-4" id="gt-rv">$—</div>
+    </div>
+  </div>
+
+  <!-- Signature Status Panel -->
+  <div class="sig-panel mb-3">
+    <div class="d-flex justify-content-between align-items-center mb-2">
+      <div>
+        <i class="fas fa-signature me-2 text-primary"></i>
+        <strong>Client Signatures</strong>
+        <span class="text-muted small ms-2">{{ rooms|length }} room{{ rooms|length|pluralize }} total</span>
+      </div>
+      <div class="d-flex gap-2">
+        <button class="btn btn-outline-primary btn-sm" onclick="copyShareLink(this)" title="Copy client signature link">
+          <i class="fas fa-link me-1"></i> Copy Signature Link
+        </button>
+        <button class="btn btn-outline-danger btn-sm" id="clearSigBtn" onclick="clearSignatures()">
+          <i class="fas fa-eraser me-1"></i> Clear Signatures
+        </button>
+      </div>
+    </div>
+    <div class="row g-2" id="sig-badges">
+      {% for room in rooms %}
+      <div class="col-auto">
+        {% if room.signature_name %}
+        <span class="badge bg-success py-1 px-2" title="Signed by {{ room.signature_name }} on {{ room.signed_at|date:'M d, Y g:i A' }}">
+          <i class="fas fa-check me-1"></i>{{ room.room_number }} {{ room.room_name }}
+        </span>
+        {% else %}
+        <span class="badge bg-warning text-dark py-1 px-2">
+          <i class="fas fa-clock me-1"></i>{{ room.room_number }} {{ room.room_name }}
+        </span>
+        {% endif %}
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <!-- Previous Runs -->
+  {% if other_sessions %}
+  <div class="card border-0 shadow-sm mb-3">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center py-2">
+      <span><i class="fas fa-history me-2 text-secondary"></i><strong>Previous Runs</strong>
+        <span class="badge bg-secondary ms-1">{{ other_sessions|length }}</span>
+      </span>
+      <button class="btn btn-link btn-sm p-0 text-muted" type="button"
+              data-bs-toggle="collapse" data-bs-target="#prev-runs-body">
+        <i class="fas fa-chevron-down"></i>
+      </button>
+    </div>
+    <div class="collapse" id="prev-runs-body">
+      <div class="card-body p-0">
+        <table class="table table-sm table-hover mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Date</th>
+              <th>Rooms</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for s in other_sessions %}
+            <tr>
+              <td class="small">{{ s.created_at|date:"M d, Y g:i A" }}</td>
+              <td class="small">{{ s.rooms.count }}</td>
+              <td>
+                <span class="badge bg-{% if s.status == 'complete' %}success{% elif s.status == 'processing' %}warning text-dark{% elif s.status == 'error' %}danger{% else %}secondary{% endif %}">
+                  {{ s.status }}
+                </span>
+              </td>
+              <td class="text-end">
+                <a href="{% url 'cps_report_session' s.id %}" class="btn btn-sm btn-outline-primary py-0 px-2">
+                  <i class="fas fa-eye me-1"></i>View
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- Room Sections -->
+  {% for room in rooms %}
+  <div class="room-section" id="room-section-{{ room.id }}">
+    <div class="room-header d-flex justify-content-between align-items-center">
+      <span>
+        {{ room.room_number }} — {{ room.room_name }}
+        {% if room.ai_confidence %}
+        <span class="badge bg-{% if room.ai_confidence == 'high' %}success{% elif room.ai_confidence == 'medium' %}warning{% else %}danger{% endif %} confidence-badge ms-2">
+          AI: {{ room.ai_confidence }}
+        </span>
+        {% endif %}
+        {% if room.images_used %}
+        <span class="badge bg-secondary confidence-badge ms-1">{{ room.images_used }} image(s)</span>
+        {% endif %}
+      </span>
+      <div>
+        <span class="small text-muted me-3" id="room-total-{{ room.id }}"></span>
+        <button class="btn btn-sm btn-outline-primary py-0 px-2"
+                onclick="addItemRow({{ room.id }})">
+          <i class="fas fa-plus"></i> Add Item
+        </button>
+        <button class="btn btn-sm btn-success py-0 px-2 ms-1"
+                onclick="saveRoom({{ room.id }})">
+          <i class="fas fa-save"></i> Save
+        </button>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm table-bordered item-table mb-0" id="table-{{ room.id }}">
+        <thead>
+          <tr>
+            <th style="width:32px">#</th>
+            <th>Description</th>
+            <th>Brand</th>
+            <th>Condition</th>
+            <th class="text-center" style="width:50px">QTY</th>
+            <th>Retailer</th>
+            <th class="text-end" style="width:90px">Purchase $</th>
+            <th class="text-center" style="width:55px">Age Y</th>
+            <th class="text-center" style="width:55px">Age M</th>
+            <th class="text-end rv-col" style="width:100px">Repl. Value</th>
+            <th style="width:30px"></th>
+          </tr>
+        </thead>
+        <tbody id="tbody-{{ room.id }}">
+          {% for item in room.items.all %}
+          <tr class="item-row" data-item-id="{{ item.id }}">
+            <td class="item-num"></td>
+            <td class="editable-cell" contenteditable="true">{{ item.description }}</td>
+            <td class="editable-cell" contenteditable="true">{{ item.brand }}</td>
+            <td>
+              <select class="form-select form-select-sm p-0" style="font-size:.8rem">
+                <option {% if item.condition == "Good" %}selected{% endif %}>Good</option>
+                <option {% if item.condition == "Fair" %}selected{% endif %}>Fair</option>
+                <option {% if item.condition == "Poor" %}selected{% endif %}>Poor</option>
+              </select>
+            </td>
+            <td class="text-center editable-cell" contenteditable="true">{{ item.qty }}</td>
+            <td class="editable-cell" contenteditable="true">{{ item.retailer }}</td>
+            <td class="text-end editable-cell" contenteditable="true">{{ item.purchase_price_each|floatformat:2 }}</td>
+            <td class="text-center editable-cell" contenteditable="true">{{ item.age_years }}</td>
+            <td class="text-center editable-cell" contenteditable="true">{{ item.age_months }}</td>
+            <td class="text-end rv-col editable-cell" contenteditable="true">{{ item.replacement_value_each|floatformat:2 }}</td>
+            <td class="text-center">
+              <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
+                <i class="fas fa-times"></i>
+              </button>
+            </td>
+          </tr>
+          <tr class="notes-row" data-item-id="{{ item.id }}">
+            <td colspan="11" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
+          </tr>
+          {% empty %}
+          <tr class="no-items-row">
+            <td colspan="11" class="text-center no-items-msg py-3">No items — click Add Item</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="totals-row" id="totals-{{ room.id }}">
+            <td colspan="9" class="text-end small">Room Total:</td>
+            <td class="text-end rv-col" id="room-rv-{{ room.id }}">—</td>
+            <td></td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <!-- Per-room signature status bar -->
+    {% if room.signature_name %}
+    <div class="sig-status-bar signed" id="sig-bar-{{ room.id }}">
+      <i class="fas fa-check-circle"></i>
+      <strong>Signed by {{ room.signature_name }}</strong>
+      <span class="text-muted" style="font-size:.78rem;">— {{ room.signed_at|date:"F j, Y \a\t g:i A" }}</span>
+      <button onclick="clearRoomSignature({{ room.id }}, '{{ room.room_number }} {{ room.room_name }}')"
+              class="btn btn-link btn-sm ms-auto text-danger p-0 small" title="Remove this signature">
+        <i class="fas fa-times me-1"></i>Remove signature
+      </button>
+    </div>
+    {% else %}
+    <div class="sig-status-bar unsigned" id="sig-bar-{{ room.id }}">
+      <i class="fas fa-clock"></i>
+      <span>Awaiting client signature</span>
+      <button onclick="copyShareLink(this)" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">
+        <i class="fas fa-link me-1"></i>Copy link to send
+      </button>
+    </div>
+    {% endif %}
+
+  </div>
+  {% empty %}
+  <div class="alert alert-warning">No rooms found for this session.</div>
+  {% endfor %}
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const CSRF = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+  const post = (url, body) => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+  const fmt = v => isNaN(v) ? '—' : '$' + parseFloat(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  // Sequential numbering across ALL rooms
+  function renumberItems() {
+    let n = 1;
+    document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
+      let even = false;
+      tbody.querySelectorAll('tr.item-row').forEach(tr => {
+        tr.querySelector('.item-num').textContent = n++;
+        // Alternating stripe via class (nth-child breaks with interleaved notes rows)
+        tr.classList.toggle('even-item', even);
+        const notesRow = tr.nextElementSibling;
+        if (notesRow && notesRow.classList.contains('notes-row')) {
+          notesRow.classList.toggle('even-item', even);
+        }
+        even = !even;
+      });
+    });
+  }
+
+  // Read data from an item-row; notes come from the paired notes-row beneath it
+  function getRowData(tr) {
+    const cells = tr.querySelectorAll('td');
+    const condEl = cells[3].querySelector('select');
+    const notesRow = tr.nextElementSibling;
+    const notes = (notesRow && notesRow.classList.contains('notes-row'))
+      ? notesRow.querySelector('td').textContent.trim()
+      : '';
+    return {
+      description:            cells[1].textContent.trim(),
+      brand:                  cells[2].textContent.trim(),
+      condition:              condEl ? condEl.value : cells[3].textContent.trim(),
+      qty:                    parseInt(cells[4].textContent.trim()) || 1,
+      retailer:               cells[5].textContent.trim(),
+      purchase_price_each:    parseFloat(cells[6].textContent.trim()) || 0,
+      age_years:              parseInt(cells[7].textContent.trim()) || 0,
+      age_months:             parseInt(cells[8].textContent.trim()) || 0,
+      replacement_value_each: parseFloat(cells[9].textContent.trim()) || 0,
+      notes,
+      ai_suggested: false,
+    };
+  }
+
+  function calcTotals(roomId) {
+    const tbody = document.getElementById(`tbody-${roomId}`);
+    let rvTotal = 0;
+    tbody.querySelectorAll('tr.item-row').forEach(tr => {
+      const cells = tr.querySelectorAll('td');
+      if (cells.length < 10) return;
+      const rv  = parseFloat(cells[9].textContent) || 0;
+      const qty = parseInt(cells[4].textContent)   || 1;
+      rvTotal += rv * qty;
+    });
+    const rvEl = document.getElementById(`room-rv-${roomId}`);
+    if (rvEl) rvEl.textContent = fmt(rvTotal);
+    return { rv: rvTotal };
+  }
+
+  function calcGrandTotals() {
+    let grandRv = 0;
+    document.querySelectorAll('[id^="room-rv-"]').forEach(el => {
+      const roomId = el.id.replace('room-rv-', '');
+      const { rv } = calcTotals(parseInt(roomId));
+      grandRv += rv;
+    });
+    document.getElementById('gt-rv').textContent = fmt(grandRv);
+  }
+
+  // Recalculate on any edit (input fires on contenteditable changes)
+  document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
+    tbody.addEventListener('input', () => {
+      const roomId = tbody.id.replace('tbody-', '');
+      calcTotals(parseInt(roomId));
+      calcGrandTotals();
+    });
+  });
+
+  window.removeRow = function(btn) {
+    const tr = btn.closest('tr');
+    const tbody = tr.closest('tbody');
+    // Also remove the paired notes row
+    const notesRow = tr.nextElementSibling;
+    if (notesRow && notesRow.classList.contains('notes-row')) notesRow.remove();
+    tr.remove();
+    const roomId = tbody.id.replace('tbody-', '');
+    calcTotals(parseInt(roomId));
+    calcGrandTotals();
+    renumberItems();
+  };
+
+  window.addItemRow = function(roomId) {
+    const tbody = document.getElementById(`tbody-${roomId}`);
+    const placeholder = tbody.querySelector('.no-items-row');
+    if (placeholder) placeholder.remove();
+
+    const tr = document.createElement('tr');
+    tr.className = 'item-row';
+    tr.innerHTML = `
+      <td class="item-num"></td>
+      <td class="editable-cell" contenteditable="true">New Item</td>
+      <td class="editable-cell" contenteditable="true"></td>
+      <td><select class="form-select form-select-sm p-0" style="font-size:.8rem">
+        <option>Good</option><option>Fair</option><option>Poor</option>
+      </select></td>
+      <td class="text-center editable-cell" contenteditable="true">1</td>
+      <td class="editable-cell" contenteditable="true"></td>
+      <td class="text-end editable-cell" contenteditable="true">0</td>
+      <td class="text-center editable-cell" contenteditable="true">0</td>
+      <td class="text-center editable-cell" contenteditable="true">0</td>
+      <td class="text-end rv-col editable-cell" contenteditable="true">0</td>
+      <td class="text-center">
+        <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
+          <i class="fas fa-times"></i>
+        </button>
+      </td>`;
+
+    const notesRow = document.createElement('tr');
+    notesRow.className = 'notes-row';
+    notesRow.innerHTML = `<td colspan="11" class="editable-cell" contenteditable="true"></td>`;
+
+    tbody.appendChild(tr);
+    tbody.appendChild(notesRow);
+    renumberItems();
+    // Focus the description cell
+    tr.querySelectorAll('[contenteditable]')[0].focus();
+  };
+
+  window.saveRoom = async function(roomId) {
+    const tbody = document.getElementById(`tbody-${roomId}`);
+    const items = [];
+    tbody.querySelectorAll('tr.item-row').forEach(tr => {
+      if (tr.querySelectorAll('td').length >= 10) items.push(getRowData(tr));
+    });
+
+    const btn = event.target.closest('button');
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+    btn.disabled = true;
+
+    try {
+      const data = await post('{% url "cps_api_save_room" %}', { room_id: roomId, items });
+      if (data.success) {
+        btn.innerHTML = '<i class="fas fa-check"></i> Saved';
+        btn.className = btn.className.replace('btn-success', 'btn-outline-success');
+        setTimeout(() => {
+          btn.innerHTML = '<i class="fas fa-save"></i> Save';
+          btn.className = btn.className.replace('btn-outline-success', 'btn-success');
+          btn.disabled = false;
+        }, 2000);
+      } else {
+        alert('Save failed: ' + (data.error || 'unknown'));
+        btn.innerHTML = '<i class="fas fa-save"></i> Save';
+        btn.disabled = false;
+      }
+    } catch (e) {
+      alert('Save failed: ' + e);
+      btn.innerHTML = '<i class="fas fa-save"></i> Save';
+      btn.disabled = false;
+    }
+  };
+
+  // Initial render
+  document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
+    calcTotals(parseInt(tbody.id.replace('tbody-', '')));
+  });
+  calcGrandTotals();
+  renumberItems();
+})();
+
+const SHARE_URL = "{{ share_url }}";
+const SESSION_ID = {{ session.id }};
+
+async function clearRoomSignature(roomId, roomLabel) {
+  if (!confirm(`Remove the signature for "${roomLabel}"?\nThe client will need to re-sign this room.`)) return;
+  try {
+    const res = await fetch(`/cps-report/session/${SESSION_ID}/room/${roomId}/clear-signature/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      // Update the per-room status bar
+      const bar = document.getElementById(`sig-bar-${roomId}`);
+      if (bar) {
+        bar.className = 'sig-status-bar unsigned';
+        bar.innerHTML = '<i class="fas fa-clock"></i><span>Awaiting client signature</span>'
+          + '<button onclick="copyShareLink(this)" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">'
+          + '<i class="fas fa-link me-1"></i>Copy link to send</button>';
+      }
+      // Update the top badge for this room
+      document.querySelectorAll(`#sig-badges .badge`).forEach(badge => {
+        if (badge.textContent.trim().includes(roomLabel.trim())) {
+          badge.className = 'badge bg-warning text-dark py-1 px-2';
+          badge.innerHTML = '<i class="fas fa-clock me-1"></i>' + badge.textContent.trim();
+        }
+      });
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+    }
+  } catch (e) {
+    alert('Network error: ' + e);
+  }
+}
+
+async function clearSignatures() {
+  if (!confirm('Clear ALL room signatures for this session? The client will need to re-sign.')) return;
+  const btn = document.getElementById('clearSigBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Clearing…';
+  try {
+    const res = await fetch(`/cps-report/session/${SESSION_ID}/clear-signatures/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+    });
+    const data = await res.json();
+    if (data.success) {
+      // Replace all green sig badges with yellow "awaiting" badges
+      document.querySelectorAll('#sig-badges .badge.bg-success').forEach(badge => {
+        badge.className = 'badge bg-warning text-dark py-1 px-2';
+        badge.innerHTML = '<i class="fas fa-clock me-1"></i>' + badge.textContent.trim();
+      });
+      // Replace all signed status bars with unsigned state
+      document.querySelectorAll('.sig-status-bar.signed').forEach(bar => {
+        bar.className = 'sig-status-bar unsigned';
+        bar.innerHTML = '<i class="fas fa-clock"></i><span>Awaiting client signature</span>';
+      });
+      btn.innerHTML = '<i class="fas fa-check me-1"></i> Cleared';
+      btn.className = 'btn btn-outline-success btn-sm';
+      setTimeout(() => {
+        btn.innerHTML = '<i class="fas fa-eraser me-1"></i> Clear Signatures';
+        btn.className = 'btn btn-outline-danger btn-sm';
+        btn.disabled = false;
+      }, 2500);
+    } else {
+      alert('Error: ' + (data.error || 'Unknown error'));
+      btn.innerHTML = '<i class="fas fa-eraser me-1"></i> Clear Signatures';
+      btn.disabled = false;
+    }
+  } catch (e) {
+    alert('Network error: ' + e);
+    btn.innerHTML = '<i class="fas fa-eraser me-1"></i> Clear Signatures';
+    btn.disabled = false;
+  }
+}
+
+function copyShareLink(btn) {
+  // Clipboard API requires HTTPS; fall back to textarea trick on HTTP
+  const doCopy = () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(SHARE_URL);
+    }
+    const ta = document.createElement('textarea');
+    ta.value = SHARE_URL;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    return Promise.resolve();
+  };
+
+  doCopy().then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check me-1"></i> Copied!';
+    btn.classList.replace('btn-outline-primary', 'btn-primary');
+    setTimeout(() => {
+      btn.innerHTML = orig;
+      btn.classList.replace('btn-primary', 'btn-outline-primary');
+    }, 2000);
+  }).catch(() => {
+    // Last resort: show the URL so they can copy manually
+    prompt('Copy this link to send to your client:', SHARE_URL);
+  });
+}
+</script>
+{% endblock %}

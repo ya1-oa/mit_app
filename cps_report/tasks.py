@@ -1,0 +1,116 @@
+import logging
+import re
+from celery import shared_task
+
+logger = logging.getLogger(__name__)
+
+
+@shared_task(bind=True)
+def process_cps_session_task(self, session_id):
+    """
+    Process all rooms in a CPS session via Claude vision AI.
+    Runs in Celery worker — frontend polls api_session_status for live updates.
+    """
+    from .models import CPSReportSession, CPSReportItem
+    from .ai_analyzer import analyze_room_for_cps, fetch_all_claim_media
+
+    try:
+        session = CPSReportSession.objects.get(id=session_id)
+    except CPSReportSession.DoesNotExist:
+        logger.error(f"CPS task: session {session_id} not found")
+        return
+
+    session.status = 'processing'
+    session.save(update_fields=['status'])
+    logger.info(f"CPS task started for session {session_id} — {session.insured_name}")
+
+    try:
+        all_claim_media = fetch_all_claim_media(session.encircle_claim_id)
+    except Exception as e:
+        logger.error(f"CPS task: failed to fetch claim media: {e}", exc_info=True)
+        session.status = 'error'
+        session.save(update_fields=['status'])
+        return
+
+    rooms = list(session.rooms.order_by('order').all())
+
+    for room in rooms:
+        room.status = 'processing'
+        room.save(update_fields=['status'])
+
+        has_secondary = bool(room.encircle_room_id_secondary)
+        source_label = f"{room.room_number} {room.room_name}"
+        logger.info(f"CPS task: processing room {source_label}" +
+                    (" (primary + secondary)" if has_secondary else ""))
+
+        try:
+            result_primary = analyze_room_for_cps(
+                room_name=source_label,
+                room_number=room.room_number,
+                prefetched_media=all_claim_media,
+            )
+            all_items = list(result_primary.get('items', []))
+            total_images = result_primary.get('images_used', 0)
+            summaries = [result_primary.get('room_summary', '')]
+
+            if has_secondary:
+                secondary_number = re.match(r'^(\d+)', room.encircle_room_label_secondary or '')
+                secondary_number = secondary_number.group(1) if secondary_number else ''
+                logger.info(f"CPS task: processing secondary room {secondary_number} for {source_label}")
+                result_secondary = analyze_room_for_cps(
+                    room_name=source_label,
+                    room_number=secondary_number,
+                    prefetched_media=all_claim_media,
+                )
+                all_items.extend(result_secondary.get('items', []))
+                total_images += result_secondary.get('images_used', 0)
+                if result_secondary.get('room_summary'):
+                    summaries.append(f"[secondary] {result_secondary['room_summary']}")
+
+            room.items.all().delete()
+            for order, item_dict in enumerate(all_items):
+                age_years = max(0, min(5, int(item_dict.get('age_years', 0) or 0)))
+                age_months = max(0, min(11, int(item_dict.get('age_months', 0) or 0)))
+                if age_years >= 5:
+                    age_months = 0
+                CPSReportItem.objects.create(
+                    room=room,
+                    order=order,
+                    description=str(item_dict.get('description', ''))[:500],
+                    brand=str(item_dict.get('brand', ''))[:200],
+                    disposition='Replacement',
+                    condition=str(item_dict.get('condition', ''))[:50],
+                    qty=max(1, int(item_dict.get('qty', 1) or 1)),
+                    model_number=str(item_dict.get('model_number', ''))[:200],
+                    serial_number=str(item_dict.get('serial_number', ''))[:200],
+                    retailer=str(item_dict.get('retailer', ''))[:200],
+                    replacement_source=str(item_dict.get('replacement_source', 'Retail'))[:200],
+                    purchase_price_each=float(item_dict.get('purchase_price_each', 0) or 0),
+                    age_years=age_years,
+                    age_months=age_months,
+                    replacement_value_each=float(item_dict.get('replacement_value_each', 0) or 0),
+                    depreciation_category=str(item_dict.get('depreciation_category', 'Other'))[:100],
+                    depreciation_pct=max(0, min(80, float(item_dict.get('depreciation_pct', 0) or 0))),
+                    notes=str(item_dict.get('notes', ''))[:500],
+                    ai_suggested=True,
+                )
+
+            room.images_used = total_images
+            room.ai_confidence = result_primary.get('confidence', '')
+            room.ai_notes = ' | '.join(s for s in summaries if s)
+            room.status = 'complete' if (result_primary.get('success') or all_items) else 'error'
+            room.save(update_fields=['images_used', 'ai_confidence', 'ai_notes', 'status'])
+            logger.info(
+                f"CPS task: room {room.room_number} done — "
+                f"{room.items.count()} items, {total_images} images, {room.ai_confidence} confidence"
+            )
+
+        except Exception as e:
+            logger.error(f"CPS task: error on room {room.id} ({room.room_name}): {e}", exc_info=True)
+            room.status = 'error'
+            room.ai_notes = str(e)[:500]
+            room.save(update_fields=['status', 'ai_notes'])
+
+    session.status = 'complete'
+    session.save(update_fields=['status'])
+    logger.info(f"CPS task complete for session {session_id}")

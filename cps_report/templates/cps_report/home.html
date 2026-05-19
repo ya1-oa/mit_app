@@ -1,0 +1,538 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}CPS Schedule of Loss{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss Report{% endblock %}
+
+{% block extra_css %}
+<style>
+  .claim-card { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
+  .claim-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.12); border-color: #0d6efd !important; }
+  .claim-card.selected { border-color: #0d6efd !important; background: #e8f0fe; }
+
+  .room-badge { font-size: .78rem; }
+  .status-pending   { color: #6c757d; }
+  .status-processing{ color: #fd7e14; }
+  .status-complete  { color: #198754; }
+  .status-error     { color: #dc3545; }
+
+  #rooms-panel { display: none; }
+  #processing-panel { display: none; }
+
+  .room-row { transition: background .2s; }
+  .room-row.processing { background: #fff8e1; }
+  .room-row.complete   { background: #f0fff4; }
+  .room-row.error      { background: #fff0f0; }
+
+  .progress-bar-striped.active { animation: progress-bar-stripes .5s linear infinite; }
+
+  .confidence-high   { color: #198754; font-weight: 600; }
+  .confidence-medium { color: #fd7e14; font-weight: 600; }
+  .confidence-low    { color: #dc3545; font-weight: 600; }
+  .confidence-none   { color: #6c757d; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+  <div class="row g-3">
+
+    <!-- Left: Claim Selector -->
+    <div class="col-lg-4">
+      <div class="card shadow-sm" style="display:flex; flex-direction:column; max-height:600px;">
+        <div class="card-header bg-primary text-white">
+          <i class="fas fa-search me-1"></i> Select Claim
+        </div>
+        <div class="card-body p-2" style="flex:1; display:flex; flex-direction:column; overflow:hidden;">
+          <input type="text" id="claim-search" class="form-control form-control-sm mb-2"
+                 placeholder="Search insured name, claim #, address…" autocomplete="off">
+          <div id="search-meta" class="text-muted mb-1" style="font-size:.72rem; min-height:1.2em;"></div>
+          <div id="claims-list" style="flex:1; overflow-y:auto; min-height:0;">
+            <p class="text-muted small p-2" id="claims-placeholder">Type to search claims…</p>
+          </div>
+          <!-- Pagination -->
+          <div id="claims-pagination" class="d-flex justify-content-between align-items-center pt-2 border-top mt-1" style="display:none!important;">
+            <button id="pg-prev" class="btn btn-outline-secondary btn-sm py-0 px-2" disabled>
+              <i class="fas fa-chevron-left"></i> Prev
+            </button>
+            <span id="pg-label" class="small text-muted"></span>
+            <button id="pg-next" class="btn btn-outline-secondary btn-sm py-0 px-2" disabled>
+              Next <i class="fas fa-chevron-right"></i>
+            </button>
+          </div>
+        </div>
+        <div class="card-footer py-2">
+          <button id="btn-start" class="btn btn-primary btn-sm w-100 mb-1" disabled>
+            <i class="fas fa-play me-1"></i> Find CPS Rooms &amp; Start Report
+          </button>
+          <button type="button" class="btn btn-outline-secondary btn-sm w-100"
+                  data-bs-toggle="modal" data-bs-target="#importExcelModal">
+            <i class="fas fa-file-upload me-1"></i> Import Previous Excel Run
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: Session / Rooms Panel -->
+    <div class="col-lg-8">
+
+      <!-- Rooms panel (shown after start) -->
+      <div id="rooms-panel" class="card shadow-sm mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-door-open me-1"></i> CPS Rooms
+            <span id="session-title" class="text-muted ms-2 small"></span>
+          </span>
+          <div class="d-flex align-items-center gap-2">
+            <button id="btn-process-all" class="btn btn-success btn-sm">
+              <i class="fas fa-robot me-1"></i> Analyze All Rooms
+            </button>
+            <a id="btn-export-excel" href="#" class="btn btn-outline-success btn-sm" style="display:none">
+              <i class="fas fa-file-excel me-1"></i> Excel
+            </a>
+            <a id="btn-export-pdf" href="#" class="btn btn-danger btn-sm" style="display:none">
+              <i class="fas fa-file-pdf me-1"></i> Download PDF
+            </a>
+          </div>
+        </div>
+        <div class="card-body p-0">
+          <div id="overall-progress" class="px-3 pt-2 pb-1" style="display:none">
+            <div class="d-flex justify-content-between small mb-1">
+              <span id="progress-label" class="fw-semibold">Processing rooms…</span>
+              <span id="progress-count" class="text-muted"></span>
+            </div>
+            <div class="progress mb-2" style="height:10px">
+              <div id="progress-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success"
+                   style="width:0%"></div>
+            </div>
+            <div class="d-flex gap-3 small text-muted border-top pt-1">
+              <span><i class="fas fa-box-open me-1 text-success"></i>Items found: <strong id="stat-items">0</strong></span>
+              <span><i class="fas fa-dollar-sign me-1 text-primary"></i>Est. RCV: <strong id="stat-rcv">$0.00</strong></span>
+              <span><i class="fas fa-check-circle me-1 text-info"></i>Rooms done: <strong id="stat-rooms">0</strong></span>
+            </div>
+          </div>
+          <table class="table table-sm table-hover mb-0" id="rooms-table">
+            <thead class="table-light">
+              <tr>
+                <th>#</th>
+                <th>Room</th>
+                <th class="text-center">Status</th>
+                <th class="text-center">Images</th>
+                <th class="text-center">Items</th>
+                <th class="text-center">Confidence</th>
+                <th></th>
+              </tr>
+            </thead>
+            <tbody id="rooms-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- All sessions grouped by claim -->
+      {% if grouped_sessions %}
+      <div class="card shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-history me-1"></i> Previous Runs</span>
+          <span class="text-muted small">{{ grouped_sessions|length }} claim{{ grouped_sessions|length|pluralize }}</span>
+        </div>
+        <div class="accordion accordion-flush" id="sessions-accordion">
+          {% for claim_id, group in grouped_sessions.items %}
+          <div class="accordion-item">
+            <h2 class="accordion-header">
+              <button class="accordion-button collapsed py-2 px-3" type="button"
+                      data-bs-toggle="collapse"
+                      data-bs-target="#claim-{{ forloop.counter }}"
+                      style="font-size:.88rem;">
+                <span class="fw-semibold me-2">{{ group.label }}</span>
+                <span class="text-muted me-auto" style="font-size:.76rem;">
+                  Claim #: {{ group.claim_number|default:"—" }}
+                </span>
+                <span class="badge bg-secondary ms-2" style="font-size:.72rem;">
+                  {{ group.sessions|length }} run{{ group.sessions|length|pluralize }}
+                </span>
+              </button>
+            </h2>
+            <div id="claim-{{ forloop.counter }}" class="accordion-collapse collapse">
+              <div class="accordion-body p-0">
+                <div class="list-group list-group-flush">
+                  {% for s in group.sessions %}
+                  <a href="{% url 'cps_report_session' s.id %}"
+                     class="list-group-item list-group-item-action py-2 px-3">
+                    <div class="d-flex justify-content-between align-items-center">
+                      <div>
+                        <span class="small fw-semibold">Run {{ forloop.revcounter }}</span>
+                        <span class="text-muted small ms-2">{{ s.created_at|date:"M d, Y g:i A" }}</span>
+                      </div>
+                      <div class="d-flex align-items-center gap-2">
+                        <span class="text-muted small">{{ s.rooms.count }} room{{ s.rooms.count|pluralize }}</span>
+                        <span class="badge bg-{% if s.status == 'complete' %}success{% elif s.status == 'processing' %}warning{% else %}secondary{% endif %}">
+                          {{ s.get_status_display }}
+                        </span>
+                        {% if s.status == 'complete' %}
+                        <a href="{% url 'cps_report_export_pdf' s.id %}"
+                           class="btn btn-danger btn-sm py-0 px-1" style="font-size:.72rem"
+                           onclick="event.stopPropagation()" title="Download PDF">
+                          <i class="fas fa-file-pdf"></i>
+                        </a>
+                        {% endif %}
+                      </div>
+                    </div>
+                  </a>
+                  {% endfor %}
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+
+    </div>
+  </div>
+</div>
+<!-- Import Excel Modal -->
+<div class="modal fade" id="importExcelModal" tabindex="-1" aria-labelledby="importExcelModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="importExcelModalLabel">
+          <i class="fas fa-file-upload me-2 text-secondary"></i>Import Previous Excel Run
+        </h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">
+          Upload a previously exported Schedule of Loss Excel file.
+          A new session will be created with all rooms and items from that file,
+          ready to share for signature, edit, and export as PDF.
+        </p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold" for="importFileInput">Schedule of Loss Excel file</label>
+          <input class="form-control" type="file" id="importFileInput" accept=".xlsx,.xls">
+          <div class="form-text">Only files exported from this system (.xlsx) are supported.</div>
+        </div>
+        <div id="importResult" style="display:none"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="importSubmitBtn" onclick="submitImport()">
+          <i class="fas fa-upload me-1"></i> Import &amp; Open Session
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const CSRF = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+  const post = (url, body) => fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF() },
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+
+  let selectedClientId = null;
+  let sessionId = null;
+  let rooms = [];
+
+  // ── Claim search (server-side, paginated) ─────────────────────────
+  let currentPage = 1;
+  let totalPages = 1;
+  let currentQuery = '';
+  let debounceTimer = null;
+
+  const searchInput   = document.getElementById('claim-search');
+  const claimsList    = document.getElementById('claims-list');
+  const searchMeta    = document.getElementById('search-meta');
+  const pagination    = document.getElementById('claims-pagination');
+  const pgPrev        = document.getElementById('pg-prev');
+  const pgNext        = document.getElementById('pg-next');
+  const pgLabel       = document.getElementById('pg-label');
+  const placeholder   = document.getElementById('claims-placeholder');
+
+  function buildCard(c) {
+    const div = document.createElement('div');
+    div.className = 'claim-card card mb-1 border p-2';
+    div.dataset.clientId = c.id;
+    div.innerHTML = `
+      <div class="fw-semibold small">${c.pOwner || '—'}</div>
+      <div class="text-muted" style="font-size:.75rem">
+        Claim: ${c.claimNumber || '—'} &nbsp;|&nbsp; Encircle: ${c.encircle_claim_id}
+      </div>
+      <div class="text-muted" style="font-size:.72rem">${c.pAddress || ''}</div>`;
+    div.addEventListener('click', () => {
+      document.querySelectorAll('.claim-card').forEach(x => x.classList.remove('selected'));
+      div.classList.add('selected');
+      selectedClientId = c.encircle_claim_id;
+      document.getElementById('btn-start').disabled = false;
+    });
+    return div;
+  }
+
+  async function loadClaims(query, page) {
+    claimsList.style.opacity = '0.5';
+    const params = new URLSearchParams({ q: query, page });
+    const resp = await fetch(`{% url 'cps_api_clients' %}?${params}`);
+    const data = await resp.json();
+    claimsList.style.opacity = '1';
+
+    currentPage  = data.page;
+    totalPages   = data.total_pages;
+    currentQuery = query;
+
+    claimsList.innerHTML = '';
+    if (!data.clients.length) {
+      claimsList.innerHTML = '<p class="text-muted small p-2">No matching claims found.</p>';
+    } else {
+      data.clients.forEach(c => claimsList.appendChild(buildCard(c)));
+    }
+
+    searchMeta.textContent = query
+      ? `${data.total} result${data.total !== 1 ? 's' : ''} for "${query}"`
+      : `${data.total} claim${data.total !== 1 ? 's' : ''} total`;
+
+    // Pagination visibility
+    if (data.total_pages > 1) {
+      pagination.style.display = 'flex';
+      pgLabel.textContent = `Page ${data.page} of ${data.total_pages}`;
+      pgPrev.disabled = data.page <= 1;
+      pgNext.disabled = data.page >= data.total_pages;
+    } else {
+      pagination.style.display = 'none';
+    }
+
+    // Clear selection if it's no longer on this page
+    selectedClientId = null;
+    document.getElementById('btn-start').disabled = true;
+  }
+
+  searchInput.addEventListener('input', function () {
+    clearTimeout(debounceTimer);
+    const q = this.value.trim();
+    if (placeholder) placeholder.remove();
+    debounceTimer = setTimeout(() => loadClaims(q, 1), 300);
+  });
+
+  pgPrev.addEventListener('click', () => loadClaims(currentQuery, currentPage - 1));
+  pgNext.addEventListener('click', () => loadClaims(currentQuery, currentPage + 1));
+
+  // Load first page on open
+  loadClaims('', 1);
+
+  function showError(msg) {
+    let toast = document.getElementById('cps-error-toast');
+    if (!toast) {
+      toast = document.createElement('div');
+      toast.id = 'cps-error-toast';
+      toast.style.cssText = 'position:fixed;top:72px;right:20px;z-index:9999;max-width:420px;';
+      document.body.appendChild(toast);
+    }
+    toast.innerHTML = `<div class="alert alert-danger alert-dismissible shadow" role="alert">
+      <i class="fas fa-exclamation-triangle me-2"></i><strong>Error:</strong> ${msg}
+      <button type="button" class="btn-close" onclick="this.closest('.alert').remove()"></button>
+    </div>`;
+    setTimeout(() => toast.innerHTML = '', 8000);
+  }
+
+  // Start report — find rooms then redirect to live progress page
+  document.getElementById('btn-start').addEventListener('click', async () => {
+    if (!selectedClientId) {
+      showError('Please select a claim first.');
+      return;
+    }
+    const btn = document.getElementById('btn-start');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Finding CPS rooms &amp; launching…';
+
+    try {
+      const data = await post('{% url "cps_api_start" %}', { encircle_claim_id: selectedClientId });
+      if (data.error) {
+        showError(data.error);
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-play me-1"></i> Find CPS Rooms & Start Report';
+        return;
+      }
+
+      // Redirect to live progress page — Celery task is already running
+      window.location.href = data.progress_url;
+
+    } catch (e) {
+      showError('Request failed: ' + e);
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play me-1"></i> Find CPS Rooms & Start Report';
+    }
+  });
+
+  function renderRooms(roomList) {
+    const tbody = document.getElementById('rooms-tbody');
+    tbody.innerHTML = '';
+    roomList.forEach((room, idx) => {
+      const tr = document.createElement('tr');
+      tr.id = `room-row-${room.id}`;
+      tr.className = `room-row ${room.status}`;
+      tr.innerHTML = `
+        <td class="text-muted small">${room.room_number}</td>
+        <td class="small fw-semibold">${room.room_name}</td>
+        <td class="text-center" id="status-${room.id}">${statusBadge(room.status)}</td>
+        <td class="text-center small" id="images-${room.id}">${room.images_used ?? '—'}</td>
+        <td class="text-center small" id="items-${room.id}">${room.item_count ?? '—'}</td>
+        <td class="text-center small" id="conf-${room.id}">${confBadge(room.ai_confidence)}</td>
+        <td class="text-end">
+          <button class="btn btn-xs btn-outline-primary btn-sm py-0 px-1" onclick="analyzeRoom(${room.id})">
+            <i class="fas fa-robot"></i>
+          </button>
+          ${room.status === 'complete' ? `<a href="/cps-report/session/${sessionId}/" class="btn btn-xs btn-outline-secondary btn-sm py-0 px-1 ms-1"><i class="fas fa-edit"></i></a>` : ''}
+        </td>`;
+      tbody.appendChild(tr);
+    });
+  }
+
+  function statusBadge(status) {
+    const map = { pending: 'secondary', processing: 'warning', complete: 'success', error: 'danger' };
+    return `<span class="badge bg-${map[status] ?? 'secondary'}">${status}</span>`;
+  }
+
+  function confBadge(conf) {
+    if (!conf) return '<span class="text-muted">—</span>';
+    return `<span class="confidence-${conf}">${conf}</span>`;
+  }
+
+  let totalItems = 0;
+  let totalRcv = 0;
+  let totalRoomsDone = 0;
+
+  function fmtUsd(v) {
+    return '$' + Number(v || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function updateStats(itemsAdded, rcvAdded) {
+    totalItems += itemsAdded;
+    totalRcv   += rcvAdded;
+    totalRoomsDone++;
+    document.getElementById('stat-items').textContent = totalItems;
+    document.getElementById('stat-rcv').textContent   = fmtUsd(totalRcv);
+    document.getElementById('stat-rooms').textContent = totalRoomsDone;
+  }
+
+  window.analyzeRoom = async function (roomId) {
+    updateRoomUI(roomId, 'processing', null, null, null);
+    try {
+      const data = await post('{% url "cps_api_process_room" %}', { room_id: roomId });
+      if (data.error && !data.items?.length) {
+        updateRoomUI(roomId, 'error', null, null, data.confidence);
+        return;
+      }
+      // Auto-save the items
+      const saveData = await post('{% url "cps_api_save_room" %}', {
+        room_id: roomId,
+        items: data.items || [],
+      });
+      const itemCount = saveData.items_saved ?? data.items?.length ?? 0;
+      const roomRcv = (data.items || []).reduce((sum, it) => {
+        return sum + (parseFloat(it.replacement_value_each || 0) * (parseInt(it.qty || 1)));
+      }, 0);
+      updateStats(itemCount, roomRcv);
+      updateRoomUI(roomId, 'complete', data.images_used, itemCount, data.confidence);
+    } catch (e) {
+      updateRoomUI(roomId, 'error', null, null, null);
+    }
+  };
+
+  function updateRoomUI(roomId, status, images, items, confidence) {
+    const row = document.getElementById(`room-row-${roomId}`);
+    if (row) { row.className = `room-row ${status}`; }
+    const s = document.getElementById(`status-${roomId}`);
+    if (s) s.innerHTML = statusBadge(status);
+    const im = document.getElementById(`images-${roomId}`);
+    if (im && images !== null) im.textContent = images;
+    const it = document.getElementById(`items-${roomId}`);
+    if (it && items !== null) it.textContent = items;
+    const cf = document.getElementById(`conf-${roomId}`);
+    if (cf && confidence !== null) cf.innerHTML = confBadge(confidence);
+  }
+
+  async function processAllRooms() {
+    if (!rooms.length) return;
+    const progressDiv = document.getElementById('overall-progress');
+    const bar         = document.getElementById('progress-bar');
+    const label       = document.getElementById('progress-label');
+    const count       = document.getElementById('progress-count');
+    const processBtn  = document.getElementById('btn-process-all');
+
+    progressDiv.style.display = '';
+    if (processBtn) processBtn.disabled = true;
+
+    let done = 0;
+    for (const room of rooms) {
+      label.textContent = `Analyzing room ${done + 1} of ${rooms.length}: ${room.room_number} ${room.room_name}…`;
+      count.textContent = `${done}/${rooms.length}`;
+      bar.style.width   = `${(done / rooms.length) * 100}%`;
+      await analyzeRoom(room.id);
+      done++;
+    }
+
+    bar.style.width = '100%';
+    bar.classList.remove('progress-bar-animated');
+    label.textContent = `✓ All ${done} rooms analyzed — report ready`;
+    count.textContent = `${done}/${rooms.length}`;
+    document.getElementById('btn-export-excel').style.display = '';
+    document.getElementById('btn-export-pdf').style.display = '';
+    if (processBtn) processBtn.disabled = false;
+  }
+
+  // Manual "Analyze All" button (in case user wants to re-run)
+  document.getElementById('btn-process-all').addEventListener('click', () => processAllRooms());
+})();
+
+async function submitImport() {
+  const fileInput = document.getElementById('importFileInput');
+  const resultDiv = document.getElementById('importResult');
+  const btn       = document.getElementById('importSubmitBtn');
+
+  if (!fileInput.files.length) {
+    resultDiv.style.display = '';
+    resultDiv.innerHTML = '<div class="alert alert-warning py-2 mb-0">Please select a file first.</div>';
+    return;
+  }
+
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Importing…';
+  resultDiv.style.display = 'none';
+
+  const formData = new FormData();
+  formData.append('excel_file', fileInput.files[0]);
+  formData.append('csrfmiddlewaretoken', document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '');
+
+  try {
+    const res  = await fetch('{% url "cps_api_import_excel" %}', { method: 'POST', body: formData });
+    const data = await res.json();
+
+    if (data.success) {
+      resultDiv.style.display = '';
+      resultDiv.innerHTML = `<div class="alert alert-success py-2 mb-0">
+        <i class="fas fa-check me-1"></i>
+        Imported ${data.rooms_created} room${data.rooms_created !== 1 ? 's' : ''}
+        with ${data.items_created} item${data.items_created !== 1 ? 's' : ''}.
+        Redirecting…
+      </div>`;
+      setTimeout(() => { window.location.href = data.redirect_url; }, 800);
+    } else {
+      resultDiv.style.display = '';
+      resultDiv.innerHTML = `<div class="alert alert-danger py-2 mb-0">
+        <i class="fas fa-exclamation-triangle me-1"></i> ${data.error || 'Import failed'}
+      </div>`;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-upload me-1"></i> Import &amp; Open Session';
+    }
+  } catch (e) {
+    resultDiv.style.display = '';
+    resultDiv.innerHTML = `<div class="alert alert-danger py-2 mb-0">Network error: ${e}</div>`;
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-upload me-1"></i> Import &amp; Open Session';
+  }
+}
+</script>
+{% endblock %}

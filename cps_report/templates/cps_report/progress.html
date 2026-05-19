@@ -1,0 +1,340 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}CPS Report — Live Progress{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss — Building Report{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ── Stats bar ── */
+  .stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 20px; text-align:center; }
+  .stat-card .stat-val { font-size:1.6rem; font-weight:700; color:#1e40af; }
+  .stat-card .stat-rcv { color:#059669; }
+  .stat-card .stat-lbl { font-size:.75rem; color:#64748b; text-transform:uppercase; letter-spacing:.04em; }
+
+  /* ── Progress bar ── */
+  #master-bar { height:14px; border-radius:8px; transition:width .4s ease; }
+
+  /* ── Room cards ── */
+  .room-card { border-radius:10px; border:1px solid #e2e8f0; margin-bottom:12px; overflow:hidden; }
+  .room-card-header { padding:10px 16px; display:flex; align-items:center; justify-content:space-between; font-weight:600; font-size:.9rem; }
+  .room-card-header.pending    { background:#f1f5f9; color:#64748b; }
+  .room-card-header.processing { background:#dcfce7; color:#166534; }
+  .room-card-header.complete   { background:#d1fae5; color:#065f46; cursor:pointer; }
+  .room-card-header.error      { background:#fee2e2; color:#991b1b; }
+
+  .room-spinner { width:18px; height:18px; border:3px solid #bbf7d0; border-top-color:#16a34a; border-radius:50%; animation:spin .7s linear infinite; display:inline-block; margin-right:8px; }
+  @keyframes spin { to { transform:rotate(360deg); } }
+
+  .room-items-panel { display:none; background:#f8fafc; border-top:1px solid #e2e8f0; padding:10px 16px; }
+  .room-items-panel.open { display:block; }
+
+  .items-mini-table { width:100%; font-size:.78rem; border-collapse:collapse; }
+  .items-mini-table th { background:#334155; color:#fff; padding:4px 8px; text-align:left; }
+  .items-mini-table td { padding:4px 8px; border-bottom:1px solid #e2e8f0; }
+  .items-mini-table tr:last-child td { border-bottom:none; }
+  .items-mini-table tr:nth-child(even) td { background:#f0fdf4; }
+  .rv-cell  { color:#155724; font-weight:600; text-align:right; }
+  .acv-cell { color:#0c4a82; font-weight:600; text-align:right; }
+  .qty-cell { text-align:center; }
+
+  /* ── Done banner ── */
+  #done-banner { display:none; background:linear-gradient(135deg,#059669,#1e40af); color:#fff; border-radius:12px; padding:28px 32px; text-align:center; margin-bottom:20px; }
+  #done-banner h4 { font-size:1.5rem; font-weight:700; margin-bottom:6px; }
+  #done-banner .sub { opacity:.85; margin-bottom:20px; }
+  .dl-btn { display:inline-flex; align-items:center; gap:8px; padding:12px 28px; border-radius:8px; font-weight:700; font-size:1rem; text-decoration:none; margin:6px; }
+  .dl-btn-pdf   { background:#dc2626; color:#fff; }
+  .dl-btn-excel { background:#16a34a; color:#fff; }
+  .dl-btn:hover { opacity:.9; color:#fff; }
+
+  #status-msg { font-size:.82rem; color:#64748b; margin-top:4px; min-height:1.2em; }
+
+  /* ── Series dividers ── */
+  .series-divider { display:flex; align-items:center; gap:10px; margin:16px 0 8px; }
+  .series-divider-label { font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:#334155; padding:3px 12px; border-radius:20px; white-space:nowrap; }
+  .series-divider-line { flex:1; height:1px; background:#e2e8f0; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3" style="max-width:1100px">
+
+  <!-- Done banner (hidden until complete) -->
+  <div id="done-banner">
+    <h4><i class="fas fa-check-circle me-2"></i>Report Complete!</h4>
+    <div class="sub">All rooms have been analyzed. Download your report below.</div>
+    <a id="dl-pdf"   href="/cps-report/session/{{ session.id }}/export-pdf/"   class="dl-btn dl-btn-pdf">
+      <i class="fas fa-file-pdf"></i> Download PDF
+    </a>
+    <a id="dl-excel" href="/cps-report/session/{{ session.id }}/export/"        class="dl-btn dl-btn-excel">
+      <i class="fas fa-file-excel"></i> Download Excel
+    </a>
+    <div class="mt-3">
+      <a href="/cps-report/session/{{ session.id }}/" class="text-white opacity-75" style="font-size:.85rem">
+        <i class="fas fa-edit me-1"></i> View &amp; Edit Session
+      </a>
+    </div>
+  </div>
+
+  <!-- Header row -->
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <div>
+      <h5 class="mb-0">{{ session.insured_name|default:"—" }}</h5>
+      <div class="text-muted small">Claim #{{ session.claim_number|default:"—" }} &nbsp;|&nbsp; Encircle {{ session.encircle_claim_id }}</div>
+    </div>
+    <div class="text-end">
+      <a href="/cps-report/session/{{ session.id }}/export-pdf/" class="btn btn-danger btn-sm me-1" id="hdr-pdf" style="display:none">
+        <i class="fas fa-file-pdf me-1"></i> PDF
+      </a>
+      <a href="/cps-report/session/{{ session.id }}/export/" class="btn btn-success btn-sm me-1" id="hdr-excel" style="display:none">
+        <i class="fas fa-file-excel me-1"></i> Excel
+      </a>
+      <a href="{% url 'cps_report_home' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i> Back
+      </a>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div class="mb-2">
+    <div class="d-flex justify-content-between small mb-1">
+      <span id="progress-label" class="fw-semibold text-primary">Initializing…</span>
+      <span id="progress-pct" class="text-muted"></span>
+    </div>
+    <div class="progress" style="height:14px; border-radius:8px;">
+      <div id="master-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width:0%"></div>
+    </div>
+    <div id="status-msg"></div>
+  </div>
+
+  <!-- Stats row -->
+  <div class="row g-2 mb-3">
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-val" id="s-rooms">0 / {{ rooms|length }}</div>
+        <div class="stat-lbl">Rooms Done</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-val" id="s-images">0</div>
+        <div class="stat-lbl">Images Analyzed</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-val" id="s-items">0</div>
+        <div class="stat-lbl">Items Found</div>
+      </div>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="stat-card">
+        <div class="stat-val stat-rcv" id="s-rcv">$0.00</div>
+        <div class="stat-lbl">Est. Replacement Value</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Room cards -->
+  <div id="rooms-container">
+    {% for room in rooms %}
+      {% with series=room.room_number|slice:":1" %}
+        {% ifchanged series %}
+          {% if series %}
+          <div class="series-divider">
+            <span class="series-divider-label">{{ series }}00s</span>
+            <div class="series-divider-line"></div>
+          </div>
+          {% endif %}
+        {% endifchanged %}
+      {% endwith %}
+    <div class="room-card" id="card-{{ room.id }}">
+      <div class="room-card-header pending" id="hdr-{{ room.id }}" onclick="toggleItems({{ room.id }})">
+        <span>
+          <span class="me-2 text-muted" style="font-size:.8rem">{{ room.room_number }}</span>
+          {{ room.room_name }}
+        </span>
+        <span id="badge-{{ room.id }}" class="small text-muted">Pending</span>
+      </div>
+      <div class="room-items-panel" id="panel-{{ room.id }}"></div>
+    </div>
+    {% endfor %}
+  </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+(function () {
+  const SESSION_ID  = {{ session.id }};
+  const TOTAL_ROOMS = {{ rooms|length }};
+  const STATUS_URL  = `/cps-report/api/session/${SESSION_ID}/status/`;
+  const ITEMS_URL   = (roomId) => `/cps-report/api/room/${roomId}/items/`;
+
+  const fmtUsd = v => '$' + Number(v || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
+
+  // Track which rooms we've already fetched items for
+  const fetchedRooms = new Set();
+  let pollTimer = null;
+  let isDone = false;
+
+  function updateStats(data) {
+    const done = data.rooms.filter(r => r.status === 'complete' || r.status === 'error').length;
+    const pct  = TOTAL_ROOMS ? Math.round((done / TOTAL_ROOMS) * 100) : 0;
+
+    document.getElementById('master-bar').style.width = pct + '%';
+    document.getElementById('progress-pct').textContent = pct + '%';
+    document.getElementById('s-rooms').textContent   = done + ' / ' + TOTAL_ROOMS;
+    document.getElementById('s-images').textContent  = data.total_images;
+    document.getElementById('s-items').textContent   = data.total_items;
+    document.getElementById('s-rcv').textContent     = fmtUsd(data.total_rcv);
+
+    // Current processing room label
+    const current = data.rooms.find(r => r.status === 'processing');
+    if (current) {
+      document.getElementById('progress-label').textContent =
+        `Analyzing: ${current.room_number} ${current.room_name}…`;
+      document.getElementById('status-msg').textContent =
+        `Claude AI is reviewing photos and pricing items…`;
+    } else if (data.status === 'complete') {
+      document.getElementById('progress-label').textContent = '✓ All rooms complete';
+      document.getElementById('status-msg').textContent = '';
+    }
+  }
+
+  function updateRoomCard(room) {
+    const hdr   = document.getElementById(`hdr-${room.id}`);
+    const badge = document.getElementById(`badge-${room.id}`);
+    if (!hdr) return;
+
+    hdr.className = `room-card-header ${room.status}`;
+
+    if (room.status === 'processing') {
+      hdr.innerHTML = `
+        <span>
+          <span class="room-spinner"></span>
+          <span class="me-2 text-muted" style="font-size:.8rem">${room.room_number}</span>
+          ${room.room_name}
+        </span>
+        <span class="small" style="color:#166534">Analyzing with Claude AI…</span>`;
+    } else if (room.status === 'complete') {
+      hdr.innerHTML = `
+        <span>
+          <i class="fas fa-check-circle text-success me-2"></i>
+          <span class="me-2 text-muted" style="font-size:.8rem">${room.room_number}</span>
+          ${room.room_name}
+        </span>
+        <span class="small">
+          <span class="badge bg-success me-1">${room.item_count} items</span>
+          <span class="badge bg-primary me-1">${room.images_used} imgs</span>
+          ${room.rcv_total > 0 ? `<span class="text-success fw-bold">${fmtUsd(room.rcv_total)}</span>` : ''}
+          <i class="fas fa-chevron-down ms-2 text-muted" style="font-size:.7rem"></i>
+        </span>`;
+      // Fetch and render items if not already done
+      if (!fetchedRooms.has(room.id)) {
+        fetchedRooms.add(room.id);
+        loadRoomItems(room.id);
+      }
+    } else if (room.status === 'error') {
+      hdr.innerHTML = `
+        <span>
+          <i class="fas fa-exclamation-circle text-danger me-2"></i>
+          <span class="me-2 text-muted" style="font-size:.8rem">${room.room_number}</span>
+          ${room.room_name}
+        </span>
+        <span class="small text-danger">${room.ai_notes || 'Error — no images found'}</span>`;
+    }
+  }
+
+  async function loadRoomItems(roomId) {
+    try {
+      const resp = await fetch(ITEMS_URL(roomId));
+      const data = await resp.json();
+      const panel = document.getElementById(`panel-${roomId}`);
+      if (!panel) return;
+
+      if (!data.items || !data.items.length) {
+        panel.innerHTML = `<p class="text-muted small mb-0 py-1">No items recorded for this room.</p>`;
+        panel.classList.add('open');
+        return;
+      }
+
+      const rows = data.items.map(item => {
+        const rcv = (item.replacement_value_each || 0) * (item.qty || 1);
+        return `<tr>
+          <td>${item.description || ''}</td>
+          <td>${item.brand || ''}</td>
+          <td class="qty-cell">${item.qty || 1}</td>
+          <td>${item.condition || ''}</td>
+          <td class="text-end">${item.age_years || 0}y ${item.age_months || 0}m</td>
+          <td class="rv-cell">${fmtUsd(rcv)}</td>
+        </tr>`;
+      }).join('');
+
+      panel.innerHTML = `
+        <table class="items-mini-table">
+          <thead>
+            <tr>
+              <th>Description</th><th>Brand</th>
+              <th class="text-center">Qty</th><th>Condition</th>
+              <th class="text-end">Age</th>
+              <th class="text-end">Repl. Value</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+      panel.classList.add('open');
+    } catch (e) {
+      console.error('Failed to load room items:', e);
+    }
+  }
+
+  window.toggleItems = function(roomId) {
+    const panel = document.getElementById(`panel-${roomId}`);
+    if (panel) panel.classList.toggle('open');
+  };
+
+  function showDone() {
+    if (isDone) return;
+    isDone = true;
+
+    // Stop progress bar animation
+    const bar = document.getElementById('master-bar');
+    bar.style.width = '100%';
+    bar.classList.remove('progress-bar-animated');
+
+    document.getElementById('done-banner').style.display = 'block';
+    document.getElementById('hdr-pdf').style.display = '';
+    document.getElementById('hdr-excel').style.display = '';
+
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  async function poll() {
+    try {
+      const resp = await fetch(STATUS_URL);
+      const data = await resp.json();
+
+      updateStats(data);
+      data.rooms.forEach(room => updateRoomCard(room));
+
+      if (data.status === 'complete') {
+        showDone();
+        return; // stop polling
+      }
+
+      // Keep polling while task is running
+      pollTimer = setTimeout(poll, 2500);
+
+    } catch (e) {
+      console.error('Poll error:', e);
+      pollTimer = setTimeout(poll, 5000); // retry slower on error
+    }
+  }
+
+  // Start polling immediately
+  poll();
+})();
+</script>
+{% endblock %}

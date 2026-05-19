@@ -216,38 +216,28 @@ class RoomTemplateAutomation:
         }
         
         try:
-            # 1. Click User Settings button
+            # 1. Click Organization Settings link (new UI structure)
             try:
-                user_settings = WebDriverWait(self.automator.driver, 10).until(
-                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'button.NewNavigation-button'))
+                # New selector: Find the link that contains '/settings/org' in href
+                org_settings_link = WebDriverWait(self.automator.driver, 30).until(
+                    EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[href*="/settings/org"]'))
                 )
-                self.automator.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", user_settings)
-                time.sleep(0.3)
-                user_settings.click()
-                debug_info['steps'].append({'action': 'click_user_settings', 'status': 'success'})
-                time.sleep(1)  # Allow menu to open
-            except Exception as e:
-                debug_info['steps'].append({'action': 'click_user_settings', 'status': 'failed', 'error': str(e)})
-                raise Exception("Could not find User Settings button")
-
-            # 2. Click Organization Settings
-            try:
-                org_settings = WebDriverWait(self.automator.driver, 10).until(
-                    EC.element_to_be_clickable((By.XPATH, '//div[contains(@class, "SettingsDropdownMenuLinkItem-content") and contains(text(), "Organization Settings")]'))
-                )
-                self.automator.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", org_settings)
-                time.sleep(0.3)
-                org_settings.click()
+                self.automator.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", org_settings_link)
+                time.sleep(0.5)
+                # Use JavaScript click to avoid interception
+                self.automator.driver.execute_script("arguments[0].click();", org_settings_link)
                 debug_info['steps'].append({'action': 'click_org_settings', 'status': 'success'})
-                
-                # Wait for navigation to complete
-                WebDriverWait(self.automator.driver, 15).until(
-                    lambda d: "settings/org" in d.current_url.lower()
-                )
-                time.sleep(1)  # Allow page to settle
+                time.sleep(2)  # Allow navigation to complete
             except Exception as e:
                 debug_info['steps'].append({'action': 'click_org_settings', 'status': 'failed', 'error': str(e)})
-                raise Exception("Could not find Organization Settings option")
+                raise Exception(f"Could not find Organization Settings link: {str(e)}")
+
+            # Wait for navigation to Organization Settings page to complete
+            WebDriverWait(self.automator.driver, 15).until(
+                lambda d: "settings/org" in d.current_url.lower()
+            )
+            time.sleep(1)  # Allow page to settle
+            debug_info['steps'].append({'action': 'org_settings_page_loaded', 'status': 'success'})
 
             return True
 
@@ -261,198 +251,216 @@ class RoomTemplateAutomation:
     def navigate_to_manage_lists(self) -> bool:
         """Click the Manage Lists link on the Organization Settings page"""
         try:
-            # Find and click Manage Lists link with minimal waiting
-            manage_lists = WebDriverWait(self.automator.driver, 10).until(
-                EC.element_to_be_clickable((By.CSS_SELECTOR, 'a[href*="/lists"]'))
+            # Find and click Manage Lists link using the new UI structure
+            # Look for span with text "Manage Lists"
+            manage_lists = WebDriverWait(self.automator.driver, 30).until(
+                EC.element_to_be_clickable((By.XPATH, '//span[contains(@class, "sui-nav-item__label") and contains(text(), "Manage Lists")]'))
             )
-            
-            # Quick scroll into view and click
-            self.automator.driver.execute_script("arguments[0].scrollIntoView();", manage_lists)
+
+            # Scroll into view and click using JavaScript
+            self.automator.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", manage_lists)
+            time.sleep(0.5)
             self.automator.driver.execute_script("arguments[0].click();", manage_lists)
-            
-            # Brief pause to allow navigation
+
+            # Wait for navigation to lists page
             time.sleep(2)
-            
+            self._log("Successfully navigated to Manage Lists", "INFO")
+
             return True
 
-        except Exception:
+        except Exception as e:
             # If we fail, just continue assuming we're on the right page
-            self._log("Failed to navigate to manage lists, continuing anyway", "WARNING")
+            self._log(f"Failed to navigate to manage lists: {str(e)}, continuing anyway", "WARNING")
             return True
 
-def delete_all_templates(self) -> dict:
-    """Delete ALL templates under Room Templates regardless of name"""
-    results = {
-        'templates_deleted': 0,
-        'errors': [],
-        'details': []
-    }
-    
-    try:
-        self._log("Attempting to delete ALL existing templates")
-        
-        # Refresh page to ensure we have current template list
-        self.automator.driver.refresh()
-        time.sleep(3)  # Give more time for page to load
-        
-        # Wait for the SimpleList to load
-        WebDriverWait(self.automator.driver, 10).until(
-            EC.presence_of_element_located((By.CSS_SELECTOR, '.SimpleList-row'))
-        )
-        
-        # Get all template rows
-        template_rows = self.automator.driver.find_elements(By.CSS_SELECTOR, '.SimpleList-row')
-        self._log(f"Found {len(template_rows)} template rows to delete")
-        
-        # Keep deleting until no templates remain
-        while template_rows:
-            for row in template_rows:
-                try:
-                    # Get the template name for logging
-                    try:
-                        title_element = row.find_element(
-                            By.CSS_SELECTOR, 
-                            '.SimpleList-row-header-info-title'
-                        )
-                        template_name = title_element.text.strip()
-                    except:
-                        template_name = "Unknown Template"
-                    
-                    self._log(f"Deleting template: {template_name}")
-                    
-                    # Find the delete button in this row
-                    delete_button = row.find_element(
-                        By.CSS_SELECTOR, 
-                        '.ActionIcon--delete'
-                    )
-                    
-                    # Scroll into view and click delete
-                    self.automator.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", delete_button)
-                    time.sleep(0.5)
-                    
-                    # Click using JavaScript to avoid interception
-                    self.automator.driver.execute_script("arguments[0].click();", delete_button)
-                    time.sleep(1)  # Wait for modal to appear
-                    
-                    # Confirm deletion - wait for the modal and click confirm button
-                    try:
-                        WebDriverWait(self.automator.driver, 5).until(
-                            EC.visibility_of_element_located((
-                            By.CSS_SELECTOR, 
-                            'div.BaseModal-backdrop--floating'
-                            ))
-                        )
-
-                        # Then wait for the delete button to be clickable
-                        confirm_button = WebDriverWait(self.automator.driver, 5).until(
-                            EC.element_to_be_clickable((
-                            By.CSS_SELECTOR, 
-                            'button.analytics-DELETE_BUTTON'
-                            ))
-                        )
-                        
-                        # Click confirm using JavaScript
-                        self.automator.driver.execute_script("arguments[0].click();", confirm_button)
-                        time.sleep(2)  # Wait for deletion to complete
-                        
-                        results['templates_deleted'] += 1
-                        results['details'].append({
-                            'template': template_name,
-                            'status': 'deleted'
-                        })
-                        self._log(f"Successfully deleted template: {template_name}")
-                        
-                        # Break out of the inner loop and refresh the template list
-                        break
-                        
-                    except Exception as confirm_error:
-                        error_msg = f"Failed to confirm deletion for '{template_name}': {str(confirm_error)}"
-                        results['errors'].append(error_msg)
-                        results['details'].append({
-                            'template': template_name,
-                            'status': 'failed',
-                            'error': str(confirm_error)
-                        })
-                        self._log(error_msg, "WARNING")
-                        
-                        # Try to close the modal if confirmation failed
-                        try:
-                            cancel_button = self.automator.driver.find_element(
-                                By.CSS_SELECTOR,
-                                'div.BaseModal-backdrop--floating button:not(.Button--danger)'
-                            )
-                            cancel_button.click()
-                            time.sleep(1)
-                        except:
-                            pass
-                        continue
-                    
-                except Exception as row_error:
-                    error_msg = f"Error processing template row: {str(row_error)}"
-                    results['errors'].append(error_msg)
-                    self._log(error_msg, "WARNING")
-                    continue
-            
-            # Refresh the template rows list after deletion attempt
-            time.sleep(2)
-            template_rows = self.automator.driver.find_elements(By.CSS_SELECTOR, '.SimpleList-row')
-            self._log(f"Remaining templates: {len(template_rows)}")
-            
-            # Safety check to prevent infinite loop
-            if len(template_rows) >= results['templates_deleted'] + len(results['errors']):
-                self._log("No progress made in deletion loop, breaking out", "WARNING")
-                break
-        
-        self._log(f"Deleted {results['templates_deleted']} templates successfully")
-        return results
-        
-    except Exception as e:
-        error_msg = f"Error in template deletion process: {str(e)}"
-        results['errors'].append(error_msg)
-        self._log(error_msg, "ERROR")
-        return results
-
-# Also update the delete_existing_templates method to use the new delete_all_templates method
-def delete_existing_templates(self, template_names: List[str] = None) -> dict:
-    """Delete existing templates - now supports deleting ALL templates"""
-    if template_names is None:
-        # If no specific names provided, delete ALL templates
-        return self.delete_all_templates()
-    else:
-        # Original logic for deleting specific templates
+    def delete_all_templates(self) -> dict:
+        """Delete only OUR templates by matching names"""
         results = {
             'templates_deleted': 0,
             'errors': [],
             'details': []
         }
-        
+
+        # Our template names to delete
+        our_template_names = [
+            '100-700 Base List',
+            '400 PPR List',
+            '8000-9000 MC Day Readings',
+            '70000 Readings Default',
+            'Job Default',
+            # Legacy names (in case they exist from previous runs)
+            '6000-7000 Readings List',
+            '100-700 Base List',
+        ]
+
         try:
-            self._log(f"Attempting to delete {len(template_names)} specific templates")
-            
+            self._log(f"Attempting to delete templates matching: {our_template_names}")
+
             # Refresh page to ensure we have current template list
             self.automator.driver.refresh()
             time.sleep(3)
-            
+
             # Wait for the SimpleList to load
-            WebDriverWait(self.automator.driver, 10).until(
-                EC.presence_of_element_located((By.CSS_SELECTOR, '.SimpleList-row'))
-            )
-            
-            # Get all template rows
-            template_rows = self.automator.driver.find_elements(By.CSS_SELECTOR, '.SimpleList-row')
-            self._log(f"Found {len(template_rows)} template rows")
-            
-            for template_name in template_names:
-                # ... keep the original specific deletion logic here ...
-                # (your existing delete_existing_templates method code for specific names)
-                pass
-                
+            try:
+                WebDriverWait(self.automator.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, '.SimpleList-row'))
+                )
+            except TimeoutException:
+                self._log("No templates found on page", "INFO")
+                return results
+
+            # Keep trying until no more of our templates remain
+            max_iterations = 20  # Safety limit
+            iteration = 0
+
+            while iteration < max_iterations:
+                iteration += 1
+
+                # Get fresh list of template rows
+                template_rows = self.automator.driver.find_elements(By.CSS_SELECTOR, '.SimpleList-row')
+                self._log(f"Iteration {iteration}: Found {len(template_rows)} total template rows")
+
+                found_our_template = False
+
+                for row in template_rows:
+                    try:
+                        # Get the template name
+                        try:
+                            title_element = row.find_element(
+                                By.CSS_SELECTOR,
+                                '.SimpleList-row-header-info-title'
+                            )
+                            template_name = title_element.text.strip()
+                        except:
+                            continue  # Skip if can't get name
+
+                        # Only delete if it's one of OUR templates
+                        if template_name not in our_template_names:
+                            continue
+
+                        found_our_template = True
+                        self._log(f"Found our template to delete: {template_name}")
+
+                        # Find the delete button in this row
+                        delete_button = row.find_element(
+                            By.CSS_SELECTOR,
+                            'a.ActionIcon--delete'
+                        )
+
+                        # Scroll into view and click delete
+                        self.automator.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", delete_button)
+                        time.sleep(0.5)
+
+                        # Click using JavaScript
+                        self.automator.driver.execute_script("arguments[0].click();", delete_button)
+                        time.sleep(1)
+
+                        # Confirm deletion
+                        try:
+                            WebDriverWait(self.automator.driver, 5).until(
+                                EC.visibility_of_element_located((
+                                    By.CSS_SELECTOR,
+                                    'div.BaseModal-backdrop--floating'
+                                ))
+                            )
+
+                            confirm_button = WebDriverWait(self.automator.driver, 5).until(
+                                EC.element_to_be_clickable((
+                                    By.CSS_SELECTOR,
+                                    'button.analytics-DELETE_BUTTON'
+                                ))
+                            )
+
+                            self.automator.driver.execute_script("arguments[0].click();", confirm_button)
+                            time.sleep(2)
+
+                            results['templates_deleted'] += 1
+                            results['details'].append({
+                                'template': template_name,
+                                'status': 'deleted'
+                            })
+                            self._log(f"Successfully deleted template: {template_name}")
+
+                            # Break to refresh the row list
+                            break
+
+                        except Exception as confirm_error:
+                            error_msg = f"Failed to confirm deletion for '{template_name}': {str(confirm_error)}"
+                            results['errors'].append(error_msg)
+                            self._log(error_msg, "WARNING")
+
+                            # Try to close modal
+                            try:
+                                cancel_button = self.automator.driver.find_element(
+                                    By.CSS_SELECTOR,
+                                    'div.BaseModal-backdrop--floating button:not(.Button--danger)'
+                                )
+                                cancel_button.click()
+                                time.sleep(1)
+                            except:
+                                pass
+                            break
+
+                    except Exception as row_error:
+                        self._log(f"Error processing row: {str(row_error)}", "WARNING")
+                        continue
+
+                # If we didn't find any of our templates, we're done
+                if not found_our_template:
+                    self._log("No more of our templates found, deletion complete")
+                    break
+
+                time.sleep(1)  # Brief pause before next iteration
+
+            self._log(f"Deleted {results['templates_deleted']} templates successfully")
+            return results
+
         except Exception as e:
             error_msg = f"Error in template deletion process: {str(e)}"
             results['errors'].append(error_msg)
             self._log(error_msg, "ERROR")
-        
-        return results
+            return results
+
+    def delete_existing_templates(self, template_names: List[str] = None) -> dict:
+        """Delete existing templates - now supports deleting ALL templates"""
+        if template_names is None:
+            # If no specific names provided, delete ALL templates
+            return self.delete_all_templates()
+        else:
+            # Original logic for deleting specific templates
+            results = {
+                'templates_deleted': 0,
+                'errors': [],
+                'details': []
+            }
+
+            try:
+                self._log(f"Attempting to delete {len(template_names)} specific templates")
+
+                # Refresh page to ensure we have current template list
+                self.automator.driver.refresh()
+                time.sleep(3)
+
+                # Wait for the SimpleList to load
+                WebDriverWait(self.automator.driver, 10).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, '.SimpleList-row'))
+                )
+
+                # Get all template rows
+                template_rows = self.automator.driver.find_elements(By.CSS_SELECTOR, '.SimpleList-row')
+                self._log(f"Found {len(template_rows)} template rows")
+
+                for template_name in template_names:
+                    # ... keep the original specific deletion logic here ...
+                    # (your existing delete_existing_templates method code for specific names)
+                    pass
+
+            except Exception as e:
+                error_msg = f"Error in template deletion process: {str(e)}"
+                results['errors'].append(error_msg)
+                self._log(error_msg, "ERROR")
+
+            return results
 
     def create_room_template(self, template_name: str, room_names: list) -> dict:
         """Create room template using Enter key instead of button clicks"""
@@ -472,12 +480,23 @@ def delete_existing_templates(self, template_names: List[str] = None) -> dict:
                 'save_btn': (By.XPATH, '//button[.//span[contains(., "Save")]]')
             }
 
-            # 1. Add Template
+            # 1. Add Template - wait longer and scroll into view
+            self._log(f"Looking for 'Add Room Template' button for template: {template_name}")
+            add_btn = WebDriverWait(self.automator.driver, 20).until(
+                EC.presence_of_element_located(elements['add_template_btn'])
+            )
+
+            # Scroll button into view
+            self.automator.driver.execute_script("arguments[0].scrollIntoView(true);", add_btn)
+            time.sleep(0.5)
+
+            # Wait for it to be clickable
             add_btn = WebDriverWait(self.automator.driver, 10).until(
                 EC.element_to_be_clickable(elements['add_template_btn'])
             )
             add_btn.click()
-            time.sleep(0.5)
+            self._log(f"Clicked 'Add Room Template' button")
+            time.sleep(1)
 
             # 2. Enter Template Name
             name_input = WebDriverWait(self.automator.driver, 10).until(
@@ -555,7 +574,7 @@ def delete_existing_templates(self, template_names: List[str] = None) -> dict:
         return [
             {
                 'id': 'readings default',
-                'name': '70000 Readings Default', 
+                'name': '70000 Readings Default',
                 'description': 'Fifth template with readings data',
                 'column_ranges': [83],  # Updated columns
                 'priority': 5,
@@ -563,7 +582,7 @@ def delete_existing_templates(self, template_names: List[str] = None) -> dict:
             },
             {
                 'id': 'basic',
-                'name': '100-800 Base List',
+                'name': '100-700 Base List',
                 'description': 'First template with basic room data',
                 'column_ranges': [19, 24, 29, 40, 45],  # T=20, Y=25, AD=30, AO=41
                 'priority': 3,
@@ -571,7 +590,7 @@ def delete_existing_templates(self, template_names: List[str] = None) -> dict:
             },
             {
                 'id': 'extended',
-                'name': '400 PPR List', 
+                'name': '400 PPR List',
                 'description': 'Second template with extended room data',
                 'column_ranges': [30],  # AJ=36
                 'priority': 2,
@@ -579,11 +598,19 @@ def delete_existing_templates(self, template_names: List[str] = None) -> dict:
             },
             {
                 'id': 'readings',
-                'name': '6000-7000 Readings List', 
+                'name': '8000-9000 MC Day Readings',
                 'description': 'Third template with readings data',
                 'column_ranges': [50, 55, 60, 65, 70],  # AT=46, AZ=52, BE=57, BK=63, BQ=69
                 'priority': 1,
                 'use_qr_columns': True
+            },
+            {
+                'id': 'job_types',
+                'name': 'Job Default',
+                'description': 'Static job types template (0.0000-9999.0) - Created LAST to appear FIRST',
+                'column_ranges': [],  # No Excel columns needed - static data
+                'priority': 0,  # Highest priority - created last
+                'use_qr_columns': False
             }
         ]
             
@@ -1035,8 +1062,153 @@ def delete_existing_templates(self, template_names: List[str] = None) -> dict:
         
         return self.create_multiple_room_templates_from_excel(
             email="galaxielsaga@gmail.com",
-            password="Admin@haqq123", 
+            password="Admin@haqq123",
             excel_file_path=excel_file_path,
             selected_template_ids=selected_template_ids,
             delete_existing=delete_existing
         )
+
+    def run_automation_with_room_data(self, room_entries: Dict[str, List[str]], selected_template_ids: List[str], delete_existing: bool = True) -> dict:
+        """
+        Run automation with pre-generated room entries (not from Excel)
+
+        Args:
+            room_entries: Dictionary mapping template IDs to lists of room entry strings
+            selected_template_ids: List of template IDs to create
+            delete_existing: Whether to delete existing templates first
+
+        Returns:
+            dict: Results containing status for all templates processed
+        """
+        all_results = {
+            'overall_status': 'started',
+            'login_status': None,
+            'navigation_status': None,
+            'list_status': None,
+            'templates_processed': [],
+            'templates_successful': 0,
+            'templates_failed': 0,
+            'deletion_results': None,
+            'start_time': datetime.now().isoformat(),
+            'debug_info': [],
+            'diagnostics': self.automator.test_browser_setup()
+        }
+
+        try:
+            self._log("Starting room data automation flow")
+
+            # Step 1: Login
+            login_success = self.login(email="galaxielsaga@gmail.com", password="Admin@haqq123")
+            all_results['login_status'] = 'success' if login_success else 'failed'
+            if not login_success:
+                raise Exception("Login failed")
+
+            # Step 2: Navigate to org settings
+            nav_success = self.navigate_to_org_settings()
+            all_results['navigation_status'] = 'success' if nav_success else 'failed'
+            if not nav_success:
+                raise Exception("Organization settings navigation failed")
+
+            # Step 3: Navigate to manage lists
+            list_success = self.navigate_to_manage_lists()
+            all_results['list_status'] = 'success' if list_success else 'failed'
+            if not list_success:
+                raise Exception("Manage lists navigation failed")
+
+            # Step 4: Delete existing templates if requested
+            if delete_existing:
+                all_results['deletion_results'] = self.delete_existing_templates()
+                time.sleep(3)
+
+                # Navigate back to manage lists page after deletion
+                self._log("Re-navigating to manage lists page after deletion")
+                self.automator.driver.refresh()
+                time.sleep(3)
+
+                # Verify we're on the correct page
+                try:
+                    WebDriverWait(self.automator.driver, 15).until(
+                        EC.presence_of_element_located((By.XPATH, '//button[.//span[contains(., "Add Room Template")]]'))
+                    )
+                    self._log("Add Room Template button found - page ready")
+                except TimeoutException:
+                    self._log("Warning: Add Room Template button not found after deletion, attempting re-navigation", "WARNING")
+                    # Try navigating again
+                    list_success = self.navigate_to_manage_lists()
+                    time.sleep(3)
+
+            # Step 5: Get template configurations to map names
+            template_configs = self.get_template_configurations()
+            template_id_to_name = {config['id']: config['name'] for config in template_configs}
+
+            # Step 6: Process each template
+            for template_id in selected_template_ids:
+                if template_id not in room_entries:
+                    self._log(f"No room data for template '{template_id}', skipping")
+                    continue
+
+                template_result = {
+                    'template_id': template_id,
+                    'status': 'started',
+                    'start_time': datetime.now().isoformat(),
+                    'rooms_added': 0,
+                    'errors': []
+                }
+
+                try:
+                    template_name = template_id_to_name.get(template_id, template_id)
+                    room_list = room_entries[template_id]
+
+                    self._log(f"Processing template '{template_name}' with {len(room_list)} rooms")
+
+                    # Create the template
+                    creation_result = self.create_room_template(template_name, room_list)
+                    template_result.update(creation_result)
+
+                    if creation_result['status'] in ['completed', 'completed_with_warnings']:
+                        all_results['templates_successful'] += 1
+                        template_result['status'] = 'completed'
+                    else:
+                        all_results['templates_failed'] += 1
+                        template_result['status'] = 'failed'
+
+                    template_result['end_time'] = datetime.now().isoformat()
+                    all_results['templates_processed'].append(template_result)
+
+                    time.sleep(2)
+
+                except Exception as e:
+                    error_msg = f"Failed to process template '{template_id}': {str(e)}"
+                    template_result.update({
+                        'status': 'failed',
+                        'error': error_msg,
+                        'end_time': datetime.now().isoformat()
+                    })
+                    all_results['templates_processed'].append(template_result)
+                    all_results['templates_failed'] += 1
+                    self._log(error_msg, "ERROR")
+
+            # Determine overall status
+            if all_results['templates_successful'] == len(selected_template_ids):
+                all_results['overall_status'] = 'completed'
+            elif all_results['templates_successful'] > 0:
+                all_results['overall_status'] = 'partially_completed'
+            else:
+                all_results['overall_status'] = 'failed'
+
+            self._log(f"Room data automation completed. Success: {all_results['templates_successful']}, Failed: {all_results['templates_failed']}")
+
+        except Exception as e:
+            error_msg = f"Room data automation flow failed: {str(e)}"
+            self._log(error_msg, "ERROR")
+            all_results['overall_error'] = error_msg
+            all_results['overall_status'] = 'failed'
+        finally:
+            try:
+                self.automator.close()
+                self._log("Browser closed after room data automation flow")
+            except Exception as close_error:
+                self._log(f"Error closing browser: {str(close_error)}", "WARNING")
+            all_results['end_time'] = datetime.now().isoformat()
+
+        return all_results

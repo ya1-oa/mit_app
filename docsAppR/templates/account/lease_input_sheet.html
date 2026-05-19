@@ -1,0 +1,567 @@
+{% load static %}
+{% load humanize %}
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Lease Input Sheet - Quality Check</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11px;
+            line-height: 1.4;
+            margin: 0;
+            padding: 15px;
+            color: #000;
+        }
+
+        h1 {
+            text-align: center;
+            font-size: 16pt;
+            margin: 10px 0;
+            color: #333;
+            border-bottom: 2px solid #333;
+            padding-bottom: 10px;
+        }
+
+        h2 {
+            font-size: 12pt;
+            margin: 15px 0 8px 0;
+            color: #1a5276;
+            border-bottom: 1px solid #1a5276;
+            padding-bottom: 5px;
+        }
+
+        .header-info {
+            text-align: center;
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #f8f9fa;
+            border-radius: 5px;
+        }
+
+        .header-info p {
+            margin: 3px 0;
+            font-size: 12px;
+        }
+
+        .section {
+            margin-bottom: 15px;
+            page-break-inside: avoid;
+        }
+
+        .field-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 10px;
+        }
+
+        .field-table th,
+        .field-table td {
+            border: 1px solid #ddd;
+            padding: 6px 8px;
+            text-align: left;
+            vertical-align: top;
+        }
+
+        .field-table th {
+            background-color: #e8e8e8;
+            font-weight: bold;
+            width: 35%;
+            color: #333;
+        }
+
+        .field-table td {
+            background-color: #fff;
+            width: 65%;
+        }
+
+        .field-table td.value {
+            font-weight: 600;
+            color: #1a5276;
+        }
+
+        .two-column {
+            display: flex;
+            gap: 20px;
+        }
+
+        .two-column .column {
+            flex: 1;
+        }
+
+        .checkbox-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 5px 0;
+        }
+
+        .checkbox {
+            width: 14px;
+            height: 14px;
+            border: 2px solid #333;
+            display: inline-block;
+            vertical-align: middle;
+        }
+
+        .checkbox.checked {
+            background-color: #333;
+            position: relative;
+        }
+
+        .checkbox.checked::after {
+            content: "X";
+            color: white;
+            font-size: 10px;
+            font-weight: bold;
+            position: absolute;
+            top: -1px;
+            left: 2px;
+        }
+
+        .verification-section {
+            margin-top: 20px;
+            padding: 15px;
+            border: 2px solid #333;
+            background: #fffef0;
+        }
+
+        .verification-section h3 {
+            margin: 0 0 10px 0;
+            font-size: 11pt;
+        }
+
+        .signature-line {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 30px;
+        }
+
+        .signature-block {
+            width: 45%;
+        }
+
+        .signature-block .line {
+            border-bottom: 1px solid #333;
+            margin-bottom: 5px;
+            height: 25px;
+        }
+
+        .signature-block label {
+            font-size: 10px;
+            color: #666;
+        }
+
+        .highlight {
+            background-color: #fff3cd;
+            padding: 2px 5px;
+        }
+
+        .money {
+            font-family: 'Courier New', monospace;
+            font-weight: bold;
+        }
+
+        .footer {
+            margin-top: 20px;
+            text-align: center;
+            font-size: 9px;
+            color: #666;
+            border-top: 1px solid #ddd;
+            padding-top: 10px;
+        }
+
+        @media print {
+            body {
+                padding: 10px;
+            }
+            .section {
+                page-break-inside: avoid;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>LEASE DOCUMENT INPUT SHEET</h1>
+    <p style="text-align: center; font-size: 10px; color: #666; margin-top: -5px;">Quality Check & Verification Form</p>
+
+    <div class="header-info">
+        <p><strong>Generated:</strong> {{ today }}</p>
+        <p><strong>Claim:</strong> {{ client.pOwner }} | <strong>Claim #:</strong> {{ client.claimNumber }}</p>
+    </div>
+
+    <!-- LESSEE (TENANT) INFORMATION -->
+    <div class="section">
+        <h2>LESSEE (TENANT) INFORMATION</h2>
+        <table class="field-table">
+            <tr>
+                <th>Tenant Name</th>
+                <td class="value">{{ client.pOwner }}</td>
+            </tr>
+            <tr>
+                <th>Property Address</th>
+                <td class="value">{{ client.pAddress }}</td>
+            </tr>
+            <tr>
+                <th>City, State ZIP</th>
+                <td class="value">{{ client.pCityStateZip }}</td>
+            </tr>
+            <tr>
+                <th>Primary Phone</th>
+                <td class="value">{{ client.cPhone|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Secondary Phone</th>
+                <td class="value">{{ client.cPhone2|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Primary Email</th>
+                <td class="value">{{ client.cEmail|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Secondary Email</th>
+                <td class="value">{{ client.cEmail2|default:"—" }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- INSURANCE COMPANY INFORMATION -->
+    <div class="section">
+        <h2>INSURANCE COMPANY INFORMATION</h2>
+        <table class="field-table">
+            <tr>
+                <th>Insurance Company</th>
+                <td class="value">{{ client.insuranceCo_Name|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Claim Number</th>
+                <td class="value highlight">{{ client.claimNumber|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Policy Number</th>
+                <td class="value">{{ client.policyNumber|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Date of Loss</th>
+                <td class="value">{{ client.dateOfLoss|date:"F d, Y"|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Cause of Loss</th>
+                <td class="value">{{ client.causeOfLoss|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Insurance Phone</th>
+                <td class="value">{{ client.insuranceCoPhone|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Insurance Email</th>
+                <td class="value">{{ client.emailInsCo|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Desk Adjuster</th>
+                <td class="value">{{ client.deskAdjusterDA|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Desk Adjuster Phone</th>
+                <td class="value">{{ client.deskAdjPhone|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Field Adjuster</th>
+                <td class="value">{{ client.fieldAdjusterName|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Field Adjuster Phone</th>
+                <td class="value">{{ client.phoneFieldAdj|default:"—" }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- LESSOR (LANDLORD) INFORMATION -->
+    <div class="section">
+        <h2>LESSOR (LANDLORD) INFORMATION</h2>
+        <table class="field-table">
+            <tr>
+                <th>Landlord Full Name</th>
+                <td class="value">{{ landlord.full_name|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Landlord Address</th>
+                <td class="value">{{ landlord.address|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>City, State ZIP</th>
+                <td class="value">{{ landlord.city|default:"" }}, {{ landlord.state|default:"" }} {{ landlord.zip_code|default:"" }}</td>
+            </tr>
+            <tr>
+                <th>Landlord Phone</th>
+                <td class="value">{{ landlord.phone|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Landlord Email</th>
+                <td class="value">{{ landlord.email|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Contact Person 1</th>
+                <td class="value">{{ landlord.contact_person_1|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Contact Person 2</th>
+                <td class="value">{{ landlord.contact_person_2|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Contact Phone</th>
+                <td class="value">{{ landlord.contact_phone|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Contact Email</th>
+                <td class="value">{{ landlord.contact_email|default:"—" }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- RENTAL PROPERTY INFORMATION -->
+    <div class="section">
+        <h2>RENTAL PROPERTY INFORMATION</h2>
+        <table class="field-table">
+            <tr>
+                <th>Property Address</th>
+                <td class="value highlight">{{ landlord.property_address|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Property City</th>
+                <td class="value">{{ landlord.property_city|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Property State</th>
+                <td class="value">{{ landlord.property_state|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Property ZIP</th>
+                <td class="value">{{ landlord.property_zip|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Number of Bedrooms</th>
+                <td class="value">{{ landlord.bedrooms|default:"—" }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- LEASE TERMS -->
+    <div class="section">
+        <h2>LEASE TERMS & DATES</h2>
+        <table class="field-table">
+            <tr>
+                <th>Agreement Date</th>
+                <td class="value highlight">{{ formatted_agreement_date|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Lease Start Date</th>
+                <td class="value highlight">{{ formatted_start_date|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Lease End Date</th>
+                <td class="value highlight">{{ formatted_end_date|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Rental Period (Months)</th>
+                <td class="value">{{ landlord.rental_months|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Document Type</th>
+                <td class="value">{% if is_renewal %}<span class="highlight">RENEWAL</span>{% else %}NEW LEASE{% endif %}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- FINANCIAL TERMS -->
+    <div class="section">
+        <h2>FINANCIAL TERMS</h2>
+        <table class="field-table">
+            <tr>
+                <th>Monthly Rent</th>
+                <td class="value money">${{ landlord.default_rent_amount|floatformat:2|intcomma|default:"0.00" }}</td>
+            </tr>
+            <tr>
+                <th>Security Deposit</th>
+                <td class="value money">
+                    {% if exclude_security_deposit %}
+                        <span style="text-decoration: line-through;">${{ landlord.default_security_deposit|floatformat:2|intcomma|default:"0.00" }}</span>
+                        <span class="highlight"> WAIVED</span>
+                    {% else %}
+                        ${{ landlord.default_security_deposit|floatformat:2|intcomma|default:"0.00" }}
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th>Inspection/Clean-up Fee</th>
+                <td class="value money">
+                    {% if exclude_inspection_fee %}
+                        <span style="text-decoration: line-through;">${{ landlord.default_inspection_fee|floatformat:2|intcomma|default:"0.00" }}</span>
+                        <span class="highlight"> WAIVED</span>
+                    {% else %}
+                        ${{ landlord.default_inspection_fee|floatformat:2|intcomma|default:"0.00" }}
+                    {% endif %}
+                </td>
+            </tr>
+            <tr>
+                <th>Rent Due Day</th>
+                <td class="value">{{ landlord.default_rent_due_day|default:"1" }}{{ landlord.default_rent_due_day|default:"1"|ordinal }} of each month</td>
+            </tr>
+            <tr>
+                <th>Late Fee</th>
+                <td class="value money">${{ landlord.default_late_fee|floatformat:2|intcomma|default:"0.00" }}</td>
+            </tr>
+            <tr>
+                <th>Late Fee Starts</th>
+                <td class="value">Day {{ landlord.default_late_fee_start_day|default:"5" }}</td>
+            </tr>
+            <tr>
+                <th>Eviction Notice Day</th>
+                <td class="value">Day {{ landlord.default_eviction_day|default:"10" }}</td>
+            </tr>
+            <tr>
+                <th>NSF Fee</th>
+                <td class="value money">${{ landlord.default_nsf_fee|floatformat:2|intcomma|default:"0.00" }}</td>
+            </tr>
+            <tr>
+                <th>Max Occupants</th>
+                <td class="value">{{ landlord.default_max_occupants|default:"10" }}</td>
+            </tr>
+            <tr>
+                <th>Parking Spaces</th>
+                <td class="value">{{ landlord.default_parking_spaces|default:"2" }}</td>
+            </tr>
+            <tr>
+                <th>Parking Fee</th>
+                <td class="value money">${{ landlord.default_parking_fee|floatformat:2|intcomma|default:"0.00" }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- COMPANY INFORMATION -->
+    <div class="section">
+        <h2>REAL ESTATE COMPANY INFORMATION</h2>
+        <table class="field-table">
+            <tr>
+                <th>Company Name</th>
+                <td class="value">{{ landlord.real_estate_company|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Company Address</th>
+                <td class="value">{{ landlord.company_mailing_address|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>City, State ZIP</th>
+                <td class="value">{{ landlord.company_city|default:"" }}, {{ landlord.company_state|default:"" }} {{ landlord.company_zip|default:"" }}</td>
+            </tr>
+            <tr>
+                <th>Contact Person</th>
+                <td class="value">{{ landlord.company_contact_person|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Company Phone</th>
+                <td class="value">{{ landlord.company_phone|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Company Email</th>
+                <td class="value">{{ landlord.company_email|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Broker Name</th>
+                <td class="value">{{ landlord.broker_name|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Broker Phone</th>
+                <td class="value">{{ landlord.broker_phone|default:"—" }}</td>
+            </tr>
+            <tr>
+                <th>Broker Email</th>
+                <td class="value">{{ landlord.broker_email|default:"—" }}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- SPECIAL NOTES -->
+    {% if landlord.lease_special_notes %}
+    <div class="section">
+        <h2>SPECIAL LEASE NOTES/INSTRUCTIONS</h2>
+        <table class="field-table">
+            <tr>
+                <td class="value" style="width: 100%; white-space: pre-wrap;">{{ landlord.lease_special_notes }}</td>
+            </tr>
+        </table>
+    </div>
+    {% endif %}
+
+    <!-- OPTIONS SUMMARY -->
+    <div class="section">
+        <h2>OPTIONS SELECTED</h2>
+        <table class="field-table">
+            <tr>
+                <th>Renewal Document</th>
+                <td class="value">{% if is_renewal %}YES{% else %}NO{% endif %}</td>
+            </tr>
+            <tr>
+                <th>Exclude Security Deposit</th>
+                <td class="value">{% if exclude_security_deposit %}YES - WAIVED{% else %}NO{% endif %}</td>
+            </tr>
+            <tr>
+                <th>Exclude Inspection Fee</th>
+                <td class="value">{% if exclude_inspection_fee %}YES - WAIVED{% else %}NO{% endif %}</td>
+            </tr>
+        </table>
+    </div>
+
+    <!-- VERIFICATION SECTION -->
+    <div class="verification-section">
+        <h3>VERIFICATION CHECKLIST</h3>
+        <p style="font-size: 10px; color: #666; margin-bottom: 10px;">Please verify all information above is correct before finalizing documents.</p>
+
+        <div class="checkbox-row">
+            <span class="checkbox"></span>
+            <span>Tenant information verified</span>
+        </div>
+        <div class="checkbox-row">
+            <span class="checkbox"></span>
+            <span>Insurance/Claim information verified</span>
+        </div>
+        <div class="checkbox-row">
+            <span class="checkbox"></span>
+            <span>Landlord information verified</span>
+        </div>
+        <div class="checkbox-row">
+            <span class="checkbox"></span>
+            <span>Property address verified</span>
+        </div>
+        <div class="checkbox-row">
+            <span class="checkbox"></span>
+            <span>Lease dates verified (Agreement, Start, End)</span>
+        </div>
+        <div class="checkbox-row">
+            <span class="checkbox"></span>
+            <span>Financial terms verified (Rent, Deposit, Fees)</span>
+        </div>
+        <div class="checkbox-row">
+            <span class="checkbox"></span>
+            <span>Special notes reviewed (if applicable)</span>
+        </div>
+
+        <div class="signature-line">
+            <div class="signature-block">
+                <div class="line"></div>
+                <label>Verified By (Print Name)</label>
+            </div>
+            <div class="signature-block">
+                <div class="line"></div>
+                <label>Date</label>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Lease Input Sheet | {{ client.pOwner }} | Generated: {{ today }}</p>
+        <p>This document is for internal quality control purposes only.</p>
+    </div>
+</body>
+</html>

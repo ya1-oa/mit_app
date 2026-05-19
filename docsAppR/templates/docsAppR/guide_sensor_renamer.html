@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sensor Image Renamer — User Guide</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', Arial, sans-serif;
+      font-size: 14px;
+      color: #1a1a2e;
+      background: #fff;
+      max-width: 760px;
+      margin: 0 auto;
+      padding: 40px 30px 60px;
+    }
+
+    /* Header */
+    .guide-header {
+      border-bottom: 3px solid #0066cc;
+      padding-bottom: 16px;
+      margin-bottom: 28px;
+    }
+    .guide-header .company {
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #0066cc;
+      margin-bottom: 6px;
+    }
+    .guide-header h1 {
+      font-size: 26px;
+      font-weight: 800;
+      color: #0d1b2a;
+    }
+    .guide-header .subtitle {
+      font-size: 13px;
+      color: #555;
+      margin-top: 4px;
+    }
+
+    /* Section headings */
+    h2 {
+      font-size: 14px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #0066cc;
+      border-left: 4px solid #0066cc;
+      padding-left: 10px;
+      margin: 28px 0 12px;
+    }
+
+    /* Numbered steps */
+    ol.steps {
+      padding-left: 0;
+      list-style: none;
+      counter-reset: step;
+    }
+    ol.steps > li {
+      counter-increment: step;
+      display: flex;
+      gap: 14px;
+      margin-bottom: 14px;
+      align-items: flex-start;
+    }
+    ol.steps > li::before {
+      content: counter(step);
+      background: #0066cc;
+      color: #fff;
+      font-weight: 700;
+      font-size: 12px;
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    ol.steps > li .step-text strong {
+      display: block;
+      font-size: 14px;
+      margin-bottom: 3px;
+      color: #0d1b2a;
+    }
+    ol.steps > li .step-text {
+      color: #333;
+      line-height: 1.55;
+    }
+
+    /* Bullet lists inside steps */
+    ol.steps ul, ul.bullets {
+      margin: 6px 0 0 0;
+      padding-left: 18px;
+      color: #444;
+      line-height: 1.6;
+    }
+
+    /* Info boxes */
+    .box {
+      border-radius: 8px;
+      padding: 14px 16px;
+      margin: 16px 0;
+      line-height: 1.6;
+      font-size: 13px;
+    }
+    .box-blue   { background: #e8f4fd; border-left: 4px solid #0066cc; }
+    .box-green  { background: #eafaf1; border-left: 4px solid #27ae60; }
+    .box-yellow { background: #fefce8; border-left: 4px solid #f59e0b; }
+
+    .box strong { display: block; margin-bottom: 4px; font-size: 13px; }
+
+    /* Folder table */
+    table.folders {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 10px 0;
+      font-size: 13px;
+    }
+    table.folders th {
+      background: #0066cc;
+      color: white;
+      padding: 8px 12px;
+      text-align: left;
+      font-weight: 600;
+    }
+    table.folders td {
+      padding: 8px 12px;
+      border-bottom: 1px solid #e0e0e0;
+    }
+    table.folders tr:nth-child(even) td { background: #f5f7fa; }
+
+    code {
+      background: #f0f4f8;
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-size: 12px;
+      font-family: 'Courier New', monospace;
+      color: #c0392b;
+    }
+
+    /* Footer */
+    .guide-footer {
+      margin-top: 48px;
+      padding-top: 16px;
+      border-top: 1px solid #ddd;
+      font-size: 11px;
+      color: #888;
+      text-align: center;
+    }
+
+    /* Print styles */
+    @media print {
+      body { padding: 20px; }
+      .no-print { display: none; }
+      h2 { page-break-before: auto; }
+    }
+
+    .print-btn {
+      display: inline-block;
+      margin-bottom: 24px;
+      padding: 8px 18px;
+      background: #0066cc;
+      color: white;
+      border: none;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    .print-btn:hover { background: #0052a3; }
+  </style>
+</head>
+<body>
+
+  <div class="no-print" style="margin-bottom: 16px;">
+    <button class="print-btn" onclick="window.print()">&#128438; Print / Save as PDF</button>
+  </div>
+
+  <div class="guide-header">
+    <div class="company">All Phase Consulting &nbsp;·&nbsp; Tool Guide</div>
+    <h1>Sensor Image Renamer</h1>
+    <div class="subtitle">Automatically rename and sort sensor reading photos using AI — no manual filing needed.</div>
+  </div>
+
+  <div class="box box-blue">
+    <strong>What does this tool do?</strong>
+    Upload photos of your sensor displays (moisture meters and RH/Temperature/GPP loggers). The AI reads the values
+    directly from the screen and renames each photo with those readings — then sorts them into organized folders
+    ready for your report.
+  </div>
+
+
+  <h2>Step-by-Step Instructions</h2>
+
+  <ol class="steps">
+
+    <li>
+      <div class="step-text">
+        <strong>Open the Sensor Renamer page</strong>
+        Log in to the app and click <em>Sensor Renamer</em> in the left sidebar menu.
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Upload your sensor photos</strong>
+        Drag and drop your photos onto the upload area, or click the area to browse and select files.
+        <ul>
+          <li>Accepted formats: JPG, PNG, WEBP, TIFF, BMP</li>
+          <li>You can upload multiple photos at once (up to 50 recommended per batch)</li>
+          <li>Photos can be a mix of moisture meter shots and RH/T/GPP logger shots</li>
+        </ul>
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Choose your settings (optional)</strong>
+        <ul>
+          <li><em>Model</em> — leave on the default (Sonnet) for best results; use Haiku for speed</li>
+          <li><em>Workers</em> — controls how many photos are analyzed at the same time (default 4 is fine)</li>
+        </ul>
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Click "Process Images"</strong>
+        A progress bar will appear. The AI reads each sensor display one by one. This typically takes
+        10–30 seconds for a batch of 10 photos, depending on the number of images.
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Review the results table</strong>
+        When complete, a table shows every photo with the values read and which folder it was placed in.
+        <ul>
+          <li>Green rows = fully read and renamed</li>
+          <li>Orange rows = partially read (one value was unreadable)</li>
+          <li>Red rows = sent to <em>NA Review</em> for manual correction</li>
+        </ul>
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Fix any NA Review photos (if needed)</strong>
+        If some photos could not be read automatically, they appear in the <em>NA Review</em> folder in the
+        file browser. Click <em>Correct</em> on any NA photo, enter the values you can see on screen,
+        and submit — the photo is moved to the correct folder automatically.
+      </div>
+    </li>
+
+    <li>
+      <div class="step-text">
+        <strong>Download your renamed files</strong>
+        <ul>
+          <li>Click <strong>Download All (ZIP)</strong> to get all folders at once</li>
+          <li>Or expand the file browser and download individual folders separately</li>
+          <li>The ZIP preserves the folder structure shown below</li>
+        </ul>
+      </div>
+    </li>
+
+  </ol>
+
+
+  <h2>Output Folder Structure</h2>
+
+  <table class="folders">
+    <thead>
+      <tr><th>Folder</th><th>Contains</th><th>File naming example</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td><strong>RH_T_GPP</strong></td>
+        <td>RH/Temperature/GPP loggers — sorted by RH first</td>
+        <td><code>RH65.3_T22.1_GPP310.5.jpg</code></td>
+      </tr>
+      <tr>
+        <td><strong>T_RH_GPP</strong></td>
+        <td>Same loggers — sorted by Temperature first</td>
+        <td><code>T22.1_RH65.3_GPP310.5.jpg</code></td>
+      </tr>
+      <tr>
+        <td><strong>GPP_RH_T</strong></td>
+        <td>Same loggers — sorted by GPP first</td>
+        <td><code>GPP310.5_RH65.3_T22.1.jpg</code></td>
+      </tr>
+      <tr>
+        <td><strong>MC</strong></td>
+        <td>Moisture Content meter photos</td>
+        <td><code>MC19.5.jpg</code></td>
+      </tr>
+      <tr>
+        <td><strong>NA_Review</strong></td>
+        <td>Photos the AI could not fully read — requires manual correction</td>
+        <td><code>RH65.3_TNA_GPP310.5.jpg</code></td>
+      </tr>
+    </tbody>
+  </table>
+
+
+  <h2>Tips for Best Results</h2>
+
+  <ul class="bullets">
+    <li>Make sure the sensor display is clearly visible and in focus — blurry screens increase NA rate</li>
+    <li>Avoid photos where the display is angled sharply or glare is covering the numbers</li>
+    <li>Each photo should show only one sensor at a time for the most accurate readings</li>
+    <li>The AI rounds all readings to 1 decimal place (e.g., 65.3, 22.1)</li>
+    <li>If a batch has more than ~30 photos, consider splitting into two uploads for faster processing</li>
+  </ul>
+
+  <div class="box box-green" style="margin-top: 20px;">
+    <strong>NA Review is normal</strong>
+    A small percentage of photos (typically those with glare, low contrast, or unusual display formats)
+    will go to NA Review. Use the built-in correction panel — it shows a preview of the photo,
+    pre-fills any values the AI did read, and moves the file immediately once you submit.
+  </div>
+
+
+  <h2>Frequently Asked Questions</h2>
+
+  <ul class="bullets">
+    <li><strong>Can I mix MC and RH/T/GPP photos in one batch?</strong> Yes — the AI identifies the device type automatically.</li>
+    <li><strong>Are my original photos kept?</strong> Yes. The tool copies your photos with new names; originals are not deleted.</li>
+    <li><strong>What if I close the browser while it's processing?</strong> The task continues in the background. Return to the page and paste the task ID to resume, or simply re-upload if needed.</li>
+    <li><strong>How many photos can I upload at once?</strong> Up to 50 is recommended. For larger jobs, split into batches.</li>
+  </ul>
+
+
+  <div class="guide-footer">
+    All Phase Consulting &nbsp;·&nbsp; Sensor Image Renamer &nbsp;·&nbsp; Internal Use Guide
+  </div>
+
+</body>
+</html>

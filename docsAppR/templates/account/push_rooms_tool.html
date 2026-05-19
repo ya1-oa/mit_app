@@ -1,0 +1,2211 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Push Rooms to Encircle{% endblock %}
+
+{% block content %}
+<main>
+  <h1>
+    <button class="menu-toggle"><span></span><span></span><span></span></button>
+    Push Rooms to Encircle
+  </h1>
+
+  <div class="container-fluid px-3 py-3">
+
+    <!-- ── TOP: Two pickers + template selection ─────────────────────── -->
+    <div class="row g-3 mb-3">
+
+      <!-- Local Claim picker -->
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header fw-bold" style="background:#404040;color:#fff;">
+            <i class="fa fa-folder-open me-1"></i> 1. Select Local Claim
+          </div>
+          <div class="card-body p-2">
+            <input type="text" id="localSearch" class="form-control form-control-sm mb-2"
+                   placeholder="Search by name, address or claim #…">
+            <div id="localList" style="max-height:280px;overflow-y:auto;">
+              {% for c in clients %}
+              <div class="local-item p-2 rounded mb-1"
+                   style="cursor:pointer;border:1px solid #ddd;"
+                   data-id="{{ c.id }}"
+                   data-name="{{ c.pOwner|default:'' }}"
+                   data-addr="{{ c.pAddress|default:'' }}"
+                   data-claim="{{ c.claimNumber|default:'' }}">
+                <div class="fw-semibold" style="color:#333;font-size:.88rem;">{{ c.pOwner|default:"(no name)" }}</div>
+                <div style="font-size:.75rem;color:#666;">{{ c.pAddress|default:"" }}</div>
+                {% if c.claimNumber %}<div style="font-size:.72rem;color:#999;">Claim # {{ c.claimNumber }}</div>{% endif %}
+              </div>
+              {% empty %}
+              <p class="text-muted small">No local claims found.</p>
+              {% endfor %}
+            </div>
+          </div>
+          <div class="card-footer p-2" style="background:#f8f9fa;font-size:.8rem;color:#555;">
+            Selected: <strong id="selectedLocalName">—</strong>
+            <input type="hidden" id="selectedLocalId">
+          </div>
+        </div>
+      </div>
+
+      <!-- Encircle Claim picker -->
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header fw-bold" style="background:#0066cc;color:#fff;">
+            <i class="fa fa-cloud me-1"></i> 2. Select Target Encircle Claim
+          </div>
+          <div class="card-body p-2">
+            <div class="input-group input-group-sm mb-2">
+              <input type="text" id="encircleSearch" class="form-control"
+                     placeholder="Search by name or address…">
+              <button class="btn btn-outline-secondary" id="btnLoadEncircle" type="button">
+                <i class="fa fa-sync-alt"></i> Load
+              </button>
+            </div>
+            <div id="encircleLoading" class="text-center py-3 d-none">
+              <div class="spinner-border spinner-border-sm text-primary"></div>
+              <span class="ms-2 small">Loading Encircle claims…</span>
+            </div>
+            <div id="encircleHint" class="text-muted small text-center py-4">
+              Click <strong>Load</strong> to fetch Encircle claims, then search.
+            </div>
+            <div id="encircleList" style="max-height:280px;overflow-y:auto;display:none;"></div>
+          </div>
+          <div class="card-footer p-2" style="background:#f8f9fa;font-size:.8rem;color:#555;">
+            Selected: <strong id="selectedEncircleName">—</strong>
+            <input type="hidden" id="selectedEncircleId">
+          </div>
+        </div>
+      </div>
+
+      <!-- Template checkboxes + action buttons -->
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header fw-bold" style="background:#333;color:#fff;">
+            <i class="fa fa-list-check me-1"></i> 3. Templates &amp; Actions
+          </div>
+          <div class="card-body p-3">
+            <p class="small text-muted mb-2">Choose which room lists to include:</p>
+            <div class="form-check mb-2">
+              <input class="form-check-input tpl-check" type="checkbox" value="basic" id="tplBasic" checked>
+              <label class="form-check-label" for="tplBasic">
+                <strong>Basic</strong>
+                <span class="text-muted" style="font-size:.78rem;"> — 100–700s overview, source-of-loss, CPS, PPR, demo, WTR, HMR</span>
+              </label>
+            </div>
+            <div class="form-check mb-2">
+              <input class="form-check-input tpl-check" type="checkbox" value="readings" id="tplReadings" checked>
+              <label class="form-check-label" for="tplReadings">
+                <strong>Readings</strong>
+                <span class="text-muted" style="font-size:.78rem;"> — 8000–9000s MC day readings + dry chambers</span>
+              </label>
+            </div>
+            <div class="form-check mb-3">
+              <input class="form-check-input tpl-check" type="checkbox" value="readings default" id="tplReadingsDefault">
+              <label class="form-check-label" for="tplReadingsDefault">
+                <strong>Readings Default</strong>
+                <span class="text-muted" style="font-size:.78rem;"> — Day 0 stabilization only</span>
+              </label>
+            </div>
+
+            <hr>
+            <div class="d-grid gap-2">
+              <button class="btn btn-outline-primary btn-sm" id="btnPreview" disabled>
+                <i class="fa fa-eye me-1"></i> Preview Room Entries
+              </button>
+              <button class="btn btn-success" id="btnPush" disabled>
+                <i class="fa fa-paper-plane me-1"></i> Push Rooms to Encircle
+              </button>
+            </div>
+          </div>
+          <div class="card-footer p-2" style="font-size:.78rem;">
+            <span class="text-muted">Rooms are <em>appended</em> to the existing "Main Building" structure. Existing rooms are not deleted.</span>
+          </div>
+        </div>
+      </div>
+    </div><!-- /row -->
+
+    <!-- ── Tool row: Duplicate + Migrate ───────────────────────────────── -->
+    <div class="row g-3 mb-3">
+
+      <!-- ── Duplicate Claim ── -->
+      <div class="col-md-6">
+        <div class="card h-100" style="border-left:4px solid #0d6efd;">
+          <div class="card-header fw-bold" style="background:#e7f0ff;color:#0d3b8c;">
+            <i class="fa fa-copy me-1"></i> Duplicate Encircle Claim
+            <span class="badge bg-primary ms-2" style="font-size:.7rem;font-weight:normal;">Step 1 — Test first</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Creates a full copy of any Encircle claim — same metadata, all rooms duplicated.
+              Use this to safely test migration on the copy before touching the real claim.
+            </p>
+            <div class="mb-2">
+              <label class="form-label small fw-bold">Source Encircle Claim ID</label>
+              <div class="input-group input-group-sm">
+                <input type="text" id="dupEncircleId" class="form-control"
+                       placeholder="Paste ID, or select above then Copy">
+                <button class="btn btn-outline-primary" id="btnCopyForDup" type="button">
+                  <i class="fa fa-arrow-left"></i> Use selected
+                </button>
+              </div>
+            </div>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Suffix for copy name</label>
+              <input type="text" id="dupSuffix" class="form-control form-control-sm"
+                     value="(TEST COPY)">
+            </div>
+            <button class="btn btn-primary w-100" id="btnDuplicate" type="button">
+              <i class="fa fa-copy me-1"></i> Duplicate Claim
+            </button>
+            <div id="dupStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ── Migrate Old Rooms ── -->
+      <div class="col-md-6">
+        <div class="card h-100" style="border-left:4px solid #dc3545;">
+          <div class="card-header fw-bold" style="background:#fff3cd;color:#856404;">
+            <i class="fa fa-exchange-alt me-1"></i> Migrate Old Rooms
+            <span class="badge bg-warning text-dark ms-2" style="font-size:.7rem;font-weight:normal;">Step 2 — Move photos &amp; delete old rooms</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Detects rooms containing <strong>DAY0</strong> / <strong>DAY&nbsp;#&nbsp;0</strong>
+              (e.g. <code style="font-size:.72rem;">8101 TRAVEL .0 …. FOYER ... DAY0 MC READINGS ..</code>),
+              moves any photos to the matching new-format room, then deletes the old room.
+              Run on the <em>duplicate</em> first to verify, then on the real claim.
+            </p>
+            <div class="mb-3">
+              <label class="form-label small fw-bold">Encircle Claim ID to migrate</label>
+              <div class="input-group input-group-sm">
+                <input type="text" id="migrateEncircleId" class="form-control"
+                       placeholder="Paste ID, or select above then Copy">
+                <button class="btn btn-outline-danger" id="btnCopyEncircleId" type="button">
+                  <i class="fa fa-arrow-left"></i> Use selected
+                </button>
+              </div>
+            </div>
+            <button class="btn btn-danger w-100" id="btnMigrate" type="button">
+              <i class="fa fa-exchange-alt me-1"></i> Run Migration
+            </button>
+            <div id="migrateStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+
+    </div><!-- /tool row -->
+
+    <!-- ── Delete wrongly-pushed rooms ─────────────────────────────────── -->
+    <div class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="card" style="border-left:4px solid #6f42c1;">
+          <div class="card-header fw-bold" style="background:#f3eeff;color:#3d1f8c;">
+            <i class="fa fa-trash-alt me-1"></i> Delete Our-Format Rooms from a Claim
+            <span class="badge bg-secondary ms-2" style="font-size:.7rem;font-weight:normal;">Undo accidental push</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Finds and removes rooms whose names match the format our system generates
+              (<code style="font-size:.72rem;">NNN . Room…</code> or <code style="font-size:.72rem;">NNNN.N . Room…</code>).
+              Use this to clean up a claim you accidentally pushed rooms to.
+              Step 1 only shows you what would be deleted — nothing is removed until Step 2.
+            </p>
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-md-6">
+                <label class="form-label small fw-bold mb-1">Encircle Claim ID</label>
+                <div class="input-group input-group-sm">
+                  <input type="text" id="delRoomsClaimId" class="form-control"
+                         placeholder="Paste claim ID, or use 'Use selected' above">
+                  <button class="btn btn-outline-secondary" id="btnCopyForDelete" type="button">
+                    <i class="fa fa-arrow-left"></i> Use selected
+                  </button>
+                </div>
+              </div>
+              <div class="col-md-3">
+                <button class="btn btn-outline-primary w-100" id="btnIdentifyRooms" type="button">
+                  <i class="fa fa-search me-1"></i> Step 1 — Identify Rooms
+                </button>
+              </div>
+              <div class="col-md-3">
+                <button class="btn btn-danger w-100" id="btnDeleteRooms" type="button" disabled>
+                  <i class="fa fa-trash-alt me-1"></i> Step 2 — Delete Listed Rooms
+                </button>
+              </div>
+            </div>
+
+            <!-- Identified rooms list (hidden until identify runs) -->
+            <div id="delRoomsPreview" class="d-none">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-semibold small">
+                  Rooms matching our format:
+                  <span id="delRoomsMatchCount" class="badge bg-primary ms-1">0</span>
+                  &nbsp;of&nbsp;
+                  <span id="delRoomsTotalCount" class="text-muted"></span> total
+                </span>
+                <span class="text-muted" style="font-size:.75rem;">
+                  Claim: <code id="delRoomsClaimIdDisplay"></code>
+                </span>
+              </div>
+              <div id="delRoomsList"
+                   style="max-height:200px;overflow-y:auto;background:#1e1e1e;
+                          color:#d4d4d4;font-size:.75rem;padding:10px;
+                          border-radius:4px;font-family:monospace;"></div>
+            </div>
+
+            <div id="delRoomsStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /delete row -->
+
+    <!-- ── Cross-claim room cleanup ─────────────────────────────────────── -->
+    <div class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="card" style="border-left:4px solid #fd7e14;">
+          <div class="card-header fw-bold" style="background:#fff8f0;color:#7c3800;">
+            <i class="fa fa-random me-1"></i> Remove Rooms That Belong to a Different Claim
+            <span class="badge bg-warning text-dark ms-2" style="font-size:.7rem;font-weight:normal;">Cross-claim cleanup</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              If you accidentally pushed rooms to the <em>wrong</em> Encircle claim, use this to find and remove them.
+              Enter both the claim that has the <strong>wrong rooms</strong> and the claim the rooms
+              <strong>should have gone to</strong>. It will match by room name and show you exactly which rooms
+              overlap — nothing is deleted until Step 2.
+            </p>
+            <div class="row g-2 align-items-end mb-3">
+              <div class="col-md-4">
+                <label class="form-label small fw-bold mb-1">
+                  Wrong Claim ID
+                  <span class="text-muted fw-normal">(has the incorrect rooms)</span>
+                </label>
+                <div class="input-group input-group-sm">
+                  <input type="text" id="xWrongClaimId" class="form-control"
+                         placeholder="Encircle claim ID…">
+                  <button class="btn btn-outline-secondary" id="btnCopyForXWrong" type="button"
+                          title="Copy selected Encircle claim">
+                    <i class="fa fa-arrow-left"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label small fw-bold mb-1">
+                  Reference Claim ID
+                  <span class="text-muted fw-normal">(where the rooms should be)</span>
+                </label>
+                <div class="input-group input-group-sm">
+                  <input type="text" id="xRefClaimId" class="form-control"
+                         placeholder="Encircle claim ID…">
+                  <button class="btn btn-outline-secondary" id="btnCopyForXRef" type="button"
+                          title="Copy selected Encircle claim">
+                    <i class="fa fa-arrow-left"></i>
+                  </button>
+                </div>
+              </div>
+              <div class="col-md-2">
+                <button class="btn btn-outline-warning w-100" id="btnXIdentify" type="button">
+                  <i class="fa fa-search me-1"></i> Identify
+                </button>
+              </div>
+              <div class="col-md-2">
+                <button class="btn btn-danger w-100" id="btnXDelete" type="button" disabled>
+                  <i class="fa fa-trash-alt me-1"></i> Remove
+                </button>
+              </div>
+            </div>
+
+            <div id="xPreview" class="d-none">
+              <div class="d-flex justify-content-between align-items-center mb-1">
+                <span class="fw-semibold small">
+                  Rooms on wrong claim that also exist on reference claim:
+                  <span id="xMatchCount" class="badge bg-warning text-dark ms-1">0</span>
+                </span>
+                <span class="text-muted" style="font-size:.74rem;">
+                  Wrong claim has <span id="xWrongTotal"></span> our-format rooms ·
+                  Reference has <span id="xRefTotal"></span> our-format rooms
+                </span>
+              </div>
+              <div id="xRoomsList"
+                   style="max-height:200px;overflow-y:auto;background:#1e1e1e;
+                          color:#d4d4d4;font-size:.75rem;padding:10px;
+                          border-radius:4px;font-family:monospace;"></div>
+            </div>
+
+            <div id="xStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /cross-claim row -->
+
+    <!-- ── Photo Copy Tool ──────────────────────────────────────────────── -->
+    <div id="photo-copy-tool" class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="card" style="border-left:4px solid #20c997;">
+          <div class="card-header fw-bold" style="background:#e6fff7;color:#0a5e45;">
+            <i class="fa fa-images me-1"></i> Copy Photos to Another Claim
+            <span class="badge bg-success ms-2" style="font-size:.7rem;font-weight:normal;">Cross-claim</span>
+          </div>
+          <div class="card-body">
+            <p class="small text-muted mb-3">
+              Load the <strong>source claim</strong> to see all its photo folders (grouped by room).
+              Select a folder, then load the <strong>destination claim</strong> and pick the room to upload into.
+            </p>
+
+            <div class="row g-3 mb-3">
+
+              <!-- SOURCE: claim search + folder list -->
+              <div class="col-md-6">
+                <div class="card h-100" style="border:1px solid #20c997;">
+                  <div class="card-header py-2" style="background:#d4f5ec;color:#0a5e45;font-size:.85rem;font-weight:600;">
+                    <i class="fa fa-folder-open me-1"></i> Source — Photo Folders
+                  </div>
+                  <div class="card-body p-2">
+                    <div class="input-group input-group-sm mb-2">
+                      <input type="text" id="cpSrcSearch" class="form-control" placeholder="Search Encircle claims…">
+                      <button class="btn btn-outline-success btn-sm" id="btnCpSrcLoad" type="button">
+                        <i class="fa fa-sync-alt"></i> Load
+                      </button>
+                    </div>
+                    <div id="cpSrcLoading" class="text-center py-2 d-none">
+                      <div class="spinner-border spinner-border-sm text-success"></div>
+                      <span class="ms-1 small">Loading claims…</span>
+                    </div>
+                    <div id="cpSrcClaimList" style="max-height:160px;overflow-y:auto;display:none;" class="mb-2"></div>
+                    <div id="cpSrcClaimSelected" class="small text-muted mb-2 d-none">
+                      Claim: <strong id="cpSrcClaimName"></strong>
+                    </div>
+                    <div id="cpSrcFolderWrap" class="d-none">
+                      <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small fw-semibold">Photo Folders</span>
+                        <span id="cpSrcFolderCount" class="badge bg-secondary" style="font-size:.7rem;"></span>
+                      </div>
+                      <div id="cpSrcFolderLoading" class="text-center py-2 d-none">
+                        <div class="spinner-border spinner-border-sm text-success"></div>
+                        <span class="ms-1 small">Loading folders…</span>
+                      </div>
+                      <div id="cpSrcFolderList" style="max-height:260px;overflow-y:auto;"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- DESTINATION: claim search + room list -->
+              <div class="col-md-6">
+                <div class="card h-100" style="border:1px solid #0d6efd;">
+                  <div class="card-header py-2" style="background:#dce9ff;color:#0a3270;font-size:.85rem;font-weight:600;">
+                    <i class="fa fa-sign-in-alt me-1"></i> Destination — Room
+                  </div>
+                  <div class="card-body p-2">
+                    <div class="input-group input-group-sm mb-2">
+                      <input type="text" id="cpDstSearch" class="form-control" placeholder="Search Encircle claims…">
+                      <button class="btn btn-outline-primary btn-sm" id="btnCpDstLoad" type="button">
+                        <i class="fa fa-sync-alt"></i> Load
+                      </button>
+                    </div>
+                    <div id="cpDstLoading" class="text-center py-2 d-none">
+                      <div class="spinner-border spinner-border-sm text-primary"></div>
+                      <span class="ms-1 small">Loading claims…</span>
+                    </div>
+                    <div id="cpDstClaimList" style="max-height:160px;overflow-y:auto;display:none;" class="mb-2"></div>
+                    <div id="cpDstClaimSelected" class="small text-muted mb-2 d-none">
+                      Claim: <strong id="cpDstClaimName"></strong>
+                    </div>
+                    <div id="cpDstRoomsWrap" class="d-none">
+                      <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="small fw-semibold">Rooms</span>
+                        <span id="cpDstRoomCount" class="badge bg-secondary" style="font-size:.7rem;"></span>
+                      </div>
+                      <div id="cpDstRoomLoading" class="text-center py-2 d-none">
+                        <div class="spinner-border spinner-border-sm text-primary"></div>
+                        <span class="ms-1 small">Loading rooms…</span>
+                      </div>
+                      <div id="cpDstRoomList" style="max-height:260px;overflow-y:auto;"></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /row -->
+
+            <!-- Summary + action -->
+            <div class="row g-2 align-items-center">
+              <div class="col-md-8">
+                <div id="cpSelectionSummary" class="small text-muted">
+                  Select a source folder and a destination room to enable upload.
+                </div>
+              </div>
+              <div class="col-md-4">
+                <button class="btn btn-success w-100" id="btnCopyPhotos" disabled>
+                  <i class="fa fa-upload me-1"></i> Upload Photos
+                </button>
+              </div>
+            </div>
+            <div id="cpStatus" class="mt-3 d-none"></div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /photo copy row -->
+
+    <!-- ── Status banner ────────────────────────────────────────────────── -->
+    <div id="statusBanner" class="alert d-none mb-3" role="alert"></div>
+
+    <!-- ── Preview panel ────────────────────────────────────────────────── -->
+    <div id="previewPanel" class="d-none">
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center"
+             style="background:#222;color:#fff;">
+          <span>
+            <i class="fa fa-list me-1"></i>
+            Room Entry Preview —
+            <span id="previewClientName"></span>
+            &nbsp;·&nbsp;
+            <span id="previewCount" class="badge bg-light text-dark"></span> entries
+          </span>
+          <button class="btn btn-sm btn-outline-light" id="btnCollapsePreview">
+            <i class="fa fa-chevron-up"></i> Collapse
+          </button>
+        </div>
+        <div class="card-body p-0" id="previewBody">
+          <div class="p-2 pb-0" style="background:#1e1e1e;">
+            <span class="badge bg-secondary me-1">Rooms in local claim</span>
+            <span id="previewRoomCount" class="text-light" style="font-size:.8rem;"></span>
+          </div>
+          <pre id="previewList"
+               style="background:#1e1e1e;color:#d4d4d4;font-size:.74rem;
+                      line-height:1.55;padding:12px;margin:0;
+                      max-height:480px;overflow-y:auto;white-space:pre-wrap;word-break:break-word;"></pre>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Room Manager ─────────────────────────────────────────────────── -->
+    <div id="room-manager-tool" class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="card" style="border-left:4px solid #7c4dff;">
+          <div class="card-header fw-bold" style="background:#f3eeff;color:#3d1f8c;">
+            <i class="fa fa-list-ol me-1"></i> Room Manager
+            <span class="badge ms-2" style="background:#7c4dff;font-size:.7rem;font-weight:normal;">Rename · Add · Extract 700s</span>
+          </div>
+          <div class="card-body p-3">
+
+            <!-- Claim Picker -->
+            <div class="row g-2 mb-3 align-items-end">
+              <div class="col-md-5">
+                <label class="form-label fw-semibold mb-1" style="font-size:.82rem;">Encircle Claim</label>
+                <div class="input-group input-group-sm">
+                  <input type="text" id="rmClaimSearch" class="form-control" placeholder="Search Encircle claims…">
+                  <button class="btn btn-outline-secondary" id="rmClaimSearchBtn" type="button">
+                    <i class="fa fa-search"></i>
+                  </button>
+                </div>
+                <div id="rmClaimList" class="mt-1" style="max-height:200px;overflow-y:auto;display:none;border:1px solid #ddd;border-radius:4px;background:#fff;"></div>
+                <div class="mt-1" style="font-size:.78rem;color:#555;">
+                  Selected: <strong id="rmSelectedClaimName">—</strong>
+                  <input type="hidden" id="rmSelectedClaimId">
+                </div>
+              </div>
+              <div class="col-md-3">
+                <button class="btn btn-sm btn-primary w-100" id="rmLoadBtn">
+                  <i class="fa fa-sync me-1"></i> Load Rooms
+                </button>
+              </div>
+            </div>
+
+            <!-- Room Table -->
+            <div id="rmTableWrap" class="d-none">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <span class="fw-semibold" style="font-size:.85rem;">
+                  Rooms in Encircle order — <span id="rmRoomCount">0</span> room(s)
+                </span>
+                <button class="btn btn-sm btn-outline-success" id="rmAddRoomBtn">
+                  <i class="fa fa-plus me-1"></i> Add Room
+                </button>
+              </div>
+
+              <div class="table-responsive mb-3">
+                <table class="table table-sm table-bordered mb-0" style="font-size:.83rem;">
+                  <thead class="table-dark">
+                    <tr>
+                      <th style="width:40px;">#</th>
+                      <th colspan="2">Room Name</th>
+                      <th style="width:72px;">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody id="rmRoomTbody">
+                    <!-- rows injected by JS -->
+                  </tbody>
+                </table>
+              </div>
+
+              <!-- Paste names for bulk rename -->
+              <div class="card mb-3" style="border:1px solid #c0a0ff;">
+                <div class="card-header py-1 px-2 fw-semibold" style="background:#f3eeff;color:#3d1f8c;font-size:.82rem;">
+                  <i class="fa fa-paste me-1"></i> Bulk Rename by Position (paste one name per line)
+                </div>
+                <div class="card-body p-2">
+                  <textarea id="rmPasteNames" class="form-control form-control-sm font-monospace"
+                            rows="8"
+                            placeholder="Paste names here — one per line. Line 1 → Room 1, Line 2 → Room 2, etc. Extra lines create new rooms."></textarea>
+                  <div class="mt-2 d-flex align-items-center gap-2 flex-wrap">
+                    <button class="btn btn-sm btn-warning" id="rmApplyPasteBtn">
+                      <i class="fa fa-magic me-1"></i> Preview &amp; Apply Pasted Names
+                    </button>
+                    <small class="text-muted">Fills inputs and queues new rooms — does not save until you click Save below.</small>
+                  </div>
+                  <!-- Preview of what will happen — grouped by numbered section -->
+                  <div id="rmPastePreview" class="d-none mt-3">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                      <div class="fw-semibold" style="font-size:.82rem;color:#3d1f8c;">
+                        Plan: <span id="rmPreviewRenameCount">0</span> rename(s),
+                        <span id="rmPreviewNewCount">0</span> new room(s) across
+                        <span id="rmPreviewGroupCount">0</span> section(s)
+                      </div>
+                      <button class="btn btn-sm btn-outline-secondary py-0" id="rmClearPlanBtn" style="font-size:.75rem;">
+                        Clear Plan
+                      </button>
+                    </div>
+                    <div id="rmPreviewContent" style="max-height:420px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;background:#fafafa;padding:6px;"></div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Save button -->
+              <button class="btn btn-success btn-sm me-2" id="rmSaveAllBtn">
+                <i class="fa fa-save me-1"></i> Save All Renames
+              </button>
+              <div id="rmSaveStatus" class="d-none alert mt-2" style="font-size:.83rem;"></div>
+
+              <!-- Extract 700s -->
+              <hr class="my-3">
+              <div class="row g-2 align-items-end">
+                <div class="col-md-5">
+                  <label class="form-label fw-semibold mb-1" style="font-size:.82rem;color:#c00;">
+                    <i class="fa fa-file-export me-1"></i> Extract 700-series Rooms to New HMR Claim
+                  </label>
+                  <input type="text" id="rmNewClaimName" class="form-control form-control-sm"
+                         placeholder="New HMR claim name (e.g. 123 Main St — HMR)">
+                </div>
+                <div class="col-md-3">
+                  <button class="btn btn-sm btn-danger w-100" id="rmExtract700Btn">
+                    <i class="fa fa-scissors me-1"></i> Extract 700s → New Claim
+                  </button>
+                </div>
+              </div>
+              <div id="rmExtractStatus" class="d-none alert mt-2" style="font-size:.83rem;"></div>
+
+            </div><!-- /rmTableWrap -->
+
+            <!-- Loading indicator -->
+            <div id="rmLoading" class="d-none text-center py-3">
+              <div class="spinner-border spinner-border-sm text-primary me-2"></div>
+              <span style="font-size:.85rem;">Loading rooms…</span>
+            </div>
+
+          </div><!-- /card-body -->
+        </div><!-- /card -->
+      </div>
+    </div><!-- /room-manager-tool row -->
+
+    <!-- ── Rename Rooms to Canonical List ──────────────────────────────── -->
+    <div id="canonical-rename-tool" class="row g-3 mb-3">
+      <div class="col-12">
+        <div class="card" style="border-left:4px solid #fd7e14;">
+          <div class="card-header fw-bold" style="background:#fff3e0;color:#7a3800;">
+            <i class="fa fa-align-left me-1"></i> Rename Rooms to Canonical List
+          </div>
+          <div class="card-body p-3">
+
+            <div class="row g-3">
+              <!-- Claim picker -->
+              <div class="col-md-4">
+                <label class="form-label fw-semibold mb-1" style="font-size:.82rem;">Select Local Claim</label>
+                <input type="text" id="crSearch" class="form-control form-control-sm mb-1" placeholder="Search by name or address…">
+                <div id="crClaimList" style="max-height:200px;overflow-y:auto;display:none;border:1px solid #ddd;border-radius:4px;background:#fff;" class="mb-2"></div>
+                <div class="small text-muted">Selected: <strong id="crClaimName">—</strong></div>
+                <input type="hidden" id="crClaimId">
+              </div>
+
+              <!-- Names textarea -->
+              <div class="col-md-4">
+                <label class="form-label fw-semibold mb-1" style="font-size:.82rem;">Room Names <span class="text-muted fw-normal">(one per line, in order)</span></label>
+                <textarea id="crNames" class="form-control form-control-sm font-monospace" rows="26">LIVING ROOM DN
+DINING ROOM DN
+KITCHEN DN
+HALL RR DN
+BATH DN
+BR1 DN
+BR1 CLOSET DN
+RR STAIR DN
+RR DNFOYER
+STAIRS UP
+RR HALL UP
+FAMILY ROOM
+PBR2 UP
+PBR2 UP CLST
+BR3 UP
+BR3 UP CLST
+BATH2 UP
+BR4 UP
+BR4 UP CLST
+ATTIC STAIRS
+ATTIC
+Basement Stairs
+Basement 1
+BSMNT STORAGE</textarea>
+              </div>
+
+              <!-- Preview + result -->
+              <div class="col-md-4">
+                <div class="d-flex gap-2 mb-3">
+                  <button class="btn btn-sm btn-warning" id="crPreviewBtn" disabled>
+                    <i class="fa fa-eye me-1"></i> Preview
+                  </button>
+                  <button class="btn btn-sm btn-success" id="crApplyBtn" disabled>
+                    <i class="fa fa-check me-1"></i> Apply
+                  </button>
+                </div>
+                <div id="crPreviewWrap" class="d-none" style="max-height:420px;overflow-y:auto;border:1px solid #ddd;border-radius:4px;background:#fafafa;padding:6px;">
+                  <table class="table table-sm mb-0" style="font-size:.78rem;">
+                    <thead class="table-light"><tr><th>#</th><th>Current</th><th>New</th></tr></thead>
+                    <tbody id="crPreviewTbody"></tbody>
+                  </table>
+                </div>
+                <div id="crStatus" class="d-none alert mt-2" style="font-size:.83rem;"></div>
+              </div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div><!-- /canonical-rename-tool row -->
+
+  </div><!-- /container -->
+</main>
+
+<style>
+  .local-item:hover  { background:#eef3ff; border-color:#0066cc !important; }
+  .local-item.active { background:#dceeff; border-color:#0066cc !important; }
+  .enc-item { cursor:pointer; border:1px solid #ddd; padding:8px 10px; border-radius:4px; margin-bottom:4px; }
+  .enc-item:hover  { background:#e8f4ff; border-color:#0066cc !important; }
+  .enc-item.active { background:#cce3ff; border-color:#0066cc !important; }
+</style>
+
+<script>
+(function () {
+  'use strict';
+
+  const CSRF = '{{ csrf_token }}';
+
+  /* ── State ── */
+  let allEncircleClaims = [];   // cached after load
+  let selectedLocalId   = null;
+  let selectedEncircleId = null;
+
+  /* ── DOM refs ── */
+  const localSearch   = document.getElementById('localSearch');
+  const localList     = document.getElementById('localList');
+  const encircleSearch = document.getElementById('encircleSearch');
+  const encircleList  = document.getElementById('encircleList');
+  const encircleHint  = document.getElementById('encircleHint');
+  const encircleLoading = document.getElementById('encircleLoading');
+  const selectedLocalName   = document.getElementById('selectedLocalName');
+  const selectedEncircleName = document.getElementById('selectedEncircleName');
+  const btnPreview    = document.getElementById('btnPreview');
+  const btnPush       = document.getElementById('btnPush');
+  const btnLoad       = document.getElementById('btnLoadEncircle');
+  const previewPanel  = document.getElementById('previewPanel');
+  const previewList   = document.getElementById('previewList');
+  const previewCount  = document.getElementById('previewCount');
+  const previewClientName = document.getElementById('previewClientName');
+  const previewRoomCount  = document.getElementById('previewRoomCount');
+  const statusBanner  = document.getElementById('statusBanner');
+
+  /* ── Helpers ── */
+  function setStatus(msg, type) {
+    statusBanner.className = `alert alert-${type} mb-3`;
+    statusBanner.innerHTML = msg;
+    statusBanner.classList.remove('d-none');
+  }
+  function clearStatus() { statusBanner.classList.add('d-none'); }
+
+  function getSelectedTemplates() {
+    return [...document.querySelectorAll('.tpl-check:checked')].map(el => el.value);
+  }
+
+  function checkButtons() {
+    const ready = selectedLocalId && selectedEncircleId && getSelectedTemplates().length > 0;
+    btnPreview.disabled = !selectedLocalId || getSelectedTemplates().length === 0;
+    btnPush.disabled    = !ready;
+  }
+
+  /* ── Local claim search & selection ── */
+  localSearch.addEventListener('input', () => {
+    const q = localSearch.value.toLowerCase();
+    localList.querySelectorAll('.local-item').forEach(el => {
+      const match = el.dataset.name.toLowerCase().includes(q)
+                 || el.dataset.addr.toLowerCase().includes(q)
+                 || el.dataset.claim.toLowerCase().includes(q);
+      el.style.display = match ? '' : 'none';
+    });
+  });
+
+  localList.addEventListener('click', e => {
+    const item = e.target.closest('.local-item');
+    if (!item) return;
+    localList.querySelectorAll('.local-item').forEach(el => el.classList.remove('active'));
+    item.classList.add('active');
+    selectedLocalId = item.dataset.id;
+    selectedLocalName.textContent = item.dataset.name || `(id ${selectedLocalId})`;
+    previewPanel.classList.add('d-none');
+    clearStatus();
+    checkButtons();
+  });
+
+  /* ── Load Encircle claims ── */
+  btnLoad.addEventListener('click', loadEncircle);
+
+  async function loadEncircle() {
+    encircleHint.classList.add('d-none');
+    encircleList.style.display = 'none';
+    encircleLoading.classList.remove('d-none');
+    try {
+      const q   = encircleSearch.value.trim();
+      const url = `/claims/api/encircle/simple/${q ? '?q=' + encodeURIComponent(q) : ''}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      if (data.error) throw new Error(data.error);
+      allEncircleClaims = data.claims || [];
+      renderEncircleClaims(allEncircleClaims);
+    } catch (err) {
+      setStatus(`<i class="fa fa-exclamation-triangle me-1"></i> Failed to load Encircle claims: ${err.message}`, 'danger');
+    } finally {
+      encircleLoading.classList.add('d-none');
+    }
+  }
+
+  encircleSearch.addEventListener('input', () => {
+    if (!allEncircleClaims.length) return;
+    const q = encircleSearch.value.toLowerCase();
+    const filtered = q
+      ? allEncircleClaims.filter(c =>
+          c.name.toLowerCase().includes(q) || c.address.toLowerCase().includes(q))
+      : allEncircleClaims;
+    renderEncircleClaims(filtered);
+  });
+
+  function renderEncircleClaims(list) {
+    encircleList.innerHTML = '';
+    if (!list.length) {
+      encircleList.innerHTML = '<p class="text-muted small text-center py-3">No results.</p>';
+    } else {
+      list.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'enc-item';
+        div.dataset.id = c.id;
+        div.dataset.name = c.name;
+        div.innerHTML = `
+          <div class="fw-semibold" style="color:#333;font-size:.88rem;">${c.name || '(no name)'}</div>
+          <div style="font-size:.75rem;color:#666;">${c.address || ''}</div>
+          <div style="font-size:.7rem;color:#999;">ID: ${c.id}</div>`;
+        encircleList.appendChild(div);
+        // re-highlight if already selected
+        if (c.id == selectedEncircleId) div.classList.add('active');
+      });
+    }
+    encircleList.style.display = 'block';
+    encircleHint.classList.add('d-none');
+  }
+
+  encircleList.addEventListener('click', e => {
+    const item = e.target.closest('.enc-item');
+    if (!item) return;
+    encircleList.querySelectorAll('.enc-item').forEach(el => el.classList.remove('active'));
+    item.classList.add('active');
+    selectedEncircleId = item.dataset.id;
+    selectedEncircleName.textContent = item.dataset.name || `(id ${selectedEncircleId})`;
+    previewPanel.classList.add('d-none');
+    clearStatus();
+    checkButtons();
+  });
+
+  /* ── Template checkboxes ── */
+  document.querySelectorAll('.tpl-check').forEach(cb => {
+    cb.addEventListener('change', checkButtons);
+  });
+
+  /* ── Preview ── */
+  btnPreview.addEventListener('click', async () => {
+    if (!selectedLocalId) return;
+    const tpls = getSelectedTemplates().join(',');
+    btnPreview.disabled = true;
+    btnPreview.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Loading…';
+    try {
+      const res  = await fetch(`/claims/${selectedLocalId}/preview-rooms/?templates=${encodeURIComponent(tpls)}`);
+      const data = await res.json();
+      previewClientName.textContent = data.client_name || '';
+      previewRoomCount.textContent  = `${data.room_count} local room(s)`;
+      previewCount.textContent      = `${data.entry_count} entries`;
+
+      // Number each entry in the preview
+      previewList.textContent = data.entries
+        .map((e, i) => `${String(i + 1).padStart(3, ' ')}  ${e}`)
+        .join('\n');
+
+      previewPanel.classList.remove('d-none');
+      previewPanel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } catch (err) {
+      setStatus(`<i class="fa fa-exclamation-triangle me-1"></i> Preview failed: ${err.message}`, 'danger');
+    } finally {
+      btnPreview.disabled = false;
+      btnPreview.innerHTML = '<i class="fa fa-eye me-1"></i> Preview Room Entries';
+    }
+  });
+
+  /* ── Collapse preview ── */
+  document.getElementById('btnCollapsePreview').addEventListener('click', () => {
+    const body = document.getElementById('previewBody');
+    const icon = document.querySelector('#btnCollapsePreview i');
+    const collapsed = body.style.display === 'none';
+    body.style.display = collapsed ? '' : 'none';
+    icon.className = collapsed ? 'fa fa-chevron-up' : 'fa fa-chevron-down';
+  });
+
+  /* ── Push ── */
+  btnPush.addEventListener('click', async () => {
+    if (!selectedLocalId || !selectedEncircleId) return;
+    const tpls = getSelectedTemplates();
+    const localName    = selectedLocalName.textContent;
+    const encircleName = selectedEncircleName.textContent;
+
+    if (!confirm(
+      `Push rooms from:\n  LOCAL: ${localName}\nTO ENCIRCLE CLAIM:\n  ${encircleName} (id: ${selectedEncircleId})\n\nTemplates: ${tpls.join(', ')}\n\nRooms will be APPENDED to the existing structure. Continue?`
+    )) return;
+
+    btnPush.disabled = true;
+    btnPush.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Queuing…';
+    clearStatus();
+
+    try {
+      const res = await fetch(`/claims/${selectedLocalId}/push-rooms-to-encircle/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-CSRFToken': CSRF,
+        },
+        body: JSON.stringify({
+          encircle_claim_id: selectedEncircleId,
+          selected_templates: tpls,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setStatus(
+          `<i class="fa fa-check-circle me-1"></i> <strong>Queued!</strong> ${data.message}` +
+          `<br><small class="text-muted">Task ID: ${data.task_id}</small>`,
+          'success'
+        );
+      } else {
+        setStatus(`<i class="fa fa-times-circle me-1"></i> Error: ${data.error}`, 'danger');
+      }
+    } catch (err) {
+      setStatus(`<i class="fa fa-times-circle me-1"></i> Request failed: ${err.message}`, 'danger');
+    } finally {
+      btnPush.disabled = false;
+      btnPush.innerHTML = '<i class="fa fa-paper-plane me-1"></i> Push Rooms to Encircle';
+      checkButtons();
+    }
+  });
+
+  /* ── Duplicate panel ── */
+  const dupInput  = document.getElementById('dupEncircleId');
+  const dupSuffix = document.getElementById('dupSuffix');
+  const dupStatus = document.getElementById('dupStatus');
+  const btnDup    = document.getElementById('btnDuplicate');
+  const btnCopyForDup = document.getElementById('btnCopyForDup');
+
+  btnCopyForDup.addEventListener('click', () => {
+    if (selectedEncircleId) {
+      dupInput.value = selectedEncircleId;
+    }
+  });
+
+  btnDup.addEventListener('click', async () => {
+    const eid    = dupInput.value.trim();
+    const suffix = dupSuffix.value.trim() || '(TEST COPY)';
+    if (!eid) {
+      dupStatus.className = 'alert alert-warning mt-3';
+      dupStatus.textContent = 'Enter or paste an Encircle claim ID first.';
+      dupStatus.classList.remove('d-none');
+      return;
+    }
+    if (!confirm(
+      `Duplicate Encircle claim:\n  ${eid}\n\nNew claim will be named with suffix "${suffix}".\nAll rooms will be copied.\n\nThe original claim will NOT be modified. Continue?`
+    )) return;
+
+    btnDup.disabled = true;
+    btnDup.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Duplicating…';
+    dupStatus.classList.add('d-none');
+
+    try {
+      const res = await fetch('/claims/duplicate-encircle-claim/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ encircle_claim_id: eid, suffix }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        // ── Auto-populate the migrate input with the new claim ID ──
+        migrateInput.value = data.new_claim_id;
+
+        dupStatus.className = 'alert alert-success mt-3';
+        dupStatus.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Done!</strong> ${data.message}` +
+          `<br><span class="badge bg-primary mt-1" style="font-size:.85rem;">New Claim ID: ${data.new_claim_id}</span>` +
+          `<br><small class="text-muted mt-1 d-block">` +
+            `Rooms copied: <strong>${data.rooms_copied}</strong>` +
+            (data.rooms_failed && data.rooms_failed.length
+              ? ` &nbsp;·&nbsp; <span class="text-danger">Failed: ${data.rooms_failed.join(', ')}</span>`
+              : '') +
+          `</small>` +
+          `<small class="text-success d-block mt-1"><i class="fa fa-arrow-down me-1"></i>The migrate field below has been auto-filled with the new claim ID.</small>`;
+      } else {
+        dupStatus.className = 'alert alert-danger mt-3';
+        dupStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${data.error}`;
+      }
+    } catch (err) {
+      dupStatus.className = 'alert alert-danger mt-3';
+      dupStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${err.message}`;
+    } finally {
+      dupStatus.classList.remove('d-none');
+      btnDup.disabled = false;
+      btnDup.innerHTML = '<i class="fa fa-copy me-1"></i> Duplicate Claim';
+    }
+  });
+
+  /* ── Migrate panel ── */
+  const migrateInput  = document.getElementById('migrateEncircleId');
+  const migrateStatus = document.getElementById('migrateStatus');
+  const btnMigrate    = document.getElementById('btnMigrate');
+  const btnCopyId     = document.getElementById('btnCopyEncircleId');
+
+  btnCopyId.addEventListener('click', () => {
+    if (selectedEncircleId) {
+      migrateInput.value = selectedEncircleId;
+    }
+  });
+
+  btnMigrate.addEventListener('click', async () => {
+    const eid = migrateInput.value.trim();
+    if (!eid) {
+      migrateStatus.className = 'alert alert-warning mt-3';
+      migrateStatus.textContent = 'Enter or copy an Encircle claim ID first.';
+      migrateStatus.classList.remove('d-none');
+      return;
+    }
+
+    if (!confirm(
+      `Migrate rooms on Encircle claim:\n  ${eid}\n\n` +
+      `This will:\n` +
+      `  • Move photos from old-format rooms → matching new-format rooms\n` +
+      `  • Delete all old-format rooms\n\n` +
+      `This cannot be undone. Continue?`
+    )) return;
+
+    btnMigrate.disabled = true;
+    btnMigrate.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Queuing…';
+    migrateStatus.classList.add('d-none');
+
+    try {
+      const res = await fetch('/claims/migrate-encircle-rooms/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ encircle_claim_id: eid }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        migrateStatus.className = 'alert alert-success mt-3';
+        migrateStatus.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Queued!</strong> ${data.message}` +
+          `<br><small class="text-muted">Task ID: ${data.task_id}</small>`;
+      } else {
+        migrateStatus.className = 'alert alert-danger mt-3';
+        migrateStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> Error: ${data.error}`;
+      }
+    } catch (err) {
+      migrateStatus.className = 'alert alert-danger mt-3';
+      migrateStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> Request failed: ${err.message}`;
+    } finally {
+      migrateStatus.classList.remove('d-none');
+      btnMigrate.disabled = false;
+      btnMigrate.innerHTML = '<i class="fa fa-exchange-alt me-1"></i> Run Migration';
+    }
+  });
+
+  /* ── Cross-claim cleanup panel ── */
+  const xWrongInput  = document.getElementById('xWrongClaimId');
+  const xRefInput    = document.getElementById('xRefClaimId');
+  const btnXIdentify = document.getElementById('btnXIdentify');
+  const btnXDelete   = document.getElementById('btnXDelete');
+  const xPreview     = document.getElementById('xPreview');
+  const xMatchCount  = document.getElementById('xMatchCount');
+  const xWrongTotal  = document.getElementById('xWrongTotal');
+  const xRefTotal    = document.getElementById('xRefTotal');
+  const xRoomsList   = document.getElementById('xRoomsList');
+  const xStatus      = document.getElementById('xStatus');
+
+  let _xWrongClaimId  = null;
+  let _xStructureId   = null;
+  let _xRoomIds       = [];
+
+  document.getElementById('btnCopyForXWrong').addEventListener('click', () => {
+    if (selectedEncircleId) xWrongInput.value = selectedEncircleId;
+  });
+  document.getElementById('btnCopyForXRef').addEventListener('click', () => {
+    if (selectedEncircleId) xRefInput.value = selectedEncircleId;
+  });
+
+  btnXIdentify.addEventListener('click', async () => {
+    const wrongId = xWrongInput.value.trim();
+    const refId   = xRefInput.value.trim();
+    if (!wrongId || !refId) {
+      xStatus.className = 'alert alert-warning mt-3';
+      xStatus.textContent = 'Enter both claim IDs first.';
+      xStatus.classList.remove('d-none');
+      return;
+    }
+    if (wrongId === refId) {
+      xStatus.className = 'alert alert-warning mt-3';
+      xStatus.textContent = 'Both IDs are the same — they must be different claims.';
+      xStatus.classList.remove('d-none');
+      return;
+    }
+
+    btnXIdentify.disabled = true;
+    btnXIdentify.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Identifying…';
+    btnXDelete.disabled = true;
+    xPreview.classList.add('d-none');
+    xStatus.classList.add('d-none');
+
+    try {
+      const url = `/claims/identify-rooms-from-other-claim/?wrong_claim_id=${encodeURIComponent(wrongId)}&reference_claim_id=${encodeURIComponent(refId)}`;
+      const res  = await fetch(url);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      _xWrongClaimId = wrongId;
+      _xStructureId  = data.wrong_structure_id;
+      _xRoomIds      = data.rooms.map(r => r.id);
+
+      xMatchCount.textContent = data.matched_count;
+      xWrongTotal.textContent = `${data.wrong_our_room_count}`;
+      xRefTotal.textContent   = `${data.reference_our_room_count}`;
+
+      if (data.rooms.length === 0) {
+        xRoomsList.textContent = '— No overlapping rooms found. Nothing to remove.';
+        btnXDelete.disabled = true;
+      } else {
+        xRoomsList.textContent = data.rooms
+          .map((r, i) => `${String(i + 1).padStart(3, ' ')}  [${r.id}]  ${r.name}`)
+          .join('\n');
+        btnXDelete.disabled = false;
+      }
+      xPreview.classList.remove('d-none');
+    } catch (err) {
+      xStatus.className = 'alert alert-danger mt-3';
+      xStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${err.message}`;
+      xStatus.classList.remove('d-none');
+    } finally {
+      btnXIdentify.disabled = false;
+      btnXIdentify.innerHTML = '<i class="fa fa-search me-1"></i> Identify';
+    }
+  });
+
+  btnXDelete.addEventListener('click', async () => {
+    if (!_xRoomIds.length) return;
+    if (!confirm(
+      `Remove ${_xRoomIds.length} room(s) from Encircle claim:\n  ${_xWrongClaimId}\n\n` +
+      `These rooms were matched by name against the reference claim.\n` +
+      `This cannot be undone. Continue?`
+    )) return;
+
+    btnXDelete.disabled = true;
+    btnXDelete.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Removing…';
+    xStatus.classList.add('d-none');
+
+    try {
+      const res = await fetch('/claims/delete-new-format-rooms/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({
+          encircle_claim_id: _xWrongClaimId,
+          structure_id:      _xStructureId,
+          room_ids:          _xRoomIds,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        xStatus.className = 'alert alert-success mt-3';
+        xStatus.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Done!</strong> ${data.message}` +
+          (data.failed_count
+            ? `<br><small class="text-danger">Failed: ${data.failed.map(f => f.id).join(', ')}</small>`
+            : '');
+        _xRoomIds = [];
+        xPreview.classList.add('d-none');
+        btnXDelete.disabled = true;
+      } else {
+        xStatus.className = 'alert alert-danger mt-3';
+        xStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${data.error}`;
+      }
+    } catch (err) {
+      xStatus.className = 'alert alert-danger mt-3';
+      xStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${err.message}`;
+    } finally {
+      xStatus.classList.remove('d-none');
+      btnXDelete.innerHTML = '<i class="fa fa-trash-alt me-1"></i> Remove';
+    }
+  });
+
+  /* ── Delete our-format rooms panel ── */
+  const delClaimInput   = document.getElementById('delRoomsClaimId');
+  const btnCopyForDel   = document.getElementById('btnCopyForDelete');
+  const btnIdentify     = document.getElementById('btnIdentifyRooms');
+  const btnDeleteRooms  = document.getElementById('btnDeleteRooms');
+  const delPreview      = document.getElementById('delRoomsPreview');
+  const delMatchCount   = document.getElementById('delRoomsMatchCount');
+  const delTotalCount   = document.getElementById('delRoomsTotalCount');
+  const delClaimDisplay = document.getElementById('delRoomsClaimIdDisplay');
+  const delList         = document.getElementById('delRoomsList');
+  const delStatus       = document.getElementById('delRoomsStatus');
+
+  // Carry state between identify and delete steps
+  let _delStructureId = null;
+  let _delRoomIds     = [];
+  let _delClaimId     = null;
+
+  btnCopyForDel.addEventListener('click', () => {
+    if (selectedEncircleId) delClaimInput.value = selectedEncircleId;
+  });
+
+  btnIdentify.addEventListener('click', async () => {
+    const eid = delClaimInput.value.trim();
+    if (!eid) {
+      delStatus.className = 'alert alert-warning mt-3';
+      delStatus.textContent = 'Enter a claim ID first.';
+      delStatus.classList.remove('d-none');
+      return;
+    }
+
+    btnIdentify.disabled = true;
+    btnIdentify.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Identifying…';
+    btnDeleteRooms.disabled = true;
+    delPreview.classList.add('d-none');
+    delStatus.classList.add('d-none');
+
+    try {
+      const res  = await fetch(`/claims/identify-new-format-rooms/?encircle_claim_id=${encodeURIComponent(eid)}`);
+      const data = await res.json();
+      if (!data.success) throw new Error(data.error);
+
+      _delClaimId     = eid;
+      _delStructureId = data.structure_id;
+      _delRoomIds     = data.rooms.map(r => r.id);
+
+      delMatchCount.textContent   = data.matched_count;
+      delTotalCount.textContent   = `${data.total_rooms}`;
+      delClaimDisplay.textContent = eid;
+
+      if (data.rooms.length === 0) {
+        delList.textContent = '— No our-format rooms found on this claim.';
+        btnDeleteRooms.disabled = true;
+      } else {
+        delList.textContent = data.rooms
+          .map((r, i) => `${String(i + 1).padStart(3, ' ')}  [${r.id}]  ${r.name}`)
+          .join('\n');
+        btnDeleteRooms.disabled = false;
+      }
+      delPreview.classList.remove('d-none');
+    } catch (err) {
+      delStatus.className = 'alert alert-danger mt-3';
+      delStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> Identify failed: ${err.message}`;
+      delStatus.classList.remove('d-none');
+    } finally {
+      btnIdentify.disabled = false;
+      btnIdentify.innerHTML = '<i class="fa fa-search me-1"></i> Step 1 — Identify Rooms';
+    }
+  });
+
+  btnDeleteRooms.addEventListener('click', async () => {
+    if (!_delRoomIds.length) return;
+    if (!confirm(
+      `Delete ${_delRoomIds.length} our-format room(s) from Encircle claim:\n  ${_delClaimId}\n\nThis cannot be undone. Continue?`
+    )) return;
+
+    btnDeleteRooms.disabled = true;
+    btnDeleteRooms.innerHTML = '<i class="fa fa-spinner fa-spin me-1"></i> Deleting…';
+    delStatus.classList.add('d-none');
+
+    try {
+      const res = await fetch('/claims/delete-new-format-rooms/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({
+          encircle_claim_id: _delClaimId,
+          structure_id:      _delStructureId,
+          room_ids:          _delRoomIds,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        delStatus.className = 'alert alert-success mt-3';
+        delStatus.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Done!</strong> ${data.message}` +
+          (data.failed_count
+            ? `<br><small class="text-danger">Failed: ${data.failed.map(f => f.id).join(', ')}</small>`
+            : '');
+        // Reset identify state
+        _delRoomIds     = [];
+        _delStructureId = null;
+        delPreview.classList.add('d-none');
+        btnDeleteRooms.disabled = true;
+      } else {
+        delStatus.className = 'alert alert-danger mt-3';
+        delStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${data.error}`;
+      }
+    } catch (err) {
+      delStatus.className = 'alert alert-danger mt-3';
+      delStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${err.message}`;
+    } finally {
+      delStatus.classList.remove('d-none');
+      btnDeleteRooms.innerHTML = '<i class="fa fa-trash-alt me-1"></i> Step 2 — Delete Listed Rooms';
+    }
+  });
+
+})();
+
+// ─── Photo Copy Tool ──────────────────────────────────────────────────────
+(function () {
+  'use strict';
+
+  const CSRF = '{{ csrf_token }}';
+
+  // State
+  let _cpSrcClaims  = [], _cpDstClaims = [];
+  let _cpSrcFolders = [], _cpDstRooms  = [];
+  let _cpSrcSelected  = null;  // {id, name}
+  let _cpDstSelected  = null;  // {id, name}
+  let _cpFolderSel    = null;  // {label, count}  — selected source folder
+  let _cpDstRoomSel   = null;  // {id, name, structure_id}
+
+  // ── Helpers ───────────────────────────────────────────────────────────
+
+  function _escHtml(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function cpUpdateSummary() {
+    const sumEl = document.getElementById('cpSelectionSummary');
+    const btn   = document.getElementById('btnCopyPhotos');
+    if (_cpFolderSel && _cpDstRoomSel && _cpSrcSelected && _cpDstSelected) {
+      sumEl.innerHTML =
+        `Upload <strong>${_cpFolderSel.count}</strong> photo(s) from folder ` +
+        `<span class="text-success fw-semibold">"${_escHtml(_cpFolderSel.label)}"</span> ` +
+        `(<em>${_escHtml(_cpSrcSelected.name)}</em>) &rarr; ` +
+        `room <span class="text-primary fw-semibold">"${_escHtml(_cpDstRoomSel.name)}"</span> ` +
+        `(<em>${_escHtml(_cpDstSelected.name)}</em>)`;
+      btn.disabled = false;
+    } else {
+      sumEl.textContent = 'Select a source folder and a destination room to enable upload.';
+      btn.disabled = true;
+    }
+  }
+
+  // ── Generic claim search picker ───────────────────────────────────────
+
+  function cpSetupClaimPicker(side) {
+    const searchEl  = document.getElementById(`cp${side}Search`);
+    const loadBtn   = document.getElementById(`btnCp${side}Load`);
+    const loadingEl = document.getElementById(`cp${side}Loading`);
+    const listEl    = document.getElementById(`cp${side}ClaimList`);
+
+    let allClaims = [];
+
+    function renderClaims(claims) {
+      listEl.innerHTML = '';
+      if (!claims.length) { listEl.innerHTML = '<p class="text-muted small p-2">No claims found.</p>'; return; }
+      claims.forEach(c => {
+        const div = document.createElement('div');
+        div.className = 'p-2 rounded mb-1';
+        div.style.cssText = 'cursor:pointer;border:1px solid #ddd;font-size:.83rem;';
+        div.innerHTML = `<div class="fw-semibold">${_escHtml(c.name||'(no name)')}</div><div class="text-muted" style="font-size:.75rem;">${_escHtml(c.address||'')}</div>`;
+        div.addEventListener('click', () => cpSelectClaim(side, c));
+        listEl.appendChild(div);
+      });
+    }
+
+    loadBtn.addEventListener('click', async () => {
+      const q = searchEl.value.trim();
+      loadingEl.classList.remove('d-none');
+      listEl.style.display = 'none';
+      try {
+        const resp = await fetch(`/claims/api/encircle/simple/?q=${encodeURIComponent(q)}`);
+        const data = await resp.json();
+        if (data.error) throw new Error(data.error);
+        allClaims = data.claims || [];
+        if (side === 'Src') _cpSrcClaims = allClaims;
+        else                _cpDstClaims = allClaims;
+        renderClaims(allClaims);
+        listEl.style.display = 'block';
+      } catch (err) {
+        listEl.innerHTML = `<p class="text-danger small p-2">${_escHtml(err.message)}</p>`;
+        listEl.style.display = 'block';
+      } finally {
+        loadingEl.classList.add('d-none');
+      }
+    });
+
+    searchEl.addEventListener('input', () => {
+      const q = searchEl.value.trim().toLowerCase();
+      const src = side === 'Src' ? _cpSrcClaims : _cpDstClaims;
+      renderClaims(q ? src.filter(c => (c.name+c.address).toLowerCase().includes(q)) : src);
+    });
+  }
+
+  // ── Claim selection ───────────────────────────────────────────────────
+
+  function cpSelectClaim(side, claim) {
+    const selWrap = document.getElementById(`cp${side}ClaimSelected`);
+    const selName = document.getElementById(`cp${side}ClaimName`);
+    selName.textContent = claim.name || claim.id;
+    selWrap.classList.remove('d-none');
+
+    if (side === 'Src') {
+      _cpSrcSelected = {id: String(claim.id), name: claim.name || ''};
+      _cpFolderSel   = null;
+      cpLoadFolders(String(claim.id));
+    } else {
+      _cpDstSelected = {id: String(claim.id), name: claim.name || ''};
+      _cpDstRoomSel  = null;
+      cpLoadRooms(String(claim.id));
+    }
+    cpUpdateSummary();
+  }
+
+  // ── Source: load photo folders (grouped by label) ─────────────────────
+
+  async function cpLoadFolders(claimId) {
+    const wrap      = document.getElementById('cpSrcFolderWrap');
+    const loading   = document.getElementById('cpSrcFolderLoading');
+    const listEl    = document.getElementById('cpSrcFolderList');
+    const countEl   = document.getElementById('cpSrcFolderCount');
+
+    wrap.classList.remove('d-none');
+    loading.classList.remove('d-none');
+    listEl.innerHTML = '';
+    countEl.textContent = '';
+
+    try {
+      const resp = await fetch(`/claims/encircle-photo-folders/?encircle_claim_id=${encodeURIComponent(claimId)}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load folders');
+
+      _cpSrcFolders = data.folders || [];
+      countEl.textContent = `${_cpSrcFolders.length} folder${_cpSrcFolders.length !== 1 ? 's' : ''} — ${data.total_media || 0} total photos`;
+
+      if (!_cpSrcFolders.length) {
+        listEl.innerHTML = '<p class="text-warning small p-1"><i class="fa fa-exclamation-triangle me-1"></i>No photos found on this claim (0 media items returned by Encircle).</p>';
+        return;
+      }
+
+      _cpSrcFolders.forEach(f => {
+        const div = document.createElement('div');
+        div.className = 'p-2 rounded mb-1';
+        div.style.cssText = 'cursor:pointer;border:1px solid #20c997;font-size:.83rem;transition:background .15s;';
+        // Build a preview of filenames (first 4)
+        const preview = (f.photos || []).slice(0, 4).map(p => _escHtml(p.filename)).join(', ')
+                      + (f.count > 4 ? ` …+${f.count - 4} more` : '');
+        div.innerHTML =
+          `<div><i class="fa fa-folder me-1 text-success"></i>` +
+          `<span class="fw-semibold">${_escHtml(f.label)}</span>` +
+          `<span class="badge bg-success ms-2" style="font-size:.7rem;">${f.count} photo${f.count!==1?'s':''}</span></div>` +
+          (preview ? `<div class="text-muted mt-1" style="font-size:.72rem;line-height:1.3;">${preview}</div>` : '');
+        div.addEventListener('click', () => {
+          listEl.querySelectorAll('div[data-folder]').forEach(d => { d.style.background=''; d.style.borderColor='#20c997'; });
+          div.style.background  = '#d4f5ec';
+          div.style.borderColor = '#0a5e45';
+          _cpFolderSel = f;
+          cpUpdateSummary();
+        });
+        div.setAttribute('data-folder', f.label);
+        listEl.appendChild(div);
+      });
+
+    } catch (err) {
+      listEl.innerHTML = `<p class="text-danger small">${_escHtml(err.message)}</p>`;
+    } finally {
+      loading.classList.add('d-none');
+    }
+  }
+
+  // ── Destination: load all rooms ───────────────────────────────────────
+
+  async function cpLoadRooms(claimId) {
+    const wrap    = document.getElementById('cpDstRoomsWrap');
+    const loading = document.getElementById('cpDstRoomLoading');
+    const listEl  = document.getElementById('cpDstRoomList');
+    const countEl = document.getElementById('cpDstRoomCount');
+
+    wrap.classList.remove('d-none');
+    loading.classList.remove('d-none');
+    listEl.innerHTML = '';
+    countEl.textContent = '';
+
+    try {
+      const resp = await fetch(`/claims/encircle-claim-rooms/?encircle_claim_id=${encodeURIComponent(claimId)}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load rooms');
+
+      _cpDstRooms = data.rooms || [];
+      countEl.textContent = `${_cpDstRooms.length} room${_cpDstRooms.length !== 1 ? 's' : ''}`;
+
+      if (!_cpDstRooms.length) {
+        listEl.innerHTML = '<p class="text-muted small p-1">No rooms found.</p>';
+        return;
+      }
+
+      _cpDstRooms.forEach(r => {
+        const div = document.createElement('div');
+        div.className = 'p-2 rounded mb-1';
+        div.style.cssText = 'cursor:pointer;border:1px solid #0d6efd;font-size:.83rem;transition:background .15s;';
+        div.innerHTML = `<i class="fa fa-door-open me-1 text-primary"></i><span class="fw-semibold">${_escHtml(r.name)}</span>`;
+        div.addEventListener('click', () => {
+          listEl.querySelectorAll('div').forEach(d => { d.style.background=''; d.style.borderColor='#0d6efd'; });
+          div.style.background  = '#dce9ff';
+          div.style.borderColor = '#0a3270';
+          _cpDstRoomSel = r;
+          cpUpdateSummary();
+        });
+        listEl.appendChild(div);
+      });
+
+    } catch (err) {
+      listEl.innerHTML = `<p class="text-danger small">${_escHtml(err.message)}</p>`;
+    } finally {
+      loading.classList.add('d-none');
+    }
+  }
+
+  // ── Upload button ─────────────────────────────────────────────────────
+
+  document.getElementById('btnCopyPhotos').addEventListener('click', async () => {
+    const statusEl = document.getElementById('cpStatus');
+    const btn      = document.getElementById('btnCopyPhotos');
+    if (!_cpFolderSel || !_cpDstRoomSel || !_cpSrcSelected || !_cpDstSelected) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Uploading…';
+    statusEl.className = 'mt-3 d-none';
+
+    try {
+      const resp = await fetch('/claims/upload-label-photos-to-room/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({
+          source_claim_id: _cpSrcSelected.id,
+          source_label:    _cpFolderSel.label,
+          dest_claim_id:   _cpDstSelected.id,
+          dest_room_id:    _cpDstRoomSel.id,
+        }),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        statusEl.className = 'mt-3 alert alert-success';
+        statusEl.innerHTML =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Done!</strong> ${_escHtml(data.message)}` +
+          (data.errors && data.errors.length
+            ? `<br><small class="text-danger">Errors: ${data.errors.map(e=>_escHtml(e.filename+': '+e.error)).join('; ')}</small>`
+            : '');
+      } else {
+        statusEl.className = 'mt-3 alert alert-danger';
+        statusEl.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${_escHtml(data.error || 'Unknown error')}`;
+      }
+    } catch (err) {
+      statusEl.className = 'mt-3 alert alert-danger';
+      statusEl.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${_escHtml(err.message)}`;
+    } finally {
+      statusEl.classList.remove('d-none');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fa fa-upload me-1"></i> Upload Photos';
+    }
+  });
+
+  // ── Init ──────────────────────────────────────────────────────────────
+  cpSetupClaimPicker('Src');
+  cpSetupClaimPicker('Dst');
+
+})();
+
+// ─── Room Manager ─────────────────────────────────────────────────────────
+(function () {
+  'use strict';
+
+  const CSRF = '{{ csrf_token }}';
+
+  function _escHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g,'&amp;').replace(/</g,'&lt;')
+      .replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ── State ─────────────────────────────────────────────────────────────
+  let _rmClaims    = [];   // [{id, name, address}, ...]
+  let _rmRooms     = [];   // [{id, name, structure_id}, ...] — Encircle order
+  let _rmClaimId   = '';
+  let _rmClaimsLoaded = false;
+
+  // ── DOM refs ──────────────────────────────────────────────────────────
+  const rmClaimSearch    = document.getElementById('rmClaimSearch');
+  const rmClaimSearchBtn = document.getElementById('rmClaimSearchBtn');
+  const rmClaimList      = document.getElementById('rmClaimList');
+  const rmSelectedName   = document.getElementById('rmSelectedClaimName');
+  const rmSelectedId     = document.getElementById('rmSelectedClaimId');
+  const rmLoadBtn        = document.getElementById('rmLoadBtn');
+  const rmLoading        = document.getElementById('rmLoading');
+  const rmTableWrap      = document.getElementById('rmTableWrap');
+  const rmRoomCount      = document.getElementById('rmRoomCount');
+  const rmRoomTbody      = document.getElementById('rmRoomTbody');
+  const rmAddRoomBtn     = document.getElementById('rmAddRoomBtn');
+  const rmPasteNames     = document.getElementById('rmPasteNames');
+  const rmApplyPasteBtn  = document.getElementById('rmApplyPasteBtn');
+  const rmSaveAllBtn     = document.getElementById('rmSaveAllBtn');
+  const rmSaveStatus     = document.getElementById('rmSaveStatus');
+  const rmNewClaimName   = document.getElementById('rmNewClaimName');
+  const rmExtract700Btn  = document.getElementById('rmExtract700Btn');
+  const rmExtractStatus  = document.getElementById('rmExtractStatus');
+
+  // ── Claim search ──────────────────────────────────────────────────────
+  async function rmLoadClaims() {
+    if (_rmClaimsLoaded) return;
+    try {
+      const resp = await fetch('/claims/api/encircle/simple/');
+      const data = await resp.json();
+      _rmClaims = data.claims || [];
+      _rmClaimsLoaded = true;
+    } catch (e) {
+      console.warn('rmLoadClaims error', e);
+    }
+  }
+
+  function rmRenderClaimList(query) {
+    const q = (query || '').toLowerCase().trim();
+    const filtered = q
+      ? _rmClaims.filter(c =>
+          (c.name || '').toLowerCase().includes(q) ||
+          (c.address || '').toLowerCase().includes(q)
+        )
+      : _rmClaims.slice(0, 50);
+
+    if (!filtered.length) {
+      rmClaimList.innerHTML = '<div class="p-2 text-muted small">No results</div>';
+    } else {
+      rmClaimList.innerHTML = filtered.map(c => `
+        <div class="enc-item rm-claim-item"
+             data-id="${_escHtml(String(c.id))}"
+             data-name="${_escHtml(c.name || '')}">
+          <div class="fw-semibold" style="font-size:.84rem;">${_escHtml(c.name || '(no name)')}</div>
+          <div style="font-size:.74rem;color:#666;">${_escHtml(c.address || '')}</div>
+        </div>
+      `).join('');
+    }
+    rmClaimList.style.display = 'block';
+
+    rmClaimList.querySelectorAll('.rm-claim-item').forEach(el => {
+      el.addEventListener('click', () => {
+        _rmClaimId = el.dataset.id;
+        rmSelectedId.value  = _rmClaimId;
+        rmSelectedName.textContent = el.dataset.name;
+        rmClaimList.style.display = 'none';
+        rmClaimSearch.value = el.dataset.name;
+        // Clear previous rooms
+        _rmRooms = [];
+        rmTableWrap.classList.add('d-none');
+      });
+    });
+  }
+
+  rmClaimSearch.addEventListener('focus', async () => {
+    await rmLoadClaims();
+    rmRenderClaimList(rmClaimSearch.value);
+  });
+  rmClaimSearch.addEventListener('input', () => {
+    if (_rmClaimsLoaded) rmRenderClaimList(rmClaimSearch.value);
+  });
+  rmClaimSearchBtn.addEventListener('click', async () => {
+    await rmLoadClaims();
+    rmRenderClaimList(rmClaimSearch.value);
+  });
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#rmClaimSearch') && !e.target.closest('#rmClaimList') && !e.target.closest('#rmClaimSearchBtn')) {
+      rmClaimList.style.display = 'none';
+    }
+  });
+
+  // ── Load Rooms ────────────────────────────────────────────────────────
+  rmLoadBtn.addEventListener('click', async () => {
+    _rmClaimId = rmSelectedId.value.trim();
+    if (!_rmClaimId) {
+      alert('Please select an Encircle claim first.');
+      return;
+    }
+    rmLoading.classList.remove('d-none');
+    rmTableWrap.classList.add('d-none');
+    rmSaveStatus.classList.add('d-none');
+    rmExtractStatus.classList.add('d-none');
+
+    try {
+      const resp = await fetch(`/claims/room-manager-load/?encircle_claim_id=${encodeURIComponent(_rmClaimId)}`);
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Failed to load rooms');
+      _rmRooms = data.rooms || [];
+      rmRenderRoomTable();
+      rmRoomCount.textContent = _rmRooms.length;
+      rmTableWrap.classList.remove('d-none');
+    } catch (err) {
+      alert('Error loading rooms: ' + err.message);
+    } finally {
+      rmLoading.classList.add('d-none');
+    }
+  });
+
+  // ── Render room table ─────────────────────────────────────────────────
+  function rmRenderRoomTable() {
+    // Also clear paste preview when re-rendering
+    document.getElementById('rmPastePreview').classList.add('d-none');
+
+    rmRoomTbody.innerHTML = _rmRooms.map((room, idx) => `
+      <tr data-idx="${idx}">
+        <td class="text-center text-muted" style="vertical-align:middle;width:36px;">${idx + 1}</td>
+        <td colspan="2" style="vertical-align:middle;">
+          <input type="text"
+                 class="form-control form-control-sm rm-name-input"
+                 value="${_escHtml(room.name)}"
+                 data-original="${_escHtml(room.name)}"
+                 style="font-family:monospace;">
+        </td>
+        <td style="vertical-align:middle;width:72px;">
+          <button class="btn btn-sm btn-outline-danger rm-delete-btn"
+                  data-idx="${idx}" title="Delete this room">
+            <i class="fa fa-trash"></i>
+          </button>
+        </td>
+      </tr>
+    `).join('');
+
+    // Wire delete buttons
+    rmRoomTbody.querySelectorAll('.rm-delete-btn').forEach(btn => {
+      btn.addEventListener('click', () => rmDeleteRoom(parseInt(btn.dataset.idx)));
+    });
+  }
+
+  // ── Add Room ──────────────────────────────────────────────────────────
+  rmAddRoomBtn.addEventListener('click', async () => {
+    const name = prompt('New room name:');
+    if (!name || !name.trim()) return;
+
+    if (!_rmClaimId || !_rmRooms.length) {
+      alert('Please load rooms first.');
+      return;
+    }
+    const structureId = _rmRooms[0].structure_id;
+
+    try {
+      const resp = await fetch('/claims/room-manager-add/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({claim_id: _rmClaimId, structure_id: structureId, name: name.trim()}),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Failed to add room');
+      // Reload
+      rmLoadBtn.click();
+    } catch (err) {
+      alert('Error adding room: ' + err.message);
+    }
+  });
+
+  // ── Delete Room ───────────────────────────────────────────────────────
+  async function rmDeleteRoom(idx) {
+    const room = _rmRooms[idx];
+    if (!room) return;
+    if (!confirm(`Delete room "${room.name}"? This cannot be undone.`)) return;
+
+    try {
+      const resp = await fetch('/claims/room-manager-delete/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({claim_id: _rmClaimId, structure_id: room.structure_id, room_id: room.id}),
+      });
+      const data = await resp.json();
+      if (!data.success) throw new Error(data.error || 'Failed to delete room');
+      _rmRooms.splice(idx, 1);
+      rmRoomCount.textContent = _rmRooms.length;
+      rmRenderRoomTable();
+    } catch (err) {
+      alert('Error deleting room: ' + err.message);
+    }
+  }
+
+  // ── Helpers: group rooms by numbered section ──────────────────────────
+
+  // Parse leading number from a room name, e.g. "201 ….LR DN" → 201
+  function _rmParseNum(name) {
+    const m = (name || '').match(/^(\d+(?:\.\d+)?)/);
+    return m ? parseFloat(m[1]) : null;
+  }
+
+  // Keep leading number as a string (preserving decimals), e.g. "201" or "9998.0"
+  function _rmNumStr(name) {
+    const m = (name || '').match(/^(\d+(?:\.\d+)?)/);
+    return m ? m[1] : null;
+  }
+
+  // Group key = floor to nearest 100
+  function _rmGroupKey(num) { return Math.floor(num / 100) * 100; }
+
+  // Extract the section label from a header room name.
+  // "100 .... = ... JOB/ROOMS OVERVIEW PICS .. ==========================" → "= ... JOB/ROOMS OVERVIEW PICS .."
+  function _rmExtractLabel(headerName) {
+    let s = (headerName || '').replace(/^\d+(?:\.\d+)?\s*/, '').trim(); // strip number
+    s = s.replace(/^[.… \t]+/, '').trim();                              // strip leading dots
+    s = s.replace(/\s*=+\s*$/, '').trim();                              // strip trailing ===
+    return s;
+  }
+
+  // Build a sub-room name: number + sep + pasteName + sectionLabel
+  function _rmBuildName(numPrefix, pasteName, sectionLabel) {
+    return `${numPrefix} …. ${pasteName} ${sectionLabel}`;
+  }
+
+  // Parse all rooms into groups: { groupKey: { header, subRooms[], sectionLabel } }
+  // Only considers groups 100–700 (regular numbered sections).
+  function _rmParseGroups(rooms) {
+    const raw = {};
+    for (const room of rooms) {
+      const num = _rmParseNum(room.name);
+      if (num === null) continue;
+      const gk = _rmGroupKey(num);
+      if (!raw[gk]) raw[gk] = { header: null, subRooms: [] };
+      if (Math.abs(num - gk) < 0.5) {
+        raw[gk].header = room;
+      } else {
+        raw[gk].subRooms.push({ ...room, _num: num, _numStr: _rmNumStr(room.name) });
+      }
+    }
+    // Sort sub-rooms by number within each group
+    for (const gk in raw) {
+      raw[gk].subRooms.sort((a, b) => a._num - b._num);
+      // Extract section label from header; fallback: strip number+dots from first sub-room
+      if (raw[gk].header) {
+        raw[gk].sectionLabel = _rmExtractLabel(raw[gk].header.name);
+      } else if (raw[gk].subRooms.length) {
+        const fn = raw[gk].subRooms[0].name;
+        const noNum = fn.replace(/^\d+(?:\.\d+)?\s*[.… \t]+/, '');
+        // Suffix = everything after two or more spaces, or after 2+ dots
+        const m = noNum.match(/\s{2,}(.+)$|[….]{3,}\s*(.+)$/);
+        raw[gk].sectionLabel = m ? (m[1] || m[2] || '').trim() : '';
+      } else {
+        raw[gk].sectionLabel = '';
+      }
+    }
+    // Return only regular integer-hundred groups 100–700
+    const result = {};
+    for (let gk = 100; gk <= 700; gk += 100) {
+      if (raw[gk]) result[gk] = raw[gk];
+    }
+    return result;
+  }
+
+  // Pending operations from Apply Pasted Names
+  let _rmPendingOps = []; // [{type:'rename'|'create', room?, newName, groupKey, structureId}]
+
+  // Clear Plan button
+  document.getElementById('rmClearPlanBtn').addEventListener('click', () => {
+    _rmPendingOps = [];
+    document.getElementById('rmPastePreview').classList.add('d-none');
+  });
+
+  // ── Apply Pasted Names → group-aware preview + build plan ─────────────
+  rmApplyPasteBtn.addEventListener('click', () => {
+    const lines = rmPasteNames.value.split('\n').map(l => l.trim()).filter(l => l);
+    if (!lines.length) { alert('Paste names first (one per line).'); return; }
+    if (!_rmRooms.length) { alert('Load rooms first.'); return; }
+
+    const groups = _rmParseGroups(_rmRooms);
+    const groupKeys = Object.keys(groups).map(Number).sort((a, b) => a - b);
+
+    if (!groupKeys.length) {
+      alert('No standard 100–700 numbered sections found in this claim.');
+      return;
+    }
+
+    _rmPendingOps = [];
+    let totalRename = 0, totalCreate = 0;
+
+    // Build HTML for the preview content div — one mini-table per group
+    let html = '';
+
+    for (const gk of groupKeys) {
+      const group    = groups[gk];
+      const subRooms = group.subRooms;
+      const label    = group.sectionLabel;
+      const maxNum   = subRooms.length
+        ? Math.floor(subRooms[subRooms.length - 1]._num)
+        : gk;
+
+      const sid = (subRooms[0] || group.header || _rmRooms[0] || {}).structure_id || '';
+
+      html += `<div class="mb-3">
+        <div class="fw-semibold px-1 py-1 rounded-top"
+             style="background:#3d1f8c;color:#fff;font-size:.78rem;">
+          ${gk}s — ${_escHtml(label)}
+          &nbsp;<span class="badge bg-light text-dark">${subRooms.length} existing</span>
+        </div>
+        <table class="table table-sm mb-0" style="font-size:.76rem;">
+          <thead class="table-secondary">
+            <tr>
+              <th style="width:32px;">#</th>
+              <th>Current Room Name</th>
+              <th>→ New Full Name</th>
+              <th style="width:56px;">Action</th>
+            </tr>
+          </thead><tbody>`;
+
+      lines.forEach((pasteName, i) => {
+        if (i < subRooms.length) {
+          const room    = subRooms[i];
+          const newName = _rmBuildName(room._numStr, pasteName, label);
+          const changed = newName !== room.name;
+          if (changed) {
+            _rmPendingOps.push({ type: 'rename', room, newName, groupKey: gk });
+            totalRename++;
+          }
+          html += `<tr style="background:${changed ? '#fffbe6' : ''}">
+            <td class="text-muted">${i + 1}</td>
+            <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${_escHtml(room.name)}</td>
+            <td style="font-weight:${changed ? 'bold' : 'normal'};">${_escHtml(newName)}</td>
+            <td>${changed
+              ? '<span class="badge bg-warning text-dark" style="font-size:.65rem;">Rename</span>'
+              : '<span class="text-muted" style="font-size:.72rem;">no change</span>'}</td>
+          </tr>`;
+        } else {
+          const newNum  = maxNum + 1 + (i - subRooms.length);
+          const newName = _rmBuildName(String(newNum), pasteName, label);
+          _rmPendingOps.push({ type: 'create', newName, groupKey: gk, structureId: sid });
+          totalCreate++;
+          html += `<tr style="background:#efffef">
+            <td>${i + 1}</td>
+            <td class="text-muted fst-italic">—</td>
+            <td><strong>${_escHtml(newName)}</strong></td>
+            <td><span class="badge bg-success" style="font-size:.65rem;">Create</span></td>
+          </tr>`;
+        }
+      });
+
+      html += `</tbody></table></div>`;
+    }
+
+    document.getElementById('rmPreviewRenameCount').textContent = totalRename;
+    document.getElementById('rmPreviewNewCount').textContent    = totalCreate;
+    document.getElementById('rmPreviewGroupCount').textContent  = groupKeys.length;
+    document.getElementById('rmPreviewContent').innerHTML       = html;
+    document.getElementById('rmPastePreview').classList.remove('d-none');
+    document.getElementById('rmPastePreview').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  // ── Save All — executes _rmPendingOps first, then any manual edits ─────
+  rmSaveAllBtn.addEventListener('click', async () => {
+    if (!_rmClaimId) { alert('No claim loaded.'); return; }
+
+    // Merge pending ops from Apply Pasted Names with manual table edits
+    // Manual edits: rows in table where input value differs from data-original
+    const manualRenames = [];
+    rmRoomTbody.querySelectorAll('tr[data-idx] .rm-name-input').forEach(input => {
+      const orig = input.dataset.original || '';
+      const newN = input.value.trim();
+      if (newN && newN !== orig) {
+        const tr  = input.closest('tr');
+        const idx = parseInt(tr ? tr.dataset.idx : -1);
+        const room = _rmRooms[idx];
+        // Only include if NOT already covered by _rmPendingOps (which replaces wholesale)
+        const alreadyQueued = _rmPendingOps.some(op => op.type === 'rename' && op.room && op.room.id === (room || {}).id);
+        if (room && !alreadyQueued) manualRenames.push({ room, newName: newN });
+      }
+    });
+
+    const allOps = [..._rmPendingOps, ...manualRenames.map(r => ({ type: 'rename', room: r.room, newName: r.newName }))];
+
+    if (!allOps.length) {
+      rmSaveStatus.className = 'alert alert-info mt-2';
+      rmSaveStatus.textContent = 'No changes to save.';
+      rmSaveStatus.classList.remove('d-none');
+      return;
+    }
+
+    const defaultSid = (_rmRooms[0] || {}).structure_id || '';
+
+    rmSaveAllBtn.disabled = true;
+    rmSaveAllBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Saving…';
+    rmSaveStatus.className = 'alert alert-info mt-2';
+    rmSaveStatus.innerHTML = `Processing ${allOps.length} operation(s)…`;
+    rmSaveStatus.classList.remove('d-none');
+
+    let done = 0, failed = 0;
+    const errors = [];
+
+    for (const op of allOps) {
+      try {
+        if (op.type === 'rename') {
+          const resp = await fetch('/claims/room-manager-rename/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({
+              claim_id:     _rmClaimId,
+              structure_id: op.room.structure_id,
+              room_id:      op.room.id,
+              old_name:     op.room.name,
+              new_name:     op.newName,
+            }),
+          });
+          const data = await resp.json();
+          if (!data.success) throw new Error(data.error || 'rename failed');
+        } else {
+          // create
+          const sid = op.structureId || defaultSid;
+          const resp = await fetch('/claims/room-manager-add/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ claim_id: _rmClaimId, structure_id: sid, name: op.newName }),
+          });
+          const data = await resp.json();
+          if (!data.success) throw new Error(data.error || 'create failed');
+        }
+        done++;
+      } catch (err) {
+        failed++;
+        errors.push(`${op.type === 'rename' ? `Rename → "${op.newName}"` : `Create "${op.newName}"`}: ${err.message}`);
+      }
+      rmSaveStatus.innerHTML = `Processing… (${done + failed}/${allOps.length})`;
+    }
+
+    if (failed === 0) {
+      rmSaveStatus.className = 'alert alert-success mt-2';
+      rmSaveStatus.innerHTML = `<i class="fa fa-check-circle me-1"></i> ${done} operation(s) completed.`;
+    } else {
+      rmSaveStatus.className = 'alert alert-warning mt-2';
+      rmSaveStatus.innerHTML =
+        `<i class="fa fa-exclamation-triangle me-1"></i> ${done} succeeded, ${failed} failed.<br>` +
+        `<small>${errors.map(e => _escHtml(e)).join('<br>')}</small>`;
+    }
+
+    _rmPendingOps = [];
+    await new Promise(res => setTimeout(res, 400));
+    rmLoadBtn.click();
+
+    rmSaveAllBtn.disabled = false;
+    rmSaveAllBtn.innerHTML = '<i class="fa fa-save me-1"></i> Save All Renames';
+  });
+
+  // ── Extract 700s ──────────────────────────────────────────────────────
+  rmExtract700Btn.addEventListener('click', async () => {
+    const newName = rmNewClaimName.value.trim();
+    if (!newName) {
+      alert('Please enter a name for the new HMR claim.');
+      return;
+    }
+    if (!_rmClaimId) {
+      alert('Please load a claim first.');
+      return;
+    }
+    if (!confirm(`Extract all 700-series / HMR rooms from the loaded claim into a new Encircle claim named "${newName}"? Photos will be copied and source rooms deleted.`)) return;
+
+    rmExtract700Btn.disabled = true;
+    rmExtract700Btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Extracting…';
+    rmExtractStatus.className = 'alert alert-info mt-2';
+    rmExtractStatus.innerHTML = 'Extracting rooms and copying photos… this may take a minute.';
+    rmExtractStatus.classList.remove('d-none');
+
+    try {
+      const resp = await fetch('/claims/room-manager-extract-700s/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({source_claim_id: _rmClaimId, new_claim_name: newName}),
+      });
+      const data = await resp.json();
+      if (data.success) {
+        rmExtractStatus.className = 'alert alert-success mt-2';
+        let html =
+          `<i class="fa fa-check-circle me-1"></i> <strong>Done!</strong> ${_escHtml(data.message)}` +
+          `<br><small>New claim ID: <code>${_escHtml(String(data.new_claim_id))}</code></small>`;
+        if (data.errors && data.errors.length) {
+          html += `<br><small class="text-danger">Warnings: ${data.errors.map(e => _escHtml(String(e))).join('; ')}</small>`;
+        }
+        // Show "Delete source rooms" button — user clicks after verifying photos in new claim
+        const extractedRooms  = data.extracted_rooms  || [];
+        const sourceClaimId   = data.source_claim_id  || _rmClaimId;
+        if (extractedRooms.length) {
+          html += `<br><br>
+            <strong class="text-danger">Source rooms still exist.</strong>
+            Verify photos are in the new claim, then click below to delete them:<br>
+            <small class="text-muted">${extractedRooms.map(r => _escHtml(r.name)).join(', ')}</small><br>
+            <button class="btn btn-sm btn-danger mt-2" id="rmDeleteExtractedBtn">
+              <i class="fa fa-trash me-1"></i> Delete ${extractedRooms.length} source room(s) from original claim
+            </button>`;
+        }
+        rmExtractStatus.innerHTML = html;
+
+        // Wire delete button
+        const delBtn = document.getElementById('rmDeleteExtractedBtn');
+        if (delBtn) {
+          delBtn.addEventListener('click', async () => {
+            if (!confirm(`Permanently delete ${extractedRooms.length} room(s) from the original claim? This cannot be undone.`)) return;
+            delBtn.disabled = true;
+            delBtn.textContent = 'Deleting…';
+            let delDone = 0, delFailed = 0;
+            for (const room of extractedRooms) {
+              try {
+                const r = await fetch('/claims/room-manager-delete/', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+                  body: JSON.stringify({ claim_id: sourceClaimId, structure_id: room.structure_id, room_id: room.id }),
+                });
+                const d = await r.json();
+                if (!d.success) throw new Error(d.error || 'delete failed');
+                delDone++;
+              } catch (e) {
+                delFailed++;
+              }
+            }
+            delBtn.textContent = `Deleted ${delDone}/${extractedRooms.length}${delFailed ? ` (${delFailed} failed)` : ''}`;
+            rmLoadBtn.click();
+          });
+        }
+        rmLoadBtn.click();
+      } else {
+        rmExtractStatus.className = 'alert alert-danger mt-2';
+        rmExtractStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${_escHtml(data.error || 'Unknown error')}`;
+      }
+    } catch (err) {
+      rmExtractStatus.className = 'alert alert-danger mt-2';
+      rmExtractStatus.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${_escHtml(err.message)}`;
+    } finally {
+      rmExtract700Btn.disabled = false;
+      rmExtract700Btn.innerHTML = '<i class="fa fa-scissors me-1"></i> Extract 700s → New Claim';
+    }
+  });
+
+})();
+
+// ─── Rename Rooms to Canonical List ───────────────────────────────────────
+(function () {
+  'use strict';
+  const CSRF = '{{ csrf_token }}';
+  let _crClaimId = null;
+
+  function _esc(s) { return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  // Claim search — reuses the server-rendered local-item divs
+  document.getElementById('crSearch').addEventListener('input', function () {
+    const q   = this.value.trim().toLowerCase();
+    const lst = document.getElementById('crClaimList');
+    lst.innerHTML = '';
+    if (!q) { lst.style.display = 'none'; return; }
+    let n = 0;
+    document.querySelectorAll('#localList .local-item').forEach(item => {
+      if ((item.dataset.name + ' ' + item.dataset.addr).toLowerCase().includes(q)) {
+        const d = document.createElement('div');
+        d.className = 'p-2 rounded mb-1';
+        d.style.cssText = 'cursor:pointer;border:1px solid #ddd;font-size:.83rem;';
+        d.innerHTML = `<div class="fw-semibold">${_esc(item.dataset.name||'')}</div><div class="text-muted" style="font-size:.75rem;">${_esc(item.dataset.addr||'')}</div>`;
+        d.onclick = () => {
+          _crClaimId = item.dataset.id;
+          document.getElementById('crClaimName').textContent = item.dataset.name || item.dataset.id;
+          document.getElementById('crClaimId').value = _crClaimId;
+          document.getElementById('crSearch').value  = item.dataset.name || '';
+          lst.style.display = 'none';
+          document.getElementById('crPreviewBtn').disabled = false;
+          document.getElementById('crPreviewWrap').classList.add('d-none');
+          document.getElementById('crApplyBtn').disabled = true;
+          document.getElementById('crStatus').classList.add('d-none');
+        };
+        lst.appendChild(d);
+        n++;
+      }
+    });
+    lst.style.display = n ? 'block' : 'none';
+  });
+
+  // Preview
+  document.getElementById('crPreviewBtn').addEventListener('click', async () => {
+    if (!_crClaimId) return;
+    const names = document.getElementById('crNames').value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+    if (!names.length) return;
+    const btn = document.getElementById('crPreviewBtn');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>';
+    try {
+      const data = await fetch(`/claims/api/rooms/?claim_id=${encodeURIComponent(_crClaimId)}`).then(r => r.json());
+      const rooms = data.rooms || [];
+      const tbody = document.getElementById('crPreviewTbody');
+      tbody.innerHTML = '';
+      const maxLen = Math.max(rooms.length, names.length);
+      for (let i = 0; i < maxLen; i++) {
+        const oldName = i < rooms.length ? (rooms[i].name || '') : '';
+        const newName = i < names.length ? names[i] : '';
+        const action  = !oldName ? 'add' : (newName !== oldName ? 'rename' : 'same');
+        const tr = document.createElement('tr');
+        if (action !== 'same') tr.style.background = action === 'add' ? '#e6ffe6' : '#fff3cd';
+        tr.innerHTML =
+          `<td class="text-muted">${i+1}</td>` +
+          `<td>${_esc(oldName || '—')}</td>` +
+          `<td class="fw-semibold">${_esc(newName || '—')}</td>`;
+        tbody.appendChild(tr);
+      }
+      document.getElementById('crPreviewWrap').classList.remove('d-none');
+      document.getElementById('crApplyBtn').disabled = false;
+    } catch (e) { alert('Error: ' + e.message); }
+    finally { btn.disabled = false; btn.innerHTML = '<i class="fa fa-eye me-1"></i> Preview'; }
+  });
+
+  // Apply
+  document.getElementById('crApplyBtn').addEventListener('click', async () => {
+    if (!_crClaimId) return;
+    const names = document.getElementById('crNames').value.trim().split('\n').map(s => s.trim()).filter(Boolean);
+    const btn = document.getElementById('crApplyBtn');
+    const st  = document.getElementById('crStatus');
+    btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Applying…';
+    st.classList.add('d-none');
+    try {
+      const data = await fetch('/claims/bulk-rename-db-rooms/', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json', 'X-CSRFToken': CSRF},
+        body: JSON.stringify({client_id: Number(_crClaimId), room_names: names}),
+      }).then(r => r.json());
+      if (data.success) {
+        st.className = 'alert alert-success mt-2';
+        st.innerHTML = `<i class="fa fa-check-circle me-1"></i> <strong>Done.</strong> ${data.renamed} renamed, ${data.added} added.`;
+        btn.disabled = true;
+      } else {
+        st.className = 'alert alert-danger mt-2';
+        st.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${_esc(data.error || 'Unknown error')}`;
+        btn.disabled = false;
+      }
+    } catch (e) {
+      st.className = 'alert alert-danger mt-2';
+      st.innerHTML = `<i class="fa fa-times-circle me-1"></i> ${_esc(e.message)}`;
+      btn.disabled = false;
+    } finally { st.classList.remove('d-none'); btn.innerHTML = '<i class="fa fa-check me-1"></i> Apply'; }
+  });
+})();
+</script>
+{% endblock %}

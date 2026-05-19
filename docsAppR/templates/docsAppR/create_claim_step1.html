@@ -1,0 +1,145 @@
+{% extends "account/base.html" %}
+
+{% block title %}Create Claim - Step 1{% endblock %}
+{% block page_title %}Create New Claim - Step 1{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="row">
+        <div class="col-lg-8 mx-auto">
+
+            <!-- Stepper -->
+            <div class="stepper mb-4">
+                <div class="stepper-item active">
+                    <div class="stepper-icon">1</div>
+                    <div class="stepper-label">Client Info</div>
+                </div>
+                <div class="stepper-item">
+                    <div class="stepper-icon">2</div>
+                    <div class="stepper-label">Rooms</div>
+                </div>
+                <div class="stepper-item">
+                    <div class="stepper-icon">3</div>
+                    <div class="stepper-label">Review & Create</div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">
+                    <h4 class="mb-0">
+                        <i class="fas fa-user-plus"></i> Step 1: Client Information
+                    </h4>
+                </div>
+                <div class="card-body">
+                    <form method="post">
+                        {% csrf_token %}
+
+                        <h5 class="mb-3"><i class="fas fa-home"></i> Property Information</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">{{ form.pOwner.label }}</label>
+                                {{ form.pOwner }}
+                                {% if form.pOwner.errors %}
+                                <div class="text-danger small">{{ form.pOwner.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row mb-3">
+                            <div class="col-md-8">
+                                <label class="form-label">{{ form.pAddress.label }}</label>
+                                {{ form.pAddress }}
+                                {% if form.pAddress.errors %}
+                                <div class="text-danger small">{{ form.pAddress.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">{{ form.pCityStateZip.label }}</label>
+                                {{ form.pCityStateZip }}
+                                {% if form.pCityStateZip.errors %}
+                                <div class="text-danger small">{{ form.pCityStateZip.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.cEmail.label }}</label>
+                                {{ form.cEmail }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.cPhone.label }}</label>
+                                {{ form.cPhone }}
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <h5 class="mb-3"><i class="fas fa-file-contract"></i> Insurance Information</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.insuranceCo_Name.label }}</label>
+                                {{ form.insuranceCo_Name }}
+                                {% if form.insuranceCo_Name.errors %}
+                                <div class="text-danger small">{{ form.insuranceCo_Name.errors }}</div>
+                                {% endif %}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.claimNumber.label }}</label>
+                                {{ form.claimNumber }}
+                                {% if form.claimNumber.errors %}
+                                <div class="text-danger small">{{ form.claimNumber.errors }}</div>
+                                {% endif %}
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.causeOfLoss.label }}</label>
+                                {{ form.causeOfLoss }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.dateOfLoss.label }}</label>
+                                {{ form.dateOfLoss }}
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <h5 class="mb-3"><i class="fas fa-user-tie"></i> Adjuster Information (Optional)</h5>
+                        <div class="row mb-3">
+                            <div class="col-md-12">
+                                <label class="form-label">{{ form.deskAdjusterDA.label }}</label>
+                                {{ form.deskAdjusterDA }}
+                            </div>
+                        </div>
+
+                        <div class="row mb-4">
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.DAEmail.label }}</label>
+                                {{ form.DAEmail }}
+                            </div>
+                            <div class="col-md-6">
+                                <label class="form-label">{{ form.DAPhone.label }}</label>
+                                {{ form.DAPhone }}
+                            </div>
+                        </div>
+
+                        <hr>
+
+                        <div class="d-flex justify-content-between">
+                            <a href="{% url 'claim_list' %}" class="btn btn-secondary">
+                                <i class="fas fa-times"></i> Cancel
+                            </a>
+                            <button type="submit" class="btn btn-primary btn-lg">
+                                Save & Continue <i class="fas fa-arrow-right"></i>
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endblock %}

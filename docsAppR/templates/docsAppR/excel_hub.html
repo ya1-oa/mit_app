@@ -1,0 +1,650 @@
+{% extends "account/base.html" %}
+{% block title %}Excel Files Hub{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Layout ──────────────────────────────────────────────────────────── */
+.hub-toolbar {
+    background: #fff;
+    border-bottom: 1px solid #e2e8f0;
+    padding: 14px 28px;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+    position: sticky;
+    top: 60px;
+    z-index: 100;
+}
+.hub-toolbar h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    white-space: nowrap;
+}
+.hub-toolbar h1 i { color: #16a34a; }
+.hub-search {
+    flex: 1;
+    min-width: 200px;
+    max-width: 340px;
+    position: relative;
+}
+.hub-search input {
+    width: 100%;
+    padding: 7px 12px 7px 34px;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    font-size: 13px;
+    background: #f8fafc;
+}
+.hub-search input:focus { outline: none; border-color: #1e40af; background: #fff; }
+.hub-search i {
+    position: absolute;
+    left: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: #94a3b8;
+    font-size: 12px;
+}
+.hub-stats {
+    font-size: 12px;
+    color: #64748b;
+    white-space: nowrap;
+    margin-left: auto;
+}
+.hub-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+/* ── Claim Cards ─────────────────────────────────────────────────────── */
+.claims-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 20px 28px;
+    max-width: 1400px;
+}
+.claim-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+    transition: box-shadow .15s;
+}
+.claim-card:hover { box-shadow: 0 3px 12px rgba(0,0,0,.1); }
+
+.claim-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 13px 18px;
+    cursor: pointer;
+    user-select: none;
+}
+.claim-header:hover { background: #f8fafc; }
+.claim-folder-icon {
+    width: 36px; height: 36px;
+    background: #fef3c7;
+    border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 17px;
+    color: #d97706;
+    flex-shrink: 0;
+}
+.claim-info { flex: 1; min-width: 0; }
+.claim-name {
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.claim-meta {
+    font-size: 11px;
+    color: #64748b;
+    margin-top: 1px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.claim-badge {
+    background: #dcfce7;
+    color: #15803d;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+.claim-actions-inline {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.claim-actions-inline button {
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    border: 1px solid;
+    cursor: pointer;
+    white-space: nowrap;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+.btn-dl-zip {
+    background: #f0fdf4; border-color: #86efac; color: #15803d;
+}
+.btn-dl-zip:hover { background: #dcfce7; }
+.btn-email-claim {
+    background: #eff6ff; border-color: #93c5fd; color: #1d4ed8;
+}
+.btn-email-claim:hover { background: #dbeafe; }
+.claim-chevron {
+    color: #94a3b8;
+    font-size: 13px;
+    flex-shrink: 0;
+    transition: transform .2s;
+}
+.claim-card.open .claim-chevron { transform: rotate(90deg); }
+
+/* ── File Body ───────────────────────────────────────────────────────── */
+.claim-body {
+    display: none;
+    border-top: 1px solid #f1f5f9;
+}
+.claim-card.open .claim-body { display: block; }
+
+.folder-section { padding: 0 18px 12px; }
+.folder-label {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .8px;
+    padding: 10px 0 6px;
+    border-bottom: 1px solid #f1f5f9;
+    margin-bottom: 4px;
+}
+.folder-label i { color: #f59e0b; font-size: 13px; }
+.folder-label.templates-label i { color: #16a34a; }
+.folder-label.templates-label { color: #15803d; }
+
+.file-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 8px;
+    border-radius: 6px;
+    transition: background .1s;
+}
+.file-row:hover { background: #f8fafc; }
+.file-icon { font-size: 16px; color: #16a34a; flex-shrink: 0; width: 20px; text-align: center; }
+.file-name { flex: 1; font-size: 13px; color: #0f172a; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file-meta { font-size: 11px; color: #94a3b8; white-space: nowrap; flex-shrink: 0; }
+.file-dl-btn {
+    background: none; border: none; cursor: pointer;
+    color: #64748b; font-size: 13px; padding: 4px 6px;
+    border-radius: 5px;
+    flex-shrink: 0;
+}
+.file-dl-btn:hover { background: #f1f5f9; color: #0f172a; }
+
+/* ── Empty / Loading states ──────────────────────────────────────────── */
+.hub-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #94a3b8;
+}
+.hub-empty i { font-size: 48px; margin-bottom: 16px; display: block; }
+.hub-skeleton {
+    height: 64px; border-radius: 10px;
+    background: linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);
+    background-size: 400% 100%;
+    animation: shimmer 1.4s infinite;
+    margin-bottom: 10px;
+}
+@keyframes shimmer { 0%{background-position:100%}100%{background-position:-100%} }
+
+/* ── Modals ──────────────────────────────────────────────────────────── */
+.modal-email-tag {
+    display: inline-flex; align-items: center; gap: 5px;
+    background: #eff6ff; color: #1d4ed8;
+    font-size: 12px; padding: 3px 8px; border-radius: 20px;
+    margin: 3px;
+}
+.modal-email-tag button {
+    background: none; border: none; cursor: pointer;
+    color: #6b7280; font-size: 11px; padding: 0;
+    display: flex; align-items: center;
+}
+.modal-email-tag button:hover { color: #dc2626; }
+.email-input-row {
+    display: flex; gap: 8px; margin-top: 8px;
+}
+.email-input-row input { flex: 1; }
+
+/* ── Toast ───────────────────────────────────────────────────────────── */
+#toast {
+    position: fixed; bottom: 24px; right: 24px;
+    background: #0f172a; color: #fff;
+    padding: 11px 18px; border-radius: 8px;
+    font-size: 13px; z-index: 9999;
+    transform: translateY(80px); opacity: 0;
+    transition: all .25s;
+    max-width: 340px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.3);
+}
+#toast.show { transform: translateY(0); opacity: 1; }
+#toast.success { background: #15803d; }
+#toast.error   { background: #dc2626; }
+
+/* ── Responsive ──────────────────────────────────────────────────────── */
+@media (max-width: 680px) {
+    .hub-toolbar { padding: 12px 16px; }
+    .claims-grid { padding: 12px 16px; }
+    .claim-actions-inline { display: none; }
+}
+</style>
+{% endblock %}
+
+{% block page_header %}{% endblock %}
+
+{% block content %}
+
+<!-- ── Toolbar ────────────────────────────────────────────────────────────── -->
+<div class="hub-toolbar">
+    <h1><i class="fas fa-file-excel"></i> Excel Files Hub</h1>
+
+    <div class="hub-search">
+        <i class="fas fa-search"></i>
+        <input type="text" id="searchInput" placeholder="Search claims…" oninput="filterClaims(this.value)">
+    </div>
+
+    <span class="hub-stats" id="hubStats">Loading…</span>
+
+    <div class="hub-actions">
+        <a href="{% url 'excel_hub_download_all' %}" class="btn btn-sm btn-success">
+            <i class="fas fa-file-archive"></i> Download All ZIP
+        </a>
+        <button class="btn btn-sm btn-primary" onclick="openSettingsModal()">
+            <i class="fas fa-cog"></i> Email Settings
+        </button>
+    </div>
+</div>
+
+<!-- ── Claims Grid ─────────────────────────────────────────────────────────── -->
+<div class="claims-grid" id="claimsGrid">
+    <!-- Skeletons while loading -->
+    <div class="hub-skeleton" id="sk1"></div>
+    <div class="hub-skeleton" id="sk2"></div>
+    <div class="hub-skeleton" id="sk3"></div>
+</div>
+
+<div id="emptyState" class="hub-empty" style="display:none">
+    <i class="fas fa-file-excel"></i>
+    <div style="font-size:17px;font-weight:600;color:#334155;margin-bottom:6px">No Excel files found</div>
+    <div>Generate a CPS Schedule of Loss or add Excel files to a claim folder to see them here.</div>
+</div>
+
+<!-- ── Email Settings Modal ────────────────────────────────────────────────── -->
+<div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-cog text-primary me-2"></i> Email Notification Settings</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-3">
+                    Excel files are automatically emailed to these addresses when a CPS Schedule of Loss is generated.
+                    You can also trigger a manual send from any claim card.
+                </p>
+                <label class="form-label fw-semibold">Notification Recipients</label>
+                <div id="emailTags" class="mb-2" style="min-height:36px;padding:4px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;"></div>
+                <div class="email-input-row">
+                    <input type="email" id="newEmailInput" class="form-control form-control-sm" placeholder="Add email address…">
+                    <button class="btn btn-sm btn-primary" onclick="addEmail()"><i class="fas fa-plus"></i> Add</button>
+                </div>
+                <div id="settingsError" class="text-danger small mt-2" style="display:none"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm" onclick="saveSettings()">
+                    <i class="fas fa-save"></i> Save Settings
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Manual Send Email Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="sendModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-paper-plane text-primary me-2"></i> Send Excel Files</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small" id="sendModalDesc"></p>
+                <label class="form-label fw-semibold">Recipients</label>
+                <div id="sendEmailTags" class="mb-2" style="min-height:36px;padding:4px;border:1px solid #e2e8f0;border-radius:8px;background:#f8fafc;"></div>
+                <div class="email-input-row">
+                    <input type="email" id="sendNewEmail" class="form-control form-control-sm" placeholder="Add recipient…">
+                    <button class="btn btn-sm btn-outline-primary" onclick="addSendEmail()"><i class="fas fa-plus"></i></button>
+                </div>
+                <div id="sendError" class="text-danger small mt-2" style="display:none"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                <button class="btn btn-primary btn-sm" id="sendBtn" onclick="confirmSend()">
+                    <i class="fas fa-paper-plane"></i> Send Now
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Toast -->
+<div id="toast"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = '{{ csrf_token }}';
+
+// ── State ──────────────────────────────────────────────────────────────────
+let allClaims    = [];
+let settingsEmails = {{ notification_emails|safe }};
+let sendEmails   = [];
+let activeSendId = null;
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+    loadClaims();
+
+    // Enter key on email inputs
+    document.getElementById('newEmailInput').addEventListener('keydown', e => { if (e.key === 'Enter') addEmail(); });
+    document.getElementById('sendNewEmail').addEventListener('keydown', e => { if (e.key === 'Enter') addSendEmail(); });
+});
+
+// ── Load claims via API ────────────────────────────────────────────────────
+function loadClaims() {
+    fetch('{% url "excel_hub_api" %}')
+        .then(r => r.json())
+        .then(data => {
+            // Remove skeleton loaders
+            ['sk1','sk2','sk3'].forEach(id => {
+                const el = document.getElementById(id);
+                if (el) el.remove();
+            });
+
+            allClaims = data.claims || [];
+            renderClaims(allClaims);
+
+            const total = allClaims.reduce((s, c) => s + c.total_files, 0);
+            document.getElementById('hubStats').textContent =
+                `${allClaims.length} claim${allClaims.length !== 1 ? 's' : ''} · ${total} Excel file${total !== 1 ? 's' : ''}`;
+        })
+        .catch(err => {
+            console.error(err);
+            document.getElementById('claimsGrid').innerHTML =
+                `<div class="alert alert-danger">Failed to load files: ${err.message}</div>`;
+        });
+}
+
+// ── Render ─────────────────────────────────────────────────────────────────
+function renderClaims(claims) {
+    const grid = document.getElementById('claimsGrid');
+    const empty = document.getElementById('emptyState');
+
+    if (!claims.length) {
+        grid.innerHTML = '';
+        empty.style.display = '';
+        return;
+    }
+    empty.style.display = 'none';
+
+    grid.innerHTML = claims.map(c => buildClaimCard(c)).join('');
+}
+
+function buildClaimCard(c) {
+    const folderSections = c.folder_groups.map(group => {
+        const isTemplates = group.folder_name.startsWith('Templates');
+        const folderClass = isTemplates ? 'templates-label' : '';
+        const folderIcon  = isTemplates ? 'fas fa-file-excel' : 'fas fa-folder';
+
+        const files = group.files.map(f => `
+            <div class="file-row">
+                <span class="file-icon"><i class="fas fa-file-excel"></i></span>
+                <span class="file-name" title="${esc(f.name)}">${esc(f.name)}</span>
+                <span class="file-meta">${f.size_str} · ${f.modified}</span>
+                <button class="file-dl-btn" title="Download" onclick="dlFile(${c.id}, '${esc(f.path)}')">
+                    <i class="fas fa-download"></i>
+                </button>
+            </div>`).join('');
+
+        return `
+            <div class="folder-section">
+                <div class="folder-label ${folderClass}">
+                    <i class="${folderIcon}"></i>
+                    ${esc(group.folder_name)}
+                    <span style="margin-left:auto;font-weight:400;font-size:10px">${group.files.length} file${group.files.length !== 1 ? 's' : ''}</span>
+                </div>
+                ${files}
+            </div>`;
+    }).join('');
+
+    return `
+        <div class="claim-card" id="card-${c.id}">
+            <div class="claim-header" onclick="toggleCard(${c.id})">
+                <div class="claim-folder-icon"><i class="fas fa-folder"></i></div>
+                <div class="claim-info">
+                    <div class="claim-name">${esc(c.name)}</div>
+                    <div class="claim-meta">${esc(c.address)}${c.claim_number ? ' · #' + esc(c.claim_number) : ''}</div>
+                </div>
+                <span class="claim-badge">${c.total_files} Excel file${c.total_files !== 1 ? 's' : ''}</span>
+                <div class="claim-actions-inline">
+                    <button class="btn-dl-zip" title="Download all Excel for this claim as ZIP"
+                        onclick="event.stopPropagation(); dlZip(${c.id}, '${esc(c.name)}')">
+                        <i class="fas fa-file-archive"></i> ZIP
+                    </button>
+                    <button class="btn-email-claim" title="Email Excel files for this claim"
+                        onclick="event.stopPropagation(); openSendModal(${c.id}, '${esc(c.name)}')">
+                        <i class="fas fa-paper-plane"></i> Email
+                    </button>
+                </div>
+                <i class="fas fa-chevron-right claim-chevron"></i>
+            </div>
+            <div class="claim-body">
+                ${folderSections}
+                <!-- Mobile action row inside body -->
+                <div style="display:flex;gap:8px;padding:10px 18px 14px;border-top:1px solid #f1f5f9;">
+                    <a href="/claims/excel-hub/${c.id}/download/"
+                       class="btn btn-sm btn-success flex-fill">
+                        <i class="fas fa-file-archive"></i> Download ZIP
+                    </a>
+                    <button onclick="openSendModal(${c.id}, '${esc(c.name)}')"
+                            class="btn btn-sm btn-primary flex-fill">
+                        <i class="fas fa-paper-plane"></i> Email Files
+                    </button>
+                </div>
+            </div>
+        </div>`;
+}
+
+function toggleCard(id) {
+    const card = document.getElementById(`card-${id}`);
+    card.classList.toggle('open');
+}
+
+function esc(str) {
+    return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Search / Filter ────────────────────────────────────────────────────────
+function filterClaims(q) {
+    q = q.toLowerCase().trim();
+    if (!q) { renderClaims(allClaims); return; }
+    const filtered = allClaims.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        c.address.toLowerCase().includes(q) ||
+        c.claim_number.toLowerCase().includes(q) ||
+        c.folder_groups.some(g =>
+            g.files.some(f => f.name.toLowerCase().includes(q))
+        )
+    );
+    renderClaims(filtered);
+    // Auto-expand if only one result
+    if (filtered.length === 1) toggleCard(filtered[0].id);
+}
+
+// ── Download actions ───────────────────────────────────────────────────────
+function dlFile(claimId, relPath) {
+    window.location.href = `/claims/${claimId}/download/?path=${encodeURIComponent(relPath)}`;
+}
+
+function dlZip(claimId) {
+    window.location.href = `/claims/excel-hub/${claimId}/download/`;
+}
+
+// ── Email Settings Modal ───────────────────────────────────────────────────
+function openSettingsModal() {
+    renderEmailTags('emailTags', settingsEmails, removeSettingsEmail);
+    document.getElementById('settingsError').style.display = 'none';
+    new bootstrap.Modal(document.getElementById('settingsModal')).show();
+}
+
+function renderEmailTags(containerId, emails, removeFn) {
+    const container = document.getElementById(containerId);
+    container.innerHTML = emails.length
+        ? emails.map((e, i) => `
+            <span class="modal-email-tag">
+                <i class="fas fa-envelope" style="font-size:10px"></i>
+                ${esc(e)}
+                <button onclick="${removeFn.name}(${i})" title="Remove"><i class="fas fa-times"></i></button>
+            </span>`).join('')
+        : '<span style="font-size:12px;color:#94a3b8;padding:4px 6px">No recipients yet</span>';
+}
+
+function addEmail() {
+    const input = document.getElementById('newEmailInput');
+    const email = input.value.trim();
+    if (!email || !email.includes('@')) return;
+    if (!settingsEmails.includes(email)) settingsEmails.push(email);
+    input.value = '';
+    renderEmailTags('emailTags', settingsEmails, removeSettingsEmail);
+}
+
+function removeSettingsEmail(i) {
+    settingsEmails.splice(i, 1);
+    renderEmailTags('emailTags', settingsEmails, removeSettingsEmail);
+}
+
+function saveSettings() {
+    fetch('{% url "excel_hub_settings" %}', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ emails: settingsEmails }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+            showToast('Email settings saved', 'success');
+        } else {
+            document.getElementById('settingsError').textContent = data.error;
+            document.getElementById('settingsError').style.display = '';
+        }
+    })
+    .catch(err => {
+        document.getElementById('settingsError').textContent = err.message;
+        document.getElementById('settingsError').style.display = '';
+    });
+}
+
+// ── Manual Send Email Modal ────────────────────────────────────────────────
+function openSendModal(claimId, claimName) {
+    activeSendId = claimId;
+    sendEmails = [...settingsEmails];
+    document.getElementById('sendModalDesc').textContent =
+        `Send all Excel files for "${claimName}" as email attachments.`;
+    document.getElementById('sendError').style.display = 'none';
+    renderSendTags();
+    new bootstrap.Modal(document.getElementById('sendModal')).show();
+}
+
+function renderSendTags() {
+    renderEmailTags('sendEmailTags', sendEmails, removeSendEmail);
+}
+
+function addSendEmail() {
+    const input = document.getElementById('sendNewEmail');
+    const email = input.value.trim();
+    if (!email || !email.includes('@')) return;
+    if (!sendEmails.includes(email)) sendEmails.push(email);
+    input.value = '';
+    renderSendTags();
+}
+
+function removeSendEmail(i) {
+    sendEmails.splice(i, 1);
+    renderSendTags();
+}
+
+function confirmSend() {
+    if (!sendEmails.length) {
+        document.getElementById('sendError').textContent = 'Add at least one recipient.';
+        document.getElementById('sendError').style.display = '';
+        return;
+    }
+    const btn = document.getElementById('sendBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending…';
+
+    fetch(`/claims/excel-hub/${activeSendId}/send-email/`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+        body: JSON.stringify({ recipients: sendEmails }),
+    })
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Now';
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('sendModal')).hide();
+            showToast(`Sent ${data.files_sent} file${data.files_sent !== 1 ? 's' : ''} to ${data.recipients.length} recipient${data.recipients.length !== 1 ? 's' : ''}`, 'success');
+        } else {
+            document.getElementById('sendError').textContent = data.error || 'Send failed.';
+            document.getElementById('sendError').style.display = '';
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-paper-plane"></i> Send Now';
+        document.getElementById('sendError').textContent = err.message;
+        document.getElementById('sendError').style.display = '';
+    });
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+let toastTimer;
+function showToast(msg, type = '') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = `show${type ? ' ' + type : ''}`;
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => { t.className = ''; }, 3500);
+}
+</script>
+{% endblock %}

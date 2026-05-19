@@ -1,0 +1,68 @@
+# /etc/systemd/system/libreoffice-uno.service
+#
+# Persistent LibreOffice headless listener for UNO API connections.
+# Used by the claims management system to populate Excel templates
+# without XML surgery (zero repair errors).
+#
+# Install:
+#   sudo cp libreoffice-uno.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now libreoffice-uno.service
+#
+# Verify:
+#   sudo systemctl status libreoffice-uno.service
+#   python3 -c "from docsAppR.lo_uno_service import is_available; print(is_available())"
+
+[Unit]
+Description=LibreOffice Headless UNO Listener
+Documentation=https://wiki.documentfoundation.org/Development/UNO
+After=network.target
+
+[Service]
+Type=simple
+# IMPORTANT: Change this to your application user (same user that runs
+# Celery workers / gunicorn). LibreOffice locks its profile per-user,
+# so the listener and the connecting process must run as the same user.
+User=www-data
+Group=www-data
+
+# Use a dedicated user profile to avoid conflicts with interactive LO sessions.
+# The %t expands to the runtime directory (/run/user/UID for user services,
+# or we explicitly set it here).
+Environment=HOME=/var/lib/libreoffice-uno
+Environment=UserInstallation=file:///var/lib/libreoffice-uno/.config/libreoffice
+
+ExecStartPre=/bin/mkdir -p /var/lib/libreoffice-uno/.config/libreoffice
+ExecStart=/usr/bin/soffice \
+    --headless \
+    --invisible \
+    --nocrashreport \
+    --nodefault \
+    --nofirststartwizard \
+    --nologo \
+    --norestore \
+    "-env:UserInstallation=file:///var/lib/libreoffice-uno/.config/libreoffice" \
+    --accept="socket,host=127.0.0.1,port=2002;urp;StarOffice.ServiceManager"
+
+# Restart on crash — LO can occasionally segfault under heavy load
+Restart=on-failure
+RestartSec=5
+StartLimitIntervalSec=60
+StartLimitBurst=5
+
+# Security hardening
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/libreoffice-uno
+# Allow read access to the claims folder tree
+ReadWritePaths=/path/to/your/claims/root
+# If your templates are in MEDIA_ROOT:
+# ReadWritePaths=/path/to/media
+
+# Resource limits — prevent runaway LO from eating all RAM
+MemoryMax=2G
+CPUQuota=200%
+
+[Install]
+WantedBy=multi-user.target
