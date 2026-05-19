@@ -1,35 +1,21 @@
-from django.urls import path
-from . import views
+"""
+docsAppR/urls.py
 
-urlpatterns = [
-    path('', views.dashboard, name="dashboard"),
-    path('checklist/', views.checklist, name="checklist"),
-    path('update_checklist/', views.update_checklist, name='update_checklist'),
-    path('create/', views.create, name="create"),
-    path('update_checklist_item/<int:item_id>/', views.update_checklist_item, name='update_checklist_item'),
-    path('generate_invoice_pdf/<int:client_id>/', views.generate_invoice_pdf, name="generate_invoice_pdf"),
-    path('statistics/', views.statistics, name="statistics"),
-    path('logout/', views.logout_view, name='logout'),
-    path('emails/', views.emails, name='emails'),
-    path('labels/', views.labels, name='labels'),
-    path('generate_documents/', views.client_list, name='client_list'),
-    path('generate_pdf/', views.generate_document_from_html, name='generate_pdf'),
-    path('encircle/', views.encircle_claims_dashboard, name='encircle_dashboard'),
-    path('fetch_dimensions_API/<int:claim_id>/', views.fetch_dimensions_API, name='fetch_dimensions_API'),
-    path('api/encircle/claims/', views.fetch_all_claims_api, name='fetch_all_claims_api'),
-    path('api/encircle/claims/<int:claim_id>/', views.fetch_claim_details_api, name='fetch_claim_details_api'),
-    path('api/encircle/claims/<int:claim_id>/rooms/', views.fetch_claim_rooms_api, name='fetch_claim_rooms_api'),
-    path('api/encircle/claims/export/', views.export_claims_to_excel, name='export_all_claims'),
-    path('api/encircle/claims/export/<int:claim_id>/', views.export_claims_to_excel, name='export_single_claim'),
-    path('download-media/', views.download_media_view, name='download_media'),
-    path('save-landlord/', views.save_landlord, name='save_landlord'),
-    path('generate-data-report/', views.generate_data_report, name='generate_data_report'),
-    path('api/automate', views.create_room_template_from_excel, name='automate'),
-    path('readings/', views.reading_browser, name='reading_browser'),
-    path('readings/upload/', views.upload_readings, name='upload_readings'),
-    path('readings/sorted/', views.get_sorted_readings, name='get_sorted_readings'),
-    path('readings/export/', views.export_readings, name='export_readings'),
-    path('readings/delete/<int:image_id>/', views.delete_reading, name='delete_reading'),
-    path('readings/rename/<int:image_id>/', views.rename_reading, name='rename_reading'),
-    path('api/import-client-with-rooms/', views.import_client_with_rooms, name='import_client_with_rooms'),
-]
+All URL patterns reside in dedicated app modules:
+
+  claims/urls.py          → /claims/
+  scope_checklist/urls.py → /scope-checklist/
+  lease_manager/urls.py   → /lease-manager/
+  email_manager/urls.py   → /emails/
+  labels/urls.py          → /labels/
+  readings/urls.py        → /readings/
+  sensor_renamer/urls.py  → /sensor-renamer/
+  equipment_checker/urls.py → /equipment-checker/
+  claim_images/urls.py    → /claim-images/
+  encircle/urls.py        → /encircle/
+  dashboard/urls.py       → / (home, dashboard, misc)
+
+This file is intentionally left empty.
+"""
+
+urlpatterns = []
