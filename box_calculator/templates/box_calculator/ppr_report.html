@@ -1,0 +1,95 @@
+{% extends "account/base.html" %}
+{% load my_tags %}
+{% block title %}PPR Report — {{ session.client.pOwner }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h2 class="mb-0">Pre-Packout Report</h2>
+      <p class="text-muted mb-0">
+        {{ session.client.pOwner }}
+        {% if session.client.claimNumber %} — Claim #{{ session.client.claimNumber }}{% endif %}
+      </p>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'ppr_home' %}" class="btn btn-outline-secondary">← Back</a>
+      <a href="{% url 'ppr_export_excel' session.id %}" class="btn btn-success">
+        <i class="bi bi-file-earmark-excel"></i> Export Excel
+      </a>
+      <button onclick="window.print()" class="btn btn-outline-dark">
+        <i class="bi bi-printer"></i> Print
+      </button>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-body p-0" style="overflow-x:auto">
+      <table class="table table-bordered table-sm mb-0" id="report-table">
+        <thead class="table-light">
+          <tr>
+            <th>Room</th>
+            {% for col in ppr_columns %}
+            <th class="text-center" title="{{ ppr_column_labels|get_item:col }}">
+              {{ ppr_column_labels|get_item:col }}
+            </th>
+            {% endfor %}
+            <th class="text-center fw-bold">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for room in session.rooms.all %}
+          <tr {% if room.status == 'error' %}class="table-danger"{% endif %}>
+            <td class="text-nowrap">
+              {{ room.room_name }}
+              {% if room.confidence %}
+              <span class="badge bg-light text-dark border ms-1" title="{{ room.ai_notes }}">
+                {{ room.confidence }}
+              </span>
+              {% endif %}
+              {% if room.status == 'error' %}
+              <span class="badge bg-danger ms-1">error</span>
+              {% endif %}
+            </td>
+            {% for col in ppr_columns %}
+            <td class="text-center">
+              {% with val=room|attr:col %}{% if val %}{{ val }}{% endif %}{% endwith %}
+            </td>
+            {% endfor %}
+            <td class="text-center fw-semibold">
+              {% if room.total %}{{ room.total }}{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot>
+          <tr class="table-warning fw-bold">
+            <td>GRAND TOTALS</td>
+            {% for col in ppr_columns %}
+            <td class="text-center">
+              {% with val=grand_counts|get_item:col %}{% if val %}{{ val }}{% endif %}{% endwith %}
+            </td>
+            {% endfor %}
+            <td class="text-center">{{ grand_total }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {% if session.rooms.all %}
+  <p class="text-muted mt-3 small">
+    {{ session.rooms.count }} room{{ session.rooms.count|pluralize }} analyzed ·
+    Generated {{ session.updated_at|date:"N j, Y g:i A" }} ·
+    AI estimates — verify before finalizing
+  </p>
+  {% endif %}
+</div>
+
+<style>
+@media print {
+  .btn, a.btn { display: none !important; }
+  .card { border: none !important; box-shadow: none !important; }
+}
+</style>
+{% endblock %}

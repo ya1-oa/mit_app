@@ -1,0 +1,304 @@
+{% extends "account/base.html" %}
+{% block title %}PPR Box Count — AI Estimator{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h2 class="mb-0">Pre-Packout Report</h2>
+      <p class="text-muted mb-0">AI-powered box count estimation from room photos</p>
+    </div>
+    <div id="ppr-actions" style="display:none!important">
+      <a id="btn-report" class="btn btn-outline-secondary me-2" href="#" target="_blank">View Report</a>
+      <a id="btn-excel" class="btn btn-success" href="#" target="_blank">
+        <i class="bi bi-file-earmark-excel"></i> Export Excel
+      </a>
+    </div>
+  </div>
+
+  <!-- Client selector -->
+  <div class="card mb-4">
+    <div class="card-body">
+      <label class="form-label fw-semibold">Select Client</label>
+      <select id="client-select" class="form-select form-select-lg">
+        <option value="">— choose a client —</option>
+        {% for c in clients %}
+        <option value="{{ c.id }}"
+                data-claim="{{ c.claimNumber|default:'' }}"
+                data-encircle="{{ c.encircle_claim_id|default:'' }}">
+          {{ c.pOwner }}{% if c.claimNumber %} — #{{ c.claimNumber }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  <!-- Main PPR workspace -->
+  <div id="ppr-workspace" style="display:none">
+    <div class="row g-3 mb-4">
+      <!-- Left: Upload panel -->
+      <div class="col-lg-4">
+        <div class="card h-100">
+          <div class="card-header fw-semibold">Upload Room Photos</div>
+          <div class="card-body">
+            <div class="mb-3">
+              <label class="form-label">Room Name</label>
+              <select id="room-select" class="form-select">
+                <option value="">— select room —</option>
+              </select>
+              <input id="room-name-custom" class="form-control mt-2" placeholder="Or type custom room name…" style="display:none">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">Photos <small class="text-muted">(up to 5, JPEG/PNG/WebP)</small></label>
+              <input id="image-input" type="file" class="form-control" multiple accept="image/*">
+            </div>
+            <div class="mb-3">
+              <label class="form-label">AI Model</label>
+              <select id="model-select" class="form-select form-select-sm">
+                <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
+                <option value="claude-sonnet-4-6">claude-sonnet-4-6 (accurate)</option>
+              </select>
+            </div>
+            <button id="btn-upload" class="btn btn-primary w-100" disabled>
+              <span id="upload-spinner" class="spinner-border spinner-border-sm me-2" style="display:none"></span>
+              Analyze Room
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Right: Live summary table -->
+      <div class="col-lg-8">
+        <div class="card h-100">
+          <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+            Box Count Summary
+            <span id="room-count-badge" class="badge bg-secondary">0 rooms</span>
+          </div>
+          <div class="card-body p-0" style="overflow-x:auto">
+            <table class="table table-sm table-bordered table-hover mb-0" id="ppr-table">
+              <thead class="table-light">
+                <tr>
+                  <th>Room</th>
+                  <th title="Small 1.5 cu ft">Sm</th>
+                  <th title="Medium 3.0 cu ft">Med</th>
+                  <th title="Large 4.5 cu ft">Lg</th>
+                  <th title="Box/Wrapped">BW</th>
+                  <th title="Plant/Vase">PV</th>
+                  <th title="TV box">TV</th>
+                  <th title="Wardrobe">WD</th>
+                  <th title="Mattress">Mat</th>
+                  <th title="Dish Pack">DP</th>
+                  <th title="Glass Pack">GP</th>
+                  <th title="Boots & Pans">B&P</th>
+                  <th><strong>Total</strong></th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody id="ppr-tbody">
+                <tr id="ppr-empty-row">
+                  <td colspan="14" class="text-center text-muted py-4">
+                    Upload room photos to begin estimating
+                  </td>
+                </tr>
+              </tbody>
+              <tfoot id="ppr-tfoot" style="display:none">
+                <tr class="table-warning fw-bold" id="ppr-totals-row">
+                  <td>GRAND TOTALS</td>
+                  <td id="gt-small">0</td>
+                  <td id="gt-medium">0</td>
+                  <td id="gt-large">0</td>
+                  <td id="gt-box_wrapped">0</td>
+                  <td id="gt-plant_vase">0</td>
+                  <td id="gt-tv">0</td>
+                  <td id="gt-wardrobe">0</td>
+                  <td id="gt-mattress">0</td>
+                  <td id="gt-dish_pack">0</td>
+                  <td id="gt-glass_pack">0</td>
+                  <td id="gt-boots_pans">0</td>
+                  <td id="gt-total">0</td>
+                  <td></td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const PPR_COLS = ['small','medium','large','box_wrapped','plant_vase','tv','wardrobe','mattress','dish_pack','glass_pack','boots_pans'];
+let sessionId = null;
+let roomData = {};  // room_name → counts dict
+let pendingTasks = {};  // task_id → room_name
+let pollInterval = null;
+
+const clientSelect  = document.getElementById('client-select');
+const roomSelect    = document.getElementById('room-select');
+const imageInput    = document.getElementById('image-input');
+const btnUpload     = document.getElementById('btn-upload');
+const uploadSpinner = document.getElementById('upload-spinner');
+const workspace     = document.getElementById('ppr-workspace');
+const pprActions    = document.getElementById('ppr-actions');
+const btnReport     = document.getElementById('btn-report');
+const btnExcel      = document.getElementById('btn-excel');
+
+clientSelect.addEventListener('change', async () => {
+  const clientId = clientSelect.value;
+  if (!clientId) { workspace.style.display = 'none'; return; }
+  workspace.style.display = 'block';
+  roomSelect.innerHTML = '<option value="">— loading rooms… —</option>';
+  const data = await fetch(`/calculator/ppr/session/${clientId}/`).then(r => r.json());
+  sessionId = data.session?.id || null;
+
+  // Populate room selector from 300-series available rooms
+  roomSelect.innerHTML = '<option value="">— select room —</option>';
+  (data.available_rooms || []).forEach(r => {
+    const opt = document.createElement('option');
+    opt.value = r.name;
+    opt.textContent = r.name;
+    roomSelect.appendChild(opt);
+  });
+
+  // Restore existing session data
+  if (data.session) {
+    sessionId = data.session.id;
+    (data.session.rooms || []).forEach(r => {
+      roomData[r.room_name] = r;
+      renderRow(r);
+    });
+    updateTotals();
+    updateActions();
+  }
+});
+
+roomSelect.addEventListener('change', updateUploadBtn);
+imageInput.addEventListener('change', updateUploadBtn);
+
+function updateUploadBtn() {
+  const hasRoom  = roomSelect.value || document.getElementById('room-name-custom').value.trim();
+  const hasFiles = imageInput.files.length > 0;
+  btnUpload.disabled = !(hasRoom && hasFiles);
+}
+
+btnUpload.addEventListener('click', async () => {
+  const roomName = roomSelect.value || document.getElementById('room-name-custom').value.trim();
+  if (!roomName || !imageInput.files.length) return;
+
+  btnUpload.disabled = true;
+  uploadSpinner.style.display = 'inline-block';
+
+  const fd = new FormData();
+  fd.append('client_id', clientSelect.value);
+  fd.append('room_name', roomName);
+  fd.append('model', document.getElementById('model-select').value);
+  for (const f of imageInput.files) fd.append('images', f);
+
+  try {
+    const resp = await fetch('/calculator/ppr/upload/', {method:'POST', body:fd, headers:{'X-CSRFToken': getCsrf()}});
+    const data = await resp.json();
+    if (data.error) { alert('Error: ' + data.error); return; }
+    sessionId = data.session_id;
+    pendingTasks[data.task_id] = roomName;
+    // Show pending row
+    roomData[roomName] = {room_name: roomName, status:'processing', counts:{}, total:0};
+    renderRow(roomData[roomName]);
+    startPolling();
+    updateActions();
+  } finally {
+    btnUpload.disabled = false;
+    uploadSpinner.style.display = 'none';
+    imageInput.value = '';
+    updateUploadBtn();
+  }
+});
+
+function startPolling() {
+  if (pollInterval) return;
+  pollInterval = setInterval(pollTasks, 3000);
+}
+
+async function pollTasks() {
+  if (!Object.keys(pendingTasks).length) { clearInterval(pollInterval); pollInterval = null; return; }
+  for (const [taskId, roomName] of Object.entries(pendingTasks)) {
+    const data = await fetch(`/calculator/ppr/status/${taskId}/`).then(r => r.json());
+    if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
+      delete pendingTasks[taskId];
+      if (data.room) { roomData[roomName] = data.room; renderRow(data.room); updateTotals(); }
+    }
+  }
+}
+
+function renderRow(room) {
+  document.getElementById('ppr-empty-row')?.remove();
+  document.getElementById('ppr-tfoot').style.display = '';
+  const tbody = document.getElementById('ppr-tbody');
+  const existingRow = document.getElementById(`row-${CSS.escape(room.room_name)}`);
+  const counts = room.counts || {};
+  const total  = room.total || 0;
+  const statusBadge = room.status === 'processing'
+    ? '<span class="spinner-border spinner-border-sm"></span>'
+    : room.status === 'error'
+    ? '<span class="badge bg-danger">err</span>'
+    : room.confidence
+    ? `<span class="badge bg-light text-dark border">${room.confidence}</span>`
+    : '';
+
+  const cells = PPR_COLS.map(c => `<td>${counts[c] || ''}</td>`).join('');
+  const html = `<tr id="row-${room.room_name}">
+    <td class="text-nowrap">${room.room_name} ${statusBadge}</td>
+    ${cells}
+    <td><strong>${total || ''}</strong></td>
+    <td>
+      <button class="btn btn-xs btn-outline-danger py-0 px-1"
+        onclick="deleteRoom(${room.id}, '${room.room_name}')">×</button>
+    </td>
+  </tr>`;
+  if (existingRow) { existingRow.outerHTML = html; } else { tbody.insertAdjacentHTML('beforeend', html); }
+  updateRoomBadge();
+}
+
+function updateTotals() {
+  const totals = Object.fromEntries(PPR_COLS.map(c => [c, 0]));
+  let grandTotal = 0;
+  for (const r of Object.values(roomData)) {
+    if (r.status !== 'complete') continue;
+    PPR_COLS.forEach(c => { totals[c] += (r.counts?.[c] || 0); });
+    grandTotal += r.total || 0;
+  }
+  PPR_COLS.forEach(c => { document.getElementById(`gt-${c}`).textContent = totals[c] || ''; });
+  document.getElementById('gt-total').textContent = grandTotal || '';
+}
+
+function updateRoomBadge() {
+  document.getElementById('room-count-badge').textContent = `${Object.keys(roomData).length} rooms`;
+}
+
+function updateActions() {
+  if (sessionId) {
+    pprActions.style.display = 'flex';
+    btnReport.href = `/calculator/ppr/report/${sessionId}/`;
+    btnExcel.href  = `/calculator/ppr/export/${sessionId}/`;
+  }
+}
+
+async function deleteRoom(roomId, roomName) {
+  if (!confirm(`Remove ${roomName}?`)) return;
+  await fetch(`/calculator/ppr/room/${roomId}/delete/`, {method:'POST', headers:{'X-CSRFToken': getCsrf()}});
+  document.getElementById(`row-${roomName}`)?.remove();
+  delete roomData[roomName];
+  updateTotals();
+  updateRoomBadge();
+  if (!Object.keys(roomData).length) {
+    document.getElementById('ppr-tbody').innerHTML =
+      '<tr id="ppr-empty-row"><td colspan="14" class="text-center text-muted py-4">Upload room photos to begin estimating</td></tr>';
+    document.getElementById('ppr-tfoot').style.display = 'none';
+  }
+}
+
+function getCsrf() {
+  return document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
+}
+</script>
+{% endblock %}

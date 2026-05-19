@@ -80,6 +80,7 @@ def api_client_rooms(request, client_id):
         'client_name': client.pOwner,
         'encircle_claim_id': client.encircle_claim_id or '',
         'rooms': room_data,
+        'saved_rooms': saved_rooms,
         'session_id': session.id if session else None,
     })
 
@@ -216,3 +217,211 @@ def report_view(request, session_id):
         'report': report,
         'report_dict': report.to_dict(),
     })
+
+
+# ---------------------------------------------------------------------------
+# PPR (Pre-Packout Report) — AI image-based views
+# ---------------------------------------------------------------------------
+
+@login_required
+def ppr_home(request):
+    """PPR landing page — select a client and manage room photo uploads."""
+    from .models import BoxCalcPPRSession
+    clients = Client.objects.order_by('pOwner').values('id', 'pOwner', 'pAddress', 'claimNumber', 'encircle_claim_id')
+    return render(request, 'box_calculator/ppr.html', {
+        'clients': list(clients),
+    })
+
+
+@login_required
+def ppr_session(request, client_id):
+    """Load or create a PPR session for a client; return session JSON."""
+    from .models import BoxCalcPPRSession
+    client = get_object_or_404(Client, id=client_id)
+
+    # Pull 300-series rooms from Encircle/docsAppR (room_name starts with 3xx)
+    rooms_qs = Room.objects.filter(client=client).order_by('sequence', 'room_name')
+    ppr_rooms_qs = [r for r in rooms_qs if _is_packout_room(r.room_name)]
+
+    session = BoxCalcPPRSession.objects.filter(client=client).first()
+    session_data = None
+    if session:
+        session_data = {
+            'id': session.id,
+            'notes': session.notes,
+            'rooms': [r.to_dict() for r in session.rooms.order_by('order', 'room_name')],
+        }
+
+    return JsonResponse({
+        'client_name': client.pOwner,
+        'claim_number': client.claimNumber or '',
+        'encircle_claim_id': client.encircle_claim_id or '',
+        'available_rooms': [{'id': r.id, 'name': r.room_name} for r in ppr_rooms_qs],
+        'session': session_data,
+    })
+
+
+def _is_packout_room(room_name: str) -> bool:
+    """True if the room number prefix indicates a 300-series packout room."""
+    import re
+    m = re.match(r'^(\d+)', room_name.strip())
+    if not m:
+        return True  # un-numbered rooms always included
+    num = int(m.group(1))
+    return 300 <= num < 400
+
+
+@login_required
+@require_POST
+def ppr_upload_room(request):
+    """
+    Accept image uploads for a single room and dispatch the AI analysis task.
+
+    POST: multipart/form-data
+        client_id   — int
+        room_name   — str  e.g. "301 Living Room DN"
+        images      — file[] (JPEG/PNG/WEBP etc.)
+        model       — optional Claude model ID
+
+    Returns: {"task_id": str, "room_name": str, "session_id": int}
+    """
+    from .models import BoxCalcPPRSession, BoxCalcPPRRoom
+    from .tasks import process_ppr_room_task
+    import uuid, pathlib
+
+    client_id = request.POST.get('client_id')
+    room_name = request.POST.get('room_name', '').strip()
+    model = request.POST.get('model', 'claude-haiku-4-5-20251001')
+    files = request.FILES.getlist('images')
+
+    if not client_id:
+        return JsonResponse({'error': 'client_id required'}, status=400)
+    if not room_name:
+        return JsonResponse({'error': 'room_name required'}, status=400)
+    if not files:
+        return JsonResponse({'error': 'At least one image required'}, status=400)
+
+    client = get_object_or_404(Client, id=client_id)
+    session, _ = BoxCalcPPRSession.objects.get_or_create(client=client)
+
+    # Save uploaded files to temp storage
+    upload_dir = pathlib.Path('/tmp') / f'ppr_{session.id}_{uuid.uuid4().hex[:8]}'
+    upload_dir.mkdir(parents=True, exist_ok=True)
+
+    ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff', '.tif'}
+    saved_paths = []
+    for f in files[:5]:
+        ext = pathlib.Path(f.name).suffix.lower()
+        if ext not in ALLOWED_EXTS:
+            continue
+        dest = upload_dir / f'{uuid.uuid4().hex}{ext}'
+        with open(dest, 'wb') as out:
+            for chunk in f.chunks():
+                out.write(chunk)
+        saved_paths.append(str(dest))
+
+    if not saved_paths:
+        return JsonResponse({'error': 'No supported image files in upload'}, status=400)
+
+    # Mark room as pending and dispatch task
+    ppr_room, _ = BoxCalcPPRRoom.objects.get_or_create(session=session, room_name=room_name)
+    ppr_room.status = 'pending'
+    ppr_room.save(update_fields=['status'])
+
+    task = process_ppr_room_task.delay(
+        session_id=session.id,
+        room_name=room_name,
+        image_paths=saved_paths,
+        model=model,
+    )
+
+    ppr_room.celery_task_id = task.id
+    ppr_room.save(update_fields=['celery_task_id'])
+
+    return JsonResponse({
+        'task_id': task.id,
+        'room_name': room_name,
+        'session_id': session.id,
+    })
+
+
+@login_required
+def ppr_task_status(request, task_id):
+    """Poll status of a PPR room analysis task."""
+    from celery.result import AsyncResult
+    from .models import BoxCalcPPRRoom
+
+    result = AsyncResult(task_id)
+    state = result.state
+
+    room = BoxCalcPPRRoom.objects.filter(celery_task_id=task_id).first()
+    room_data = room.to_dict() if room else None
+
+    if state == 'SUCCESS':
+        return JsonResponse({'state': 'SUCCESS', 'room': room_data})
+    elif state == 'FAILURE':
+        return JsonResponse({'state': 'FAILURE', 'error': str(result.result), 'room': room_data})
+    elif state == 'PROGRESS':
+        return JsonResponse({'state': 'PROGRESS', 'meta': result.info, 'room': room_data})
+    else:
+        return JsonResponse({'state': state, 'room': room_data})
+
+
+@login_required
+def ppr_report(request, session_id):
+    """Render the PPR report page for a completed session."""
+    from .models import BoxCalcPPRSession
+    from .ppr_analyzer import PPR_COLUMNS, PPR_COLUMN_LABELS
+    session = get_object_or_404(BoxCalcPPRSession, id=session_id)
+    return render(request, 'box_calculator/ppr_report.html', {
+        'session': session,
+        'ppr_columns': PPR_COLUMNS,
+        'ppr_column_labels': PPR_COLUMN_LABELS,
+        'grand_counts': session.grand_counts,
+        'grand_total': session.grand_total,
+    })
+
+
+@login_required
+def ppr_export_excel(request, session_id):
+    """Generate and stream the PPR Excel report (.xlsx)."""
+    from .models import BoxCalcPPRSession
+    from .excel_builder import build_ppr_excel
+    session = get_object_or_404(BoxCalcPPRSession, id=session_id)
+    xlsx_bytes = build_ppr_excel(session)
+    safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
+    filename = f"PPR_Box_Count_{safe_name}.xlsx"
+    response = HttpResponse(
+        xlsx_bytes,
+        content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+@require_POST
+def ppr_update_room(request, room_id):
+    """Manually edit a room's PPR counts (override AI estimates)."""
+    from .models import BoxCalcPPRRoom
+    from .ppr_analyzer import PPR_COLUMNS
+    ppr_room = get_object_or_404(BoxCalcPPRRoom, id=room_id)
+    try:
+        data = json.loads(request.body)
+        for col in PPR_COLUMNS:
+            if col in data:
+                setattr(ppr_room, col, max(0, int(data[col])))
+        ppr_room.save()
+        return JsonResponse({'success': True, 'room': ppr_room.to_dict()})
+    except Exception as e:
+        return JsonResponse({'error': str(e)}, status=400)
+
+
+@login_required
+@require_POST
+def ppr_delete_room(request, room_id):
+    """Remove a room from the PPR session."""
+    from .models import BoxCalcPPRRoom
+    ppr_room = get_object_or_404(BoxCalcPPRRoom, id=room_id)
+    ppr_room.delete()
+    return JsonResponse({'success': True})
