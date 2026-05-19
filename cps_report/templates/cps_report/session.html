@@ -55,6 +55,9 @@
           </div>
         </div>
         <div class="col-md-4 text-end">
+          <a href="{% url 'cps_report_summary' session.id %}" class="btn btn-outline-info btn-sm me-1">
+            <i class="fas fa-table me-1"></i> Summary
+          </a>
           <a href="{% url 'cps_report_export_pdf' session.id %}" class="btn btn-danger btn-sm me-1">
             <i class="fas fa-file-pdf me-1"></i> PDF
           </a>

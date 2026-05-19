@@ -379,6 +379,7 @@ def api_save_room_items(request):
         if all_statuses == {'complete'}:
             session.status = 'complete'
             session.save(update_fields=['status'])
+            _auto_generate_summary(session)
 
         return JsonResponse({
             'success': True,
@@ -837,6 +838,84 @@ def api_import_excel(request):
     except Exception as e:
         logger.error(f"api_import_excel error: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
+
+
+def _auto_generate_summary(session) -> None:
+    """Best-effort: pre-build summary exports so on-demand page loads instantly."""
+    try:
+        from .summary_builder import build_summary_excel, build_summary_pdf
+        import os
+        from django.conf import settings as _cfg
+
+        client = session.client
+        if not client:
+            return
+        folder_path = getattr(client, 'get_server_folder_path', lambda: None)()
+        if not folder_path:
+            return
+
+        summary_dir = os.path.join(folder_path, '92-CPS', 'summaries')
+        os.makedirs(summary_dir, exist_ok=True)
+        base = f"CPS_Summary_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}"
+
+        xlsx = build_summary_excel(session)
+        with open(os.path.join(summary_dir, f'{base}.xlsx'), 'wb') as f:
+            f.write(xlsx)
+
+        pdf = build_summary_pdf(session)
+        with open(os.path.join(summary_dir, f'{base}.pdf'), 'wb') as f:
+            f.write(pdf)
+
+        logger.info(f"Auto-generated summary for session {session.id}")
+    except Exception as e:
+        logger.warning(f"Auto-generate summary failed (session {session.id}): {e}")
+
+
+@login_required
+def session_summary(request, session_id):
+    """Render the per-room summary page for a CPS session."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    from .summary_builder import compute_summary
+    summary = compute_summary(session)
+    return render(request, 'cps_report/summary.html', {
+        'session': session,
+        **summary,
+    })
+
+
+@login_required
+def export_summary_pdf(request, session_id):
+    """Stream the summary as a PDF file."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    try:
+        from .summary_builder import build_summary_pdf
+        pdf_bytes = build_summary_pdf(session)
+        filename = f"CPS_Summary_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"export_summary_pdf error: {e}", exc_info=True)
+        return HttpResponse(f"Error generating summary PDF: {e}", status=500)
+
+
+@login_required
+def export_summary_excel(request, session_id):
+    """Stream the summary as an Excel file."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    try:
+        from .summary_builder import build_summary_excel
+        xlsx_bytes = build_summary_excel(session)
+        filename = f"CPS_Summary_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.xlsx"
+        response = HttpResponse(
+            xlsx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"export_summary_excel error: {e}", exc_info=True)
+        return HttpResponse(f"Error generating summary Excel: {e}", status=500)
 
 
 def _cps_save_and_notify(session, xlsx_bytes: bytes, filename: str) -> None:

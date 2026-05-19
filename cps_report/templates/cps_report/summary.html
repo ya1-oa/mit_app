@@ -1,0 +1,129 @@
+{% extends "account/base.html" %}
+{% load humanize %}
+
+{% block title %}CPS Summary — {{ session.insured_name|default:session.client.pOwner }}{% endblock %}
+{% block page_title %}<i class="fas fa-table"></i> CPS Summary — {{ session.insured_name|default:session.client.pOwner }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+
+  <!-- Header bar -->
+  <div class="d-flex align-items-center justify-content-between mb-4">
+    <div>
+      <h2 class="mb-0">CPS Schedule of Loss — Summary</h2>
+      <p class="text-muted mb-0">
+        {{ session.insured_name|default:session.client.pOwner }}
+        {% if session.claim_number %} &mdash; Claim #{{ session.claim_number }}{% endif %}
+      </p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{% url 'cps_report_session' session.id %}" class="btn btn-outline-secondary">
+        <i class="fas fa-arrow-left"></i> Back to Full Report
+      </a>
+      <a href="{% url 'cps_report_summary_excel' session.id %}" class="btn btn-success">
+        <i class="bi bi-file-earmark-excel"></i> Download Excel
+      </a>
+      <a href="{% url 'cps_report_summary_pdf' session.id %}" class="btn btn-danger">
+        <i class="bi bi-file-earmark-pdf"></i> Download PDF
+      </a>
+      <button onclick="window.print()" class="btn btn-outline-dark">
+        <i class="bi bi-printer"></i> Print
+      </button>
+    </div>
+  </div>
+
+  <!-- Meta card -->
+  <div class="card mb-4 border-0 shadow-sm">
+    <div class="card-body py-3" style="background:#EFF6FF;">
+      <div class="row g-3 text-center">
+        <div class="col-6 col-md-3">
+          <div class="fw-semibold text-primary fs-4">{{ rows|length }}</div>
+          <div class="text-muted small">Rooms</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="fw-semibold text-primary fs-4">{{ grand_items }}</div>
+          <div class="text-muted small">Total Items</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="fw-semibold text-success fs-4">${{ grand_rcv|floatformat:2|intcomma }}</div>
+          <div class="text-muted small">RCV Total</div>
+        </div>
+        <div class="col-6 col-md-3">
+          <div class="fw-semibold text-info fs-4">${{ grand_acv|floatformat:2|intcomma }}</div>
+          <div class="text-muted small">ACV Total</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Summary table -->
+  <div class="card shadow-sm">
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-bordered table-hover mb-0" id="summary-table">
+          <thead style="background:#059669; color:#fff;">
+            <tr>
+              <th class="text-center" style="width:70px">#</th>
+              <th>Room</th>
+              <th class="text-center">Items</th>
+              <th class="text-end">RCV Total</th>
+              <th class="text-end">Depreciation</th>
+              <th class="text-end">ACV Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in rows %}
+            <tr {% if row.status == 'error' %}class="table-danger"{% elif forloop.counter|divisibleby:2 %}class="table-light"{% endif %}>
+              <td class="text-center text-muted">{{ row.room_number }}</td>
+              <td>
+                {{ row.room_name }}
+                {% if row.ai_confidence %}
+                <span class="badge bg-light text-dark border ms-1 small">{{ row.ai_confidence }}</span>
+                {% endif %}
+                {% if row.status == 'error' %}
+                <span class="badge bg-danger ms-1">error</span>
+                {% endif %}
+              </td>
+              <td class="text-center">{{ row.item_count }}</td>
+              <td class="text-end">${{ row.rcv_total|floatformat:2|intcomma }}</td>
+              <td class="text-end text-muted">${{ row.depreciation|floatformat:2|intcomma }}</td>
+              <td class="text-end fw-semibold">${{ row.acv_total|floatformat:2|intcomma }}</td>
+            </tr>
+            {% empty %}
+            <tr>
+              <td colspan="6" class="text-center text-muted py-4">No rooms found for this session.</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+          <tfoot>
+            <tr style="background:#1e3a5f; color:#fff; font-weight:700;">
+              <td></td>
+              <td>GRAND TOTAL</td>
+              <td class="text-center">{{ grand_items }}</td>
+              <td class="text-end">${{ grand_rcv|floatformat:2|intcomma }}</td>
+              <td class="text-end">${{ grand_dep|floatformat:2|intcomma }}</td>
+              <td class="text-end">${{ grand_acv|floatformat:2|intcomma }}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <p class="text-muted small mt-3">
+    Generated {{ generated_at|date:"N j, Y g:i A" }} &middot;
+    {{ rows|length }} room{{ rows|length|pluralize }} &middot;
+    AI estimates — verify before finalizing
+  </p>
+
+</div>
+
+<style>
+@media print {
+  .btn, a.btn { display: none !important; }
+  .card { border: none !important; box-shadow: none !important; }
+  thead { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  tfoot { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}
+</style>
+{% endblock %}

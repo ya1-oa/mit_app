@@ -114,3 +114,6 @@ def process_cps_session_task(self, session_id):
     session.status = 'complete'
     session.save(update_fields=['status'])
     logger.info(f"CPS task complete for session {session_id}")
+
+    from .views import _auto_generate_summary
+    _auto_generate_summary(session)
