@@ -15,7 +15,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 
-from .ppr_analyzer import PPR_COLUMNS, PPR_COLUMN_LABELS
+from .cps_analyzer import CPS_COLUMNS, CPS_COLUMN_LABELS
 
 _HEADER_FILL = PatternFill("solid", fgColor="D9EAF7")   # light blue
 _TOTAL_FILL  = PatternFill("solid", fgColor="FFF2CC")   # light yellow
@@ -27,10 +27,10 @@ _BORDER = Border(left=_thin, right=_thin, top=_thin, bottom=_thin)
 
 def _ppr_room_to_dict(ppr_room) -> dict:
     """Convert a BoxCalcPPRRoom ORM instance to a plain counts dict."""
-    return {col: getattr(ppr_room, col, 0) or 0 for col in PPR_COLUMNS}
+    return {col: getattr(ppr_room, col, 0) or 0 for col in CPS_COLUMNS}
 
 
-def build_ppr_excel(session) -> bytes:
+def build_cps_excel(session) -> bytes:
     """
     Build the PPR box count Excel report for a BoxCalcPPRSession.
 
@@ -57,7 +57,7 @@ def build_ppr_excel(session) -> bytes:
     ws.append([])  # blank row
 
     # ── Headers ───────────────────────────────────────────────────────────────
-    headers = ["Room"] + [PPR_COLUMN_LABELS[c] for c in PPR_COLUMNS] + ["Total"]
+    headers = ["Room"] + [CPS_COLUMN_LABELS[c] for c in CPS_COLUMNS] + ["Total"]
     ws.append(headers)
 
     header_row_idx = ws.max_row
@@ -69,17 +69,17 @@ def build_ppr_excel(session) -> bytes:
 
     # ── Room data rows ────────────────────────────────────────────────────────
     rooms = session.rooms.order_by("order", "room_name").all()
-    grand = {col: 0 for col in PPR_COLUMNS}
+    grand = {col: 0 for col in CPS_COLUMNS}
     room_rows = []
 
     for ppr_room in rooms:
         counts = _ppr_room_to_dict(ppr_room)
         row_total = sum(counts.values())
-        row = [ppr_room.room_name] + [counts[c] or "" for c in PPR_COLUMNS] + [row_total or ""]
+        row = [ppr_room.room_name] + [counts[c] or "" for c in CPS_COLUMNS] + [row_total or ""]
         ws.append(row)
         room_rows.append(ws.max_row)
 
-        for col in PPR_COLUMNS:
+        for col in CPS_COLUMNS:
             grand[col] += counts[col]
 
         # Style data cells
@@ -98,7 +98,7 @@ def build_ppr_excel(session) -> bytes:
 
     # ── Grand totals row ──────────────────────────────────────────────────────
     grand_total = sum(grand.values())
-    grand_row = ["GRAND TOTALS"] + [grand[c] or "" for c in PPR_COLUMNS] + [grand_total]
+    grand_row = ["GRAND TOTALS"] + [grand[c] or "" for c in CPS_COLUMNS] + [grand_total]
     ws.append(grand_row)
 
     for cell in ws[ws.max_row]:

@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 
 @shared_task(bind=True, max_retries=0)
-def process_ppr_room_task(
+def process_cps_room_task(
     self,
     session_id: int,
     room_name: str,
@@ -23,28 +23,28 @@ def process_ppr_room_task(
     """
     Analyze uploaded room images and store PPR box count estimates.
 
-    Updates BoxCalcPPRRoom.status through: pending → processing → complete|error.
+    Updates BoxCalcCPSRoom.status through: pending → processing → complete|error.
     """
-    from .models import BoxCalcPPRSession, BoxCalcPPRRoom
-    from .ppr_analyzer import analyze_room_ppr, PPR_COLUMNS
+    from .models import BoxCalcCPSSession, BoxCalcCPSRoom
+    from .cps_analyzer import analyze_room_cps, CPS_COLUMNS
 
     self.update_state(state="PROGRESS", meta={"room_name": room_name, "stage": "analyzing"})
 
     try:
-        session = BoxCalcPPRSession.objects.get(id=session_id)
-    except BoxCalcPPRSession.DoesNotExist:
+        session = BoxCalcCPSSession.objects.get(id=session_id)
+    except BoxCalcCPSSession.DoesNotExist:
         logger.error("PPR session %s not found", session_id)
         return {"success": False, "error": "Session not found"}
 
-    ppr_room, _ = BoxCalcPPRRoom.objects.get_or_create(
+    cps_room, _ = BoxCalcCPSRoom.objects.get_or_create(
         session=session,
         room_name=room_name,
     )
-    ppr_room.status = "processing"
-    ppr_room.celery_task_id = self.request.id
-    ppr_room.save(update_fields=["status", "celery_task_id"])
+    cps_room.status = "processing"
+    cps_room.celery_task_id = self.request.id
+    cps_room.save(update_fields=["status", "celery_task_id"])
 
-    result = analyze_room_ppr(
+    result = analyze_room_cps(
         room_name=room_name,
         image_paths=image_paths,
         model=model,
@@ -52,17 +52,17 @@ def process_ppr_room_task(
 
     if result["success"]:
         counts = result["counts"]
-        for col in PPR_COLUMNS:
-            setattr(ppr_room, col, counts.get(col, 0))
-        ppr_room.status = "complete"
-        ppr_room.confidence = result["confidence"]
-        ppr_room.ai_notes = result["notes"]
-        ppr_room.images_count = result["images_used"]
+        for col in CPS_COLUMNS:
+            setattr(cps_room, col, counts.get(col, 0))
+        cps_room.status = "complete"
+        cps_room.confidence = result["confidence"]
+        cps_room.ai_notes = result["notes"]
+        cps_room.images_count = result["images_used"]
     else:
-        ppr_room.status = "error"
-        ppr_room.ai_notes = result.get("error", "Unknown error")
+        cps_room.status = "error"
+        cps_room.ai_notes = result.get("error", "Unknown error")
 
-    ppr_room.save()
+    cps_room.save()
 
     # Clean up temp image files
     for path in image_paths:

@@ -1,20 +1,20 @@
 {% extends "account/base.html" %}
 {% load my_tags %}
-{% block title %}PPR Report — {{ session.client.pOwner }}{% endblock %}
+{% block title %}CPS Box Count Report — {{ session.client.pOwner }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
   <div class="d-flex align-items-center justify-content-between mb-4">
     <div>
-      <h2 class="mb-0">Pre-Packout Report</h2>
+      <h2 class="mb-0">CPS Box Count Report</h2>
       <p class="text-muted mb-0">
         {{ session.client.pOwner }}
         {% if session.client.claimNumber %} — Claim #{{ session.client.claimNumber }}{% endif %}
       </p>
     </div>
     <div class="d-flex gap-2">
-      <a href="{% url 'ppr_home' %}" class="btn btn-outline-secondary">← Back</a>
-      <a href="{% url 'ppr_export_excel' session.id %}" class="btn btn-success">
+      <a href="{% url 'cps_home' %}" class="btn btn-outline-secondary">← Back</a>
+      <a href="{% url 'cps_export_excel' session.id %}" class="btn btn-success">
         <i class="bi bi-file-earmark-excel"></i> Export Excel
       </a>
       <button onclick="window.print()" class="btn btn-outline-dark">
@@ -29,9 +29,9 @@
         <thead class="table-light">
           <tr>
             <th>Room</th>
-            {% for col in ppr_columns %}
-            <th class="text-center" title="{{ ppr_column_labels|get_item:col }}">
-              {{ ppr_column_labels|get_item:col }}
+            {% for col in cps_columns %}
+            <th class="text-center" title="{{ cps_column_labels|get_item:col }}">
+              {{ cps_column_labels|get_item:col }}
             </th>
             {% endfor %}
             <th class="text-center fw-bold">Total</th>
@@ -51,7 +51,7 @@
               <span class="badge bg-danger ms-1">error</span>
               {% endif %}
             </td>
-            {% for col in ppr_columns %}
+            {% for col in cps_columns %}
             <td class="text-center">
               {% with val=room|attr:col %}{% if val %}{{ val }}{% endif %}{% endwith %}
             </td>
@@ -65,7 +65,7 @@
         <tfoot>
           <tr class="table-warning fw-bold">
             <td>GRAND TOTALS</td>
-            {% for col in ppr_columns %}
+            {% for col in cps_columns %}
             <td class="text-center">
               {% with val=grand_counts|get_item:col %}{% if val %}{{ val }}{% endif %}{% endwith %}
             </td>

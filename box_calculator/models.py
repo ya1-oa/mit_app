@@ -1,6 +1,6 @@
 from django.db import models
 from .calculator import CATEGORY_CHOICES
-from .ppr_analyzer import PPR_COLUMNS
+from .cps_analyzer import CPS_COLUMNS
 
 
 class BoxCalcSession(models.Model):
@@ -96,15 +96,15 @@ class BoxCalcItem(models.Model):
 # PPR (Pre-Packout Report) — AI image-based box count estimation
 # ---------------------------------------------------------------------------
 
-class BoxCalcPPRSession(models.Model):
+class BoxCalcCPSSession(models.Model):
     """
-    One PPR per client. Holds room-level AI box count estimates derived from
+    One CPS per client. Holds room-level AI box count estimates derived from
     photos of the 300-series packout rooms.
     """
     client = models.ForeignKey(
         'docsAppR.Client',
         on_delete=models.CASCADE,
-        related_name='ppr_sessions',
+        related_name='cps_sessions',
     )
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -114,7 +114,7 @@ class BoxCalcPPRSession(models.Model):
         ordering = ['-updated_at']
 
     def __str__(self):
-        return f"PPR — {self.client.pOwner} ({self.updated_at:%Y-%m-%d})"
+        return f"CPS — {self.client.pOwner} ({self.updated_at:%Y-%m-%d})"
 
     @property
     def grand_total(self) -> int:
@@ -122,14 +122,14 @@ class BoxCalcPPRSession(models.Model):
 
     @property
     def grand_counts(self) -> dict:
-        totals = {col: 0 for col in PPR_COLUMNS}
+        totals = {col: 0 for col in CPS_COLUMNS}
         for room in self.rooms.all():
-            for col in PPR_COLUMNS:
+            for col in CPS_COLUMNS:
                 totals[col] += getattr(room, col, 0) or 0
         return totals
 
 
-class BoxCalcPPRRoom(models.Model):
+class BoxCalcCPSRoom(models.Model):
     """
     Per-room PPR box count estimates produced by Claude Vision.
     Each column maps directly to the Excel PPR report format.
@@ -141,7 +141,7 @@ class BoxCalcPPRRoom(models.Model):
         ("error",      "Error"),
     ]
 
-    session    = models.ForeignKey(BoxCalcPPRSession, on_delete=models.CASCADE, related_name='rooms')
+    session    = models.ForeignKey(BoxCalcCPSSession, on_delete=models.CASCADE, related_name='rooms')
     room_name  = models.CharField(max_length=120)
     order      = models.PositiveIntegerField(default=0)
 
@@ -176,10 +176,10 @@ class BoxCalcPPRRoom(models.Model):
 
     @property
     def total(self) -> int:
-        return sum(getattr(self, col, 0) or 0 for col in PPR_COLUMNS)
+        return sum(getattr(self, col, 0) or 0 for col in CPS_COLUMNS)
 
     def to_dict(self) -> dict:
-        counts = {col: getattr(self, col, 0) or 0 for col in PPR_COLUMNS}
+        counts = {col: getattr(self, col, 0) or 0 for col in CPS_COLUMNS}
         return {
             "id": self.id,
             "room_name": self.room_name,

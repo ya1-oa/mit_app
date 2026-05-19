@@ -1,14 +1,14 @@
 {% extends "account/base.html" %}
-{% block title %}PPR Box Count — AI Estimator{% endblock %}
+{% block title %}CPS Box Count — AI Estimator{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
   <div class="d-flex align-items-center justify-content-between mb-4">
     <div>
-      <h2 class="mb-0">Pre-Packout Report</h2>
-      <p class="text-muted mb-0">AI-powered box count estimation from room photos</p>
+      <h2 class="mb-0">CPS Box Count</h2>
+      <p class="text-muted mb-0">AI-powered box count estimation from room photos (300-series rooms)</p>
     </div>
-    <div id="ppr-actions" style="display:none!important">
+    <div id="cps-actions" style="display:none!important">
       <a id="btn-report" class="btn btn-outline-secondary me-2" href="#" target="_blank">View Report</a>
       <a id="btn-excel" class="btn btn-success" href="#" target="_blank">
         <i class="bi bi-file-earmark-excel"></i> Export Excel
@@ -33,8 +33,8 @@
     </div>
   </div>
 
-  <!-- Main PPR workspace -->
-  <div id="ppr-workspace" style="display:none">
+  <!-- Main CPS workspace -->
+  <div id="cps-workspace" style="display:none">
     <div class="row g-3 mb-4">
       <!-- Left: Upload panel -->
       <div class="col-lg-4">
@@ -75,7 +75,7 @@
             <span id="room-count-badge" class="badge bg-secondary">0 rooms</span>
           </div>
           <div class="card-body p-0" style="overflow-x:auto">
-            <table class="table table-sm table-bordered table-hover mb-0" id="ppr-table">
+            <table class="table table-sm table-bordered table-hover mb-0" id="cps-table">
               <thead class="table-light">
                 <tr>
                   <th>Room</th>
@@ -94,15 +94,15 @@
                   <th></th>
                 </tr>
               </thead>
-              <tbody id="ppr-tbody">
-                <tr id="ppr-empty-row">
+              <tbody id="cps-tbody">
+                <tr id="cps-empty-row">
                   <td colspan="14" class="text-center text-muted py-4">
                     Upload room photos to begin estimating
                   </td>
                 </tr>
               </tbody>
-              <tfoot id="ppr-tfoot" style="display:none">
-                <tr class="table-warning fw-bold" id="ppr-totals-row">
+              <tfoot id="cps-tfoot" style="display:none">
+                <tr class="table-warning fw-bold" id="cps-totals-row">
                   <td>GRAND TOTALS</td>
                   <td id="gt-small">0</td>
                   <td id="gt-medium">0</td>
@@ -128,10 +128,10 @@
 </div>
 
 <script>
-const PPR_COLS = ['small','medium','large','box_wrapped','plant_vase','tv','wardrobe','mattress','dish_pack','glass_pack','boots_pans'];
+const CPS_COLS = ['small','medium','large','box_wrapped','plant_vase','tv','wardrobe','mattress','dish_pack','glass_pack','boots_pans'];
 let sessionId = null;
-let roomData = {};  // room_name → counts dict
-let pendingTasks = {};  // task_id → room_name
+let roomData = {};
+let pendingTasks = {};
 let pollInterval = null;
 
 const clientSelect  = document.getElementById('client-select');
@@ -139,8 +139,8 @@ const roomSelect    = document.getElementById('room-select');
 const imageInput    = document.getElementById('image-input');
 const btnUpload     = document.getElementById('btn-upload');
 const uploadSpinner = document.getElementById('upload-spinner');
-const workspace     = document.getElementById('ppr-workspace');
-const pprActions    = document.getElementById('ppr-actions');
+const workspace     = document.getElementById('cps-workspace');
+const cpsActions    = document.getElementById('cps-actions');
 const btnReport     = document.getElementById('btn-report');
 const btnExcel      = document.getElementById('btn-excel');
 
@@ -149,10 +149,9 @@ clientSelect.addEventListener('change', async () => {
   if (!clientId) { workspace.style.display = 'none'; return; }
   workspace.style.display = 'block';
   roomSelect.innerHTML = '<option value="">— loading rooms… —</option>';
-  const data = await fetch(`/calculator/ppr/session/${clientId}/`).then(r => r.json());
+  const data = await fetch(`/calculator/cps/session/${clientId}/`).then(r => r.json());
   sessionId = data.session?.id || null;
 
-  // Populate room selector from 300-series available rooms
   roomSelect.innerHTML = '<option value="">— select room —</option>';
   (data.available_rooms || []).forEach(r => {
     const opt = document.createElement('option');
@@ -161,7 +160,6 @@ clientSelect.addEventListener('change', async () => {
     roomSelect.appendChild(opt);
   });
 
-  // Restore existing session data
   if (data.session) {
     sessionId = data.session.id;
     (data.session.rooms || []).forEach(r => {
@@ -196,12 +194,11 @@ btnUpload.addEventListener('click', async () => {
   for (const f of imageInput.files) fd.append('images', f);
 
   try {
-    const resp = await fetch('/calculator/ppr/upload/', {method:'POST', body:fd, headers:{'X-CSRFToken': getCsrf()}});
+    const resp = await fetch('/calculator/cps/upload/', {method:'POST', body:fd, headers:{'X-CSRFToken': getCsrf()}});
     const data = await resp.json();
     if (data.error) { alert('Error: ' + data.error); return; }
     sessionId = data.session_id;
     pendingTasks[data.task_id] = roomName;
-    // Show pending row
     roomData[roomName] = {room_name: roomName, status:'processing', counts:{}, total:0};
     renderRow(roomData[roomName]);
     startPolling();
@@ -222,7 +219,7 @@ function startPolling() {
 async function pollTasks() {
   if (!Object.keys(pendingTasks).length) { clearInterval(pollInterval); pollInterval = null; return; }
   for (const [taskId, roomName] of Object.entries(pendingTasks)) {
-    const data = await fetch(`/calculator/ppr/status/${taskId}/`).then(r => r.json());
+    const data = await fetch(`/calculator/cps/status/${taskId}/`).then(r => r.json());
     if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
       delete pendingTasks[taskId];
       if (data.room) { roomData[roomName] = data.room; renderRow(data.room); updateTotals(); }
@@ -231,9 +228,9 @@ async function pollTasks() {
 }
 
 function renderRow(room) {
-  document.getElementById('ppr-empty-row')?.remove();
-  document.getElementById('ppr-tfoot').style.display = '';
-  const tbody = document.getElementById('ppr-tbody');
+  document.getElementById('cps-empty-row')?.remove();
+  document.getElementById('cps-tfoot').style.display = '';
+  const tbody = document.getElementById('cps-tbody');
   const existingRow = document.getElementById(`row-${CSS.escape(room.room_name)}`);
   const counts = room.counts || {};
   const total  = room.total || 0;
@@ -245,7 +242,7 @@ function renderRow(room) {
     ? `<span class="badge bg-light text-dark border">${room.confidence}</span>`
     : '';
 
-  const cells = PPR_COLS.map(c => `<td>${counts[c] || ''}</td>`).join('');
+  const cells = CPS_COLS.map(c => `<td>${counts[c] || ''}</td>`).join('');
   const html = `<tr id="row-${room.room_name}">
     <td class="text-nowrap">${room.room_name} ${statusBadge}</td>
     ${cells}
@@ -260,14 +257,14 @@ function renderRow(room) {
 }
 
 function updateTotals() {
-  const totals = Object.fromEntries(PPR_COLS.map(c => [c, 0]));
+  const totals = Object.fromEntries(CPS_COLS.map(c => [c, 0]));
   let grandTotal = 0;
   for (const r of Object.values(roomData)) {
     if (r.status !== 'complete') continue;
-    PPR_COLS.forEach(c => { totals[c] += (r.counts?.[c] || 0); });
+    CPS_COLS.forEach(c => { totals[c] += (r.counts?.[c] || 0); });
     grandTotal += r.total || 0;
   }
-  PPR_COLS.forEach(c => { document.getElementById(`gt-${c}`).textContent = totals[c] || ''; });
+  CPS_COLS.forEach(c => { document.getElementById(`gt-${c}`).textContent = totals[c] || ''; });
   document.getElementById('gt-total').textContent = grandTotal || '';
 }
 
@@ -277,23 +274,23 @@ function updateRoomBadge() {
 
 function updateActions() {
   if (sessionId) {
-    pprActions.style.display = 'flex';
-    btnReport.href = `/calculator/ppr/report/${sessionId}/`;
-    btnExcel.href  = `/calculator/ppr/export/${sessionId}/`;
+    cpsActions.style.display = 'flex';
+    btnReport.href = `/calculator/cps/report/${sessionId}/`;
+    btnExcel.href  = `/calculator/cps/export/${sessionId}/`;
   }
 }
 
 async function deleteRoom(roomId, roomName) {
   if (!confirm(`Remove ${roomName}?`)) return;
-  await fetch(`/calculator/ppr/room/${roomId}/delete/`, {method:'POST', headers:{'X-CSRFToken': getCsrf()}});
+  await fetch(`/calculator/cps/room/${roomId}/delete/`, {method:'POST', headers:{'X-CSRFToken': getCsrf()}});
   document.getElementById(`row-${roomName}`)?.remove();
   delete roomData[roomName];
   updateTotals();
   updateRoomBadge();
   if (!Object.keys(roomData).length) {
-    document.getElementById('ppr-tbody').innerHTML =
-      '<tr id="ppr-empty-row"><td colspan="14" class="text-center text-muted py-4">Upload room photos to begin estimating</td></tr>';
-    document.getElementById('ppr-tfoot').style.display = 'none';
+    document.getElementById('cps-tbody').innerHTML =
+      '<tr id="cps-empty-row"><td colspan="14" class="text-center text-muted py-4">Upload room photos to begin estimating</td></tr>';
+    document.getElementById('cps-tfoot').style.display = 'none';
   }
 }
 

@@ -224,26 +224,26 @@ def report_view(request, session_id):
 # ---------------------------------------------------------------------------
 
 @login_required
-def ppr_home(request):
+def cps_home(request):
     """PPR landing page — select a client and manage room photo uploads."""
-    from .models import BoxCalcPPRSession
+    from .models import BoxCalcCPSSession
     clients = Client.objects.order_by('pOwner').values('id', 'pOwner', 'pAddress', 'claimNumber', 'encircle_claim_id')
-    return render(request, 'box_calculator/ppr.html', {
+    return render(request, 'box_calculator/cps.html', {
         'clients': list(clients),
     })
 
 
 @login_required
-def ppr_session(request, client_id):
+def cps_session(request, client_id):
     """Load or create a PPR session for a client; return session JSON."""
-    from .models import BoxCalcPPRSession
+    from .models import BoxCalcCPSSession
     client = get_object_or_404(Client, id=client_id)
 
     # Pull 300-series rooms from Encircle/docsAppR (room_name starts with 3xx)
     rooms_qs = Room.objects.filter(client=client).order_by('sequence', 'room_name')
     ppr_rooms_qs = [r for r in rooms_qs if _is_packout_room(r.room_name)]
 
-    session = BoxCalcPPRSession.objects.filter(client=client).first()
+    session = BoxCalcCPSSession.objects.filter(client=client).first()
     session_data = None
     if session:
         session_data = {
@@ -273,7 +273,7 @@ def _is_packout_room(room_name: str) -> bool:
 
 @login_required
 @require_POST
-def ppr_upload_room(request):
+def cps_upload_room(request):
     """
     Accept image uploads for a single room and dispatch the AI analysis task.
 
@@ -285,8 +285,8 @@ def ppr_upload_room(request):
 
     Returns: {"task_id": str, "room_name": str, "session_id": int}
     """
-    from .models import BoxCalcPPRSession, BoxCalcPPRRoom
-    from .tasks import process_ppr_room_task
+    from .models import BoxCalcCPSSession, BoxCalcCPSRoom
+    from .tasks import process_cps_room_task
     import uuid, pathlib
 
     client_id = request.POST.get('client_id')
@@ -302,10 +302,10 @@ def ppr_upload_room(request):
         return JsonResponse({'error': 'At least one image required'}, status=400)
 
     client = get_object_or_404(Client, id=client_id)
-    session, _ = BoxCalcPPRSession.objects.get_or_create(client=client)
+    session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
 
     # Save uploaded files to temp storage
-    upload_dir = pathlib.Path('/tmp') / f'ppr_{session.id}_{uuid.uuid4().hex[:8]}'
+    upload_dir = pathlib.Path('/tmp') / f'cps_{session.id}_{uuid.uuid4().hex[:8]}'
     upload_dir.mkdir(parents=True, exist_ok=True)
 
     ALLOWED_EXTS = {'.jpg', '.jpeg', '.png', '.bmp', '.webp', '.tiff', '.tif'}
@@ -324,11 +324,11 @@ def ppr_upload_room(request):
         return JsonResponse({'error': 'No supported image files in upload'}, status=400)
 
     # Mark room as pending and dispatch task
-    ppr_room, _ = BoxCalcPPRRoom.objects.get_or_create(session=session, room_name=room_name)
+    ppr_room, _ = BoxCalcCPSRoom.objects.get_or_create(session=session, room_name=room_name)
     ppr_room.status = 'pending'
     ppr_room.save(update_fields=['status'])
 
-    task = process_ppr_room_task.delay(
+    task = process_cps_room_task.delay(
         session_id=session.id,
         room_name=room_name,
         image_paths=saved_paths,
@@ -346,15 +346,15 @@ def ppr_upload_room(request):
 
 
 @login_required
-def ppr_task_status(request, task_id):
+def cps_task_status(request, task_id):
     """Poll status of a PPR room analysis task."""
     from celery.result import AsyncResult
-    from .models import BoxCalcPPRRoom
+    from .models import BoxCalcCPSRoom
 
     result = AsyncResult(task_id)
     state = result.state
 
-    room = BoxCalcPPRRoom.objects.filter(celery_task_id=task_id).first()
+    room = BoxCalcCPSRoom.objects.filter(celery_task_id=task_id).first()
     room_data = room.to_dict() if room else None
 
     if state == 'SUCCESS':
@@ -368,27 +368,27 @@ def ppr_task_status(request, task_id):
 
 
 @login_required
-def ppr_report(request, session_id):
+def cps_report(request, session_id):
     """Render the PPR report page for a completed session."""
-    from .models import BoxCalcPPRSession
-    from .ppr_analyzer import PPR_COLUMNS, PPR_COLUMN_LABELS
-    session = get_object_or_404(BoxCalcPPRSession, id=session_id)
-    return render(request, 'box_calculator/ppr_report.html', {
+    from .models import BoxCalcCPSSession
+    from .cps_analyzer import CPS_COLUMNS, CPS_COLUMN_LABELS
+    session = get_object_or_404(BoxCalcCPSSession, id=session_id)
+    return render(request, 'box_calculator/cps_report.html', {
         'session': session,
-        'ppr_columns': PPR_COLUMNS,
-        'ppr_column_labels': PPR_COLUMN_LABELS,
+        'cps_columns': CPS_COLUMNS,
+        'cps_column_labels': CPS_COLUMN_LABELS,
         'grand_counts': session.grand_counts,
         'grand_total': session.grand_total,
     })
 
 
 @login_required
-def ppr_export_excel(request, session_id):
+def cps_export_excel(request, session_id):
     """Generate and stream the PPR Excel report (.xlsx)."""
-    from .models import BoxCalcPPRSession
-    from .excel_builder import build_ppr_excel
-    session = get_object_or_404(BoxCalcPPRSession, id=session_id)
-    xlsx_bytes = build_ppr_excel(session)
+    from .models import BoxCalcCPSSession
+    from .excel_builder import build_cps_excel
+    session = get_object_or_404(BoxCalcCPSSession, id=session_id)
+    xlsx_bytes = build_cps_excel(session)
     safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
     filename = f"PPR_Box_Count_{safe_name}.xlsx"
     response = HttpResponse(
@@ -401,14 +401,14 @@ def ppr_export_excel(request, session_id):
 
 @login_required
 @require_POST
-def ppr_update_room(request, room_id):
+def cps_update_room(request, room_id):
     """Manually edit a room's PPR counts (override AI estimates)."""
-    from .models import BoxCalcPPRRoom
-    from .ppr_analyzer import PPR_COLUMNS
-    ppr_room = get_object_or_404(BoxCalcPPRRoom, id=room_id)
+    from .models import BoxCalcCPSRoom
+    from .cps_analyzer import CPS_COLUMNS
+    ppr_room = get_object_or_404(BoxCalcCPSRoom, id=room_id)
     try:
         data = json.loads(request.body)
-        for col in PPR_COLUMNS:
+        for col in CPS_COLUMNS:
             if col in data:
                 setattr(ppr_room, col, max(0, int(data[col])))
         ppr_room.save()
@@ -419,9 +419,9 @@ def ppr_update_room(request, room_id):
 
 @login_required
 @require_POST
-def ppr_delete_room(request, room_id):
+def cps_delete_room(request, room_id):
     """Remove a room from the PPR session."""
-    from .models import BoxCalcPPRRoom
-    ppr_room = get_object_or_404(BoxCalcPPRRoom, id=room_id)
+    from .models import BoxCalcCPSRoom
+    ppr_room = get_object_or_404(BoxCalcCPSRoom, id=room_id)
     ppr_room.delete()
     return JsonResponse({'success': True})
