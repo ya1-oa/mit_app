@@ -1,0 +1,33 @@
+name: Deploy to Server
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    name: SSH deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USER }}
+          key: ${{ secrets.SSH_PRIVATE_KEY }}
+          port: 22
+          script: |
+            set -e
+
+            # Pull latest code
+            cd ~/mitigation_app_src/app
+            git fetch origin main
+            git reset --hard origin/main
+
+            # Restart the stack
+            cd ~/mitigation_app_src
+            docker compose down
+            docker compose up -d --build
+
+            echo "Deploy complete."
