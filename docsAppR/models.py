@@ -394,8 +394,18 @@ class Room(models.Model):
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     client = models.ForeignKey(Client, on_delete=models.CASCADE, related_name='rooms')
-    room_name = models.CharField(max_length=255)
+    room_name = models.CharField(max_length=512)
     sequence = models.IntegerField(default=0)  # Maintains room order
+
+    # When True this record holds a fully-formatted Encircle entry string
+    # (e.g. "301 LOS …. FOYER ….. C.P.S. .....").  When False it is a plain
+    # base room name ("FOYER") used as the editable source of truth for LOS
+    # configuration and for copying rooms between claims.
+    is_encircle_entry = models.BooleanField(
+        default=False,
+        db_index=True,
+        help_text="True = generated numbered Encircle room entry; False = editable base room name",
+    )
 
     # Source tracking
     source_claim_number = models.CharField(
@@ -418,9 +428,12 @@ class Room(models.Model):
 
     class Meta:
         ordering = ['client', 'sequence', 'room_name']
-        unique_together = ['client', 'room_name']
+        # unique_together removed: base rooms ("FOYER") and their generated
+        # numbered entries ("301 LOS …. FOYER ….. C.P.S. .....") can both
+        # exist for the same client without conflicting.
         indexes = [
             models.Index(fields=['client', 'sequence']),
+            models.Index(fields=['client', 'is_encircle_entry']),
             models.Index(fields=['source_claim_number']),
         ]
 

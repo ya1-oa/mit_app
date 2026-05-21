@@ -3023,47 +3023,59 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None, select
         logger.error(f"Failed to create Encircle claim for client {client_id}: {exc}", exc_info=True)
         raise self.retry(exc=exc, countdown=60)
 
-    # ── 3. Build room list from local rooms ───────────────────────────────
-    rooms_qs = (
+    # ── 3. Build room entry list ───────────────────────────────────────────
+    # Prefer pre-generated numbered entries (is_encircle_entry=True) created
+    # at Step 2 save time.  Fall back to the old build_room_entries() path for
+    # clients that pre-date this feature.
+    rooms_pushed = 0
+
+    encircle_entries_qs = (
         Room.objects
-        .filter(client=client)
-        .prefetch_related('work_type_values__work_type')
+        .filter(client=client, is_encircle_entry=True)
         .order_by('sequence')
     )
 
-    room_names = []
-    configs = {}
-    for room in rooms_qs:
-        room_names.append(room.room_name)
-        room_config = {}
-        for wtv in room.work_type_values.all():
-            room_config[wtv.work_type.work_type_id] = wtv.value_type
-        configs[room.room_name] = room_config
-
-    rooms_pushed = 0
-
-    # Normalise selected_templates
-    if not selected_templates:
-        selected_templates = []
+    if encircle_entries_qs.exists():
+        # New path: entries already computed — use them directly
+        all_entries = list(encircle_entries_qs.values_list('room_name', flat=True))
+        logger.info(
+            f"push_claim_to_encircle_task: using {len(all_entries)} pre-generated "
+            f"Encircle entries for client {client_id}"
+        )
     else:
-        selected_templates = list(selected_templates)
+        # Legacy path: compute from base rooms + configs (pre-migration clients)
+        logger.info(
+            f"push_claim_to_encircle_task: no pre-generated entries found for client "
+            f"{client_id}; falling back to build_room_entries()"
+        )
+        rooms_qs = (
+            Room.objects
+            .filter(client=client, is_encircle_entry=False)
+            .prefetch_related('work_type_values__work_type')
+            .order_by('sequence')
+        )
+        room_names = []
+        configs = {}
+        for room in rooms_qs:
+            room_names.append(room.room_name)
+            room_config = {}
+            for wtv in room.work_type_values.all():
+                room_config[wtv.work_type.work_type_id] = wtv.value_type
+            configs[room.room_name] = room_config
 
-    # Normalise selected_work_types
-    if selected_work_types:
-        selected_work_types = [int(wt) for wt in selected_work_types]
+        if not selected_templates:
+            selected_templates = []
+        else:
+            selected_templates = list(selected_templates)
+        if selected_work_types:
+            selected_work_types = [int(wt) for wt in selected_work_types]
 
-    logger.info(
-        f"push_claim_to_encircle_task: client={client_id}, "
-        f"rooms={room_names}, templates={selected_templates}, "
-        f"work_types={selected_work_types}"
-    )
+        all_entries = build_room_entries(room_names, configs, selected_templates, selected_work_types, skip_preamble)
+        logger.info(
+            f"push_claim_to_encircle_task: built {len(all_entries)} entries "
+            f"from {len(room_names)} rooms"
+        )
 
-    # ── 4. Build all room entries using the canonical pure function ───────
-    all_entries = build_room_entries(room_names, configs, selected_templates, selected_work_types, skip_preamble)
-    logger.info(
-        f"push_claim_to_encircle_task: built {len(all_entries)} entries "
-        f"from {len(room_names)} rooms"
-    )
 
     try:
         # Get or create the default structure ("Main Building")
@@ -3383,27 +3395,40 @@ def push_rooms_to_encircle_task(self, client_id, encircle_claim_id, selected_tem
 
     api = EncircleAPIClient()
 
-    # ── Build room names + LOS configs ────────────────────────────────────────
-    rooms_qs = (
+    # ── Build room entry list ─────────────────────────────────────────────────
+    # Prefer pre-generated numbered entries; fall back to old compute path.
+    encircle_entries_qs = (
         Room.objects
-        .filter(client=client)
-        .prefetch_related('work_type_values__work_type')
+        .filter(client=client, is_encircle_entry=True)
         .order_by('sequence')
     )
 
-    room_names = []
-    configs = {}
-    for room in rooms_qs:
-        room_names.append(room.room_name)
-        room_config = {}
-        for wtv in room.work_type_values.all():
-            room_config[wtv.work_type.work_type_id] = wtv.value_type
-        configs[room.room_name] = room_config
+    if encircle_entries_qs.exists():
+        all_entries = list(encircle_entries_qs.values_list('room_name', flat=True))
+        logger.info(
+            f"push_rooms_to_encircle_task: using {len(all_entries)} pre-generated entries "
+            f"for client {client_id}"
+        )
+    else:
+        rooms_qs = (
+            Room.objects
+            .filter(client=client, is_encircle_entry=False)
+            .prefetch_related('work_type_values__work_type')
+            .order_by('sequence')
+        )
+        room_names = []
+        configs = {}
+        for room in rooms_qs:
+            room_names.append(room.room_name)
+            room_config = {}
+            for wtv in room.work_type_values.all():
+                room_config[wtv.work_type.work_type_id] = wtv.value_type
+            configs[room.room_name] = room_config
 
-    if not room_names:
-        return {'success': False, 'error': f'Client {client_id} has no rooms'}
+        if not room_names:
+            return {'success': False, 'error': f'Client {client_id} has no rooms'}
 
-    all_entries = build_room_entries(room_names, configs, selected_templates)
+        all_entries = build_room_entries(room_names, configs, selected_templates)
 
     # ── Push to the specified Encircle claim ──────────────────────────────────
     rooms_pushed = 0

@@ -239,8 +239,11 @@ def cps_session(request, client_id):
     from .models import BoxCalcCPSSession
     client = get_object_or_404(Client, id=client_id)
 
-    # Pull 300-series rooms from Encircle/docsAppR (room_name starts with 3xx)
-    rooms_qs = Room.objects.filter(client=client).order_by('sequence', 'room_name')
+    # Pull 300-series rooms from Encircle/docsAppR (room_name starts with 3xx).
+    # Prefer pre-generated numbered entries (is_encircle_entry=True) so the
+    # 301/302/… prefix is present.  Fall back to all rooms for legacy clients.
+    numbered_qs = Room.objects.filter(client=client, is_encircle_entry=True).order_by('sequence')
+    rooms_qs = numbered_qs if numbered_qs.exists() else Room.objects.filter(client=client).order_by('sequence', 'room_name')
     ppr_rooms_qs = [r for r in rooms_qs if _is_packout_room(r.room_name)]
 
     session = BoxCalcCPSSession.objects.filter(client=client).first()
