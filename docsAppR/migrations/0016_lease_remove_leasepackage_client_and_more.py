@@ -218,10 +218,6 @@ class Migration(migrations.Migration):
             name='generated_at',
             field=models.DateTimeField(auto_now_add=True),
         ),
-        migrations.AddIndex(
-            model_name='leaseactivity',
-            index=models.Index(fields=['lease', '-created_at'], name='docsAppR_le_lease_i_5e649b_idx'),
-        ),
         migrations.DeleteModel(
             name='LeasePackage',
         ),
@@ -244,6 +240,10 @@ class Migration(migrations.Migration):
             model_name='leaseactivity',
             name='lease',
             field=models.ForeignKey(null=True, on_delete=django.db.models.deletion.CASCADE, related_name='activities', to='docsAppR.lease'),
+        ),
+        migrations.AddIndex(
+            model_name='leaseactivity',
+            index=models.Index(fields=['lease', '-created_at'], name='docsAppR_le_lease_i_5e649b_idx'),
         ),
         migrations.AddField(
             model_name='leasedocument',
