@@ -411,7 +411,7 @@
 
         <li class="nav-divider"></li>
 
-        <li><a href="{% url 'box_calculator' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}">
+        <li><a href="{% url 'calculator_home' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}">
             <i class="fas fa-boxes"></i> Box Calc
         </a></li>
     </ul>
@@ -473,7 +473,7 @@
     <a href="{% url 'push_rooms_page' %}#photo-copy-tool"><i class="fas fa-copy"></i> Copy Photos</a>
 
     <div class="drawer-section">Reports & Pricing</div>
-    <a href="{% url 'box_calculator' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}"><i class="fas fa-boxes"></i> Box Calculator</a>
+    <a href="{% url 'calculator_home' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}"><i class="fas fa-boxes"></i> Box Calculator</a>
 
     <div class="drawer-section">Account</div>
     <a href="{% url 'logout' %}"><i class="fas fa-sign-out-alt"></i> Logout</a>
