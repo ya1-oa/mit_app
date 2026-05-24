@@ -62,6 +62,13 @@ def home(request):
             'color': '#f59e0b',
         },
         {
+            'name': 'Excel Hub',
+            'description': 'Download and email Xactimate Excel reports per claim',
+            'url': '/claims/excel-hub/',
+            'icon': 'fas fa-file-excel',
+            'color': '#16a34a',
+        },
+        {
             'name': 'Box Labels',
             'description': 'Generate and print box labels for rooms',
             'url': '/labels/',
