@@ -27,7 +27,7 @@ jobs:
 
             # Restart the stack
             cd ~/mitigation_app_src
-            docker compose down
+            docker compose down --timeout 30 || true
             docker compose up -d --build
 
             echo "Deploy complete."
