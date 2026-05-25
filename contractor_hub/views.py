@@ -384,22 +384,22 @@ def price_list_import(request):
         for r in rows:
             existing = RateItem.objects.filter(cat=r['cat'], sel=r['sel']).first()
             if existing:
-                r['_exists']    = True
-                r['_old_remove']  = float(existing.remove_rate)
-                r['_old_replace'] = float(existing.replace_rate)
-                r['_changed']   = (
+                r['row_exists']   = True
+                r['old_remove']   = float(existing.remove_rate)
+                r['old_replace']  = float(existing.replace_rate)
+                r['row_changed']  = (
                     abs(float(existing.remove_rate)  - r['remove_rate'])  > 0.001 or
                     abs(float(existing.replace_rate) - r['replace_rate']) > 0.001
                 )
             else:
-                r['_exists']  = False
-                r['_changed'] = True
+                r['row_exists']  = False
+                r['row_changed'] = True
 
             preview_rows.append(r)
 
-        new_count     = sum(1 for r in preview_rows if not r['_exists'])
-        update_count  = sum(1 for r in preview_rows if r['_exists'] and r['_changed'])
-        skip_count    = sum(1 for r in preview_rows if r['_exists'] and not r['_changed'])
+        new_count     = sum(1 for r in preview_rows if not r['row_exists'])
+        update_count  = sum(1 for r in preview_rows if r['row_exists'] and r['row_changed'])
+        skip_count    = sum(1 for r in preview_rows if r['row_exists'] and not r['row_changed'])
 
         request.session['pl_preview'] = {
             'meta': {'code': code, 'market': market, 'effective_date': eff_date,

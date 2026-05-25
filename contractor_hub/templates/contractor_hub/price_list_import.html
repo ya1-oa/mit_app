@@ -257,12 +257,12 @@
             </thead>
             <tbody>
             {% for row in preview_rows %}
-            <tr class="{% if not row._exists %}row-new{% elif row._changed %}row-changed{% else %}row-skip{% endif %}"
-                data-kind="{% if not row._exists %}new{% elif row._changed %}changed{% else %}skip{% endif %}">
+            <tr class="{% if not row.row_exists %}row-new{% elif row.row_changed %}row-changed{% else %}row-skip{% endif %}"
+                data-kind="{% if not row.row_exists %}new{% elif row.row_changed %}changed{% else %}skip{% endif %}">
                 <td>
-                    {% if not row._exists %}
+                    {% if not row.row_exists %}
                         <span class="badge-new">NEW</span>
-                    {% elif row._changed %}
+                    {% elif row.row_changed %}
                         <span class="badge-update">UPDATED</span>
                     {% else %}
                         <span class="badge-same">SAME</span>
@@ -273,16 +273,16 @@
                 <td>{{ row.description }}</td>
                 <td>{{ row.unit }}</td>
                 <td class="rate-change">
-                    {% if row._exists and row._changed and row._old_remove != row.remove_rate %}
-                        <span class="rate-old">${{ row._old_remove|floatformat:2 }}</span><br>
+                    {% if row.row_exists and row.row_changed and row.old_remove != row.remove_rate %}
+                        <span class="rate-old">${{ row.old_remove|floatformat:2 }}</span><br>
                         <span class="rate-new">${{ row.remove_rate|floatformat:2 }}</span>
                     {% else %}
                         ${{ row.remove_rate|floatformat:2 }}
                     {% endif %}
                 </td>
                 <td class="rate-change">
-                    {% if row._exists and row._changed and row._old_replace != row.replace_rate %}
-                        <span class="rate-old">${{ row._old_replace|floatformat:2 }}</span><br>
+                    {% if row.row_exists and row.row_changed and row.old_replace != row.replace_rate %}
+                        <span class="rate-old">${{ row.old_replace|floatformat:2 }}</span><br>
                         <span class="rate-new">${{ row.replace_rate|floatformat:2 }}</span>
                     {% else %}
                         ${{ row.replace_rate|floatformat:2 }}
