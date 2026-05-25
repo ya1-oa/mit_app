@@ -66,6 +66,7 @@ INSTALLED_APPS = [
     'encircle',
     'box_calculator',
     'cps_report',
+    'contractor_hub',
 
     # Auth
     #'django.contrib.sites',

@@ -55,4 +55,7 @@ urlpatterns = [
     # CPS Schedule of Loss Report
     path('cps-report/', include('cps_report.urls')),
 
+    # Contractor Bid Hub
+    path('contractor-hub/', include('contractor_hub.urls')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
