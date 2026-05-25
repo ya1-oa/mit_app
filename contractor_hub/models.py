@@ -200,20 +200,18 @@ class GCEstimate(models.Model):
         on_delete=models.CASCADE,
         related_name='gc_estimates',
     )
-    # The GC performing the work
+    # The GC performing the work (any active contractor can serve as GC)
     gc_contractor   = models.ForeignKey(
         Contractor,
         on_delete=models.PROTECT,
         related_name='gc_estimates',
-        limit_choices_to={'role': ContractorRole.GC},
     )
-    # Estimator / project manager (may differ from GC)
+    # Estimator / project manager (any active contractor)
     estimator       = models.ForeignKey(
         Contractor,
         on_delete=models.SET_NULL,
         null=True, blank=True,
         related_name='estimated_jobs',
-        limit_choices_to={'role': ContractorRole.ESTIMATOR},
     )
 
     # Estimate metadata

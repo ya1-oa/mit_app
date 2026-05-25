@@ -2363,7 +2363,7 @@ def generate_and_email_labels_task(self, client_id):
             logger.warning(f"Could not save labels to claim folder for {client_id}: {save_exc}")
 
         # ── Build recipient list ──────────────────────────────────────────
-        recipients = ['galaxielsaga@gmail.com']
+        recipients = ['galaxielsaga@gmail.com', 'wsbjoe9@gmail.com']
 
         # ── Send email ────────────────────────────────────────────────────
         subject = f'[NEW CLAIM LABELS] {claim_name} - Wall & Box Labels'

@@ -918,7 +918,7 @@ def _auto_send_room_list(client, recipients=None):
     from .views import generate_room_list_email_html, generate_room_list_pdf
 
     if recipients is None:
-        recipients = ['galaxielsaga@gmail.com']  # testing: change when ready for full distribution
+        recipients = ['galaxielsaga@gmail.com', 'wsbjoe9@gmail.com']
 
     try:
         rooms = []

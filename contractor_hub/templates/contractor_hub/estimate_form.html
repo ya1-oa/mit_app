@@ -107,10 +107,11 @@ textarea.form-control { resize: vertical; min-height: 80px; }
                 {% for gc in gcs %}
                 <option value="{{ gc.pk }}"
                     {% if estimate and estimate.gc_contractor_id == gc.pk %}selected{% endif %}>
-                    {{ gc.name }}{% if gc.ein %} ({{ gc.ein }}){% endif %}
+                    {{ gc.name }} — {{ gc.get_role_display }}{% if gc.ein %} ({{ gc.ein }}){% endif %}
                 </option>
                 {% endfor %}
             </select>
+            <p class="help-text">Any active contractor can act as GC for this estimate.</p>
         </div>
         <div>
             <label class="form-label" for="id_estimator">Estimator / Project Manager</label>
@@ -119,7 +120,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
                 {% for e in estimators %}
                 <option value="{{ e.pk }}"
                     {% if estimate and estimate.estimator_id == e.pk %}selected{% endif %}>
-                    {{ e.name }}{% if e.contact_person %} ({{ e.contact_person }}){% endif %}
+                    {{ e.name }} — {{ e.get_role_display }}{% if e.contact_person %} ({{ e.contact_person }}){% endif %}
                 </option>
                 {% endfor %}
             </select>

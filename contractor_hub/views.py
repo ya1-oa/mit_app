@@ -128,8 +128,8 @@ def dashboard(request):
 def estimate_create(request):
     from docsAppR.models import Client
     clients  = Client.objects.order_by('pOwner')
-    gcs      = Contractor.objects.filter(role='gc', is_active=True)
-    estimators = Contractor.objects.filter(role='estimator', is_active=True)
+    gcs      = Contractor.objects.filter(is_active=True).order_by('name')
+    estimators = Contractor.objects.filter(is_active=True).order_by('name')
 
     if request.method == 'POST':
         client_id    = request.POST.get('client')
@@ -198,8 +198,8 @@ def estimate_detail(request, pk):
 @login_required
 def estimate_edit(request, pk):
     estimate   = get_object_or_404(GCEstimate, pk=pk)
-    gcs        = Contractor.objects.filter(role='gc', is_active=True)
-    estimators = Contractor.objects.filter(role='estimator', is_active=True)
+    gcs        = Contractor.objects.filter(is_active=True).order_by('name')
+    estimators = Contractor.objects.filter(is_active=True).order_by('name')
 
     if request.method == 'POST':
         estimate.estimate_number  = request.POST.get('estimate_number', estimate.estimate_number)
@@ -434,18 +434,66 @@ def price_list_history(request):
 
 @login_required
 def estimate_pdf(request, pk):
-    estimate = get_object_or_404(GCEstimate, pk=pk)
-    # TODO Phase 5: call pdf_builder.generate_gc_estimate_pdf(estimate)
-    messages.info(request, 'PDF generation coming in Phase 5.')
-    return redirect('contractor_hub:estimate_detail', pk=pk)
+    """Phase 5 — Generate and serve a GC Estimate PDF."""
+    from django.http import HttpResponse
+    from .pdf_builder import generate_gc_estimate_pdf
+
+    estimate = get_object_or_404(
+        GCEstimate.objects.select_related('client', 'gc_contractor', 'estimator'),
+        pk=pk,
+    )
+    # Prefetch sections + line items for efficiency
+    estimate.sections.prefetch_related('line_items', 'subcontractor')
+
+    try:
+        buf = generate_gc_estimate_pdf(estimate)
+        safe_name = (
+            (estimate.estimate_number or f'EST-{str(estimate.id)[:8]}')
+            .replace(' ', '_').replace('/', '-')
+        )
+        response = HttpResponse(buf.read(), content_type='application/pdf')
+        response['Content-Disposition'] = (
+            f'attachment; filename="{safe_name}.pdf"'
+        )
+        return response
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'PDF generation failed for {pk}: {e}', exc_info=True)
+        messages.error(request, f'PDF generation failed: {e}')
+        return redirect('contractor_hub:estimate_detail', pk=pk)
 
 
 @login_required
 def estimate_excel(request, pk):
-    estimate = get_object_or_404(GCEstimate, pk=pk)
-    # TODO Phase 6: call excel_builder.generate_gc_estimate_excel(estimate)
-    messages.info(request, 'Excel generation coming in Phase 6.')
-    return redirect('contractor_hub:estimate_detail', pk=pk)
+    """Phase 6 — Generate and serve a GC Estimate Excel workbook."""
+    from django.http import HttpResponse
+    from .excel_builder import generate_gc_estimate_excel
+
+    estimate = get_object_or_404(
+        GCEstimate.objects.select_related('client', 'gc_contractor', 'estimator'),
+        pk=pk,
+    )
+    estimate.sections.prefetch_related('line_items', 'subcontractor')
+
+    try:
+        buf = generate_gc_estimate_excel(estimate)
+        safe_name = (
+            (estimate.estimate_number or f'EST-{str(estimate.id)[:8]}')
+            .replace(' ', '_').replace('/', '-')
+        )
+        response = HttpResponse(
+            buf.read(),
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
+        response['Content-Disposition'] = (
+            f'attachment; filename="{safe_name}.xlsx"'
+        )
+        return response
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'Excel generation failed for {pk}: {e}', exc_info=True)
+        messages.error(request, f'Excel generation failed: {e}')
+        return redirect('contractor_hub:estimate_detail', pk=pk)
 
 
 # ---------------------------------------------------------------------------
