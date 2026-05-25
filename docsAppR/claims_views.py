@@ -27,64 +27,41 @@ logger = logging.getLogger(__name__)
 @login_required
 def claim_list(request):
     """
-    Claims list — sourced directly from the Encircle API (no local DB import).
-    Results are cached for 15 minutes so repeated page loads are instant.
-    Local Client records are cross-referenced by encircle_claim_id so claims
-    already in the system link through to the full detail/edit page.
+    Claims list — sourced from local Django Client records.
+    Encircle data is available on the detail page; the list page stays fast
+    and reliable by querying the local DB only.
     """
-    from django.core.cache import cache
-    from .encircle_client import EncircleAPIClient, EncircleDataProcessor
+    from django.db.models import Q
 
     search  = request.GET.get('search', '').strip()
-    sort_by = request.GET.get('sort', 'name')
+    sort_by = request.GET.get('sort', '-updated_at')
 
-    # ── Fetch all claims from Encircle (cached 15 min) ─────────────
-    CACHE_KEY = 'claim_list_all_encircle'
-    claims = cache.get(CACHE_KEY)
-    if claims is None:
-        try:
-            api       = EncircleAPIClient()
-            processor = EncircleDataProcessor()
-            raw       = api.get_all_claims()
-            claims    = processor.process_claims_list(raw)
-            cache.set(CACHE_KEY, claims, 900)
-        except Exception as e:
-            logger.error(f"claim_list: Encircle fetch failed: {e}", exc_info=True)
-            claims = []
+    clients = Client.objects.all()
 
     # ── Search ─────────────────────────────────────────────────────
     if search:
-        q = search.lower()
-        claims = [
-            c for c in claims
-            if q in (c.get('policyholder_name') or '').lower()
-            or q in (c.get('full_address') or '').lower()
-            or q in (c.get('policy_number') or '').lower()
-            or q in (c.get('insurance_company_name') or '').lower()
-        ]
+        clients = clients.filter(
+            Q(pOwner__icontains=search) |
+            Q(pAddress__icontains=search) |
+            Q(claimNumber__icontains=search) |
+            Q(insuranceCo_Name__icontains=search) |
+            Q(causeOfLoss__icontains=search)
+        )
 
     # ── Sort ───────────────────────────────────────────────────────
-    if sort_by == '-name':
-        claims = sorted(claims, key=lambda c: (c.get('policyholder_name') or '').lower(), reverse=True)
-    elif sort_by == '-date':
-        claims = sorted(claims, key=lambda c: c.get('date_of_loss') or '', reverse=True)
-    elif sort_by == 'date':
-        claims = sorted(claims, key=lambda c: c.get('date_of_loss') or '')
-    else:
-        claims = sorted(claims, key=lambda c: (c.get('policyholder_name') or '').lower())
-
-    # ── Cross-reference local Django clients ───────────────────────
-    local_map = dict(
-        Client.objects
-        .filter(encircle_claim_id__isnull=False)
-        .exclude(encircle_claim_id='')
-        .values_list('encircle_claim_id', 'id')
-    )
-    for c in claims:
-        c['local_client_id'] = local_map.get(str(c.get('id') or ''))
+    sort_map = {
+        'name':       'pOwner',
+        '-name':      '-pOwner',
+        'date':       'dateOfLoss',
+        '-date':      '-dateOfLoss',
+        'updated_at': 'updated_at',
+        'created_at': 'created_at',
+        '-created_at': '-created_at',
+    }
+    clients = clients.order_by(sort_map.get(sort_by, '-updated_at'))
 
     # ── Paginate ───────────────────────────────────────────────────
-    paginator = Paginator(claims, 50)
+    paginator = Paginator(clients, 30)
     page_obj  = paginator.get_page(request.GET.get('page'))
 
     return render(request, 'docsAppR/claim_list.html', {
