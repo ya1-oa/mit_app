@@ -1,16 +1,107 @@
 """
-Contractor Bid Hub — Views (Phase 1 stubs)
-Full implementation follows in subsequent phases.
+Contractor Bid Hub — Views
 """
+import csv
+import io
+import json
+
 from django.contrib.auth.decorators import login_required
+from django.db.models import Max
 from django.http import JsonResponse
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
+from django.utils import timezone
 
 from .models import (
     Contractor, GCEstimate, GCSection, GCLineItem,
-    RateItem, SectionType, SECTION_ORDER, SUBCONTRACTED_SECTIONS,
+    RateItem, PriceListVersion, SectionType, SECTION_ORDER, SUBCONTRACTED_SECTIONS,
 )
+
+# ── Column aliases (same as management command) ─────────────────────────────
+_COLUMN_ALIASES = {
+    'cat':          ['cat', 'category', 'cat.', 'category code', 'trade'],
+    'sel':          ['sel', 'selector', 'sel.', 'item code', 'activity code', 'code', 'item'],
+    'description':  ['activity', 'description', 'act', 'desc', 'line item', 'item description'],
+    'unit':         ['unit', 'unit of measure', 'uom', 'calc', 'unit/calc'],
+    'remove_rate':  ['remove', 'rem', 'remove rate', 'rem rate', 'remove price'],
+    'replace_rate': ['replace', 'rep', 'replace rate', 'rep rate', 'unit price', 'price', 'replace price'],
+    'taxable':      ['tax', 'taxable', 'tax?', 'tax flag', 'tx'],
+}
+
+def _detect_col(headers):
+    """Map actual CSV headers → our field names. Returns dict field→index."""
+    h_lower = [h.strip().lower() for h in headers]
+    mapping = {}
+    for field, aliases in _COLUMN_ALIASES.items():
+        for alias in aliases:
+            if alias in h_lower:
+                mapping[field] = h_lower.index(alias)
+                break
+    return mapping
+
+def _parse_csv_file(file_obj):
+    """
+    Parse an uploaded CSV/TSV and return (headers, rows_as_dicts, error_str).
+    rows_as_dicts: list of {cat, sel, description, unit, remove_rate, replace_rate, taxable}
+    """
+    raw = file_obj.read()
+    for enc in ('utf-8-sig', 'utf-8', 'latin-1'):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        return None, None, 'Cannot decode file — try saving as UTF-8.'
+
+    # Detect delimiter
+    sample = text[:2048]
+    delimiter = '\t' if sample.count('\t') > sample.count(',') else ','
+
+    reader = csv.reader(io.StringIO(text), delimiter=delimiter)
+    rows = list(reader)
+    if not rows:
+        return None, None, 'File is empty.'
+
+    headers = rows[0]
+    col = _detect_col(headers)
+    required = {'cat', 'sel', 'description', 'replace_rate'}
+    missing = required - set(col.keys())
+    if missing:
+        return headers, None, f'Missing required columns: {", ".join(missing)}. Found: {", ".join(headers)}'
+
+    parsed = []
+    for i, row in enumerate(rows[1:], start=2):
+        if not row or not any(row):
+            continue
+        def g(field, default=''):
+            idx = col.get(field)
+            return row[idx].strip() if idx is not None and idx < len(row) else default
+
+        cat = g('cat').upper()
+        sel = g('sel').upper()
+        if not cat or not sel:
+            continue
+
+        try:
+            remove_rate  = float(g('remove_rate',  '0').replace('$', '').replace(',', '') or '0')
+            replace_rate = float(g('replace_rate', '0').replace('$', '').replace(',', '') or '0')
+        except ValueError:
+            continue
+
+        taxable_raw = g('taxable', 'Y').upper()
+        taxable = taxable_raw not in ('N', 'NO', 'FALSE', '0', 'F')
+
+        parsed.append({
+            'cat': cat, 'sel': sel,
+            'description': g('description'),
+            'unit': g('unit', 'EA').upper() or 'EA',
+            'remove_rate': remove_rate,
+            'replace_rate': replace_rate,
+            'taxable': taxable,
+        })
+
+    return headers, parsed, None
 
 
 # ---------------------------------------------------------------------------
@@ -82,6 +173,7 @@ def estimate_create(request):
         'gcs': gcs,
         'estimators': estimators,
         'action': 'Create',
+        'type_choices': ['Fire', 'Water', 'Wind', 'Mold', 'Other'],
     })
 
 
@@ -124,11 +216,14 @@ def estimate_edit(request, pk):
         messages.success(request, 'Estimate updated.')
         return redirect('contractor_hub:estimate_detail', pk=estimate.pk)
 
+    from .models import EstimateStatus
     return render(request, 'contractor_hub/estimate_form.html', {
         'estimate': estimate,
         'gcs': gcs,
         'estimators': estimators,
         'action': 'Edit',
+        'type_choices': ['Fire', 'Water', 'Wind', 'Mold', 'Other'],
+        'status_choices': EstimateStatus.choices,
     })
 
 
@@ -186,6 +281,154 @@ def section_import_cps(request, pk, section_pk):
 
 
 # ---------------------------------------------------------------------------
+# Price List Import (upload → preview → confirm)
+# ---------------------------------------------------------------------------
+
+@login_required
+def price_list_import(request):
+    """
+    Step 1 (GET / POST file):  parse CSV, store preview in session, show preview page.
+    Step 2 (POST confirm):     read from session, save to DB.
+    """
+    step = request.GET.get('step', '1')
+
+    # ── Step 2: Confirm ──────────────────────────────────────────────────────
+    if request.method == 'POST' and request.POST.get('action') == 'confirm':
+        preview_json = request.session.get('pl_preview')
+        if not preview_json:
+            messages.error(request, 'Session expired. Please re-upload the file.')
+            return redirect('contractor_hub:price_list_import')
+
+        meta = preview_json['meta']
+        rows = preview_json['rows']
+
+        version = PriceListVersion.objects.create(
+            code=meta['code'],
+            market=meta.get('market', ''),
+            effective_date=meta.get('effective_date') or None,
+            source_file=meta.get('filename', ''),
+            imported_by=request.user,
+        )
+
+        created = updated = skipped = 0
+        for r in rows:
+            obj, was_created = RateItem.objects.get_or_create(
+                cat=r['cat'], sel=r['sel'],
+                defaults={
+                    'description': r['description'],
+                    'unit': r['unit'],
+                    'remove_rate': r['remove_rate'],
+                    'replace_rate': r['replace_rate'],
+                    'taxable': r['taxable'],
+                    'price_list_version': version,
+                },
+            )
+            if was_created:
+                created += 1
+            else:
+                # Track previous rates
+                obj.previous_remove_rate  = obj.remove_rate
+                obj.previous_replace_rate = obj.replace_rate
+                obj.remove_rate   = r['remove_rate']
+                obj.replace_rate  = r['replace_rate']
+                obj.description   = r['description']
+                obj.unit          = r['unit']
+                obj.taxable       = r['taxable']
+                obj.price_list_version = version
+                obj.last_updated_at = timezone.now()
+                obj.save()
+                if obj.remove_rate != obj.previous_remove_rate or \
+                   obj.replace_rate != obj.previous_replace_rate:
+                    updated += 1
+                else:
+                    skipped += 1
+
+        version.total_items   = len(rows)
+        version.items_created = created
+        version.items_updated = updated
+        version.items_skipped = skipped
+        version.save()
+
+        del request.session['pl_preview']
+        messages.success(
+            request,
+            f'Import complete — {created} new, {updated} updated, {skipped} unchanged.'
+        )
+        return redirect('contractor_hub:price_list_history')
+
+    # ── Step 1: Upload & Parse ───────────────────────────────────────────────
+    if request.method == 'POST' and 'csv_file' in request.FILES:
+        uploaded = request.FILES['csv_file']
+        code     = request.POST.get('code', '').strip().upper()
+        market   = request.POST.get('market', '').strip()
+        eff_date = request.POST.get('effective_date', '').strip() or None
+
+        if not code:
+            messages.error(request, 'Price list code is required (e.g., OHCL8X_MAR26).')
+            return render(request, 'contractor_hub/price_list_import.html', {})
+
+        if PriceListVersion.objects.filter(code=code).exists():
+            messages.error(request, f'A price list with code "{code}" already exists. '
+                                    f'Choose a different code or delete the existing one.')
+            return render(request, 'contractor_hub/price_list_import.html', {
+                'form_data': {'code': code, 'market': market, 'effective_date': eff_date},
+            })
+
+        headers, rows, error = _parse_csv_file(uploaded)
+        if error:
+            messages.error(request, error)
+            return render(request, 'contractor_hub/price_list_import.html', {})
+
+        # Build change comparison for preview
+        preview_rows = []
+        for r in rows:
+            existing = RateItem.objects.filter(cat=r['cat'], sel=r['sel']).first()
+            if existing:
+                r['_exists']    = True
+                r['_old_remove']  = float(existing.remove_rate)
+                r['_old_replace'] = float(existing.replace_rate)
+                r['_changed']   = (
+                    abs(float(existing.remove_rate)  - r['remove_rate'])  > 0.001 or
+                    abs(float(existing.replace_rate) - r['replace_rate']) > 0.001
+                )
+            else:
+                r['_exists']  = False
+                r['_changed'] = True
+
+            preview_rows.append(r)
+
+        new_count     = sum(1 for r in preview_rows if not r['_exists'])
+        update_count  = sum(1 for r in preview_rows if r['_exists'] and r['_changed'])
+        skip_count    = sum(1 for r in preview_rows if r['_exists'] and not r['_changed'])
+
+        request.session['pl_preview'] = {
+            'meta': {'code': code, 'market': market, 'effective_date': eff_date,
+                     'filename': uploaded.name},
+            'rows': rows,  # clean rows (no _* preview keys) for DB save
+        }
+
+        return render(request, 'contractor_hub/price_list_import.html', {
+            'step': 2,
+            'preview_rows': preview_rows,
+            'meta': {'code': code, 'market': market, 'effective_date': eff_date,
+                     'filename': uploaded.name, 'total': len(rows)},
+            'new_count':    new_count,
+            'update_count': update_count,
+            'skip_count':   skip_count,
+        })
+
+    return render(request, 'contractor_hub/price_list_import.html', {'step': 1})
+
+
+@login_required
+def price_list_history(request):
+    versions = PriceListVersion.objects.select_related('imported_by').order_by('-imported_at')
+    return render(request, 'contractor_hub/price_list_history.html', {
+        'versions': versions,
+    })
+
+
+# ---------------------------------------------------------------------------
 # PDF / Excel generation (stubs — Phase 5/6)
 # ---------------------------------------------------------------------------
 
@@ -234,6 +477,7 @@ def contractor_create(request):
             contact_person=request.POST.get('contact_person', ''),
             certification=request.POST.get('certification', ''),
             notes=request.POST.get('notes', ''),
+            is_active=bool(request.POST.get('is_active')),
         )
         messages.success(request, 'Contractor added.')
         return redirect('contractor_hub:contractor_list')
@@ -251,6 +495,7 @@ def contractor_edit(request, pk):
                       'phone', 'phone2', 'email', 'contact_person', 'certification', 'notes']:
             if field in request.POST:
                 setattr(contractor, field, request.POST[field])
+        contractor.is_active = bool(request.POST.get('is_active'))
         contractor.save()
         messages.success(request, f'{contractor.name} updated.')
         return redirect('contractor_hub:contractor_list')
@@ -263,6 +508,15 @@ def contractor_edit(request, pk):
 # ---------------------------------------------------------------------------
 # JSON API
 # ---------------------------------------------------------------------------
+
+@login_required
+def api_stats(request):
+    return JsonResponse({
+        'rate_count':       RateItem.objects.count(),
+        'contractor_count': Contractor.objects.filter(is_active=True).count(),
+        'estimate_count':   GCEstimate.objects.count(),
+    })
+
 
 @login_required
 def api_estimate_totals(request, pk):
@@ -301,9 +555,7 @@ def api_lineitem_add(request):
         rate = RateItem.objects.filter(cat=cat, sel=sel).first()
 
     qty  = request.POST.get('quantity', '0')
-    last_order = section.line_items.aggregate(
-        m=models.Max('order')
-    )['m'] or 0
+    last_order = section.line_items.aggregate(m=Max('order'))['m'] or 0
 
     li = GCLineItem.objects.create(
         section=section,
@@ -382,8 +634,6 @@ def _auto_populate_from_cps(section, counts):
     Populate line items in a section from CPS box counts.
     Returns number of lines created.
     """
-    from django.db import models as django_models
-
     # Mapping: CPS column name → packing line item config
     PACKING_MAP = {
         'small':       {'eval_sel': 'BXMSE', 'eval_rate': '14.15', 'labor_mult': '0.2'},
@@ -418,7 +668,7 @@ def _auto_populate_from_cps(section, counts):
     }
 
     created = 0
-    last_order = section.line_items.aggregate(m=django_models.Max('order'))['m'] or 0
+    last_order = section.line_items.aggregate(m=Max('order'))['m'] or 0
 
     if section.section_type == SectionType.PACKING:
         for box_type, count in counts.items():

@@ -25,7 +25,12 @@ urlpatterns = [
     path('contractors/new/', views.contractor_create, name='contractor_create'),
     path('contractors/<int:pk>/edit/', views.contractor_edit, name='contractor_edit'),
 
+    # Price list import / history
+    path('prices/import/', views.price_list_import, name='price_list_import'),
+    path('prices/history/', views.price_list_history, name='price_list_history'),
+
     # JSON API — live totals and line item management
+    path('api/stats/', views.api_stats, name='api_stats'),
     path('api/estimate/<uuid:pk>/totals/', views.api_estimate_totals, name='api_estimate_totals'),
     path('api/lineitem/add/', views.api_lineitem_add, name='api_lineitem_add'),
     path('api/lineitem/<int:pk>/update/', views.api_lineitem_update, name='api_lineitem_update'),

@@ -1,0 +1,205 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}{{ action }} Estimate{% endblock %}
+
+{% block extra_css %}
+<style>
+.page-hero {
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+    border-radius: 14px; padding: 24px 28px; color: #fff;
+    margin-bottom: 24px; display: flex; align-items: center; gap: 16px;
+}
+.page-hero-icon { width: 48px; height: 48px; background: rgba(255,255,255,.2);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.page-hero h2 { font-size: 19px; font-weight: 700; margin-bottom: 3px; }
+.page-hero p  { font-size: 13px; opacity: .85; margin: 0; }
+
+.card { background: #fff; border-radius: 12px; padding: 28px 32px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 20px; }
+
+.section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 14px;
+    padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+}
+.form-label { font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; display: block; }
+.form-control {
+    width: 100%; padding: 9px 12px; border: 1px solid #e2e8f0;
+    border-radius: 8px; font-size: 13px; color: #0f172a;
+    box-sizing: border-box; transition: border-color .15s;
+}
+.form-control:focus { outline: none; border-color: #7c3aed; box-shadow: 0 0 0 3px rgba(124,58,237,.12); }
+select.form-control { cursor: pointer; }
+textarea.form-control { resize: vertical; min-height: 80px; }
+
+.form-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+.form-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+.form-grid-4 { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 16px; margin-bottom: 18px; }
+
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px;
+    border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; text-decoration: none; transition: opacity .15s; }
+.btn:hover { opacity: .88; text-decoration: none; }
+.btn-purple { background: #7c3aed; color: #fff; }
+.btn-ghost  { background: #f1f5f9; color: #334155; }
+
+.help-text { font-size: 11px; color: #94a3b8; margin-top: 3px; }
+
+.rate-info { background: #f8fafc; border-radius: 8px; padding: 12px 14px;
+    font-size: 12px; color: #64748b; border: 1px solid #e2e8f0; }
+.rate-info strong { color: #334155; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="page-hero">
+    <div class="page-hero-icon"><i class="fas fa-file-invoice-dollar"></i></div>
+    <div>
+        <h2>{{ action }} GC Estimate</h2>
+        <p>{% if action == 'Create' %}Create a new estimate. All 8 standard sections will be auto-created.{% else %}Edit estimate details — line items are managed on the detail page.{% endif %}</p>
+    </div>
+</div>
+
+<form method="post" id="estimate-form">
+{% csrf_token %}
+
+<!-- Claim / Client -->
+<div class="card">
+    <div class="section-label">Claim Information</div>
+    <div class="form-grid-2">
+        <div>
+            <label class="form-label" for="id_client">
+                Client (Homeowner) <span style="color:#ef4444;">*</span>
+            </label>
+            <select name="client" id="id_client" class="form-control" {% if action == 'Edit' %}disabled{% endif %}>
+                <option value="">— Select client —</option>
+                {% for c in clients %}
+                <option value="{{ c.pk }}"
+                    {% if estimate and estimate.client_id == c.pk %}selected{% endif %}>
+                    {{ c.pOwner }}{% if c.pAddress %} — {{ c.pAddress }}{% endif %}
+                </option>
+                {% endfor %}
+            </select>
+            <p class="help-text">The homeowner / insurance claimant. One estimate per claim.</p>
+        </div>
+        <div>
+            <label class="form-label" for="id_estimate_number">Estimate Number</label>
+            <input type="text" name="estimate_number" id="id_estimate_number" class="form-control"
+                   placeholder="e.g. OH26Q-HAYNES-CPS-PK1"
+                   value="{{ estimate.estimate_number|default:'' }}">
+            <p class="help-text">Xactimate-format reference number</p>
+        </div>
+    </div>
+</div>
+
+<!-- Contractors -->
+<div class="card">
+    <div class="section-label">Contractor Assignments</div>
+    <div class="form-grid-2">
+        <div>
+            <label class="form-label" for="id_gc">
+                General Contractor <span style="color:#ef4444;">*</span>
+            </label>
+            <select name="gc_contractor" id="id_gc" class="form-control">
+                <option value="">— Select GC —</option>
+                {% for gc in gcs %}
+                <option value="{{ gc.pk }}"
+                    {% if estimate and estimate.gc_contractor_id == gc.pk %}selected{% endif %}>
+                    {{ gc.name }}{% if gc.ein %} ({{ gc.ein }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label" for="id_estimator">Estimator / Project Manager</label>
+            <select name="estimator" id="id_estimator" class="form-control">
+                <option value="">— None —</option>
+                {% for e in estimators %}
+                <option value="{{ e.pk }}"
+                    {% if estimate and estimate.estimator_id == e.pk %}selected{% endif %}>
+                    {{ e.name }}{% if e.contact_person %} ({{ e.contact_person }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+</div>
+
+<!-- Estimate Settings -->
+<div class="card">
+    <div class="section-label">Estimate Settings</div>
+    <div class="form-grid-4">
+        <div>
+            <label class="form-label" for="id_price_list">Price List Code</label>
+            <input type="text" name="price_list" id="id_price_list" class="form-control"
+                   placeholder="OHCL8X_MAR26"
+                   value="{{ estimate.price_list|default:'' }}">
+            <p class="help-text">Xactimate market price list</p>
+        </div>
+        <div>
+            <label class="form-label" for="id_type">Type of Estimate</label>
+            <select name="type_of_estimate" id="id_type" class="form-control">
+                {% for val in type_choices %}
+                <option value="{{ val }}"
+                    {% if estimate.type_of_estimate == val %}selected
+                    {% elif not estimate and val == 'Fire' %}selected{% endif %}>
+                    {{ val }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div>
+            <label class="form-label" for="id_date">Date Entered</label>
+            <input type="date" name="date_entered" id="id_date" class="form-control"
+                   value="{{ estimate.date_entered|date:'Y-m-d'|default:'' }}">
+        </div>
+        {% if action == 'Edit' %}
+        <div>
+            <label class="form-label" for="id_status">Status</label>
+            <select name="status" id="id_status" class="form-control">
+                {% for val, label in status_choices %}
+                <option value="{{ val }}" {% if estimate.status == val %}selected{% endif %}>
+                    {{ label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Financial rates — pre-filled, rarely changed -->
+    <div class="rate-info">
+        <strong>Financial Rates (standardized):</strong> &nbsp;
+        Overhead 10% &nbsp;·&nbsp; Profit 10% &nbsp;·&nbsp;
+        Tax Rate
+        <input type="number" name="tax_rate" step="0.01" min="0" max="20"
+               value="{{ estimate.tax_rate|default:'8.25' }}"
+               style="width:60px;padding:2px 6px;border:1px solid #e2e8f0;border-radius:4px;font-size:12px;text-align:center;">%
+        &nbsp;(Cleveland OH default: 8.25%)
+    </div>
+</div>
+
+<!-- Notes -->
+<div class="card">
+    <div class="section-label">Notes</div>
+    <textarea name="notes" class="form-control" rows="3"
+              placeholder="Internal notes about this estimate...">{{ estimate.notes|default:'' }}</textarea>
+</div>
+
+<!-- Actions -->
+<div style="display:flex;gap:10px;margin-bottom:32px;">
+    <button type="submit" class="btn btn-purple">
+        <i class="fas fa-{% if action == 'Create' %}plus{% else %}save{% endif %}"></i>
+        {{ action }} Estimate
+    </button>
+    {% if estimate %}
+    <a href="{% url 'contractor_hub:estimate_detail' estimate.pk %}" class="btn btn-ghost">Cancel</a>
+    {% else %}
+    <a href="{% url 'contractor_hub:dashboard' %}" class="btn btn-ghost">Cancel</a>
+    {% endif %}
+</div>
+
+</form>
+{% endblock %}

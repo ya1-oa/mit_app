@@ -1,0 +1,281 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Contractor Bid Hub{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── HUB HEADER ────────────────────────────────────────────────────────── */
+.hub-hero {
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+    border-radius: 14px;
+    padding: 28px 32px;
+    color: #fff;
+    margin-bottom: 28px;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+}
+.hub-hero-icon {
+    width: 56px; height: 56px;
+    background: rgba(255,255,255,.15);
+    border-radius: 14px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 24px; flex-shrink: 0;
+}
+.hub-hero-text h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.hub-hero-text p  { font-size: 13px; opacity: .85; margin: 0; }
+
+/* ── STAT CARDS ────────────────────────────────────────────────────────── */
+.stat-row { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 24px; }
+.stat-card {
+    background: #fff; border-radius: 10px; padding: 18px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); border: 1px solid #f1f5f9;
+}
+.stat-card .val { font-size: 26px; font-weight: 700; color: #0f172a; }
+.stat-card .lbl { font-size: 12px; color: #64748b; margin-top: 2px; }
+.stat-card .ico { font-size: 18px; float: right; margin-top: -4px; }
+
+/* ── SECTION LABEL ──────────────────────────────────────────────────────── */
+.section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 14px;
+    padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+}
+
+/* ── ESTIMATE TABLE ────────────────────────────────────────────────────── */
+.estimate-table { width: 100%; border-collapse: collapse; background: #fff;
+    border-radius: 10px; overflow: hidden;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+.estimate-table thead th {
+    background: #f8fafc; padding: 10px 14px; text-align: left;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; color: #64748b; border-bottom: 1px solid #e2e8f0;
+}
+.estimate-table tbody td {
+    padding: 12px 14px; border-bottom: 1px solid #f1f5f9;
+    font-size: 13px; vertical-align: middle;
+}
+.estimate-table tbody tr:last-child td { border-bottom: none; }
+.estimate-table tbody tr:hover { background: #f8fafc; }
+
+/* ── STATUS BADGES ─────────────────────────────────────────────────────── */
+.badge-status {
+    display: inline-block; padding: 3px 10px; border-radius: 20px;
+    font-size: 11px; font-weight: 600; white-space: nowrap;
+}
+.badge-draft      { background: #f1f5f9; color: #475569; }
+.badge-submitted  { background: #dbeafe; color: #1d4ed8; }
+.badge-approved   { background: #d1fae5; color: #065f46; }
+.badge-billed     { background: #fef3c7; color: #92400e; }
+.badge-paid       { background: #dcfce7; color: #14532d; }
+.badge-cancelled  { background: #fee2e2; color: #991b1b; }
+
+/* ── ACTION BTNS ────────────────────────────────────────────────────────── */
+.btn-hub {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 8px; font-size: 13px;
+    font-weight: 600; text-decoration: none; cursor: pointer;
+    border: none; transition: opacity .15s, transform .1s;
+}
+.btn-hub:hover { opacity: .88; transform: translateY(-1px); text-decoration: none; }
+.btn-primary-hub { background: #7c3aed; color: #fff; }
+.btn-ghost-hub   { background: #f1f5f9; color: #334155; }
+.btn-sm-hub      { padding: 5px 11px; font-size: 12px; }
+
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+.toolbar-right { margin-left: auto; display: flex; gap: 8px; }
+
+/* ── QUICK LINKS ────────────────────────────────────────────────────────── */
+.quick-grid { display: grid; grid-template-columns: repeat(auto-fill,minmax(180px,1fr)); gap: 12px; margin-bottom: 28px; }
+.quick-card {
+    background: #fff; border-radius: 10px; padding: 16px 18px;
+    text-decoration: none; color: #334155;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07); border: 1px solid #f1f5f9;
+    display: flex; align-items: center; gap: 12px;
+    transition: box-shadow .15s, transform .1s;
+}
+.quick-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); transform: translateY(-2px); color: #334155; text-decoration: none; }
+.quick-card-icon { width: 36px; height: 36px; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 15px; color: #fff; flex-shrink: 0; }
+.quick-card-text .name { font-size: 13px; font-weight: 600; }
+.quick-card-text .sub  { font-size: 11px; color: #94a3b8; }
+
+@media (max-width: 700px) {
+    .stat-row { grid-template-columns: 1fr 1fr; }
+    .estimate-table { font-size: 12px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Hero -->
+<div class="hub-hero">
+    <div class="hub-hero-icon"><i class="fas fa-hard-hat"></i></div>
+    <div class="hub-hero-text">
+        <h2>Contractor Bid Hub</h2>
+        <p>Build GC estimates, manage subcontractor bids and generate Xactimate-format documents.</p>
+    </div>
+</div>
+
+<!-- Stats -->
+{% with total=estimates.count %}
+<div class="stat-row">
+    <div class="stat-card">
+        <div class="ico" style="color:#7c3aed;"><i class="fas fa-file-invoice-dollar"></i></div>
+        <div class="val">{{ total }}</div>
+        <div class="lbl">Total Estimates</div>
+    </div>
+    <div class="stat-card">
+        <div class="ico" style="color:#1d4ed8;"><i class="fas fa-paper-plane"></i></div>
+        <div class="val">{{ estimates|dictsort:"status"|length }}</div>
+        <div class="lbl">Active</div>
+    </div>
+    <div class="stat-card">
+        <div class="ico" style="color:#065f46;"><i class="fas fa-check-circle"></i></div>
+        <div class="val">{{ contractors.count }}</div>
+        <div class="lbl">Contractors</div>
+    </div>
+    <div class="stat-card">
+        <div class="ico" style="color:#92400e;"><i class="fas fa-list"></i></div>
+        <div class="val" id="rate-count">—</div>
+        <div class="lbl">Rate Items</div>
+    </div>
+</div>
+{% endwith %}
+
+<!-- Quick links -->
+<div class="section-label">Quick Actions</div>
+<div class="quick-grid">
+    <a href="{% url 'contractor_hub:estimate_create' %}" class="quick-card">
+        <div class="quick-card-icon" style="background:#7c3aed;"><i class="fas fa-plus"></i></div>
+        <div class="quick-card-text">
+            <div class="name">New Estimate</div>
+            <div class="sub">Start a GC package</div>
+        </div>
+    </a>
+    <a href="{% url 'contractor_hub:contractor_list' %}" class="quick-card">
+        <div class="quick-card-icon" style="background:#0ea5e9;"><i class="fas fa-building"></i></div>
+        <div class="quick-card-text">
+            <div class="name">Contractors</div>
+            <div class="sub">GC &amp; sub registry</div>
+        </div>
+    </a>
+    <a href="{% url 'contractor_hub:price_list_import' %}" class="quick-card">
+        <div class="quick-card-icon" style="background:#10b981;"><i class="fas fa-file-import"></i></div>
+        <div class="quick-card-text">
+            <div class="name">Import Prices</div>
+            <div class="sub">Upload Xactimate CSV</div>
+        </div>
+    </a>
+    <a href="{% url 'contractor_hub:price_list_history' %}" class="quick-card">
+        <div class="quick-card-icon" style="background:#f59e0b;"><i class="fas fa-history"></i></div>
+        <div class="quick-card-text">
+            <div class="name">Price History</div>
+            <div class="sub">All imported lists</div>
+        </div>
+    </a>
+</div>
+
+<!-- Estimates table -->
+<div class="section-label">All Estimates</div>
+
+<div class="toolbar">
+    <!-- Filter by status -->
+    <select id="status-filter" class="btn-ghost-hub btn-hub btn-sm-hub" style="cursor:pointer;">
+        <option value="">All statuses</option>
+        <option value="draft">Draft</option>
+        <option value="submitted">Submitted</option>
+        <option value="approved">Approved</option>
+        <option value="billed">Billed</option>
+        <option value="paid">Paid</option>
+    </select>
+    <input type="text" id="search-box" placeholder="Search client or estimate #…"
+           style="padding:6px 12px;border:1px solid #e2e8f0;border-radius:8px;font-size:13px;width:220px;">
+    <div class="toolbar-right">
+        <a href="{% url 'contractor_hub:estimate_create' %}" class="btn-hub btn-primary-hub">
+            <i class="fas fa-plus"></i> New Estimate
+        </a>
+    </div>
+</div>
+
+{% if estimates %}
+<table class="estimate-table" id="estimates-table">
+    <thead>
+        <tr>
+            <th>Estimate #</th>
+            <th>Client</th>
+            <th>GC</th>
+            <th>Status</th>
+            <th>Date</th>
+            <th style="text-align:right;">Grand Total</th>
+            <th></th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for est in estimates %}
+    <tr data-status="{{ est.status }}" data-search="{{ est.estimate_number|lower }} {{ est.client.pOwner|lower }}">
+        <td>
+            <a href="{% url 'contractor_hub:estimate_detail' est.pk %}"
+               style="font-weight:600;color:#7c3aed;text-decoration:none;">
+                {{ est.estimate_number|default:"(no #)" }}
+            </a>
+        </td>
+        <td>{{ est.client.pOwner }}</td>
+        <td>{{ est.gc_contractor.name }}</td>
+        <td>
+            <span class="badge-status badge-{{ est.status }}">
+                {{ est.get_status_display }}
+            </span>
+        </td>
+        <td>{{ est.date_entered|date:"M j, Y"|default:"—" }}</td>
+        <td style="text-align:right;font-weight:600;font-family:monospace;">
+            ${{ est.grand_total|floatformat:2 }}
+        </td>
+        <td style="white-space:nowrap;">
+            <a href="{% url 'contractor_hub:estimate_detail' est.pk %}"
+               class="btn-hub btn-ghost-hub btn-sm-hub">View</a>
+            <a href="{% url 'contractor_hub:estimate_edit' est.pk %}"
+               class="btn-hub btn-ghost-hub btn-sm-hub">Edit</a>
+        </td>
+    </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<div style="background:#fff;border-radius:10px;padding:48px;text-align:center;color:#94a3b8;
+            box-shadow:0 1px 4px rgba(0,0,0,.07);">
+    <i class="fas fa-file-invoice-dollar" style="font-size:40px;margin-bottom:12px;display:block;"></i>
+    <div style="font-weight:600;font-size:15px;color:#475569;margin-bottom:6px;">No estimates yet</div>
+    <div style="font-size:13px;margin-bottom:20px;">Create your first GC estimate to get started.</div>
+    <a href="{% url 'contractor_hub:estimate_create' %}" class="btn-hub btn-primary-hub">
+        <i class="fas fa-plus"></i> New Estimate
+    </a>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// Live search + status filter
+const rows = document.querySelectorAll('#estimates-table tbody tr');
+
+function filterTable() {
+    const status = document.getElementById('status-filter').value;
+    const q = document.getElementById('search-box').value.toLowerCase();
+    rows.forEach(r => {
+        const matchStatus = !status || r.dataset.status === status;
+        const matchSearch = !q || (r.dataset.search || '').includes(q);
+        r.style.display = matchStatus && matchSearch ? '' : 'none';
+    });
+}
+
+document.getElementById('status-filter')?.addEventListener('change', filterTable);
+document.getElementById('search-box')?.addEventListener('input', filterTable);
+
+// Load rate count
+fetch('/contractor-hub/api/stats/')
+    .then(r => r.json())
+    .then(d => { document.getElementById('rate-count').textContent = d.rate_count || '—'; })
+    .catch(() => {});
+</script>
+{% endblock %}
