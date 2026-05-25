@@ -1,7 +1,7 @@
 {% extends "account/base.html" %}
 {% load static %}
 
-{% block title %}{{ action }} Estimate{% endblock %}
+{% block title %}{{ action }} General Contractor Estimate{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -57,7 +57,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
 <div class="page-hero">
     <div class="page-hero-icon"><i class="fas fa-file-invoice-dollar"></i></div>
     <div>
-        <h2>{{ action }} GC Estimate</h2>
+        <h2>{{ action }} General Contractor Estimate</h2>
         <p>{% if action == 'Create' %}Create a new estimate. All 8 standard sections will be auto-created.{% else %}Edit estimate details — line items are managed on the detail page.{% endif %}</p>
     </div>
 </div>
@@ -103,7 +103,7 @@ textarea.form-control { resize: vertical; min-height: 80px; }
                 General Contractor <span style="color:#ef4444;">*</span>
             </label>
             <select name="gc_contractor" id="id_gc" class="form-control">
-                <option value="">— Select GC —</option>
+                <option value="">— Select General Contractor —</option>
                 {% for gc in gcs %}
                 <option value="{{ gc.pk }}"
                     {% if estimate and estimate.gc_contractor_id == gc.pk %}selected{% endif %}>
