@@ -16,7 +16,7 @@ from .models import Client, Room, WorkType, RoomWorkTypeValue, ChecklistItem
 # OneDrive models removed: OneDriveFolder, OneDriveFile, SyncLog
 from .forms import OneDriveClientForm, RoomSelectionForm, BulkWorkTypeForm
 # UPDATED: Use server-side tasks instead of OneDrive tasks
-from .tasks import create_server_folder_structure_task, copy_templates_to_server_task, push_claim_to_encircle_task, push_encircle_subclaim_task, push_rooms_to_encircle_task, migrate_encircle_rooms_task, generate_and_email_labels_task
+from .tasks import create_server_folder_structure_task, copy_templates_to_server_task, push_claim_to_encircle_task, push_encircle_subclaim_task, push_rooms_to_encircle_task, migrate_encircle_rooms_task, generate_and_email_labels_task, send_templates_link_task
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -751,6 +751,9 @@ def create_claim_step3(request):
 
             # Auto-generate and email labels for all rooms
             labels_task = generate_and_email_labels_task.delay(str(client.id))
+
+            # Email a signed link to browse & download the claim's Excel templates
+            send_templates_link_task.delay(str(client.id))
 
             # Auto-send room list email to default recipients (synchronous)
             email_ok, email_err = _auto_send_room_list(client)
@@ -3618,3 +3621,79 @@ def excel_hub_settings(request):
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
     return JsonResponse({'emails': _eh_get_emails()})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PUBLIC TEMPLATES DOWNLOAD PAGE
+# Accessed via a signed token link emailed at claim creation.
+# No login required — the signed token is the access credential.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def claim_templates_public(request, token):
+    """
+    Public (no-auth) page for viewing and downloading a claim's Excel templates.
+    The token is a Django-signed claim_id (salt='claim-templates-link').
+    Recipients receive this link by email when a new claim is created.
+    """
+    from django.core.signing import loads as signing_loads, BadSignature, SignatureExpired
+
+    try:
+        claim_id = signing_loads(token, salt='claim-templates-link')
+    except (BadSignature, SignatureExpired):
+        return render(request, 'docsAppR/claim_templates_public.html', {
+            'error': 'This link is invalid or has been tampered with.',
+        })
+
+    try:
+        client = Client.objects.get(id=claim_id)
+    except Client.DoesNotExist:
+        return render(request, 'docsAppR/claim_templates_public.html', {
+            'error': 'Claim not found.',
+        })
+
+    file_groups = _eh_claim_excel_files(client)
+    total_files = sum(len(g['files']) for g in file_groups)
+
+    return render(request, 'docsAppR/claim_templates_public.html', {
+        'client':      client,
+        'file_groups': file_groups,
+        'total_files': total_files,
+        'token':       token,
+    })
+
+
+def claim_templates_download(request, token, file_path):
+    """
+    Serve an individual Excel file from the public templates page.
+    file_path is URL-encoded relative path within the claim folder.
+    """
+    import urllib.parse
+    from django.http import FileResponse, Http404
+    from django.core.signing import loads as signing_loads, BadSignature
+
+    try:
+        claim_id = signing_loads(token, salt='claim-templates-link')
+        client   = Client.objects.get(id=claim_id)
+    except (BadSignature, Client.DoesNotExist):
+        raise Http404
+
+    folder_path = client.get_server_folder_path()
+    if not folder_path:
+        raise Http404
+
+    # Decode and sanitise — prevent directory traversal
+    rel = urllib.parse.unquote(file_path).replace('..', '').lstrip('/')
+    full_path = _os.path.normpath(_os.path.join(folder_path, rel))
+
+    # Must stay inside the claim folder
+    if not full_path.startswith(_os.path.normpath(folder_path)):
+        raise Http404
+
+    if not _os.path.isfile(full_path):
+        raise Http404
+
+    return FileResponse(
+        open(full_path, 'rb'),
+        as_attachment=True,
+        filename=_os.path.basename(full_path),
+    )

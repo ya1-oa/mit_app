@@ -54,6 +54,9 @@ from docsAppR.claims_views import (
     excel_hub_download_all_zip,
     excel_hub_send_email,
     excel_hub_settings,
+    # Public templates download page (no login — signed token)
+    claim_templates_public,
+    claim_templates_download,
 )
 
 from docsAppR.views import (
