@@ -76,10 +76,51 @@ class Contractor(models.Model):
 # Rate Library (seeded — all standard Xactimate line item rates)
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Price List Version (tracks every import)
+# ---------------------------------------------------------------------------
+
+class PriceListVersion(models.Model):
+    """
+    Tracks each Xactimate price list import.
+    One record per import run (e.g. OHCL8X_MAR26, OHCL8X_JUN26).
+    """
+    code            = models.CharField(max_length=50, unique=True,
+                                       help_text='e.g. OHCL8X_MAR26')
+    market          = models.CharField(max_length=100, blank=True,
+                                       help_text='e.g. Ohio - Cleveland')
+    effective_date  = models.DateField(null=True, blank=True)
+    source_file     = models.CharField(max_length=500, blank=True)
+    total_items     = models.PositiveIntegerField(default=0)
+    items_created   = models.PositiveIntegerField(default=0)
+    items_updated   = models.PositiveIntegerField(default=0)
+    items_skipped   = models.PositiveIntegerField(default=0)
+    imported_at     = models.DateTimeField(auto_now_add=True)
+    imported_by     = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='imported_price_lists',
+    )
+    notes           = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-imported_at']
+        verbose_name = 'Price List Version'
+
+    def __str__(self):
+        return self.code
+
+
+# ---------------------------------------------------------------------------
+# Rate Item
+# ---------------------------------------------------------------------------
+
 class RateItem(models.Model):
     """
-    Standard Xactimate rate library.  Seeded once via management command.
-    Rates come directly from the price list (OHCL8X_MAR26 / OHCL8X_02MAY26).
+    Standard Xactimate rate library.
+    Seeded via seed_contractor_hub, updated via import_price_list.
+    Rates come directly from the Xactimate price list (e.g. OHCL8X_MAR26).
     """
     UNIT_CHOICES = [
         ('EA', 'Each (EA)'),
@@ -91,16 +132,30 @@ class RateItem(models.Model):
         ('LS', 'Lump Sum (LS)'),
     ]
 
-    cat         = models.CharField(max_length=10, verbose_name='CAT')
-    sel         = models.CharField(max_length=20, verbose_name='SEL')
-    description = models.CharField(max_length=500)
-    unit        = models.CharField(max_length=5, choices=UNIT_CHOICES, default='EA')
-    remove_rate = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    replace_rate= models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
-    taxable     = models.BooleanField(default=True)
-    is_bid_item = models.BooleanField(default=False, help_text='[*] bid item — qty locked to 1, rate is total')
-    section_hint= models.CharField(max_length=30, blank=True,
-                                   help_text='Which section this rate typically belongs to')
+    cat                  = models.CharField(max_length=10, verbose_name='CAT')
+    sel                  = models.CharField(max_length=20, verbose_name='SEL')
+    description          = models.CharField(max_length=500)
+    unit                 = models.CharField(max_length=5, choices=UNIT_CHOICES, default='EA')
+    remove_rate          = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    replace_rate         = models.DecimalField(max_digits=10, decimal_places=2, default=Decimal('0.00'))
+    taxable              = models.BooleanField(default=True)
+    is_bid_item          = models.BooleanField(default=False,
+                                               help_text='[*] bid item — qty locked to 1, rate is total')
+    section_hint         = models.CharField(max_length=30, blank=True,
+                                            help_text='Which section this rate typically belongs to')
+
+    # Price list tracking
+    price_list_version   = models.ForeignKey(
+        PriceListVersion,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='rate_items',
+    )
+    previous_replace_rate = models.DecimalField(max_digits=10, decimal_places=2,
+                                                null=True, blank=True)
+    previous_remove_rate  = models.DecimalField(max_digits=10, decimal_places=2,
+                                                null=True, blank=True)
+    last_updated_at       = models.DateTimeField(null=True, blank=True)
 
     class Meta:
         ordering = ['cat', 'sel']
@@ -109,6 +164,14 @@ class RateItem(models.Model):
 
     def __str__(self):
         return f'{self.cat} {self.sel} — {self.description} ({self.unit})'
+
+    @property
+    def rate_changed(self):
+        """True if the last import changed this rate."""
+        if self.previous_replace_rate is None:
+            return False
+        return self.replace_rate != self.previous_replace_rate or \
+               self.remove_rate != self.previous_remove_rate
 
 
 # ---------------------------------------------------------------------------

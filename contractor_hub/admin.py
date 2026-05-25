@@ -1,5 +1,14 @@
 from django.contrib import admin
-from .models import Contractor, RateItem, GCEstimate, GCSection, GCLineItem
+from .models import Contractor, PriceListVersion, RateItem, GCEstimate, GCSection, GCLineItem
+
+
+@admin.register(PriceListVersion)
+class PriceListVersionAdmin(admin.ModelAdmin):
+    list_display  = ['code', 'market', 'effective_date', 'total_items',
+                     'items_created', 'items_updated', 'imported_at']
+    readonly_fields = ['imported_at', 'total_items', 'items_created',
+                       'items_updated', 'items_skipped']
+    ordering      = ['-imported_at']
 
 
 @admin.register(Contractor)
@@ -12,10 +21,17 @@ class ContractorAdmin(admin.ModelAdmin):
 
 @admin.register(RateItem)
 class RateItemAdmin(admin.ModelAdmin):
-    list_display  = ['cat', 'sel', 'description', 'unit', 'remove_rate', 'replace_rate', 'taxable', 'is_bid_item', 'section_hint']
-    list_filter   = ['cat', 'section_hint', 'taxable', 'is_bid_item']
+    list_display  = ['cat', 'sel', 'description', 'unit', 'remove_rate', 'replace_rate',
+                     'taxable', 'is_bid_item', 'section_hint', 'price_list_version', 'rate_changed']
+    list_filter   = ['cat', 'section_hint', 'taxable', 'is_bid_item', 'price_list_version']
     search_fields = ['cat', 'sel', 'description']
     ordering      = ['cat', 'sel']
+    readonly_fields = ['previous_remove_rate', 'previous_replace_rate',
+                       'last_updated_at', 'price_list_version']
+
+    def rate_changed(self, obj):
+        return '⬆ Changed' if obj.rate_changed else ''
+    rate_changed.short_description = 'Change'
 
 
 class GCSectionInline(admin.TabularInline):
