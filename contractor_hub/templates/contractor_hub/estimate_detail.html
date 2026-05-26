@@ -234,6 +234,10 @@
                class="btn btn-ghost btn-sm">
                 <i class="fas fa-pencil-alt"></i> Manage Lines
             </a>
+            <a href="{% url 'contractor_hub:section_invoice_pdf' estimate.pk section.pk %}"
+               class="btn btn-ghost btn-sm" target="_blank" title="Download subcontractor invoice PDF">
+                <i class="fas fa-file-invoice" style="color:#7c3aed;"></i> Sub Invoice
+            </a>
             {% if section.section_type in 'packing,cleaning,transport' %}
             <form method="post"
                   action="{% url 'contractor_hub:section_import_cps' estimate.pk section.pk %}"

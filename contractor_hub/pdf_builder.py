@@ -1,350 +1,912 @@
 """
-Contractor Hub — GC Estimate PDF Builder
-=========================================
-Generates a professional Xactimate-format PDF estimate using ReportLab.
+Contractor Hub — Xactimate-Format PDF Builder
+==============================================
+Replicates the exact layout of the Xactimate contractor invoice PDF.
 
-Public API:
-    generate_gc_estimate_pdf(estimate) -> io.BytesIO
+Public API
+----------
+generate_gc_estimate_pdf(estimate)                     -> io.BytesIO
+generate_subcontractor_invoice_pdf(estimate, section)  -> io.BytesIO
 """
 
 import io
-from decimal import Decimal
+from decimal import Decimal, ROUND_HALF_UP
+from datetime import date
 
-from reportlab.lib import colors
+from reportlab.pdfgen import canvas as rl_canvas
 from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import (
-    BaseDocTemplate, Frame, PageTemplate,
-    Paragraph, Table, TableStyle, Spacer, HRFlowable,
-)
-from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 
-# ── Colour palette ────────────────────────────────────────────────────────────
-PURPLE      = colors.HexColor('#7c3aed')
-PURPLE_LIGHT= colors.HexColor('#f3e8ff')
-DARK        = colors.HexColor('#0f172a')
-MID         = colors.HexColor('#475569')
-LIGHT       = colors.HexColor('#94a3b8')
-WHITE       = colors.white
-ROW_ALT     = colors.HexColor('#f8fafc')
-GREEN       = colors.HexColor('#065f46')
-GREEN_BG    = colors.HexColor('#d1fae5')
+# ── Page geometry ─────────────────────────────────────────────────────────────
+PW, PH = letter          # 612 × 792 pts
 
+LM  = 36                 # left margin
+RM  = 576                # right margin (36 from right edge)
 
-# ── Styles ────────────────────────────────────────────────────────────────────
-_SS = getSampleStyleSheet()
+# Header block (company info, every page)
+HDR_COMP_X  = 100        # x of company lines
+HDR_Y1      = 734        # baseline of first company line
+HDR_LINE_H  = 13         # line pitch inside header
+HDR_RULE_Y  = 648        # y of thin rule under header
 
-def _style(name, base='Normal', **kw):
-    s = ParagraphStyle(name, parent=_SS[base], **kw)
-    return s
+# Footer
+FTR_RULE_Y  = 44
+FTR_Y       = 30
 
-H1       = _style('H1', fontSize=16, fontName='Helvetica-Bold', textColor=WHITE, spaceAfter=4)
-H2       = _style('H2', fontSize=11, fontName='Helvetica-Bold', textColor=DARK, spaceAfter=6)
-LABEL    = _style('LBL', fontSize=7, fontName='Helvetica-Bold', textColor=LIGHT,
-                  spaceBefore=6, spaceAfter=2, leading=9)
-BODY     = _style('BODY', fontSize=8, fontName='Helvetica', textColor=DARK, leading=11)
-BODY_SM  = _style('BODY_SM', fontSize=7, fontName='Helvetica', textColor=MID, leading=9)
-MONO     = _style('MONO', fontSize=8, fontName='Courier', textColor=DARK, leading=10)
-MONO_CAT = _style('MONO_CAT', fontSize=8, fontName='Courier-Bold', textColor=PURPLE, leading=10)
-TOTAL    = _style('TOTAL', fontSize=9, fontName='Helvetica-Bold', textColor=DARK, leading=12)
-GRAND    = _style('GRAND', fontSize=11, fontName='Helvetica-Bold', textColor=PURPLE, leading=14)
-FOOTER   = _style('FOOTER', fontSize=7, fontName='Helvetica', textColor=LIGHT,
-                  alignment=TA_CENTER, leading=9)
+# Body
+BODY_TOP    = 638        # content starts just below header rule
+BODY_BTM    = 58         # content ends just above footer rule
+LINE_H      = 11         # body text line pitch
 
+# Number columns (right-justified x positions)
+COL_RMV_R  = 360         # REMOVE right edge
+COL_REP_R  = 414         # REPLACE right edge
+COL_TAX_R  = 463         # TAX right edge
+COL_OP_R   = 509         # O&P right edge
+COL_TOT_R  = 560         # TOTAL right edge
 
-def _fmt(val):
-    """Format a Decimal or float as $X,XXX.XX"""
+# First-row item cols
+COL_NUM_R  = 53          # item number right edge
+COL_CAT    = 57          # CAT start
+COL_SEL    = 81          # SEL start
+COL_SIGN   = 112         # +/- sign
+COL_DESC   = 120         # description start (row 1)
+COL_CALC   = 57          # calc formula start (row 2)
+COL_QTY_R  = 213         # QTY+unit right edge (row 2)
+
+# ── Fonts ─────────────────────────────────────────────────────────────────────
+F_HDR   = 'Times-Bold'
+F_BODY  = 'Helvetica'
+F_BOLD  = 'Helvetica-Bold'
+F_MONO  = 'Courier'
+
+FS_HDR  = 12
+FS_BODY = 9
+FS_SM   = 8
+
+# ── Helpers ───────────────────────────────────────────────────────────────────
+
+def _n(v, dec=2):
+    """Format a number without $ — e.g. '1,235.52' or '0.00'."""
     try:
-        return f'${float(val):,.2f}'
+        f = float(v)
+        if dec == 2:
+            return f'{f:,.2f}'
+        return f'{f:,.0f}'
     except Exception:
-        return '$0.00'
+        return '0.00'
 
 
-def _header_footer(canvas, doc):
-    """Draw page header and footer on every page."""
-    canvas.saveState()
-    w, h = letter
+def _per_line_op(li, estimate):
+    """O&P amount for one line item."""
+    if li.is_memo:
+        return Decimal('0.00')
+    base = li.quantity * (li.remove_rate + li.replace_rate)
+    op_pct = estimate.overhead_pct + estimate.profit_pct
+    return (base * op_pct / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-    # ── Top purple bar ────────────────────────────────────────────────────────
-    canvas.setFillColor(PURPLE)
-    canvas.rect(0.5 * inch, h - 0.9 * inch, w - inch, 0.55 * inch, fill=1, stroke=0)
 
-    canvas.setFont('Helvetica-Bold', 12)
-    canvas.setFillColor(WHITE)
-    canvas.drawString(0.65 * inch, h - 0.65 * inch, 'GC ESTIMATE')
+def _per_line_tax(li, estimate):
+    """Tax amount for one line item (computed on base + O&P)."""
+    if li.is_memo or not li.taxable:
+        return Decimal('0.00')
+    base = li.quantity * (li.remove_rate + li.replace_rate)
+    op   = _per_line_op(li, estimate)
+    return ((base + op) * estimate.tax_rate / 100).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-    # Page number (right)
-    canvas.setFont('Helvetica', 8)
-    canvas.drawRightString(w - 0.55 * inch, h - 0.65 * inch, f'Page {doc.page}')
 
-    # ── Footer rule ───────────────────────────────────────────────────────────
-    canvas.setStrokeColor(LIGHT)
-    canvas.setLineWidth(0.5)
-    canvas.line(0.5 * inch, 0.55 * inch, w - 0.5 * inch, 0.55 * inch)
-    canvas.setFont('Helvetica', 7)
-    canvas.setFillColor(LIGHT)
-    canvas.drawCentredString(w / 2, 0.35 * inch, 'Confidential — Claimet App · Generated for internal use only')
+def _per_line_total(li, estimate):
+    """Full line total (base + O&P + tax)."""
+    if li.is_memo:
+        return Decimal('0.00')
+    base = li.quantity * (li.remove_rate + li.replace_rate)
+    return (base + _per_line_op(li, estimate) + _per_line_tax(li, estimate)).quantize(
+        Decimal('0.01'), rounding=ROUND_HALF_UP)
 
-    canvas.restoreState()
 
+def _section_totals(section, estimate):
+    """Returns (tax_sum, op_sum, total_sum) for a section."""
+    tax = op = tot = Decimal('0.00')
+    for li in section.line_items.all():
+        tax += _per_line_tax(li, estimate)
+        op  += _per_line_op(li, estimate)
+        tot += _per_line_total(li, estimate)
+    return tax, op, tot
+
+
+def _wrap(text, max_chars):
+    """Split text into lines of max_chars. Simple word-wrap."""
+    if not text:
+        return []
+    words = text.split()
+    lines, cur = [], ''
+    for w in words:
+        if cur and len(cur) + 1 + len(w) > max_chars:
+            lines.append(cur)
+            cur = w
+        else:
+            cur = (cur + ' ' + w).strip()
+    if cur:
+        lines.append(cur)
+    return lines or ['']
+
+
+# ── XactimateDoc class ────────────────────────────────────────────────────────
+
+class XactimateDoc:
+    """Canvas-based Xactimate-format document builder."""
+
+    def __init__(self, buf, estimate, company, company_short='', is_sub=False):
+        """
+        company       – Contractor instance whose header appears on every page
+        company_short – Short name for the 'COMPANY  EIN XX' first line
+        is_sub        – True for subcontractor invoices
+        """
+        self.c             = rl_canvas.Canvas(buf, pagesize=letter)
+        self.estimate      = estimate
+        self.company       = company
+        self.company_short = company_short or company.name
+        self.is_sub        = is_sub
+        self.page_num      = 0
+        self._est_num      = estimate.estimate_number or f'EST-{str(estimate.id)[:8].upper()}'
+        self._today        = date.today().strftime('%-m/%-d/%Y') if hasattr(date.today(), 'strftime') else str(date.today())
+        try:
+            self._today = date.today().strftime('%#m/%#d/%Y')  # Windows
+        except Exception:
+            try:
+                self._today = date.today().strftime('%-m/%-d/%Y')  # Unix
+            except Exception:
+                self._today = date.today().strftime('%m/%d/%Y')
+        self.y             = BODY_TOP  # current y cursor
+
+    # ── Page management ──────────────────────────────────────────────────────
+
+    def new_page(self):
+        if self.page_num > 0:
+            self._draw_footer()
+            self.c.showPage()
+        self.page_num += 1
+        self._draw_header()
+        self.y = BODY_TOP
+
+    def check_space(self, need=LINE_H * 3):
+        """Start a new page if there isn't enough room."""
+        if self.y - need < BODY_BTM:
+            self.new_page()
+
+    # ── Header / footer ──────────────────────────────────────────────────────
+
+    def _draw_header(self):
+        c = self.c
+        co = self.company
+
+        # Page number (top-left)
+        c.setFont(F_BODY, FS_HDR)
+        c.drawString(LM, PH - 16, str(self.page_num))
+
+        # Company block (Times-Bold 12)
+        c.setFont(F_HDR, FS_HDR)
+        x, y = HDR_COMP_X, HDR_Y1
+
+        short = self.company_short.upper()
+        ein   = co.ein or ''
+        lines = [
+            f'{short}    EIN {ein}',
+            co.name.upper(),
+            co.address if co.address else '',
+            f'{co.city}, {co.state} {co.zip_code}' if co.city else '',
+            f'EIN {ein}',
+        ]
+        phone_line = ''
+        if co.phone:
+            phone_line = co.phone
+            if co.contact_person:
+                phone_line += f' {co.contact_person.upper()}'
+        if phone_line:
+            lines.append(phone_line)
+        if co.email:
+            lines.append(co.email.upper())
+
+        for line in lines:
+            if line.strip():
+                c.drawString(x, y, line)
+            y -= HDR_LINE_H
+
+        # Rule
+        c.setLineWidth(0.5)
+        c.line(LM, HDR_RULE_Y, RM, HDR_RULE_Y)
+
+    def _draw_footer(self):
+        c = self.c
+        c.setLineWidth(0.5)
+        c.line(LM, FTR_RULE_Y, RM, FTR_RULE_Y)
+        c.setFont(F_BODY, FS_SM)
+        c.drawString(LM, FTR_Y, self._est_num)
+        right_text = f'{self._today}    Page: {self.page_num}'
+        c.drawRightString(RM, FTR_Y, right_text)
+
+    # ── Low-level draw helpers ────────────────────────────────────────────────
+
+    def _text(self, x, y, text, font=F_BODY, size=FS_BODY, bold=False):
+        if bold:
+            font = F_BOLD
+        self.c.setFont(font, size)
+        self.c.drawString(x, y, str(text))
+
+    def _text_r(self, x, y, text, font=F_MONO, size=FS_BODY):
+        self.c.setFont(font, size)
+        self.c.drawRightString(x, y, str(text))
+
+    def _rule(self, y=None, full=False):
+        """Draw a thin separator rule."""
+        if y is None:
+            y = self.y
+        x1 = LM if full else LM + 4
+        self.c.setLineWidth(0.3)
+        self.c.line(x1, y, RM, y)
+
+    def _separator(self, char='='):
+        """Draw a separator line and advance y."""
+        self.c.setFont(F_MONO, FS_SM)
+        line = char * 80
+        self.c.drawString(LM, self.y, line[:int((RM - LM) / 5.4)])
+        self.y -= LINE_H
+
+    def _section_heading(self, label, continued=False):
+        """Draw a centered section heading (bold)."""
+        self.check_space(LINE_H * 4)
+        self.y -= LINE_H
+        prefix = 'CONTINUED - ' if continued else ''
+        full   = (prefix + label).upper()
+        self.c.setFont(F_BOLD, FS_BODY)
+        text_w = self.c.stringWidth(full, F_BOLD, FS_BODY)
+        cx = LM + (RM - LM - text_w) / 2
+        self.c.drawString(cx, self.y, full)
+        self.y -= LINE_H * 2
+
+    def _col_headers(self):
+        """Draw the two-row column header."""
+        c = self.c
+        y = self.y
+        c.setFont(F_BODY, FS_BODY)
+        c.drawString(COL_CAT,  y, 'CAT')
+        c.drawString(COL_SEL,  y, 'SEL')
+        c.drawString(COL_SIGN + 2, y, 'ACT DESCRIPTION')
+        y -= LINE_H
+        c.drawString(COL_CALC, y, 'CALC')
+        c.drawRightString(COL_QTY_R, y, 'QTY')
+        c.drawRightString(COL_RMV_R, y, 'REMOVE')
+        c.drawRightString(COL_REP_R, y, 'REPLACE')
+        c.drawRightString(COL_TAX_R, y, 'TAX')
+        c.drawRightString(COL_OP_R,  y, 'O&P')
+        c.drawRightString(COL_TOT_R, y, 'TOTAL')
+        self.y = y - LINE_H
+
+    # ── Subcontractor info block ──────────────────────────────────────────────
+
+    def _sub_block(self, sub):
+        """Render the subcontractor info block."""
+        self.check_space(LINE_H * 7)
+        self._separator('.')
+        self._text(LM, self.y, '.............. SUBCONTRACTOR ..................',
+                   font=F_BODY, size=FS_BODY)
+        self.y -= LINE_H * 2
+
+        c = self.c
+        c.setFont(F_BOLD, FS_BODY)
+        c.drawString(LM, self.y,
+                     f'{sub.name.upper()}  EIN # {sub.ein}')
+        self.y -= LINE_H
+
+        c.setFont(F_BODY, FS_BODY)
+        for line in [sub.address,
+                     f'{sub.city}, {sub.state} {sub.zip_code}' if sub.city else '',
+                     sub.phone + (' ' + sub.contact_person if sub.contact_person else '')
+                     if sub.phone else '',
+                     sub.email]:
+            if line and line.strip():
+                c.drawString(LM + 4, self.y, line)
+                self.y -= LINE_H
+
+        if sub.certification:
+            c.drawString(LM + 4, self.y, sub.certification)
+            self.y -= LINE_H
+
+        self._separator()
+
+    # ── One line item (2-row format) ──────────────────────────────────────────
+
+    def _line_item(self, num, li, estimate):
+        """Render one line item in Xactimate two-row format."""
+        need = LINE_H * 2 + (LINE_H * len(_wrap(li.notes, 90)) if li.notes else 0)
+        self.check_space(need + LINE_H)
+
+        op    = _per_line_op(li, estimate)
+        tax   = _per_line_tax(li, estimate)
+        total = _per_line_total(li, estimate)
+        base  = li.quantity * (li.remove_rate + li.replace_rate)
+
+        c = self.c
+
+        # ── Row 1: number, CAT, SEL, sign, description ──────────────────────
+        y = self.y
+        c.setFont(F_BODY, FS_BODY)
+        c.drawRightString(COL_NUM_R, y, f'{num}.')
+        c.setFont(F_BOLD, FS_SM)
+        c.drawString(COL_CAT, y, li.cat)
+        c.drawString(COL_SEL, y, li.sel)
+
+        # Sign
+        sign = '-' if (li.remove_rate > 0 and li.replace_rate == 0) else '+'
+        bid_marker = ''
+        if li.is_bid_item:
+            bid_marker = '[*E]' if not li.taxable else '[*]'
+        c.setFont(F_BODY, FS_BODY)
+        c.drawString(COL_SIGN, y, sign)
+        if bid_marker:
+            c.drawString(COL_SIGN + 8, y, bid_marker)
+
+        # Description (wraps if needed)
+        c.setFont(F_BODY, FS_BODY)
+        desc_x = COL_DESC + (22 if bid_marker else 0)
+        desc_lines = _wrap(li.description, 70)
+        c.drawString(desc_x, y, desc_lines[0])
+        self.y -= LINE_H
+
+        # Overflow description lines
+        for extra in desc_lines[1:]:
+            self.check_space(LINE_H)
+            c.drawString(COL_DESC, self.y, extra)
+            self.y -= LINE_H
+
+        # ── Row 2: calc, qty, remove, replace, tax, o&p, total ──────────────
+        y2 = self.y
+        c.setFont(F_MONO, FS_SM)
+
+        # Calc formula + qty + unit
+        calc_str = f'{li.calc_formula} ' if li.calc_formula else ''
+        qty_str  = f'{_n(li.quantity)}{li.unit}'
+        c.drawString(COL_CALC, y2, calc_str + qty_str)
+
+        # Numbers (right-justified)
+        if li.is_memo:
+            # Zero-dollar memo row
+            self.y -= LINE_H
+        else:
+            c.drawRightString(COL_RMV_R, y2, _n(li.remove_rate))
+            c.drawString(COL_RMV_R + 2, y2, '+')
+            c.drawRightString(COL_REP_R, y2, _n(li.replace_rate))
+            c.drawString(COL_REP_R + 2, y2, '=')
+            c.drawRightString(COL_TAX_R, y2, _n(tax))
+            c.drawRightString(COL_OP_R,  y2, _n(op))
+            c.drawRightString(COL_TOT_R, y2, _n(total))
+            self.y -= LINE_H
+
+        # Notes (if any)
+        if li.notes:
+            c.setFont(F_BODY, FS_SM)
+            for note_line in _wrap(li.notes, 90):
+                self.check_space(LINE_H)
+                c.drawString(COL_DESC, self.y, note_line)
+                self.y -= LINE_H
+
+    # ── Section total line ────────────────────────────────────────────────────
+
+    def _section_total(self, label, tax, op, total):
+        self.check_space(LINE_H * 2)
+        self.y -= LINE_H // 2
+        c = self.c
+        c.setFont(F_BOLD, FS_BODY)
+        c.drawString(LM, self.y, f'Totals: {label}')
+        c.setFont(F_MONO, FS_BODY)
+        c.drawRightString(COL_TAX_R, self.y, _n(tax))
+        c.drawRightString(COL_OP_R,  self.y, _n(op))
+        c.drawRightString(COL_TOT_R, self.y, _n(total))
+        self.y -= LINE_H * 2
+
+    # ── Cover page ────────────────────────────────────────────────────────────
+
+    def build_cover_page(self):
+        self.new_page()
+        c, y = self.c, self.y
+        est = self.estimate
+        cli = est.client
+
+        def kv(label, value, label2='', value2='', y=None):
+            """Draw a key/value pair (optionally two columns)."""
+            nonlocal self
+            if y is None:
+                y = self.y
+            c.setFont(F_BOLD, FS_BODY)
+            c.drawRightString(LM + 90, y, label + ':')
+            c.setFont(F_BODY, FS_BODY)
+            c.drawString(LM + 94, y, str(value))
+            if label2:
+                c.setFont(F_BOLD, FS_BODY)
+                c.drawRightString(LM + 350, y, label2 + ':')
+                c.setFont(F_BODY, FS_BODY)
+                c.drawString(LM + 354, y, str(value2))
+            self.y -= LINE_H
+
+        # Client info
+        phone = cli.cPhone or cli.DAPhone or ''
+        kv('Client', cli.pOwner or '—', 'Home', phone)
+        kv('Home', cli.pAddress or '—')
+        addr2 = cli.pCityStateZip or ''
+        if addr2:
+            c.setFont(F_BODY, FS_BODY)
+            c.drawString(LM + 94, self.y, addr2)
+            self.y -= LINE_H
+        kv('Property', cli.pAddress or '—')
+        if addr2:
+            c.setFont(F_BODY, FS_BODY)
+            c.drawString(LM + 94, self.y, addr2)
+            self.y -= LINE_H
+        self.y -= LINE_H
+
+        # Estimator
+        estimator = est.estimator
+        if estimator:
+            kv('Operator', (estimator.email or '').split('@')[0].upper())
+            self.y -= LINE_H
+            kv('Estimator', estimator.contact_person or estimator.name,
+               'Business', estimator.phone or '')
+            kv('Company', estimator.name, 'E-mail', estimator.email or '')
+            kv('Business', estimator.address or '')
+            if estimator.city:
+                c.setFont(F_BODY, FS_BODY)
+                c.drawString(LM + 94, self.y,
+                             f'{estimator.city}, {estimator.state} {estimator.zip_code}')
+                self.y -= LINE_H
+        self.y -= LINE_H
+
+        # Insurance
+        kv('Reference', '', 'Business', cli.DAPhone or cli.fieldAdjEmail or '')
+        kv('Company',
+           cli.insuranceCo_Name or '—',
+           'E-mail', cli.DAEmail or cli.fieldAdjEmail or '')
+        self.y -= LINE_H
+
+        # Estimate details
+        kv('Type of Estimate', est.type_of_estimate or 'Fire')
+        date_str = est.date_entered.strftime('%m/%d/%Y') if est.date_entered else ''
+        kv('Date Entered', date_str, 'Date Assigned', '')
+        self.y -= LINE_H
+        kv('Price List', est.price_list or '')
+        kv('Labor Efficiency', 'Restoration/Service/Remodel')
+        kv('Estimate', self._est_num)
+        kv('File Number', f'#{cli.claimNumber}' if cli.claimNumber else '')
+        self.y -= LINE_H * 3
+
+        c.setFont(F_BOLD, FS_HDR)
+        cx = LM + (RM - LM - c.stringWidth('THANK YOU', F_BOLD, FS_HDR)) / 2
+        c.drawString(cx, self.y, 'THANK YOU')
+
+    # ── Site conditions / preamble block ─────────────────────────────────────
+
+    def _site_conditions(self):
+        self.check_space(LINE_H * 4)
+        self._separator()
+        lbl = f'Site Conditions'
+        self._text(LM, self.y, lbl, bold=True)
+        self.y -= LINE_H
+
+    # ── Section pages ─────────────────────────────────────────────────────────
+
+    def build_section(self, section, item_counter_start=1):
+        """Build pages for one section. Returns next item counter."""
+        est    = self.estimate
+        label  = section.section_label
+        sub    = section.subcontractor
+
+        # ── Section heading on a new page segment ────────────────────────────
+        self.check_space(LINE_H * 8)
+        self._section_heading(label, continued=False)
+
+        # Estimate number centered
+        c = self.c
+        c.setFont(F_BODY, FS_BODY)
+        num_w = c.stringWidth(self._est_num, F_BODY, FS_BODY)
+        c.drawString(LM + (RM - LM - num_w) / 2, self.y, self._est_num)
+        self.y -= LINE_H
+
+        # Column headers
+        self._col_headers()
+
+        # Subcontractor info (if section has one)
+        if sub:
+            self._sub_block(sub)
+
+        self._separator()
+
+        # Line items
+        item_num = item_counter_start
+        line_items = list(section.line_items.order_by('order'))
+        for li in line_items:
+            # Page break mid-section → "CONTINUED -" heading
+            if self.y - LINE_H * 4 < BODY_BTM:
+                self.new_page()
+                self._section_heading(label, continued=True)
+                self._col_headers()
+
+            self._line_item(item_num, li, est)
+            item_num += 1
+
+        # Section total
+        tax, op, tot = _section_totals(section, est)
+        self._section_total(label, tax, op, tot)
+
+        return item_num
+
+    # ── Line item totals page ─────────────────────────────────────────────────
+
+    def build_line_totals(self, sections):
+        """Bottom of the last section page — summary line."""
+        total_tax = total_op = total_tot = Decimal('0.00')
+        for s in sections:
+            t, o, tt = _section_totals(s, self.estimate)
+            total_tax += t
+            total_op  += o
+            total_tot += tt
+
+        self.check_space(LINE_H * 3)
+        self.y -= LINE_H
+        self.c.setFont(F_BOLD, FS_BODY)
+        self.c.drawString(LM, self.y,
+                          f'Line Item Totals: {self._est_num}')
+        self.c.setFont(F_MONO, FS_BODY)
+        self.c.drawRightString(COL_TAX_R, self.y, _n(total_tax))
+        self.c.drawRightString(COL_OP_R,  self.y, _n(total_op))
+        self.c.drawRightString(COL_TOT_R, self.y, _n(total_tot))
+        self.y -= LINE_H * 2
+        return total_tax, total_op, total_tot
+
+    # ── Summary page ─────────────────────────────────────────────────────────
+
+    def build_summary_page(self):
+        est = self.estimate
+        self.new_page()
+        c = self.c
+        y = self.y
+
+        # "Summary" heading
+        c.setFont(F_BOLD, FS_HDR)
+        hdr_w = c.stringWidth('Summary', F_BOLD, FS_HDR)
+        c.drawString(LM + (RM - LM - hdr_w) / 2, y, 'Summary')
+        y -= LINE_H * 2
+
+        li_total = float(est.line_item_total)
+        overhead = float(est.overhead_amount)
+        profit   = float(est.profit_amount)
+        tax      = float(est.tax_amount)
+        rcv      = li_total + overhead + profit + tax
+
+        rows = [
+            ('Line Item Total', li_total, False),
+            ('Overhead',        overhead, False),
+            ('Profit',          profit,   False),
+            ('Total Tax',       tax,      False),
+            ('', None, False),
+            ('Replacement Cost Value', rcv, True),
+            ('Net Claim',              rcv, True),
+        ]
+
+        for label, val, bold in rows:
+            if val is None:
+                y -= LINE_H
+                continue
+            if bold:
+                c.setFont(F_BOLD, FS_BODY)
+                c.drawString(LM, y, label)
+                c.setFont(F_MONO, FS_BODY)
+                c.drawRightString(RM, y, f'${_n(val)}')
+            else:
+                c.setFont(F_BODY, FS_BODY)
+                c.drawString(LM + 20, y, label)
+                c.setFont(F_MONO, FS_BODY)
+                c.drawRightString(RM - 20, y, _n(val))
+            y -= LINE_H
+
+        y -= LINE_H * 4
+        # Signature
+        c.setFont(F_BOLD, FS_HDR)
+        gc_name = est.estimator.contact_person if est.estimator and est.estimator.contact_person else \
+                  (est.gc_contractor.contact_person if est.gc_contractor.contact_person else est.gc_contractor.name)
+        sw = c.stringWidth(gc_name.upper(), F_BOLD, FS_HDR)
+        c.drawString(LM + (RM - LM - sw) / 2, y, gc_name.upper())
+        self.y = y - LINE_H
+
+    # ── Recap of Taxes, Overhead and Profit ──────────────────────────────────
+
+    def build_recap_taxes_page(self):
+        est = self.estimate
+        self.new_page()
+        c, y = self.c, self.y
+
+        c.setFont(F_BOLD, FS_HDR)
+        hdr = 'Recap of Taxes, Overhead and Profit'
+        c.drawString(LM + (RM - LM - c.stringWidth(hdr, F_BOLD, FS_HDR)) / 2, y, hdr)
+        y -= LINE_H * 3
+
+        # Header row
+        c.setFont(F_BOLD, FS_BODY)
+        c.drawRightString(LM + 280, y, f'Overhead ({est.overhead_pct}%)')
+        c.drawRightString(LM + 380, y, f'Profit ({est.profit_pct}%)')
+        c.drawRightString(LM + 480, y, f'Total Tax ({est.tax_rate}%)')
+        y -= LINE_H
+
+        li_total = float(est.line_item_total)
+        overhead = float(est.overhead_amount)
+        profit   = float(est.profit_amount)
+        tax      = float(est.tax_amount)
+
+        c.setFont(F_BODY, FS_BODY)
+        c.drawString(LM, y, 'Line Items')
+        c.setFont(F_MONO, FS_BODY)
+        c.drawRightString(LM + 280, y, _n(overhead))
+        c.drawRightString(LM + 380, y, _n(profit))
+        c.drawRightString(LM + 480, y, _n(tax))
+        y -= LINE_H
+
+        c.setFont(F_BOLD, FS_BODY)
+        c.drawString(LM, y, 'Total')
+        c.setFont(F_MONO, FS_BODY)
+        c.drawRightString(LM + 280, y, _n(overhead))
+        c.drawRightString(LM + 380, y, _n(profit))
+        c.drawRightString(LM + 480, y, _n(tax))
+        self.y = y - LINE_H
+
+    # ── Recap by Room (section breakdown) ────────────────────────────────────
+
+    def build_recap_by_room_page(self, sections):
+        est = self.estimate
+        self.new_page()
+        c, y = self.c, self.y
+
+        c.setFont(F_BOLD, FS_HDR)
+        hdr = 'Recap by Room'
+        c.drawString(LM + (RM - LM - c.stringWidth(hdr, F_BOLD, FS_HDR)) / 2, y, hdr)
+        y -= LINE_H
+
+        c.setFont(F_BODY, FS_BODY)
+        c.drawString(LM, y, f'Estimate: {self._est_num}')
+        y -= LINE_H * 2
+
+        total_base = Decimal('0.00')
+        for s in sections:
+            base = sum(
+                li.quantity * (li.remove_rate + li.replace_rate)
+                for li in s.line_items.all()
+                if not li.is_memo
+            )
+            total_base += base
+        if total_base == 0:
+            total_base = Decimal('1')  # avoid div/0
+
+        for s in sections:
+            base = sum(
+                li.quantity * (li.remove_rate + li.replace_rate)
+                for li in s.line_items.all()
+                if not li.is_memo
+            )
+            pct = base / total_base * 100
+            c.setFont(F_BODY, FS_BODY)
+            c.drawString(LM + 8, y, s.section_label.upper())
+            c.setFont(F_MONO, FS_BODY)
+            c.drawRightString(RM - 60, y, _n(base))
+            c.drawRightString(RM, y, f'{float(pct):.2f}%')
+            y -= LINE_H
+
+        # Totals
+        y -= LINE_H // 2
+        c.setFont(F_BOLD, FS_BODY)
+        c.drawString(LM, y, 'Subtotal of Areas')
+        c.setFont(F_MONO, FS_BODY)
+        c.drawRightString(RM - 60, y, _n(total_base))
+        c.drawRightString(RM, y, '100.00%')
+        y -= LINE_H
+        c.setFont(F_BOLD, FS_BODY)
+        c.drawString(LM, y, 'Total')
+        c.setFont(F_MONO, FS_BODY)
+        c.drawRightString(RM - 60, y, _n(total_base))
+        c.drawRightString(RM, y, '100.00%')
+        self.y = y - LINE_H
+
+    # ── Recap by Category ─────────────────────────────────────────────────────
+
+    def build_recap_by_category_page(self, sections):
+        est = self.estimate
+        self.new_page()
+        c, y = self.c, self.y
+
+        c.setFont(F_BOLD, FS_HDR)
+        hdr = 'Recap by Category'
+        c.drawString(LM + (RM - LM - c.stringWidth(hdr, F_BOLD, FS_HDR)) / 2, y, hdr)
+        y -= LINE_H
+
+        c.setFont(F_BODY, FS_BODY)
+        c.drawString(LM, y, 'O&P Items')
+        c.drawRightString(RM - 60, y, 'Total')
+        c.drawRightString(RM, y, '%')
+        y -= LINE_H * 2
+
+        # Group line items by CAT
+        cat_totals = {}
+        grand = Decimal('0.00')
+        for s in sections:
+            for li in s.line_items.all():
+                if li.is_memo:
+                    continue
+                base = li.quantity * (li.remove_rate + li.replace_rate)
+                cat = li.cat.upper()
+                cat_totals[cat] = cat_totals.get(cat, Decimal('0.00')) + base
+                grand += base
+
+        if grand == 0:
+            grand = Decimal('1')
+
+        for cat, total in sorted(cat_totals.items()):
+            pct = total / grand * 100
+            c.setFont(F_BODY, FS_BODY)
+            c.drawString(LM + 8, y, cat)
+            c.setFont(F_MONO, FS_BODY)
+            c.drawRightString(RM - 60, y, _n(total))
+            c.drawRightString(RM, y, f'{float(pct):.2f}%')
+            y -= LINE_H
+
+        y -= LINE_H // 2
+        c.setFont(F_BOLD, FS_BODY)
+        c.drawString(LM, y, 'O&P Items Subtotal')
+        overhead = float(est.overhead_amount)
+        profit   = float(est.profit_amount)
+        tax      = float(est.tax_amount)
+        total_f  = float(est.line_item_total)
+        grand_f  = float(est.grand_total)
+
+        c.setFont(F_MONO, FS_BODY)
+        c.drawRightString(RM - 60, y, _n(total_f))
+        c.drawRightString(RM, y, f'{(total_f/grand_f*100 if grand_f else 0):.2f}%')
+        y -= LINE_H
+
+        for label, val in [
+            (f'Overhead', overhead),
+            (f'Profit', profit),
+            ('Total Tax', tax),
+            ('Total', grand_f),
+        ]:
+            c.setFont(F_BODY, FS_BODY)
+            c.drawString(LM + 8, y, label)
+            c.setFont(F_MONO, FS_BODY)
+            c.drawRightString(RM - 60, y, _n(val))
+            c.drawRightString(RM, y, f'{(val/grand_f*100 if grand_f else 0):.2f}%')
+            y -= LINE_H
+
+        y -= LINE_H * 3
+        c.setFont(F_BOLD, FS_HDR)
+        ty = 'THANK YOU'
+        c.drawString(LM + (RM - LM - c.stringWidth(ty, F_BOLD, FS_HDR)) / 2, y, ty)
+        self.y = y - LINE_H
+
+    # ── Finalize ──────────────────────────────────────────────────────────────
+
+    def save(self):
+        self._draw_footer()
+        self.c.save()
+
+
+# ── Public API ────────────────────────────────────────────────────────────────
 
 def generate_gc_estimate_pdf(estimate) -> io.BytesIO:
     """
-    Build a complete GC Estimate PDF and return as BytesIO.
-
-    Args:
-        estimate: GCEstimate instance (with prefetched sections + line_items)
+    Full GC estimate PDF matching the Xactimate invoice format.
     """
     buf = io.BytesIO()
+    gc  = estimate.gc_contractor
+    # Use email prefix as "short name" for the one-liner header
+    short = gc.email.split('@')[0].upper() if gc.email else gc.name[:20].upper()
 
-    doc = BaseDocTemplate(
-        buf,
-        pagesize=letter,
-        leftMargin=0.6 * inch,
-        rightMargin=0.6 * inch,
-        topMargin=1.0 * inch,
-        bottomMargin=0.75 * inch,
-        title=f'GC Estimate — {estimate.estimate_number or str(estimate.id)[:8]}',
+    doc = XactimateDoc(buf, estimate, gc, company_short=short)
+
+    # Cover page
+    doc.build_cover_page()
+
+    # Section pages
+    sections = list(
+        estimate.sections.prefetch_related('line_items', 'subcontractor').order_by('order')
     )
-
-    frame = Frame(
-        doc.leftMargin, doc.bottomMargin,
-        doc.width, doc.height,
-        id='normal',
-    )
-    doc.addPageTemplates([PageTemplate(id='main', frames=frame, onPage=_header_footer)])
-
-    story = []
-    W = doc.width  # usable width
-
-    # ── Claim info block ─────────────────────────────────────────────────────
-    client = estimate.client
-    gc     = estimate.gc_contractor
-
-    info_data = [
-        [
-            Paragraph('INSURED', LABEL),      Paragraph('ADDRESS', LABEL),
-            Paragraph('CLAIM #', LABEL),       Paragraph('DATE', LABEL),
-        ],
-        [
-            Paragraph(client.pOwner or '—', BODY),
-            Paragraph(
-                (client.pAddress or '') + (f', {client.pCityStateZip}' if client.pCityStateZip else ''),
-                BODY,
-            ),
-            Paragraph(client.claimNumber or '—', MONO),
-            Paragraph(
-                estimate.date_entered.strftime('%b %d, %Y') if estimate.date_entered else '—',
-                BODY,
-            ),
-        ],
-        [
-            Paragraph('GC CONTRACTOR', LABEL), Paragraph('ESTIMATOR', LABEL),
-            Paragraph('PRICE LIST', LABEL),     Paragraph('TYPE', LABEL),
-        ],
-        [
-            Paragraph(gc.name, BODY),
-            Paragraph(estimate.estimator.name if estimate.estimator else '—', BODY),
-            Paragraph(estimate.price_list or '—', MONO),
-            Paragraph(estimate.type_of_estimate or '—', BODY),
-        ],
-    ]
-
-    info_table = Table(info_data, colWidths=[W * 0.27, W * 0.30, W * 0.22, W * 0.21])
-    info_table.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, 0), ROW_ALT),
-        ('BACKGROUND', (0, 2), (-1, 2), ROW_ALT),
-        ('ROWPADDING',  (0, 0), (-1, -1), (6, 4, 6, 4)),
-        ('BOX',         (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ('INNERGRID',   (0, 0), (-1, -1), 0.3, colors.HexColor('#f1f5f9')),
-        ('VALIGN',      (0, 0), (-1, -1), 'TOP'),
-    ]))
-    story.append(info_table)
-    story.append(Spacer(1, 12))
-
-    # ── Estimate number / status banner ──────────────────────────────────────
-    est_num = estimate.estimate_number or f'EST-{str(estimate.id)[:8].upper()}'
-    banner_data = [[
-        Paragraph(f'Estimate: {est_num}', H2),
-        Paragraph(estimate.get_status_display().upper(), _style(
-            'STATUS', fontSize=8, fontName='Helvetica-Bold',
-            textColor=GREEN, alignment=TA_RIGHT,
-        )),
-    ]]
-    banner = Table(banner_data, colWidths=[W * 0.7, W * 0.3])
-    banner.setStyle(TableStyle([
-        ('BACKGROUND', (0, 0), (-1, -1), PURPLE_LIGHT),
-        ('ROWPADDING',  (0, 0), (-1, -1), (10, 8, 10, 8)),
-        ('BOX',         (0, 0), (-1, -1), 0.5, PURPLE),
-        ('VALIGN',      (0, 0), (-1, -1), 'MIDDLE'),
-    ]))
-    story.append(banner)
-    story.append(Spacer(1, 14))
-
-    # ── Column widths for line-item table ────────────────────────────────────
-    #   CAT  SEL  Description          Qty   Unit   Remove   Replace  Tax   Total
-    COL_W = [
-        0.50*inch, 0.80*inch, W - 5.35*inch,
-        0.55*inch, 0.45*inch, 0.75*inch, 0.80*inch, 0.30*inch, 0.80*inch
-    ]
-
-    # ── Sections ─────────────────────────────────────────────────────────────
-    sections = estimate.sections.prefetch_related('line_items', 'subcontractor').order_by('order')
-
+    item_counter = 1
     for section in sections:
-        # Section heading row
-        sec_label = section.section_label
-        sub_name  = section.subcontractor.name if section.subcontractor else f'GC Direct — {gc.name}'
-        sec_hdr_data = [[
-            Paragraph(f'{section.order}. {sec_label}', _style(
-                f'SH{section.pk}', fontSize=9, fontName='Helvetica-Bold', textColor=WHITE,
-            )),
-            Paragraph(sub_name, _style(
-                f'SHR{section.pk}', fontSize=7, fontName='Helvetica', textColor=WHITE,
-                alignment=TA_RIGHT,
-            )),
-        ]]
-        sec_hdr = Table(sec_hdr_data, colWidths=[W * 0.65, W * 0.35])
-        sec_hdr.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, -1), PURPLE),
-            ('ROWPADDING',  (0, 0), (-1, -1), (8, 6, 8, 6)),
-            ('VALIGN',      (0, 0), (-1, -1), 'MIDDLE'),
-        ]))
-        story.append(sec_hdr)
+        doc.new_page()
+        item_counter = doc.build_section(section, item_counter)
 
-        line_items = list(section.line_items.order_by('order'))
+    # Line item totals
+    doc.build_line_totals(sections)
 
-        if not line_items:
-            no_items = Table(
-                [[Paragraph('No line items.', BODY_SM)]],
-                colWidths=[W],
-            )
-            no_items.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), ROW_ALT),
-                ('ROWPADDING',  (0, 0), (-1, -1), (8, 8, 8, 8)),
-                ('BOX',         (0, 0), (-1, -1), 0.3, colors.HexColor('#e2e8f0')),
-            ]))
-            story.append(no_items)
-        else:
-            # Column header row
-            th = [
-                Paragraph('CAT',     BODY_SM),
-                Paragraph('SEL',     BODY_SM),
-                Paragraph('Description', BODY_SM),
-                Paragraph('Qty',     _style('QTY', fontSize=7, fontName='Helvetica', alignment=TA_RIGHT)),
-                Paragraph('Unit',    BODY_SM),
-                Paragraph('Remove',  _style('RMV', fontSize=7, fontName='Helvetica', alignment=TA_RIGHT)),
-                Paragraph('Replace', _style('RPL', fontSize=7, fontName='Helvetica', alignment=TA_RIGHT)),
-                Paragraph('T',       _style('TAX', fontSize=7, fontName='Helvetica', alignment=TA_CENTER)),
-                Paragraph('Total',   _style('TOT', fontSize=7, fontName='Helvetica', alignment=TA_RIGHT)),
-            ]
-            rows = [th]
-            ts_cmds = [
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#e2e8f0')),
-                ('FONTNAME',   (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE',   (0, 0), (-1, 0), 7),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 5),
-                ('TOPPADDING',    (0, 0), (-1, 0), 5),
-                ('GRID',          (0, 0), (-1, -1), 0.25, colors.HexColor('#f1f5f9')),
-                ('BOX',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-                ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
-            ]
+    # Summary pages
+    doc.build_summary_page()
+    doc.build_recap_taxes_page()
+    doc.build_recap_by_room_page(sections)
+    doc.build_recap_by_category_page(sections)
 
-            for i, li in enumerate(line_items):
-                row_bg = WHITE if i % 2 == 0 else ROW_ALT
-                r = [
-                    Paragraph(li.cat,         MONO_CAT),
-                    Paragraph(li.sel + (' [*]' if li.is_bid_item else ''), MONO),
-                    Paragraph(li.description, BODY_SM if li.is_memo else BODY),
-                    Paragraph(f'{float(li.quantity):.2f}',   _style(f'Q{i}', fontSize=7, fontName='Courier', alignment=TA_RIGHT)),
-                    Paragraph(li.unit,                        BODY_SM),
-                    Paragraph(_fmt(li.remove_rate),           _style(f'RM{i}', fontSize=7, fontName='Courier', alignment=TA_RIGHT, textColor=MID)),
-                    Paragraph(_fmt(li.replace_rate),          _style(f'RP{i}', fontSize=7, fontName='Courier', alignment=TA_RIGHT)),
-                    Paragraph('T' if li.taxable else '',      _style(f'TX{i}', fontSize=7, fontName='Helvetica', alignment=TA_CENTER, textColor=LIGHT)),
-                    Paragraph(_fmt(li.line_total),            _style(f'LT{i}', fontSize=7, fontName='Courier-Bold', alignment=TA_RIGHT, textColor=DARK)),
-                ]
-                rows.append(r)
-                data_i = i + 1
-                ts_cmds.append(('BACKGROUND', (0, data_i), (-1, data_i), row_bg))
-                ts_cmds.append(('TOPPADDING',    (0, data_i), (-1, data_i), 4))
-                ts_cmds.append(('BOTTOMPADDING', (0, data_i), (-1, data_i), 4))
+    doc.save()
+    buf.seek(0)
+    return buf
 
-            li_table = Table(rows, colWidths=COL_W, repeatRows=1)
-            li_table.setStyle(TableStyle(ts_cmds))
-            story.append(li_table)
 
-        # Section subtotal row
-        sub_total_data = [[
-            Paragraph('', BODY),
-            Paragraph('', BODY),
-            Paragraph('', BODY),
-            Paragraph('', BODY),
-            Paragraph('', BODY),
-            Paragraph('', BODY),
-            Paragraph('Section Subtotal:', _style('ST_LBL', fontSize=8, fontName='Helvetica-Bold',
-                                                   textColor=MID, alignment=TA_RIGHT)),
-            Paragraph('', BODY),
-            Paragraph(_fmt(section.section_subtotal),
-                      _style('ST_VAL', fontSize=8, fontName='Courier-Bold',
-                             textColor=PURPLE, alignment=TA_RIGHT)),
-        ]]
-        st = Table(sub_total_data, colWidths=COL_W)
-        st.setStyle(TableStyle([
-            ('BACKGROUND',    (0, 0), (-1, -1), PURPLE_LIGHT),
-            ('TOPPADDING',    (0, 0), (-1, -1), 5),
-            ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-            ('BOX',           (0, 0), (-1, -1), 0.5, colors.HexColor('#e2e8f0')),
-        ]))
-        story.append(st)
-        story.append(Spacer(1, 10))
+def generate_subcontractor_invoice_pdf(estimate, section) -> io.BytesIO:
+    """
+    Invoice for a single subcontractor section.
+    Header shows the sub's company info. Billed-To shows the GC.
+    """
+    buf = io.BytesIO()
+    sub = section.subcontractor
+    gc  = estimate.gc_contractor
 
-    # ── Grand Totals block ────────────────────────────────────────────────────
-    story.append(Spacer(1, 6))
-    story.append(HRFlowable(width=W, thickness=1.5, color=PURPLE, spaceAfter=8))
+    if not sub:
+        # Fall back to GC header if section is GC-direct
+        sub = gc
 
-    totals = [
-        ['Line Item Total',              _fmt(estimate.line_item_total)],
-        [f'Overhead ({estimate.overhead_pct}%)', _fmt(estimate.overhead_amount)],
-        [f'Profit ({estimate.profit_pct}%)',   _fmt(estimate.profit_amount)],
-        [f'Tax ({estimate.tax_rate}%)',          _fmt(estimate.tax_amount)],
-        ['GRAND TOTAL',                  _fmt(estimate.grand_total)],
+    short = sub.email.split('@')[0].upper() if sub.email else sub.name[:20].upper()
+    doc   = XactimateDoc(buf, estimate, sub, company_short=short, is_sub=True)
+
+    # Cover page (simplified)
+    doc.new_page()
+    c, y = doc.c, doc.y
+
+    c.setFont(F_BOLD, FS_HDR)
+    c.drawString(LM, y, 'SUBCONTRACTOR INVOICE')
+    y -= LINE_H * 2
+
+    cli = estimate.client
+    rows = [
+        ('Bill To',    gc.name),
+        ('GC Address', gc.address or '—'),
+        ('',           f'{gc.city}, {gc.state} {gc.zip_code}' if gc.city else ''),
+        ('Re: Client', cli.pOwner or '—'),
+        ('Property',   cli.pAddress or '—'),
+        ('Claim #',    cli.claimNumber or '—'),
+        ('Estimate #', doc._est_num),
+        ('Section',    section.section_label),
     ]
+    for label, val in rows:
+        if val:
+            if label:
+                c.setFont(F_BOLD, FS_BODY)
+                c.drawRightString(LM + 80, y, label + ':')
+            c.setFont(F_BODY, FS_BODY)
+            c.drawString(LM + 84, y, val)
+            y -= LINE_H
 
-    tot_rows = []
-    for i, (label, val) in enumerate(totals):
-        is_grand = (i == len(totals) - 1)
-        st = GRAND if is_grand else TOTAL
-        sv = _style(f'TV{i}', fontSize=11 if is_grand else 9,
-                    fontName='Courier-Bold' if is_grand else 'Courier',
-                    alignment=TA_RIGHT,
-                    textColor=PURPLE if is_grand else DARK)
-        tot_rows.append([
-            Paragraph(label, _style(f'TL{i}', fontSize=11 if is_grand else 9,
-                                    fontName='Helvetica-Bold' if is_grand else 'Helvetica',
-                                    textColor=PURPLE if is_grand else MID)),
-            Paragraph(val, sv),
-        ])
+    doc.y = y - LINE_H
 
-    tot_table = Table(tot_rows, colWidths=[W * 0.75, W * 0.25])
-    tot_cmds = [
-        ('ALIGN',         (1, 0), (1, -1), 'RIGHT'),
-        ('TOPPADDING',    (0, 0), (-1, -1), 5),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 5),
-        ('LINEBELOW',     (0, -2), (-1, -2), 1.5, PURPLE),
-        ('BACKGROUND',    (0, -1), (-1, -1), PURPLE_LIGHT),
-        ('BOX',           (0, -1), (-1, -1), 1, PURPLE),
-    ]
-    tot_table.setStyle(TableStyle(tot_cmds))
-    story.append(tot_table)
-    story.append(Spacer(1, 16))
+    # Section
+    doc.new_page()
+    doc.build_section(section, item_counter_start=1)
 
-    # ── Notes ─────────────────────────────────────────────────────────────────
-    if estimate.notes:
-        story.append(Paragraph('Notes', LABEL))
-        story.append(Paragraph(estimate.notes, BODY))
-        story.append(Spacer(1, 8))
+    # Section summary
+    tax, op, tot = _section_totals(section, estimate)
+    doc.check_space(LINE_H * 6)
+    doc.y -= LINE_H
 
-    doc.build(story)
+    c = doc.c
+    for label, val in [
+        ('Section Subtotal',  float(section.section_subtotal)),
+        (f'Overhead ({estimate.overhead_pct}%)',  float(estimate.overhead_amount * section.section_subtotal / estimate.line_item_total if estimate.line_item_total else 0)),
+        (f'Profit ({estimate.profit_pct}%)',      float(estimate.profit_amount   * section.section_subtotal / estimate.line_item_total if estimate.line_item_total else 0)),
+        (f'Tax ({estimate.tax_rate}%)',            float(tax)),
+        ('TOTAL DUE', float(tot)),
+    ]:
+        c.setFont(F_BOLD if 'TOTAL' in label else F_BODY, FS_BODY)
+        c.drawString(LM + 200, doc.y, label)
+        c.setFont(F_MONO, FS_BODY)
+        c.drawRightString(RM, doc.y, f'${_n(val)}')
+        doc.y -= LINE_H
+
+    doc.y -= LINE_H * 3
+    c.setFont(F_BODY, FS_BODY)
+    c.drawString(LM, doc.y, 'Authorized Signature: ________________________')
+    c.drawString(LM, doc.y - LINE_H * 2, 'Print Name:           ________________________')
+    c.drawString(LM, doc.y - LINE_H * 4, 'Date:                 ________________________')
+
+    doc.save()
     buf.seek(0)
     return buf

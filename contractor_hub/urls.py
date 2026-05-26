@@ -19,6 +19,7 @@ urlpatterns = [
     # Sections
     path('<uuid:pk>/section/<int:section_pk>/', views.section_detail, name='section_detail'),
     path('<uuid:pk>/section/<int:section_pk>/import-cps/', views.section_import_cps, name='section_import_cps'),
+    path('<uuid:pk>/section/<int:section_pk>/invoice/', views.section_invoice_pdf, name='section_invoice_pdf'),
 
     # Contractor registry
     path('contractors/', views.contractor_list, name='contractor_list'),

@@ -103,10 +103,24 @@ select.form-control-sm { cursor: pointer; }
 .bid-sent     { background: #dbeafe; color: #1d4ed8; }
 .bid-accepted { background: #d1fae5; color: #065f46; }
 .bid-rejected { background: #fee2e2; color: #991b1b; }
+
+/* ── Toast notification ─────────────────────────────────────────────── */
+#toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #10b981; color: #fff; padding: 10px 22px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,.18);
+    opacity: 0; transition: opacity .25s, transform .25s; z-index: 9999;
+    pointer-events: none; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.error { background: #ef4444; }
 </style>
 {% endblock %}
 
 {% block content %}
+
+<!-- Toast -->
+<div id="toast"></div>
 
 <!-- Breadcrumb -->
 <div class="breadcrumb">
@@ -354,6 +368,16 @@ select.form-control-sm { cursor: pointer; }
 <script>
 const SECTION_PK  = {{ section.pk }};
 const CSRF        = '{{ csrf_token }}';
+
+// ── Toast helper ──────────────────────────────────────────────────────────
+function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.toggle('error', !!isError);
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
 const RATE_ITEMS  = [
 {% for ri in rate_items %}
     { cat:'{{ ri.cat|escapejs }}', sel:'{{ ri.sel|escapejs }}',
@@ -435,7 +459,7 @@ function addLine() {
     })
     .then(r => r.json())
     .then(d => {
-        if (d.error) { alert(d.error); return; }
+        if (d.error) { showToast('Error: ' + d.error, true); return; }
 
         // Remove empty state
         document.getElementById('empty-state')?.remove();
@@ -472,8 +496,9 @@ function addLine() {
         });
 
         refreshSubtotal();
+        showToast(`✓ Line item "${desc}" added`);
     })
-    .catch(console.error);
+    .catch(err => { console.error(err); showToast('Network error — item may not have saved.', true); });
 }
 
 // ── Delete line item ──────────────────────────────────────────────────

@@ -496,6 +496,36 @@ def estimate_excel(request, pk):
         return redirect('contractor_hub:estimate_detail', pk=pk)
 
 
+@login_required
+def section_invoice_pdf(request, pk, section_pk):
+    """Subcontractor invoice PDF for a single section."""
+    from django.http import HttpResponse
+    from .pdf_builder import generate_subcontractor_invoice_pdf
+
+    estimate = get_object_or_404(
+        GCEstimate.objects.select_related('client', 'gc_contractor', 'estimator'),
+        pk=pk,
+    )
+    section = get_object_or_404(
+        GCSection.objects.prefetch_related('line_items').select_related('subcontractor'),
+        pk=section_pk, estimate=estimate,
+    )
+
+    try:
+        buf = generate_subcontractor_invoice_pdf(estimate, section)
+        safe_est  = (estimate.estimate_number or f'EST-{str(estimate.id)[:8]}').replace(' ', '_').replace('/', '-')
+        safe_sect = section.section_label.replace(' ', '_').replace('/', '-')
+        fname     = f'{safe_est}_{safe_sect}_SUB_INVOICE.pdf'
+        response  = HttpResponse(buf.read(), content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{fname}"'
+        return response
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f'Sub invoice PDF failed for section {section_pk}: {e}', exc_info=True)
+        messages.error(request, f'Sub invoice PDF generation failed: {e}')
+        return redirect('contractor_hub:section_detail', pk=pk, section_pk=section_pk)
+
+
 # ---------------------------------------------------------------------------
 # Contractor Registry
 # ---------------------------------------------------------------------------
