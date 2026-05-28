@@ -21,6 +21,10 @@ urlpatterns = [
     path('<uuid:pk>/section/<int:section_pk>/import-cps/', views.section_import_cps, name='section_import_cps'),
     path('<uuid:pk>/section/<int:section_pk>/invoice/', views.section_invoice_pdf, name='section_invoice_pdf'),
 
+    # Quick sub invoice generator (3-input: claim + sub + work type)
+    path('quick-invoice/', views.quick_sub_invoice, name='quick_sub_invoice'),
+    path('<uuid:pk>/box-counts/', views.box_count_report, name='box_count_report'),
+
     # Contractor registry
     path('contractors/', views.contractor_list, name='contractor_list'),
     path('contractors/new/', views.contractor_create, name='contractor_create'),

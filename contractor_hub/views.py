@@ -15,6 +15,7 @@ from django.utils import timezone
 from .models import (
     Contractor, GCEstimate, GCSection, GCLineItem,
     RateItem, PriceListVersion, SectionType, SECTION_ORDER, SUBCONTRACTED_SECTIONS,
+    BoxCountReport, LineItemTemplate, BoxType,
 )
 
 # ── Column aliases (same as management command) ─────────────────────────────
@@ -524,6 +525,166 @@ def section_invoice_pdf(request, pk, section_pk):
         logging.getLogger(__name__).error(f'Sub invoice PDF failed for section {section_pk}: {e}', exc_info=True)
         messages.error(request, f'Sub invoice PDF generation failed: {e}')
         return redirect('contractor_hub:section_detail', pk=pk, section_pk=section_pk)
+
+
+# ---------------------------------------------------------------------------
+# Quick Sub Invoice — 3-input generator (claim + sub + work type → PDF)
+# ---------------------------------------------------------------------------
+
+# Which section types can be generated via the quick invoice tool
+QUICK_INVOICE_SECTIONS = [
+    SectionType.PACKING,
+    SectionType.CLEANING,
+    SectionType.TRANSPORT,
+    SectionType.ADMIN,
+    SectionType.DEMO,
+]
+
+
+@login_required
+def quick_sub_invoice(request):
+    """
+    GET  — show the 3-input form (claim, subcontractor, work type).
+    POST — build line items from LineItemTemplates × BoxCountReport, generate PDF.
+    """
+    from django.http import HttpResponse
+    from .pdf_builder import generate_quick_sub_invoice_pdf
+    from decimal import Decimal
+
+    estimates = GCEstimate.objects.select_related('client', 'gc_contractor').order_by('-created_at')
+    subs = Contractor.objects.filter(is_active=True).exclude(role='gc').order_by('name')
+    section_choices = [(st.value, st.label) for st in QUICK_INVOICE_SECTIONS]
+
+    if request.method == 'POST':
+        estimate_pk    = request.POST.get('estimate')
+        sub_pk         = request.POST.get('subcontractor')
+        section_type   = request.POST.get('section_type')
+
+        estimate = get_object_or_404(GCEstimate.objects.select_related('client', 'gc_contractor', 'estimator'), pk=estimate_pk)
+        sub      = get_object_or_404(Contractor, pk=sub_pk)
+
+        # Validate section type
+        valid_types = [st.value for st in QUICK_INVOICE_SECTIONS]
+        if section_type not in valid_types:
+            messages.error(request, f'Invalid work type: {section_type}')
+            return redirect('contractor_hub:quick_sub_invoice')
+
+        # Get box count report
+        try:
+            bcr = estimate.box_count_report
+        except BoxCountReport.DoesNotExist:
+            messages.error(
+                request,
+                f'No Box Count Report found for this estimate. '
+                f'Please enter box counts before generating a sub invoice.'
+            )
+            return redirect('contractor_hub:box_count_report', pk=estimate.pk)
+
+        box_counts = bcr.as_dict()
+
+        # Pull templates for this section type
+        templates = LineItemTemplate.objects.filter(
+            section_type=section_type
+        ).order_by('group_code', 'order')
+
+        if not templates.exists():
+            messages.error(request, f'No line item templates found for section type "{section_type}". Run: python manage.py seed_line_item_templates')
+            return redirect('contractor_hub:quick_sub_invoice')
+
+        # Build rate lookup from RateItem table
+        rate_lookup = {
+            (r.cat, r.sel): r
+            for r in RateItem.objects.all()
+        }
+
+        # Compute line items
+        line_items_data = []
+        for tmpl in templates:
+            qty = tmpl.compute_qty(box_counts)
+            if qty == Decimal('0.00') and tmpl.box_type != BoxType.FIXED:
+                continue  # skip zero-count box types
+
+            rate = rate_lookup.get((tmpl.cat, tmpl.sel))
+            remove_rate  = rate.remove_rate  if rate else Decimal('0.00')
+            replace_rate = rate.replace_rate if rate else Decimal('0.00')
+
+            line_items_data.append({
+                'cat':          tmpl.cat,
+                'sel':          tmpl.sel,
+                'description':  tmpl.description,
+                'qty':          qty,
+                'unit':         tmpl.unit,
+                'remove_rate':  remove_rate,
+                'replace_rate': replace_rate,
+                'taxable':      tmpl.taxable,
+                'notes':        tmpl.notes,
+                'order':        tmpl.order,
+                'calc_formula': f'LL×{tmpl.qty_factor}',
+            })
+
+        if not line_items_data:
+            messages.error(request, 'All box counts are zero — nothing to generate. Check the Box Count Report.')
+            return redirect('contractor_hub:box_count_report', pk=estimate.pk)
+
+        try:
+            buf = generate_quick_sub_invoice_pdf(
+                estimate, sub, section_type, line_items_data
+            )
+            safe_est  = (estimate.estimate_number or f'EST-{str(estimate.id)[:8]}').replace(' ', '_').replace('/', '-')
+            safe_sub  = sub.name.replace(' ', '_').replace('/', '-')[:20]
+            safe_sect = section_type.upper()
+            fname     = f'{safe_est}_{safe_sub}_{safe_sect}_INVOICE.pdf'
+            response  = HttpResponse(buf.read(), content_type='application/pdf')
+            response['Content-Disposition'] = f'attachment; filename="{fname}"'
+            return response
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f'Quick sub invoice failed: {e}', exc_info=True)
+            messages.error(request, f'PDF generation failed: {e}')
+            return redirect('contractor_hub:quick_sub_invoice')
+
+    return render(request, 'contractor_hub/quick_sub_invoice.html', {
+        'estimates':       estimates,
+        'subs':            subs,
+        'section_choices': section_choices,
+    })
+
+
+@login_required
+def box_count_report(request, pk):
+    """
+    GET/POST — create or update the BoxCountReport for an estimate.
+    """
+    estimate = get_object_or_404(
+        GCEstimate.objects.select_related('client'),
+        pk=pk,
+    )
+    bcr, _ = BoxCountReport.objects.get_or_create(estimate=estimate)
+
+    if request.method == 'POST':
+        fields = [
+            'small_boxes', 'medium_boxes', 'large_boxes', 'xl_items',
+            'mirror_boxes', 'lamp_boxes', 'tv_boxes', 'wardrobe_boxes',
+            'mattress_boxes', 'dishpack_boxes', 'glasspack_boxes', 'pots_boxes',
+        ]
+        for f in fields:
+            val = request.POST.get(f, '0')
+            try:
+                setattr(bcr, f, max(0, int(val)))
+            except (ValueError, TypeError):
+                setattr(bcr, f, 0)
+        bcr.notes = request.POST.get('notes', '')
+        bcr.save()
+        messages.success(request, f'Box counts saved — {bcr.total_boxes} total boxes.')
+        next_url = request.POST.get('next')
+        if next_url:
+            return redirect(next_url)
+        return redirect('contractor_hub:quick_sub_invoice')
+
+    return render(request, 'contractor_hub/box_count_report.html', {
+        'estimate': estimate,
+        'bcr':      bcr,
+    })
 
 
 # ---------------------------------------------------------------------------

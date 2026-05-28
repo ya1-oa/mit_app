@@ -440,3 +440,131 @@ class GCLineItem(models.Model):
         if self.is_memo:
             return Decimal('0.00')
         return (self.quantity * (self.remove_rate + self.replace_rate)).quantize(Decimal('0.01'))
+
+
+# ---------------------------------------------------------------------------
+# Box Count Report (one per GCEstimate — drives static line item qty)
+# ---------------------------------------------------------------------------
+
+class BoxType(models.TextChoices):
+    SMALL     = 'small',     'Small Box'
+    MEDIUM    = 'medium',    'Medium Box'
+    LARGE     = 'large',     'Large Box'
+    XL        = 'xl',        'XL / Unboxed Item'
+    MIRROR    = 'mirror',    'Mirror / Picture Box'
+    LAMP      = 'lamp',      'Lamp / Plant / Vase Box'
+    TV        = 'tv',        'TV Box'
+    WARDROBE  = 'wardrobe',  'Wardrobe Box'
+    MATTRESS  = 'mattress',  'Mattress Box'
+    DISHPACK  = 'dishpack',  'Dish Pack Box'
+    GLASSPACK = 'glasspack', 'Glass Pack Box'
+    POTS      = 'pots',      'Pots & Pans Box'
+    FIXED     = 'fixed',     'Fixed Quantity (not box-dependent)'
+
+
+class BoxCountReport(models.Model):
+    """
+    Per-estimate box count totals parsed from the CPS Box Summary report.
+    These counts drive QTY in LineItemTemplate-based sub invoice generation.
+    """
+    estimate       = models.OneToOneField(
+        GCEstimate, on_delete=models.CASCADE, related_name='box_count_report'
+    )
+    small_boxes    = models.PositiveIntegerField(default=0, verbose_name='Small Boxes')
+    medium_boxes   = models.PositiveIntegerField(default=0, verbose_name='Medium Boxes')
+    large_boxes    = models.PositiveIntegerField(default=0, verbose_name='Large Boxes')
+    xl_items       = models.PositiveIntegerField(default=0, verbose_name='XL / Unboxed Items')
+    mirror_boxes   = models.PositiveIntegerField(default=0, verbose_name='Mirror / Picture Boxes')
+    lamp_boxes     = models.PositiveIntegerField(default=0, verbose_name='Lamp / Plant / Vase Boxes')
+    tv_boxes       = models.PositiveIntegerField(default=0, verbose_name='TV Boxes')
+    wardrobe_boxes = models.PositiveIntegerField(default=0, verbose_name='Wardrobe Boxes')
+    mattress_boxes = models.PositiveIntegerField(default=0, verbose_name='Mattress Boxes')
+    dishpack_boxes = models.PositiveIntegerField(default=0, verbose_name='Dish Pack Boxes')
+    glasspack_boxes= models.PositiveIntegerField(default=0, verbose_name='Glass Pack Boxes')
+    pots_boxes     = models.PositiveIntegerField(default=0, verbose_name='Pots & Pans Boxes')
+    source_file    = models.CharField(max_length=500, blank=True)
+    uploaded_at    = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+    notes          = models.TextField(blank=True)
+
+    class Meta:
+        verbose_name = 'Box Count Report'
+
+    def __str__(self):
+        return f'Box Count — {self.estimate} ({self.total_boxes} total)'
+
+    @property
+    def total_boxes(self):
+        return (self.small_boxes + self.medium_boxes + self.large_boxes +
+                self.xl_items + self.mirror_boxes + self.lamp_boxes +
+                self.tv_boxes + self.wardrobe_boxes + self.mattress_boxes +
+                self.dishpack_boxes + self.glasspack_boxes + self.pots_boxes)
+
+    def as_dict(self):
+        """Return counts keyed by BoxType value strings."""
+        return {
+            BoxType.SMALL:     self.small_boxes,
+            BoxType.MEDIUM:    self.medium_boxes,
+            BoxType.LARGE:     self.large_boxes,
+            BoxType.XL:        self.xl_items,
+            BoxType.MIRROR:    self.mirror_boxes,
+            BoxType.LAMP:      self.lamp_boxes,
+            BoxType.TV:        self.tv_boxes,
+            BoxType.WARDROBE:  self.wardrobe_boxes,
+            BoxType.MATTRESS:  self.mattress_boxes,
+            BoxType.DISHPACK:  self.dishpack_boxes,
+            BoxType.GLASSPACK: self.glasspack_boxes,
+            BoxType.POTS:      self.pots_boxes,
+        }
+
+
+# ---------------------------------------------------------------------------
+# Line Item Templates (static per section type + box type)
+# ---------------------------------------------------------------------------
+
+class LineItemTemplate(models.Model):
+    """
+    Static line item definitions per section / box type.
+
+    At invoice generation:
+      qty = box_counts[box_type] × qty_factor
+    For FIXED box_type:
+      qty = qty_factor  (literal quantity, not multiplied)
+
+    Rates are looked up live from RateItem(cat, sel) at generation time.
+    """
+    group_code   = models.CharField(max_length=20, db_index=True,
+                                    help_text='Xactimate group code, e.g. SMALL_TOTAL2')
+    section_type = models.CharField(max_length=20, choices=SectionType.choices)
+    box_type     = models.CharField(
+        max_length=20, choices=BoxType.choices, default=BoxType.FIXED,
+        help_text='Which box count field drives QTY. FIXED = qty_factor is the literal qty.'
+    )
+    cat          = models.CharField(max_length=10)
+    sel          = models.CharField(max_length=20)
+    description  = models.CharField(max_length=500)
+    unit         = models.CharField(max_length=5, default='EA')
+    qty_factor   = models.DecimalField(
+        max_digits=8, decimal_places=4, default=Decimal('1.0000'),
+        help_text='Multiplier × box count = qty. For FIXED, this IS the qty.'
+    )
+    taxable      = models.BooleanField(default=True)
+    order        = models.PositiveIntegerField(default=0)
+    notes        = models.TextField(blank=True, help_text='Printed beneath the line item in the PDF')
+
+    class Meta:
+        ordering = ['section_type', 'group_code', 'order']
+        verbose_name = 'Line Item Template'
+
+    def __str__(self):
+        return f'{self.group_code} | {self.cat} {self.sel} ({self.box_type}) ×{self.qty_factor}'
+
+    def compute_qty(self, box_counts: dict) -> Decimal:
+        """
+        Compute this line item's qty from a box counts dict.
+        box_counts: {BoxType.value_str: int, ...}  e.g. {'small': 52, 'medium': 169, ...}
+        """
+        if self.box_type == BoxType.FIXED:
+            return self.qty_factor.quantize(Decimal('0.01'))
+        count = Decimal(str(box_counts.get(self.box_type, 0)))
+        return (count * self.qty_factor).quantize(Decimal('0.01'))

@@ -920,6 +920,98 @@ def generate_gc_estimate_pdf(estimate) -> io.BytesIO:
     return buf
 
 
+def generate_quick_sub_invoice_pdf(estimate, sub_contractor, section_type_value,
+                                   line_items_data) -> io.BytesIO:
+    """
+    Generate a sub invoice directly from template data — no DB section needed.
+
+    sub_contractor  : Contractor instance (the sub)
+    section_type_value: SectionType value string, e.g. 'packing'
+    line_items_data : list of dicts, each with keys:
+                        cat, sel, description, qty (Decimal), unit,
+                        remove_rate, replace_rate, taxable, notes, order
+    """
+    from .models import SectionType
+
+    _LABELS = {
+        'exhaust':   'EXHAUST PER LEVEL',
+        'admin':     'ADMINISTRATIVE EXPENSES ..... PER LEVEL',
+        'packing':   'CPS PACKING HANDLING & EVALUATION',
+        'transport': 'TRANSPORTING CONTENTS',
+        'storage':   'STORAGE INFO CONTENTS',
+        'cleaning':  'CONTENTS CLEANING',
+        'demo':      'DMO & RUBBISH REMOVAL',
+        'porches':   'PORCHES EXTERIOR',
+    }
+
+    class _TempLI:
+        __slots__ = ('cat', 'sel', 'description', 'quantity', 'unit',
+                     'remove_rate', 'replace_rate', 'taxable',
+                     'is_memo', 'is_bid_item', 'calc_formula', 'notes', 'order')
+
+        def __init__(self, d):
+            self.cat          = d.get('cat', '')
+            self.sel          = d.get('sel', '')
+            self.description  = d.get('description', '')
+            self.quantity     = Decimal(str(d.get('qty', '0')))
+            self.unit         = d.get('unit', 'EA')
+            self.remove_rate  = Decimal(str(d.get('remove_rate', '0')))
+            self.replace_rate = Decimal(str(d.get('replace_rate', '0')))
+            self.taxable      = bool(d.get('taxable', True))
+            self.is_memo      = bool(d.get('is_memo', False))
+            self.is_bid_item  = bool(d.get('is_bid_item', False))
+            self.calc_formula = d.get('calc_formula', '')
+            self.notes        = d.get('notes', '')
+            self.order        = int(d.get('order', 0))
+
+        @property
+        def line_total(self):
+            if self.is_memo:
+                return Decimal('0.00')
+            return (self.quantity * (self.remove_rate + self.replace_rate)).quantize(
+                Decimal('0.01'))
+
+    class _FakeMgr:
+        def __init__(self, items):
+            self._items = sorted(items, key=lambda x: x.order)
+
+        def all(self):
+            return self._items
+
+        def order_by(self, *_):
+            return self._items
+
+        def filter(self, **kwargs):
+            res = self._items
+            for k, v in kwargs.items():
+                res = [x for x in res if getattr(x, k, None) == v]
+            return res
+
+    class _TempSection:
+        def __init__(self, section_type, subcontractor, items):
+            self.section_type  = section_type
+            self.subcontractor = subcontractor
+            self.pk            = f'tmp-{section_type}'
+            self._mgr          = _FakeMgr(items)
+
+        @property
+        def section_label(self):
+            return _LABELS.get(self.section_type, self.section_type.upper())
+
+        @property
+        def line_items(self):
+            return self._mgr
+
+        @property
+        def section_subtotal(self):
+            return sum(li.line_total for li in self._mgr.all())
+
+    items   = [_TempLI(d) for d in line_items_data]
+    section = _TempSection(section_type_value, sub_contractor, items)
+
+    return generate_subcontractor_invoice_pdf(estimate, section)
+
+
 def generate_subcontractor_invoice_pdf(estimate, section) -> io.BytesIO:
     """
     Standalone sub invoice for one section.

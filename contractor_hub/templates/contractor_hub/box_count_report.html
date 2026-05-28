@@ -1,0 +1,261 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Box Count Report — {{ estimate.estimate_number|default:estimate.pk }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.bcr-hero {
+    background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%);
+    border-radius: 14px; padding: 28px 32px; color: #fff;
+    margin-bottom: 28px; display: flex; align-items: center; gap: 20px;
+}
+.bcr-hero-icon {
+    width: 56px; height: 56px; background: rgba(255,255,255,.15);
+    border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; flex-shrink: 0;
+}
+.bcr-hero-text h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.bcr-hero-text p  { font-size: 13px; opacity: .85; margin: 0; }
+
+.section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 14px;
+    padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+}
+
+.bcr-card {
+    background: #fff; border-radius: 12px; padding: 24px 28px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); border: 1px solid #f1f5f9;
+    margin-bottom: 20px;
+}
+
+.box-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 16px;
+}
+
+.box-field {
+    display: flex; flex-direction: column; gap: 6px;
+}
+
+.box-field label {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: #64748b;
+    display: flex; align-items: center; gap: 8px;
+}
+
+.box-field label .box-icon {
+    width: 24px; height: 24px; border-radius: 6px;
+    background: #ede9fe; color: #7c3aed;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 11px;
+}
+
+.box-field input[type="number"] {
+    padding: 10px 14px; border: 1.5px solid #e2e8f0;
+    border-radius: 8px; font-size: 15px; font-weight: 600;
+    color: #0f172a; background: #f8fafc;
+    transition: border-color .15s, box-shadow .15s;
+    width: 100%;
+}
+.box-field input[type="number"]:focus {
+    outline: none; border-color: #0ea5e9;
+    box-shadow: 0 0 0 3px rgba(14,165,233,.12);
+}
+
+.live-total-bar {
+    background: linear-gradient(135deg, #ede9fe, #e0f2fe);
+    border-radius: 10px; padding: 16px 20px;
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 20px;
+}
+.live-total-bar .lbl { font-size: 13px; color: #475569; font-weight: 600; }
+.live-total-bar .val { font-size: 28px; font-weight: 800; color: #7c3aed; }
+
+.notes-field textarea {
+    width: 100%; padding: 12px 14px;
+    border: 1.5px solid #e2e8f0; border-radius: 8px;
+    font-size: 14px; color: #334155; resize: vertical; min-height: 80px;
+    background: #f8fafc; transition: border-color .15s;
+}
+.notes-field textarea:focus { outline: none; border-color: #0ea5e9; }
+.notes-field label {
+    display: block; font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: #64748b; margin-bottom: 6px;
+}
+
+.action-row {
+    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
+}
+
+.btn-save {
+    padding: 13px 36px; background: #0ea5e9; color: #fff;
+    border: none; border-radius: 10px; font-size: 15px; font-weight: 700;
+    cursor: pointer; display: inline-flex; align-items: center; gap: 8px;
+    transition: opacity .15s, transform .1s;
+}
+.btn-save:hover { opacity: .88; transform: translateY(-1px); }
+
+.btn-outline {
+    padding: 13px 24px; background: #fff; color: #64748b;
+    border: 1.5px solid #e2e8f0; border-radius: 10px;
+    font-size: 14px; font-weight: 600; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 8px;
+    text-decoration: none; transition: border-color .15s;
+}
+.btn-outline:hover { border-color: #94a3b8; color: #334155; }
+
+.existing-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: #d1fae5; color: #065f46;
+    border-radius: 20px; padding: 4px 12px;
+    font-size: 12px; font-weight: 700;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+{% if messages %}
+<div style="margin-bottom:16px;">
+    {% for msg in messages %}
+    <div style="padding:10px 16px;border-radius:8px;margin-bottom:8px;
+         background:{% if 'error' in msg.tags %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">
+        {{ msg }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Hero -->
+<div class="bcr-hero">
+    <div class="bcr-hero-icon"><i class="fas fa-boxes"></i></div>
+    <div class="bcr-hero-text">
+        <h2>Box Count Report</h2>
+        <p>
+            Claim: <strong>{{ estimate.estimate_number|default:estimate.pk }}</strong>
+            {% if estimate.client %} — {{ estimate.client }}{% endif %}
+            {% if bcr.total_boxes %}
+            &nbsp;&nbsp;<span class="existing-badge"><i class="fas fa-check"></i> Saved</span>
+            {% endif %}
+        </p>
+    </div>
+</div>
+
+<form method="post" id="bcr-form">
+    {% csrf_token %}
+
+    <!-- Live Total -->
+    <div class="live-total-bar">
+        <span class="lbl"><i class="fas fa-cubes" style="margin-right:6px;color:#7c3aed;"></i>Total Boxes</span>
+        <span class="val" id="live-total">0</span>
+    </div>
+
+    <!-- Box Counts -->
+    <div class="section-label">Box Counts by Type</div>
+    <div class="bcr-card">
+        <div class="box-grid">
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-box"></i></span>Small Boxes</label>
+                <input type="number" name="small_boxes" id="f_small" min="0" value="{{ bcr.small_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-box"></i></span>Medium Boxes</label>
+                <input type="number" name="medium_boxes" id="f_medium" min="0" value="{{ bcr.medium_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-box"></i></span>Large Boxes</label>
+                <input type="number" name="large_boxes" id="f_large" min="0" value="{{ bcr.large_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-expand-arrows-alt"></i></span>XL / Unboxed Items</label>
+                <input type="number" name="xl_items" id="f_xl" min="0" value="{{ bcr.xl_items|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-image"></i></span>Mirror / Picture Boxes</label>
+                <input type="number" name="mirror_boxes" id="f_mirror" min="0" value="{{ bcr.mirror_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-lightbulb"></i></span>Lamp / Plant Boxes</label>
+                <input type="number" name="lamp_boxes" id="f_lamp" min="0" value="{{ bcr.lamp_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-tv"></i></span>TV Boxes</label>
+                <input type="number" name="tv_boxes" id="f_tv" min="0" value="{{ bcr.tv_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-tshirt"></i></span>Wardrobe Boxes</label>
+                <input type="number" name="wardrobe_boxes" id="f_wardrobe" min="0" value="{{ bcr.wardrobe_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-bed"></i></span>Mattress Boxes</label>
+                <input type="number" name="mattress_boxes" id="f_mattress" min="0" value="{{ bcr.mattress_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-utensils"></i></span>Dish Pack Boxes</label>
+                <input type="number" name="dishpack_boxes" id="f_dishpack" min="0" value="{{ bcr.dishpack_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-wine-glass"></i></span>Glass Pack Boxes</label>
+                <input type="number" name="glasspack_boxes" id="f_glasspack" min="0" value="{{ bcr.glasspack_boxes|default:'0' }}">
+            </div>
+
+            <div class="box-field">
+                <label><span class="box-icon"><i class="fas fa-fire-burner"></i></span>Pots &amp; Pans Boxes</label>
+                <input type="number" name="pots_boxes" id="f_pots" min="0" value="{{ bcr.pots_boxes|default:'0' }}">
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Notes -->
+    <div class="section-label">Notes (optional)</div>
+    <div class="bcr-card">
+        <div class="notes-field">
+            <label for="f_notes">Internal Notes</label>
+            <textarea name="notes" id="f_notes" placeholder="e.g. counts pulled from Xactimate scope on 05/28/2026…">{{ bcr.notes|default:'' }}</textarea>
+        </div>
+    </div>
+
+    <!-- Actions -->
+    <div class="action-row">
+        <button type="submit" class="btn-save">
+            <i class="fas fa-save"></i> Save Box Counts
+        </button>
+        <a href="{% url 'contractor_hub:quick_sub_invoice' %}?estimate={{ estimate.pk }}" class="btn-outline">
+            <i class="fas fa-bolt"></i> Go to Quick Invoice
+        </a>
+        <a href="{% url 'contractor_hub:estimate_detail' estimate.pk %}" class="btn-outline">
+            <i class="fas fa-arrow-left"></i> Back to Claim
+        </a>
+    </div>
+
+</form>
+
+<script>
+const FIELDS = ['f_small','f_medium','f_large','f_xl','f_mirror','f_lamp',
+                'f_tv','f_wardrobe','f_mattress','f_dishpack','f_glasspack','f_pots'];
+const totalEl = document.getElementById('live-total');
+
+function recalc() {
+    let t = 0;
+    FIELDS.forEach(id => { t += parseInt(document.getElementById(id).value || '0'); });
+    totalEl.textContent = t.toLocaleString();
+}
+
+FIELDS.forEach(id => document.getElementById(id).addEventListener('input', recalc));
+recalc(); // run on load
+</script>
+{% endblock %}
