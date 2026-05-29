@@ -1,7 +1,7 @@
 {% extends "account/base.html" %}
 {% load static %}
 
-{% block title %}Box Count Report — {{ estimate.estimate_number|default:estimate.pk }}{% endblock %}
+{% block title %}Box Count Report — {{ client.pOwner|default:client.pk }}{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -24,41 +24,63 @@
     padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
 }
 
+/* Tab switcher */
+.tab-bar {
+    display: flex; gap: 0; border-bottom: 2px solid #e2e8f0; margin-bottom: 24px;
+}
+.tab-btn {
+    padding: 10px 22px; font-size: 13px; font-weight: 600; color: #64748b;
+    border: none; background: none; cursor: pointer;
+    border-bottom: 2px solid transparent; margin-bottom: -2px;
+    transition: color .15s, border-color .15s;
+}
+.tab-btn.active { color: #0ea5e9; border-bottom-color: #0ea5e9; }
+.tab-panel { display: none; }
+.tab-panel.active { display: block; }
+
+/* Import drop zone */
+.drop-zone {
+    border: 2px dashed #cbd5e1; border-radius: 10px; padding: 40px 24px;
+    text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+    background: #f8fafc; margin-bottom: 20px;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: #0ea5e9; background: #f0f9ff; }
+.drop-zone.has-file { border-color: #0ea5e9; background: #f0f9ff; }
+.drop-zone i { font-size: 32px; color: #94a3b8; margin-bottom: 10px; display: block; }
+.drop-zone .drop-label { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+.drop-zone .drop-sub   { font-size: 12px; color: #94a3b8; }
+
+.format-hint {
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px;
+    padding: 12px 16px; font-size: 12px; color: #78350f; margin-bottom: 16px;
+}
+.format-hint strong { display: block; margin-bottom: 4px; }
+
+/* Manual entry */
 .bcr-card {
     background: #fff; border-radius: 12px; padding: 24px 28px;
     box-shadow: 0 1px 4px rgba(0,0,0,.08); border: 1px solid #f1f5f9;
     margin-bottom: 20px;
 }
-
 .box-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-    gap: 16px;
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px,1fr)); gap: 16px;
 }
-
-.box-field {
-    display: flex; flex-direction: column; gap: 6px;
-}
-
+.box-field { display: flex; flex-direction: column; gap: 6px; }
 .box-field label {
     font-size: 12px; font-weight: 700; text-transform: uppercase;
     letter-spacing: .7px; color: #64748b;
     display: flex; align-items: center; gap: 8px;
 }
-
 .box-field label .box-icon {
     width: 24px; height: 24px; border-radius: 6px;
-    background: #ede9fe; color: #7c3aed;
-    display: inline-flex; align-items: center; justify-content: center;
-    font-size: 11px;
+    background: #e0f2fe; color: #0ea5e9;
+    display: inline-flex; align-items: center; justify-content: center; font-size: 11px;
 }
-
 .box-field input[type="number"] {
     padding: 10px 14px; border: 1.5px solid #e2e8f0;
     border-radius: 8px; font-size: 15px; font-weight: 600;
-    color: #0f172a; background: #f8fafc;
+    color: #0f172a; background: #f8fafc; width: 100%;
     transition: border-color .15s, box-shadow .15s;
-    width: 100%;
 }
 .box-field input[type="number"]:focus {
     outline: none; border-color: #0ea5e9;
@@ -78,18 +100,14 @@
     width: 100%; padding: 12px 14px;
     border: 1.5px solid #e2e8f0; border-radius: 8px;
     font-size: 14px; color: #334155; resize: vertical; min-height: 80px;
-    background: #f8fafc; transition: border-color .15s;
+    background: #f8fafc;
 }
-.notes-field textarea:focus { outline: none; border-color: #0ea5e9; }
 .notes-field label {
     display: block; font-size: 12px; font-weight: 700; text-transform: uppercase;
     letter-spacing: .7px; color: #64748b; margin-bottom: 6px;
 }
 
-.action-row {
-    display: flex; align-items: center; gap: 16px; flex-wrap: wrap;
-}
-
+.action-row { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; }
 .btn-save {
     padding: 13px 36px; background: #0ea5e9; color: #fff;
     border: none; border-radius: 10px; font-size: 15px; font-weight: 700;
@@ -97,7 +115,6 @@
     transition: opacity .15s, transform .1s;
 }
 .btn-save:hover { opacity: .88; transform: translateY(-1px); }
-
 .btn-outline {
     padding: 13px 24px; background: #fff; color: #64748b;
     border: 1.5px solid #e2e8f0; border-radius: 10px;
@@ -134,128 +151,200 @@
     <div class="bcr-hero-text">
         <h2>Box Count Report</h2>
         <p>
-            Claim: <strong>{{ estimate.estimate_number|default:estimate.pk }}</strong>
-            {% if estimate.client %} — {{ estimate.client }}{% endif %}
+            <strong>{{ client.pOwner|default:"(no name)" }}</strong>
+            {% if client.claimNumber %} &nbsp;·&nbsp; Claim #{{ client.claimNumber }}{% endif %}
+            {% if client.pAddress %} &nbsp;·&nbsp; {{ client.pAddress }}{% endif %}
             {% if bcr.total_boxes %}
-            &nbsp;&nbsp;<span class="existing-badge"><i class="fas fa-check"></i> Saved</span>
+            &nbsp;&nbsp;<span class="existing-badge"><i class="fas fa-check"></i> {{ bcr.total_boxes }} boxes saved</span>
             {% endif %}
         </p>
     </div>
 </div>
 
-<form method="post" id="bcr-form">
-    {% csrf_token %}
+<!-- Tab switcher -->
+<div class="tab-bar">
+    <button class="tab-btn active" onclick="switchTab('import', this)">
+        <i class="fas fa-file-upload" style="margin-right:6px;"></i>Import from File
+    </button>
+    <button class="tab-btn" onclick="switchTab('manual', this)">
+        <i class="fas fa-keyboard" style="margin-right:6px;"></i>Enter Manually
+    </button>
+</div>
 
-    <!-- Live Total -->
-    <div class="live-total-bar">
-        <span class="lbl"><i class="fas fa-cubes" style="margin-right:6px;color:#7c3aed;"></i>Total Boxes</span>
-        <span class="val" id="live-total">0</span>
+<!-- ── IMPORT TAB ────────────────────────────────────────────────────────── -->
+<div class="tab-panel active" id="tab-import">
+
+    <div class="format-hint">
+        <strong><i class="fas fa-lightbulb" style="margin-right:6px;"></i>Accepted File Formats</strong>
+        <strong>Excel (.xlsx / .xlsm):</strong> Upload the 94-CPS file — the system reads the "Box Summary" or "Box Summary(2)" tab automatically.<br>
+        <strong>CSV:</strong> Two-column format: "Box Type, Count" &nbsp;·&nbsp; or header row format with box type names as columns.
     </div>
 
-    <!-- Box Counts -->
-    <div class="section-label">Box Counts by Type</div>
-    <div class="bcr-card">
-        <div class="box-grid">
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-box"></i></span>Small Boxes</label>
-                <input type="number" name="small_boxes" id="f_small" min="0" value="{{ bcr.small_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-box"></i></span>Medium Boxes</label>
-                <input type="number" name="medium_boxes" id="f_medium" min="0" value="{{ bcr.medium_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-box"></i></span>Large Boxes</label>
-                <input type="number" name="large_boxes" id="f_large" min="0" value="{{ bcr.large_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-expand-arrows-alt"></i></span>XL / Unboxed Items</label>
-                <input type="number" name="xl_items" id="f_xl" min="0" value="{{ bcr.xl_items|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-image"></i></span>Mirror / Picture Boxes</label>
-                <input type="number" name="mirror_boxes" id="f_mirror" min="0" value="{{ bcr.mirror_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-lightbulb"></i></span>Lamp / Plant Boxes</label>
-                <input type="number" name="lamp_boxes" id="f_lamp" min="0" value="{{ bcr.lamp_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-tv"></i></span>TV Boxes</label>
-                <input type="number" name="tv_boxes" id="f_tv" min="0" value="{{ bcr.tv_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-tshirt"></i></span>Wardrobe Boxes</label>
-                <input type="number" name="wardrobe_boxes" id="f_wardrobe" min="0" value="{{ bcr.wardrobe_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-bed"></i></span>Mattress Boxes</label>
-                <input type="number" name="mattress_boxes" id="f_mattress" min="0" value="{{ bcr.mattress_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-utensils"></i></span>Dish Pack Boxes</label>
-                <input type="number" name="dishpack_boxes" id="f_dishpack" min="0" value="{{ bcr.dishpack_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-wine-glass"></i></span>Glass Pack Boxes</label>
-                <input type="number" name="glasspack_boxes" id="f_glasspack" min="0" value="{{ bcr.glasspack_boxes|default:'0' }}">
-            </div>
-
-            <div class="box-field">
-                <label><span class="box-icon"><i class="fas fa-fire-burner"></i></span>Pots &amp; Pans Boxes</label>
-                <input type="number" name="pots_boxes" id="f_pots" min="0" value="{{ bcr.pots_boxes|default:'0' }}">
-            </div>
-
+    <form method="post" enctype="multipart/form-data" id="import-form">
+        {% csrf_token %}
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('id_box_file').click();">
+            <i class="fas fa-cloud-upload-alt" id="drop-icon"></i>
+            <div class="drop-label" id="drop-label">Drop Box Summary file here or click to browse</div>
+            <div class="drop-sub" id="drop-sub">Accepts .xlsx, .xlsm, .csv</div>
         </div>
-    </div>
+        <input type="file" name="box_file" id="id_box_file"
+               accept=".xlsx,.xlsm,.xls,.csv,.txt"
+               style="display:none;" onchange="fileSelected(this)">
 
-    <!-- Notes -->
-    <div class="section-label">Notes (optional)</div>
-    <div class="bcr-card">
-        <div class="notes-field">
-            <label for="f_notes">Internal Notes</label>
-            <textarea name="notes" id="f_notes" placeholder="e.g. counts pulled from Xactimate scope on 05/28/2026…">{{ bcr.notes|default:'' }}</textarea>
+        <div class="bcr-card" style="margin-top:0;">
+            <div class="notes-field">
+                <label for="f_notes_import">Notes (optional)</label>
+                <textarea name="notes" id="f_notes_import"
+                    placeholder="e.g. imported from 94-CPS HAYNES 05/28/2026…">{{ bcr.notes|default:'' }}</textarea>
+            </div>
         </div>
-    </div>
 
-    <!-- Actions -->
-    <div class="action-row">
-        <button type="submit" class="btn-save">
-            <i class="fas fa-save"></i> Save Box Counts
-        </button>
-        <a href="{% url 'contractor_hub:quick_sub_invoice' %}?estimate={{ estimate.pk }}" class="btn-outline">
-            <i class="fas fa-bolt"></i> Go to Quick Invoice
-        </a>
-        <a href="{% url 'contractor_hub:estimate_detail' estimate.pk %}" class="btn-outline">
-            <i class="fas fa-arrow-left"></i> Back to Claim
-        </a>
-    </div>
+        <div class="action-row">
+            <button type="submit" class="btn-save" id="import-btn" disabled>
+                <i class="fas fa-file-import"></i> Import &amp; Save Box Counts
+            </button>
+            <span style="font-size:12px;color:#94a3b8;">
+                Existing counts will be overwritten by the import.
+            </span>
+        </div>
+    </form>
+</div>
 
-</form>
+<!-- ── MANUAL TAB ────────────────────────────────────────────────────────── -->
+<div class="tab-panel" id="tab-manual">
+    <form method="post" id="manual-form">
+        {% csrf_token %}
+
+        <div class="live-total-bar">
+            <span class="lbl"><i class="fas fa-cubes" style="margin-right:6px;color:#7c3aed;"></i>Total Boxes</span>
+            <span class="val" id="live-total">{{ bcr.total_boxes|default:'0' }}</span>
+        </div>
+
+        <div class="section-label">Box Counts by Type</div>
+        <div class="bcr-card">
+            <div class="box-grid">
+
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-box"></i></span>Small Boxes</label>
+                    <input type="number" name="small_boxes" id="f_small" min="0" value="{{ bcr.small_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-box"></i></span>Medium Boxes</label>
+                    <input type="number" name="medium_boxes" id="f_medium" min="0" value="{{ bcr.medium_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-box"></i></span>Large Boxes</label>
+                    <input type="number" name="large_boxes" id="f_large" min="0" value="{{ bcr.large_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-expand-arrows-alt"></i></span>XL / Unboxed Items</label>
+                    <input type="number" name="xl_items" id="f_xl" min="0" value="{{ bcr.xl_items|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-image"></i></span>Mirror / Picture</label>
+                    <input type="number" name="mirror_boxes" id="f_mirror" min="0" value="{{ bcr.mirror_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-lightbulb"></i></span>Lamp / Plant</label>
+                    <input type="number" name="lamp_boxes" id="f_lamp" min="0" value="{{ bcr.lamp_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-tv"></i></span>TV Boxes</label>
+                    <input type="number" name="tv_boxes" id="f_tv" min="0" value="{{ bcr.tv_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-tshirt"></i></span>Wardrobe Boxes</label>
+                    <input type="number" name="wardrobe_boxes" id="f_wardrobe" min="0" value="{{ bcr.wardrobe_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-bed"></i></span>Mattress Boxes</label>
+                    <input type="number" name="mattress_boxes" id="f_mattress" min="0" value="{{ bcr.mattress_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-utensils"></i></span>Dish Pack</label>
+                    <input type="number" name="dishpack_boxes" id="f_dishpack" min="0" value="{{ bcr.dishpack_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-wine-glass"></i></span>Glass Pack</label>
+                    <input type="number" name="glasspack_boxes" id="f_glasspack" min="0" value="{{ bcr.glasspack_boxes|default:'0' }}">
+                </div>
+                <div class="box-field">
+                    <label><span class="box-icon"><i class="fas fa-fire-burner"></i></span>Pots &amp; Pans</label>
+                    <input type="number" name="pots_boxes" id="f_pots" min="0" value="{{ bcr.pots_boxes|default:'0' }}">
+                </div>
+
+            </div>
+        </div>
+
+        <div class="section-label">Notes (optional)</div>
+        <div class="bcr-card">
+            <div class="notes-field">
+                <label for="f_notes">Internal Notes</label>
+                <textarea name="notes" id="f_notes"
+                    placeholder="e.g. counts pulled from Xactimate scope on 05/28/2026…">{{ bcr.notes|default:'' }}</textarea>
+            </div>
+        </div>
+
+        <div class="action-row">
+            <button type="submit" class="btn-save">
+                <i class="fas fa-save"></i> Save Box Counts
+            </button>
+            <a href="{% url 'contractor_hub:quick_sub_invoice' %}?client={{ client.pk }}" class="btn-outline">
+                <i class="fas fa-bolt"></i> Go to Quick Invoice
+            </a>
+            <a href="{% url 'contractor_hub:dashboard' %}" class="btn-outline">
+                <i class="fas fa-arrow-left"></i> Dashboard
+            </a>
+        </div>
+    </form>
+</div>
 
 <script>
+// ── Tab switching ─────────────────────────────────────────────────────────
+function switchTab(id, btn) {
+    document.querySelectorAll('.tab-panel').forEach(p => p.classList.remove('active'));
+    document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+    document.getElementById('tab-' + id).classList.add('active');
+    btn.classList.add('active');
+}
+
+// ── Drop zone ─────────────────────────────────────────────────────────────
+const zone = document.getElementById('drop-zone');
+zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+zone.addEventListener('drop', e => {
+    e.preventDefault(); zone.classList.remove('dragover');
+    const f = e.dataTransfer.files[0];
+    if (f) { document.getElementById('id_box_file').files = e.dataTransfer.files; fileSelected({files:[f]}); }
+});
+
+function fileSelected(input) {
+    const f = input.files[0];
+    if (!f) return;
+    zone.classList.add('has-file');
+    document.getElementById('drop-icon').className = 'fas fa-file-excel';
+    document.getElementById('drop-label').textContent = f.name;
+    document.getElementById('drop-sub').textContent = (f.size/1024).toFixed(1) + ' KB — ready to import';
+    document.getElementById('import-btn').disabled = false;
+}
+
+// ── Live total counter ────────────────────────────────────────────────────
 const FIELDS = ['f_small','f_medium','f_large','f_xl','f_mirror','f_lamp',
                 'f_tv','f_wardrobe','f_mattress','f_dishpack','f_glasspack','f_pots'];
 const totalEl = document.getElementById('live-total');
 
 function recalc() {
     let t = 0;
-    FIELDS.forEach(id => { t += parseInt(document.getElementById(id).value || '0'); });
-    totalEl.textContent = t.toLocaleString();
+    FIELDS.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) t += parseInt(el.value || '0');
+    });
+    if (totalEl) totalEl.textContent = t.toLocaleString();
 }
-
-FIELDS.forEach(id => document.getElementById(id).addEventListener('input', recalc));
-recalc(); // run on load
+FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener('input', recalc);
+});
+recalc();
 </script>
 {% endblock %}

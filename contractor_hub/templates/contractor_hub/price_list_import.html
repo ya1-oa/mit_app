@@ -173,10 +173,10 @@
         <!-- Drop Zone -->
         <div class="drop-zone" id="drop-zone" onclick="document.getElementById('id_csv_file').click();">
             <i class="fas fa-cloud-upload-alt" id="drop-icon"></i>
-            <div class="drop-label" id="drop-label">Drop CSV file here or click to browse</div>
-            <div class="drop-sub" id="drop-sub">Accepts .csv or .txt — comma or tab delimited</div>
+            <div class="drop-label" id="drop-label">Drop file here or click to browse</div>
+            <div class="drop-sub" id="drop-sub">Accepts .csv, .xlsx, or .xlsm (reads "PRICES XACT IN" tab automatically)</div>
         </div>
-        <input type="file" name="csv_file" id="id_csv_file" accept=".csv,.txt"
+        <input type="file" name="csv_file" id="id_csv_file" accept=".csv,.txt,.xlsx,.xlsm,.xls"
                style="display:none;" required onchange="fileSelected(this)">
 
         <div style="margin-top:20px;display:flex;gap:10px;align-items:center;">
@@ -186,7 +186,8 @@
             <a href="{% url 'contractor_hub:dashboard' %}" class="btn btn-ghost">Cancel</a>
             <span style="margin-left:auto;font-size:12px;color:#94a3b8;">
                 <i class="fas fa-info-circle"></i>
-                Columns needed: CAT, SEL, Description, Remove, Replace, Unit, Taxable
+                CSV columns needed: CAT, SEL, Description, Remove, Replace, Unit, Taxable &nbsp;·&nbsp;
+                Excel: upload 94-CPS.xlsm — auto-reads "PRICES XACT IN" tab
             </span>
         </div>
     </form>

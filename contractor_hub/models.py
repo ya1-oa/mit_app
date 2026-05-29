@@ -464,11 +464,12 @@ class BoxType(models.TextChoices):
 
 class BoxCountReport(models.Model):
     """
-    Per-estimate box count totals parsed from the CPS Box Summary report.
+    Per-client box count totals parsed from the CPS Box Summary report.
     These counts drive QTY in LineItemTemplate-based sub invoice generation.
+    One BoxCountReport per docsAppR.Client (not per GCEstimate).
     """
-    estimate       = models.OneToOneField(
-        GCEstimate, on_delete=models.CASCADE, related_name='box_count_report'
+    client         = models.OneToOneField(
+        'docsAppR.Client', on_delete=models.CASCADE, related_name='box_count_report'
     )
     small_boxes    = models.PositiveIntegerField(default=0, verbose_name='Small Boxes')
     medium_boxes   = models.PositiveIntegerField(default=0, verbose_name='Medium Boxes')

@@ -12,6 +12,8 @@ from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib import messages
 from django.utils import timezone
 
+from docsAppR.models import Client
+
 from .models import (
     Contractor, GCEstimate, GCSection, GCLineItem,
     RateItem, PriceListVersion, SectionType, SECTION_ORDER, SUBCONTRACTED_SECTIONS,
@@ -105,19 +107,255 @@ def _parse_csv_file(file_obj):
     return headers, parsed, None
 
 
+def _parse_xactimate_excel(file_obj):
+    """
+    Parse a .xlsx/.xlsm Xactimate export.
+    Tries the 'PRICES XACT IN' tab first, then any tab with price-like columns.
+    Returns (headers, rows_as_dicts, error_str) — same contract as _parse_csv_file.
+    """
+    try:
+        import openpyxl
+    except ImportError:
+        return None, None, 'openpyxl is required for Excel imports (pip install openpyxl).'
+
+    try:
+        raw = file_obj.read()
+        wb  = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+    except Exception as e:
+        return None, None, f'Cannot open Excel file: {e}'
+
+    # Find the right sheet
+    preferred = ['prices xact in', 'prices xact', 'price list', 'xactimate prices', 'rates']
+    sheet = None
+    for name in wb.sheetnames:
+        if name.strip().lower() in preferred:
+            sheet = wb[name]
+            break
+    if sheet is None:
+        sheet = wb.worksheets[0]  # fall back to first sheet
+
+    rows_raw = list(sheet.iter_rows(values_only=True))
+    wb.close()
+    if not rows_raw:
+        return None, None, 'Selected sheet is empty.'
+
+    # Find header row (first row that looks like column headers)
+    header_idx = 0
+    for i, row in enumerate(rows_raw[:10]):
+        cells = [str(c or '').strip().lower() for c in row]
+        if any(alias in cells for aliases in _COLUMN_ALIASES.values() for alias in aliases):
+            header_idx = i
+            break
+
+    raw_headers = [str(c or '').strip() for c in rows_raw[header_idx]]
+    col = _detect_col(raw_headers)
+    required = {'cat', 'sel', 'description', 'replace_rate'}
+    missing = required - set(col.keys())
+    if missing:
+        return raw_headers, None, (
+            f'Missing required columns: {", ".join(missing)}. '
+            f'Found: {", ".join(h for h in raw_headers if h)}'
+        )
+
+    parsed = []
+    for row in rows_raw[header_idx + 1:]:
+        if not row or all(c is None or str(c).strip() == '' for c in row):
+            continue
+
+        def g(field, default=''):
+            idx = col.get(field)
+            if idx is None or idx >= len(row):
+                return default
+            val = row[idx]
+            return str(val).strip() if val is not None else default
+
+        cat = g('cat').upper()
+        sel = g('sel').upper()
+        if not cat or not sel:
+            continue
+
+        try:
+            remove_rate  = float(str(g('remove_rate',  '0')).replace('$', '').replace(',', '') or '0')
+            replace_rate = float(str(g('replace_rate', '0')).replace('$', '').replace(',', '') or '0')
+        except ValueError:
+            continue
+
+        taxable_raw = g('taxable', 'Y').upper()
+        taxable = taxable_raw not in ('N', 'NO', 'FALSE', '0', 'F')
+
+        parsed.append({
+            'cat': cat, 'sel': sel,
+            'description': g('description'),
+            'unit': g('unit', 'EA').upper() or 'EA',
+            'remove_rate': remove_rate,
+            'replace_rate': replace_rate,
+            'taxable': taxable,
+        })
+
+    if not parsed:
+        return raw_headers, None, 'No valid price rows found in the sheet.'
+    return raw_headers, parsed, None
+
+
+# Box type keyword matcher for file imports
+_BOX_KEYWORDS = {
+    'small_boxes':     ['small'],
+    'medium_boxes':    ['medium'],
+    'large_boxes':     ['large'],
+    'xl_items':        ['xl', 'unboxed', 'x-large'],
+    'mirror_boxes':    ['mirror', 'picture'],
+    'lamp_boxes':      ['lamp', 'plant', 'vase'],
+    'tv_boxes':        ['tv', 'television'],
+    'wardrobe_boxes':  ['wardrobe'],
+    'mattress_boxes':  ['mattress'],
+    'dishpack_boxes':  ['dish pack', 'dishpack', 'dish'],
+    'glasspack_boxes': ['glass pack', 'glasspack', 'glass'],
+    'pots_boxes':      ['pots', 'pans'],
+}
+
+def _match_box_field(text):
+    """Return BCR field name for a row label, or None."""
+    t = text.strip().lower()
+    for field, keywords in _BOX_KEYWORDS.items():
+        for kw in keywords:
+            if kw in t:
+                return field
+    return None
+
+
+def _parse_box_count_file(file_obj):
+    """
+    Parse a box count report from CSV or Excel (xlsm/xlsx).
+    Supports:
+      - Columnar: rows like "Small Boxes | 52"
+      - Row-header: first row = box types, second row = counts
+    Returns (counts_dict, source_name, error_str).
+    counts_dict keys = BCR field names (small_boxes, medium_boxes, etc.)
+    """
+    name     = getattr(file_obj, 'name', '')
+    ext      = name.rsplit('.', 1)[-1].lower() if '.' in name else ''
+    counts   = {}
+
+    if ext in ('xlsx', 'xlsm', 'xls'):
+        try:
+            import openpyxl
+        except ImportError:
+            return None, name, 'openpyxl is required for Excel imports.'
+
+        try:
+            raw = file_obj.read()
+            wb  = openpyxl.load_workbook(io.BytesIO(raw), read_only=True, data_only=True)
+        except Exception as e:
+            return None, name, f'Cannot open Excel file: {e}'
+
+        # Find 'Box Summary' sheet (any variant)
+        box_sheet = None
+        for sname in wb.sheetnames:
+            if 'box' in sname.lower() and ('summary' in sname.lower() or 'count' in sname.lower()):
+                box_sheet = wb[sname]
+                break
+        if box_sheet is None:
+            # Try any sheet that has box-type keywords
+            for sname in wb.sheetnames:
+                rows_check = list(wb[sname].iter_rows(max_row=20, values_only=True))
+                flat = ' '.join(str(c or '') for row in rows_check for c in row).lower()
+                if 'small' in flat and ('medium' in flat or 'large' in flat):
+                    box_sheet = wb[sname]
+                    break
+        if box_sheet is None:
+            box_sheet = wb.worksheets[0]
+
+        rows_raw = list(box_sheet.iter_rows(values_only=True))
+        wb.close()
+
+        # Strategy 1: two-column layout (label | count)
+        for row in rows_raw:
+            cells = [str(c or '').strip() for c in row]
+            non_empty = [c for c in cells if c]
+            if len(non_empty) >= 2:
+                label = non_empty[0]
+                field = _match_box_field(label)
+                if field:
+                    try:
+                        counts[field] = int(float(non_empty[1]))
+                    except (ValueError, TypeError):
+                        pass
+
+        # Strategy 2: row-header layout (if strategy 1 found nothing)
+        if not counts and rows_raw:
+            header_row = [str(c or '').strip() for c in rows_raw[0]]
+            if len(rows_raw) > 1:
+                data_row = [str(c or '').strip() for c in rows_raw[1]]
+                for i, label in enumerate(header_row):
+                    field = _match_box_field(label)
+                    if field and i < len(data_row):
+                        try:
+                            counts[field] = int(float(data_row[i]))
+                        except (ValueError, TypeError):
+                            pass
+
+    else:
+        # CSV path
+        raw = file_obj.read()
+        for enc in ('utf-8-sig', 'utf-8', 'latin-1'):
+            try:
+                text = raw.decode(enc)
+                break
+            except UnicodeDecodeError:
+                continue
+        else:
+            return None, name, 'Cannot decode file.'
+
+        sample = text[:1024]
+        delim  = '\t' if sample.count('\t') > sample.count(',') else ','
+        reader = csv.reader(io.StringIO(text), delimiter=delim)
+        rows   = [r for r in reader if any(c.strip() for c in r)]
+
+        # Two-column layout
+        for row in rows:
+            if len(row) >= 2:
+                field = _match_box_field(row[0])
+                if field:
+                    try:
+                        counts[field] = int(float(row[1].replace(',', '').strip()))
+                    except (ValueError, TypeError):
+                        pass
+
+        # Row-header layout fallback
+        if not counts and len(rows) >= 2:
+            headers = rows[0]
+            data    = rows[1]
+            for i, label in enumerate(headers):
+                field = _match_box_field(label)
+                if field and i < len(data):
+                    try:
+                        counts[field] = int(float(data[i].replace(',', '').strip()))
+                    except (ValueError, TypeError):
+                        pass
+
+    if not counts:
+        return None, name, 'No box count data found. Check the file format.'
+    return counts, name, None
+
+
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
 
 @login_required
 def dashboard(request):
-    estimates = GCEstimate.objects.select_related(
-        'client', 'gc_contractor'
-    ).order_by('-updated_at')
-    contractors = Contractor.objects.filter(is_active=True)
+    clients     = Client.objects.prefetch_related('box_count_report').order_by('pOwner')
+    subs        = Contractor.objects.filter(is_active=True).exclude(role='gc').order_by('name')
+    latest_pl   = PriceListVersion.objects.order_by('-imported_at').first()
+    total_rates = RateItem.objects.count()
+    clients_with_bcr = sum(1 for c in clients if hasattr(c, 'box_count_report'))
     return render(request, 'contractor_hub/dashboard.html', {
-        'estimates': estimates,
-        'contractors': contractors,
+        'clients':          clients,
+        'subs':             subs,
+        'latest_pl':        latest_pl,
+        'total_rates':      total_rates,
+        'total_clients':    clients.count(),
+        'clients_with_bcr': clients_with_bcr,
     })
 
 
@@ -375,7 +613,12 @@ def price_list_import(request):
                 'form_data': {'code': code, 'market': market, 'effective_date': eff_date},
             })
 
-        headers, rows, error = _parse_csv_file(uploaded)
+        # Choose parser based on file extension
+        fname = uploaded.name.lower()
+        if fname.endswith('.xlsx') or fname.endswith('.xlsm') or fname.endswith('.xls'):
+            headers, rows, error = _parse_xactimate_excel(uploaded)
+        else:
+            headers, rows, error = _parse_csv_file(uploaded)
         if error:
             messages.error(request, error)
             return render(request, 'contractor_hub/price_list_import.html', {})
@@ -544,24 +787,24 @@ QUICK_INVOICE_SECTIONS = [
 @login_required
 def quick_sub_invoice(request):
     """
-    GET  — show the 3-input form (claim, subcontractor, work type).
+    GET  — show the 3-input form (client, subcontractor, work type).
     POST — build line items from LineItemTemplates × BoxCountReport, generate PDF.
     """
     from django.http import HttpResponse
     from .pdf_builder import generate_quick_sub_invoice_pdf
     from decimal import Decimal
 
-    estimates = GCEstimate.objects.select_related('client', 'gc_contractor').order_by('-created_at')
-    subs = Contractor.objects.filter(is_active=True).exclude(role='gc').order_by('name')
+    clients         = Client.objects.prefetch_related('box_count_report').order_by('pOwner')
+    subs            = Contractor.objects.filter(is_active=True).exclude(role='gc').order_by('name')
     section_choices = [(st.value, st.label) for st in QUICK_INVOICE_SECTIONS]
 
     if request.method == 'POST':
-        estimate_pk    = request.POST.get('estimate')
-        sub_pk         = request.POST.get('subcontractor')
-        section_type   = request.POST.get('section_type')
+        client_pk    = request.POST.get('client')
+        sub_pk       = request.POST.get('subcontractor')
+        section_type = request.POST.get('section_type')
 
-        estimate = get_object_or_404(GCEstimate.objects.select_related('client', 'gc_contractor', 'estimator'), pk=estimate_pk)
-        sub      = get_object_or_404(Contractor, pk=sub_pk)
+        client = get_object_or_404(Client, pk=client_pk)
+        sub    = get_object_or_404(Contractor, pk=sub_pk)
 
         # Validate section type
         valid_types = [st.value for st in QUICK_INVOICE_SECTIONS]
@@ -569,42 +812,37 @@ def quick_sub_invoice(request):
             messages.error(request, f'Invalid work type: {section_type}')
             return redirect('contractor_hub:quick_sub_invoice')
 
-        # Get box count report
+        # Box count report — now linked to client directly
         try:
-            bcr = estimate.box_count_report
+            bcr = client.box_count_report
         except BoxCountReport.DoesNotExist:
-            messages.error(
-                request,
-                f'No Box Count Report found for this estimate. '
-                f'Please enter box counts before generating a sub invoice.'
-            )
-            return redirect('contractor_hub:box_count_report', pk=estimate.pk)
+            messages.error(request,
+                'No Box Count Report for this client. Enter box counts first.')
+            return redirect('contractor_hub:box_count_report', pk=client.pk)
 
         box_counts = bcr.as_dict()
 
-        # Pull templates for this section type
+        # Templates for this section type
         templates = LineItemTemplate.objects.filter(
             section_type=section_type
         ).order_by('group_code', 'order')
 
         if not templates.exists():
-            messages.error(request, f'No line item templates found for section type "{section_type}". Run: python manage.py seed_line_item_templates')
+            messages.error(request,
+                f'No line item templates for "{section_type}". '
+                f'Run: python manage.py seed_line_item_templates')
             return redirect('contractor_hub:quick_sub_invoice')
 
-        # Build rate lookup from RateItem table
-        rate_lookup = {
-            (r.cat, r.sel): r
-            for r in RateItem.objects.all()
-        }
+        # Live rate lookup
+        rate_lookup = {(r.cat, r.sel): r for r in RateItem.objects.all()}
 
-        # Compute line items
         line_items_data = []
         for tmpl in templates:
             qty = tmpl.compute_qty(box_counts)
             if qty == Decimal('0.00') and tmpl.box_type != BoxType.FIXED:
-                continue  # skip zero-count box types
+                continue
 
-            rate = rate_lookup.get((tmpl.cat, tmpl.sel))
+            rate         = rate_lookup.get((tmpl.cat, tmpl.sel))
             remove_rate  = rate.remove_rate  if rate else Decimal('0.00')
             replace_rate = rate.replace_rate if rate else Decimal('0.00')
 
@@ -623,18 +861,40 @@ def quick_sub_invoice(request):
             })
 
         if not line_items_data:
-            messages.error(request, 'All box counts are zero — nothing to generate. Check the Box Count Report.')
-            return redirect('contractor_hub:box_count_report', pk=estimate.pk)
+            messages.error(request,
+                'All box counts are zero — nothing to generate. Check the Box Count Report.')
+            return redirect('contractor_hub:box_count_report', pk=client.pk)
+
+        # Build estimate-like object for the PDF builder
+        try:
+            estimate_obj = GCEstimate.objects.select_related(
+                'gc_contractor', 'estimator'
+            ).get(client=client)
+        except GCEstimate.DoesNotExist:
+            class _ClientEstimate:
+                def __init__(self, c):
+                    self.estimate_number  = c.claimNumber or f'CLM-{c.pk}'
+                    self.id               = c.pk
+                    self.client           = c
+                    self.gc_contractor    = None
+                    self.estimator        = None
+                    self.overhead_pct     = Decimal('10.00')
+                    self.profit_pct       = Decimal('10.00')
+                    self.tax_rate         = Decimal('8.25')
+                    self.type_of_estimate = c.causeOfLoss or 'Contents'
+                    self.date_entered     = None
+                    self.price_list       = ''
+            estimate_obj = _ClientEstimate(client)
 
         try:
-            buf = generate_quick_sub_invoice_pdf(
-                estimate, sub, section_type, line_items_data
+            buf         = generate_quick_sub_invoice_pdf(
+                estimate_obj, sub, section_type, line_items_data
             )
-            safe_est  = (estimate.estimate_number or f'EST-{str(estimate.id)[:8]}').replace(' ', '_').replace('/', '-')
-            safe_sub  = sub.name.replace(' ', '_').replace('/', '-')[:20]
-            safe_sect = section_type.upper()
-            fname     = f'{safe_est}_{safe_sub}_{safe_sect}_INVOICE.pdf'
-            response  = HttpResponse(buf.read(), content_type='application/pdf')
+            safe_client = (client.pOwner or f'CLM-{client.pk}').replace(' ', '_')[:20]
+            safe_sub    = sub.name.replace(' ', '_')[:20]
+            safe_sect   = section_type.upper()
+            fname       = f'{safe_client}_{safe_sub}_{safe_sect}_INVOICE.pdf'
+            response    = HttpResponse(buf.read(), content_type='application/pdf')
             response['Content-Disposition'] = f'attachment; filename="{fname}"'
             return response
         except Exception as e:
@@ -644,7 +904,7 @@ def quick_sub_invoice(request):
             return redirect('contractor_hub:quick_sub_invoice')
 
     return render(request, 'contractor_hub/quick_sub_invoice.html', {
-        'estimates':       estimates,
+        'clients':         clients,
         'subs':            subs,
         'section_choices': section_choices,
     })
@@ -653,21 +913,41 @@ def quick_sub_invoice(request):
 @login_required
 def box_count_report(request, pk):
     """
-    GET/POST — create or update the BoxCountReport for an estimate.
+    GET/POST — create or update the BoxCountReport for a client (pk=client.pk).
+    Supports:
+      - Manual entry via form fields
+      - File import (CSV or Excel with Box Summary tab)
     """
-    estimate = get_object_or_404(
-        GCEstimate.objects.select_related('client'),
-        pk=pk,
-    )
-    bcr, _ = BoxCountReport.objects.get_or_create(estimate=estimate)
+    client = get_object_or_404(Client, pk=pk)
+    bcr, _ = BoxCountReport.objects.get_or_create(client=client)
+
+    BCR_FIELDS = [
+        'small_boxes', 'medium_boxes', 'large_boxes', 'xl_items',
+        'mirror_boxes', 'lamp_boxes', 'tv_boxes', 'wardrobe_boxes',
+        'mattress_boxes', 'dishpack_boxes', 'glasspack_boxes', 'pots_boxes',
+    ]
 
     if request.method == 'POST':
-        fields = [
-            'small_boxes', 'medium_boxes', 'large_boxes', 'xl_items',
-            'mirror_boxes', 'lamp_boxes', 'tv_boxes', 'wardrobe_boxes',
-            'mattress_boxes', 'dishpack_boxes', 'glasspack_boxes', 'pots_boxes',
-        ]
-        for f in fields:
+        # ── File import path ────────────────────────────────────────────────
+        if 'box_file' in request.FILES:
+            uploaded = request.FILES['box_file']
+            counts, source, error = _parse_box_count_file(uploaded)
+            if error:
+                messages.error(request, f'Import failed: {error}')
+            else:
+                for field in BCR_FIELDS:
+                    if field in counts:
+                        setattr(bcr, field, counts[field])
+                bcr.source_file = source
+                bcr.notes       = request.POST.get('notes', bcr.notes)
+                bcr.save()
+                found = ', '.join(f'{k}={v}' for k, v in counts.items())
+                messages.success(request,
+                    f'Imported from {source} — {bcr.total_boxes} total boxes. ({found})')
+                return redirect('contractor_hub:box_count_report', pk=client.pk)
+
+        # ── Manual entry path ───────────────────────────────────────────────
+        for f in BCR_FIELDS:
             val = request.POST.get(f, '0')
             try:
                 setattr(bcr, f, max(0, int(val)))
@@ -682,8 +962,8 @@ def box_count_report(request, pk):
         return redirect('contractor_hub:quick_sub_invoice')
 
     return render(request, 'contractor_hub/box_count_report.html', {
-        'estimate': estimate,
-        'bcr':      bcr,
+        'client': client,
+        'bcr':    bcr,
     })
 
 

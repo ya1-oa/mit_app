@@ -18,7 +18,6 @@
 .gen-hero-text h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
 .gen-hero-text p  { font-size: 13px; opacity: .85; margin: 0; }
 
-/* Steps */
 .steps-row {
     display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 28px;
 }
@@ -48,7 +47,6 @@
 }
 .step-card select:focus { outline: none; border-color: #7c3aed; }
 
-/* Box count summary panel */
 .bcr-panel {
     background: #fff; border-radius: 12px; padding: 20px 24px;
     box-shadow: 0 1px 4px rgba(0,0,0,.08); border: 1px solid #f1f5f9;
@@ -67,8 +65,7 @@
     display: grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap: 10px;
 }
 .bcr-item {
-    background: #f8fafc; border-radius: 8px; padding: 10px 12px;
-    text-align: center;
+    background: #f8fafc; border-radius: 8px; padding: 10px 12px; text-align: center;
 }
 .bcr-item .val { font-size: 22px; font-weight: 700; color: #7c3aed; }
 .bcr-item .lbl { font-size: 10px; color: #94a3b8; margin-top: 2px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; }
@@ -83,7 +80,6 @@
 .warn-panel p { margin: 0; font-size: 13px; color: #78350f; }
 .warn-panel a { color: #d97706; font-weight: 600; }
 
-/* Generate button */
 .gen-btn-row { display: flex; align-items: center; justify-content: center; gap: 16px; }
 .btn-generate {
     padding: 14px 40px; background: #7c3aed; color: #fff;
@@ -99,6 +95,7 @@
     letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 14px;
     padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
 }
+@media (max-width: 700px) { .steps-row { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 
@@ -106,7 +103,7 @@
 {% if messages %}
 <div style="margin-bottom:16px;">
     {% for msg in messages %}
-    <div class="alert alert-{{ msg.tags }}" style="padding:10px 16px;border-radius:8px;margin-bottom:8px;
+    <div style="padding:10px 16px;border-radius:8px;margin-bottom:8px;
          background:{% if 'error' in msg.tags %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">
         {{ msg }}
     </div>
@@ -114,48 +111,48 @@
 </div>
 {% endif %}
 
-<!-- Hero -->
 <div class="gen-hero">
     <div class="gen-hero-icon"><i class="fas fa-bolt"></i></div>
     <div class="gen-hero-text">
         <h2>Quick Sub Invoice Generator</h2>
-        <p>Select a claim, subcontractor, and work type — the system builds the full Xactimate invoice automatically.</p>
+        <p>Select a client, subcontractor, and work type — the system builds the full Xactimate invoice automatically.</p>
     </div>
 </div>
 
 <form method="post" id="gen-form">
     {% csrf_token %}
 
-    <!-- 3-step selectors -->
     <div class="section-label">3 Inputs. One Invoice.</div>
     <div class="steps-row">
 
-        <!-- Step 1 — Claim -->
+        <!-- Step 1 — Client -->
         <div class="step-card">
             <div class="step-num">1</div>
-            <label for="id_estimate">Claim / Estimate</label>
-            <select name="estimate" id="id_estimate" required>
-                <option value="">— Select a claim —</option>
-                {% for est in estimates %}
-                <option value="{{ est.pk }}"
-                    data-has-bcr="{{ est.box_count_report.pk|default:'' }}"
-                    data-total="{{ est.box_count_report.total_boxes|default:'0' }}"
-                    data-small="{{ est.box_count_report.small_boxes|default:'0' }}"
-                    data-medium="{{ est.box_count_report.medium_boxes|default:'0' }}"
-                    data-large="{{ est.box_count_report.large_boxes|default:'0' }}"
-                    data-xl="{{ est.box_count_report.xl_items|default:'0' }}"
-                    data-mirror="{{ est.box_count_report.mirror_boxes|default:'0' }}"
-                    data-lamp="{{ est.box_count_report.lamp_boxes|default:'0' }}"
-                    data-tv="{{ est.box_count_report.tv_boxes|default:'0' }}"
-                    data-wardrobe="{{ est.box_count_report.wardrobe_boxes|default:'0' }}"
-                    data-mattress="{{ est.box_count_report.mattress_boxes|default:'0' }}"
-                    data-dishpack="{{ est.box_count_report.dishpack_boxes|default:'0' }}"
-                    data-glasspack="{{ est.box_count_report.glasspack_boxes|default:'0' }}"
-                    data-pots="{{ est.box_count_report.pots_boxes|default:'0' }}"
-                    data-bcr-url="{% url 'contractor_hub:box_count_report' est.pk %}"
-                    {% if request.POST.estimate == est.pk|stringformat:'s' %}selected{% endif %}>
-                    {{ est.estimate_number|default:est.pk }} — {{ est.client }}
+            <label for="id_client">Client / Insured</label>
+            <select name="client" id="id_client" required>
+                <option value="">— Select a client —</option>
+                {% for client in clients %}
+                {% with bcr=client.box_count_report %}
+                <option value="{{ client.pk }}"
+                    data-has-bcr="{% if bcr %}1{% endif %}"
+                    data-total="{% if bcr %}{{ bcr.total_boxes }}{% else %}0{% endif %}"
+                    data-small="{% if bcr %}{{ bcr.small_boxes }}{% else %}0{% endif %}"
+                    data-medium="{% if bcr %}{{ bcr.medium_boxes }}{% else %}0{% endif %}"
+                    data-large="{% if bcr %}{{ bcr.large_boxes }}{% else %}0{% endif %}"
+                    data-xl="{% if bcr %}{{ bcr.xl_items }}{% else %}0{% endif %}"
+                    data-mirror="{% if bcr %}{{ bcr.mirror_boxes }}{% else %}0{% endif %}"
+                    data-lamp="{% if bcr %}{{ bcr.lamp_boxes }}{% else %}0{% endif %}"
+                    data-tv="{% if bcr %}{{ bcr.tv_boxes }}{% else %}0{% endif %}"
+                    data-wardrobe="{% if bcr %}{{ bcr.wardrobe_boxes }}{% else %}0{% endif %}"
+                    data-mattress="{% if bcr %}{{ bcr.mattress_boxes }}{% else %}0{% endif %}"
+                    data-dishpack="{% if bcr %}{{ bcr.dishpack_boxes }}{% else %}0{% endif %}"
+                    data-glasspack="{% if bcr %}{{ bcr.glasspack_boxes }}{% else %}0{% endif %}"
+                    data-pots="{% if bcr %}{{ bcr.pots_boxes }}{% else %}0{% endif %}"
+                    data-bcr-url="{% url 'contractor_hub:box_count_report' client.pk %}"
+                    {% if request.POST.client == client.pk|stringformat:'s' %}selected{% endif %}>
+                    {{ client.pOwner|default:"(no name)" }}{% if client.claimNumber %} — #{{ client.claimNumber }}{% endif %}
                 </option>
+                {% endwith %}
                 {% endfor %}
             </select>
         </div>
@@ -189,20 +186,21 @@
         </div>
     </div>
 
-    <!-- Box count warning / summary (shown dynamically) -->
+    <!-- No BCR warning -->
     <div id="warn-no-bcr" class="warn-panel" style="display:none;">
         <i class="fas fa-exclamation-triangle"></i>
         <p>
-            This estimate has no Box Count Report. Box counts are required to calculate line item quantities.<br>
-            <a id="warn-bcr-link" href="#">Enter box counts now</a> — it only takes a minute.
+            This client has no Box Count Report. Box counts are required to calculate line item quantities.<br>
+            <a id="warn-bcr-link" href="#">Enter or import box counts now</a> — it only takes a minute.
         </p>
     </div>
 
+    <!-- BCR summary panel -->
     <div id="bcr-panel" class="bcr-panel">
         <div class="bcr-panel-header">
             <h3><i class="fas fa-boxes" style="margin-right:6px;color:#7c3aed;"></i>Box Count Report</h3>
             <a id="bcr-edit-link" href="#" style="font-size:12px;color:#7c3aed;font-weight:600;">
-                <i class="fas fa-pencil-alt"></i> Edit
+                <i class="fas fa-pencil-alt"></i> Edit / Import
             </a>
         </div>
         <div class="bcr-grid" id="bcr-grid"></div>
@@ -217,7 +215,6 @@
             Back to dashboard
         </a>
     </div>
-
 </form>
 
 <script>
@@ -228,19 +225,29 @@ const BOX_LABELS = {
     glasspack: 'Glasspack', pots: 'Pots & Pans'
 };
 
-const estSel   = document.getElementById('id_estimate');
-const warnEl   = document.getElementById('warn-no-bcr');
-const warnLink = document.getElementById('warn-bcr-link');
-const bcrPanel = document.getElementById('bcr-panel');
-const bcrGrid  = document.getElementById('bcr-grid');
-const bcrEdit  = document.getElementById('bcr-edit-link');
-const genBtn   = document.getElementById('gen-btn');
+const clientSel = document.getElementById('id_client');
+const warnEl    = document.getElementById('warn-no-bcr');
+const warnLink  = document.getElementById('warn-bcr-link');
+const bcrPanel  = document.getElementById('bcr-panel');
+const bcrGrid   = document.getElementById('bcr-grid');
+const bcrEdit   = document.getElementById('bcr-edit-link');
+const genBtn    = document.getElementById('gen-btn');
+
+// Pre-select client from URL ?client=xx
+const urlParams = new URLSearchParams(window.location.search);
+const preClient = urlParams.get('client');
+if (preClient) {
+    for (let opt of clientSel.options) {
+        if (opt.value === preClient) { opt.selected = true; break; }
+    }
+}
 
 function updateBcrPanel() {
-    const opt = estSel.options[estSel.selectedIndex];
+    const opt = clientSel.options[clientSel.selectedIndex];
     if (!opt || !opt.value) {
         warnEl.style.display = 'none';
         bcrPanel.classList.remove('visible');
+        genBtn.disabled = false;
         return;
     }
 
@@ -259,7 +266,6 @@ function updateBcrPanel() {
     genBtn.disabled = false;
     bcrEdit.href = bcrUrl;
 
-    // Rebuild grid
     bcrGrid.innerHTML = '';
     const keys = ['small','medium','large','xl','mirror','lamp','tv','wardrobe','mattress','dishpack','glasspack','pots'];
     let total = 0;
@@ -272,7 +278,6 @@ function updateBcrPanel() {
         bcrGrid.appendChild(div);
     });
 
-    // Total tile
     const totDiv = document.createElement('div');
     totDiv.className = 'bcr-item';
     totDiv.style.background = '#ede9fe';
@@ -282,7 +287,7 @@ function updateBcrPanel() {
     bcrPanel.classList.add('visible');
 }
 
-estSel.addEventListener('change', updateBcrPanel);
-updateBcrPanel(); // run on load (handles POST-back state)
+clientSel.addEventListener('change', updateBcrPanel);
+updateBcrPanel();
 </script>
 {% endblock %}
