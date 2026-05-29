@@ -443,7 +443,7 @@ class GCLineItem(models.Model):
 
 
 # ---------------------------------------------------------------------------
-# Box Count Report (one per GCEstimate — drives static line item qty)
+# Box Count Report (one per Client — drives static line item qty)
 # ---------------------------------------------------------------------------
 
 class BoxType(models.TextChoices):
@@ -492,7 +492,7 @@ class BoxCountReport(models.Model):
         verbose_name = 'Box Count Report'
 
     def __str__(self):
-        return f'Box Count — {self.estimate} ({self.total_boxes} total)'
+        return f'Box Count — {self.client} ({self.total_boxes} total)'
 
     @property
     def total_boxes(self):

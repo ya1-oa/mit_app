@@ -23,7 +23,7 @@ def migrate_estimate_to_client(apps, schema_editor):
 class Migration(migrations.Migration):
 
     dependencies = [
-        ('contractor_hub', '0005_rename_ch_contractor_role_idx_contractor__role_c6a7e0_idx_and_more'),
+        ('contractor_hub', '0004_lineitemtemplate_boxcountreport'),
         ('docsAppR', '0001_initial'),
     ]
 
