@@ -7,7 +7,6 @@
 <style>
 :root {
     --purple: #7c3aed;
-    --teal:   #0ea5e9;
     --green:  #10b981;
     --dark:   #0f172a;
     --slate:  #334155;
@@ -15,143 +14,277 @@
     --mgray:  #94a3b8;
     --lgray:  #f1f5f9;
     --border: #e2e8f0;
+    --amber:  #f59e0b;
+    --radius: 12px;
 }
 
-.page-hero {
+.page-wrap { max-width: 780px; margin: 0 auto; }
+
+/* back link */
+.back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted); text-decoration: none;
+    margin-bottom: 20px; transition: color .15s;
+}
+.back-link:hover { color: var(--dark); }
+
+/* hero */
+.hero {
     background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    border-radius: 12px; padding: 24px 28px; color: #fff;
-    margin-bottom: 20px;
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;
+    border-radius: var(--radius); padding: 28px 32px; color: #fff;
+    margin-bottom: 24px;
 }
-.page-hero .back { font-size: 12px; color: rgba(255,255,255,.55); text-decoration: none; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
-.page-hero .back:hover { color: #fff; }
-.page-hero h1 { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
-.page-hero p  { font-size: 13px; color: rgba(255,255,255,.55); margin: 0; }
+.hero h1 { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.hero .sub { font-size: 13px; color: rgba(255,255,255,.5); margin: 0; }
 
-.btn-dl-all {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 10px 22px; background: var(--green); color: #fff;
-    border: none; border-radius: 9px; font-size: 13px; font-weight: 700;
-    text-decoration: none; cursor: pointer; transition: opacity .15s;
-    white-space: nowrap;
+/* download all */
+.dl-all-card {
+    background: var(--green); border-radius: var(--radius);
+    padding: 22px 28px; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
 }
-.btn-dl-all:hover { opacity: .88; color: #fff; text-decoration: none; }
+.dl-all-card .icon {
+    width: 52px; height: 52px; background: rgba(255,255,255,.2);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #fff; flex-shrink: 0;
+}
+.dl-all-card .text h2 { font-size: 16px; font-weight: 800; color: #fff; margin: 0 0 3px; }
+.dl-all-card .text p  { font-size: 12px; color: rgba(255,255,255,.75); margin: 0; }
+.dl-all-card .btn-dl {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; background: #fff; color: var(--green);
+    border-radius: 9px; font-size: 14px; font-weight: 800;
+    text-decoration: none; transition: opacity .15s; white-space: nowrap;
+}
+.dl-all-card .btn-dl:hover { opacity: .9; color: var(--green); text-decoration: none; }
 
-.folder-card {
-    background: #fff; border-radius: 12px;
-    border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(0,0,0,.07);
-    margin-bottom: 16px; overflow: hidden;
+/* instructions card */
+.instructions-card {
+    background: #fff; border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 22px 28px;
+    margin-bottom: 24px;
 }
-.folder-header {
-    background: var(--lgray); padding: 12px 20px;
-    display: flex; align-items: center; gap: 10px;
+.instructions-card h3 {
+    font-size: 13px; font-weight: 700; color: var(--dark);
+    text-transform: uppercase; letter-spacing: .8px; margin: 0 0 14px;
+}
+.step {
+    display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start;
+}
+.step:last-child { margin-bottom: 0; }
+.step-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--purple); color: #fff;
+    font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    margin-top: 1px;
+}
+.step-text { font-size: 13px; color: var(--slate); line-height: 1.6; }
+.step-text strong { color: var(--dark); }
+
+/* file list */
+.files-card {
+    background: #fff; border-radius: var(--radius);
+    border: 1px solid var(--border); margin-bottom: 24px; overflow: hidden;
+}
+.files-header {
+    padding: 14px 20px; background: var(--lgray);
     border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
 }
-.folder-header .folder-name {
+.files-header h3 {
     font-size: 12px; font-weight: 700; text-transform: uppercase;
-    letter-spacing: .8px; color: var(--slate);
-}
-.folder-header .file-count {
-    font-size: 11px; color: var(--mgray); margin-left: auto;
+    letter-spacing: .8px; color: var(--slate); margin: 0;
 }
 
-.file-row {
-    display: flex; align-items: center; gap: 14px;
-    padding: 12px 20px; border-bottom: 1px solid var(--border);
+.folder-group { border-bottom: 1px solid var(--border); }
+.folder-group:last-child { border-bottom: none; }
+
+.folder-toggle-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 20px; cursor: pointer;
+    background: #fafafa; user-select: none;
     transition: background .1s;
 }
-.file-row:last-child { border-bottom: none; }
-.file-row:hover { background: #f8fafc; }
+.folder-toggle-row:hover { background: var(--lgray); }
+.folder-caret { font-size: 10px; color: var(--mgray); transition: transform .2s; width: 12px; }
+.folder-caret.open { transform: rotate(90deg); }
+.folder-toggle-row .fname { font-size: 13px; font-weight: 600; color: var(--slate); flex: 1; }
+.folder-toggle-row .fcount { font-size: 11px; color: var(--mgray); }
 
-.file-icon {
-    width: 36px; height: 36px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 16px; flex-shrink: 0;
+.folder-files { display: none; }
+.folder-files.open { display: block; }
+
+.file-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 20px 9px 42px; border-top: 1px solid var(--border);
 }
-.file-icon.xlsx { background: #d1fae5; color: #065f46; }
-.file-icon.xlsm { background: #dbeafe; color: #1e40af; }
-.file-icon.csv  { background: #fef3c7; color: #92400e; }
-.file-icon.pdf  { background: #fee2e2; color: #991b1b; }
-.file-icon.doc  { background: #ede9fe; color: #5b21b6; }
-.file-icon.other{ background: var(--lgray); color: var(--muted); }
-
-.file-info { flex: 1; min-width: 0; }
-.file-name { font-size: 13px; font-weight: 600; color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.file-meta { font-size: 11px; color: var(--mgray); margin-top: 1px; }
-
-.btn-download {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 7px 16px; background: var(--purple); color: #fff;
-    border-radius: 8px; font-size: 12px; font-weight: 700;
-    text-decoration: none; transition: opacity .15s; white-space: nowrap; flex-shrink: 0;
+.file-ext-badge {
+    font-size: 9px; font-weight: 800; letter-spacing: .4px;
+    padding: 2px 6px; border-radius: 4px; flex-shrink: 0; text-transform: uppercase;
 }
-.btn-download:hover { opacity: .88; color: #fff; text-decoration: none; }
+.ext-xlsx { background: #d1fae5; color: #065f46; }
+.ext-xlsm { background: #dbeafe; color: #1e40af; }
+.ext-csv  { background: #fef3c7; color: #92400e; }
+.ext-pdf  { background: #fee2e2; color: #991b1b; }
+.ext-docx { background: #ede9fe; color: #5b21b6; }
+.ext-other{ background: var(--lgray); color: var(--muted); }
+
+.file-name { font-size: 13px; color: var(--dark); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-date { font-size: 11px; color: var(--mgray); white-space: nowrap; flex-shrink: 0; }
 
 .empty-state {
-    text-align: center; padding: 60px 20px;
-    background: #fff; border-radius: 12px; border: 1px solid var(--border);
+    text-align: center; padding: 56px 20px;
+    background: #fff; border-radius: var(--radius); border: 1px solid var(--border);
 }
-.empty-state i { font-size: 42px; color: var(--mgray); margin-bottom: 14px; display: block; }
-.empty-state p { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+.empty-state i { font-size: 40px; color: var(--mgray); margin-bottom: 12px; display: block; }
+.empty-state p  { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+.btn-back {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 20px; background: var(--purple); color: #fff;
+    border-radius: 9px; font-size: 13px; font-weight: 700;
+    text-decoration: none; transition: opacity .15s;
+}
+.btn-back:hover { opacity: .88; color: #fff; text-decoration: none; }
+
+.notice {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 9px;
+    padding: 14px 18px; margin-bottom: 24px; font-size: 13px; color: #78350f;
+}
+.notice i { color: var(--amber); flex-shrink: 0; margin-top: 1px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="col-lg-9 mx-auto">
+<div class="page-wrap">
 
-    <div class="page-hero">
-        <div>
-            <a href="{% url 'claim_detail' client.id %}" class="back">
-                <i class="fas fa-arrow-left"></i> Back to claim
-            </a>
-            <h1><i class="fas fa-file-excel me-2" style="color:#6ee7b7;"></i>Templates</h1>
-            <p>{{ client.pOwner }}{% if client.claimNumber %} &mdash; #{{ client.claimNumber }}{% endif %}</p>
+    <a href="{% url 'claim_detail' client.id %}" class="back-link">
+        <i class="fas fa-arrow-left"></i> Back to {{ client.pOwner }}
+    </a>
+
+    {# ── Hero ── #}
+    <div class="hero">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+            <i class="fas fa-file-excel" style="font-size:22px;color:#6ee7b7;"></i>
+            <h1>Template Files</h1>
         </div>
-        {% if total_files > 0 %}
-        <a href="{% url 'excel_hub_download_zip' client.id %}" class="btn-dl-all">
-            <i class="fas fa-download"></i> Download All ({{ total_files }} file{{ total_files|pluralize }})
-        </a>
-        {% endif %}
+        <p class="sub">
+            {{ client.pOwner }}{% if client.claimNumber %} &nbsp;&middot;&nbsp; Claim #{{ client.claimNumber }}{% endif %}
+            {% if client.pAddress %}&nbsp;&middot;&nbsp; {{ client.pAddress }}{% endif %}
+        </p>
     </div>
 
-    {% if file_groups %}
-        {% for group in file_groups %}
-        <div class="folder-card">
-            <div class="folder-header">
-                <i class="fas fa-folder text-warning"></i>
-                <span class="folder-name">{{ group.folder_name }}</span>
-                <span class="file-count">{{ group.files|length }} file{{ group.files|length|pluralize }}</span>
-            </div>
-
-            {% for file in group.files %}
-            {% with ext=file.name|lower %}
-            <div class="file-row">
-                <div class="file-icon {% if '.xlsx' in ext %}xlsx{% elif '.xlsm' in ext %}xlsm{% elif '.csv' in ext %}csv{% elif '.pdf' in ext %}pdf{% elif '.doc' in ext %}doc{% else %}other{% endif %}">
-                    <i class="fas {% if '.xlsx' in ext or '.xlsm' in ext %}fa-file-excel{% elif '.csv' in ext %}fa-file-csv{% elif '.pdf' in ext %}fa-file-pdf{% elif '.doc' in ext %}fa-file-word{% else %}fa-file{% endif %}"></i>
-                </div>
-                <div class="file-info">
-                    <div class="file-name" title="{{ file.name }}">{{ file.name }}</div>
-                    <div class="file-meta">{{ file.size_str }}{% if file.modified %} &middot; {{ file.modified }}{% endif %}</div>
-                </div>
-                <a href="{% url 'download_claim_file' client.id %}?path={{ file.path|urlencode }}"
-                   class="btn-download">
-                    <i class="fas fa-download"></i> Download
-                </a>
-            </div>
-            {% endwith %}
-            {% endfor %}
-        </div>
-        {% endfor %}
+    {# ── No files ── #}
+    {% if not file_groups %}
+    <div class="empty-state">
+        <i class="fas fa-folder-open"></i>
+        <p>No template files have been generated for this claim yet.</p>
+        <a href="{% url 'claim_detail' client.id %}" class="btn-back">
+            <i class="fas fa-sync-alt"></i> Go to claim to regenerate files
+        </a>
+    </div>
 
     {% else %}
-        <div class="empty-state">
-            <i class="fas fa-file-excel"></i>
-            <p>No template files found for this claim yet.</p>
-            <a href="{% url 'claim_detail' client.id %}" class="btn-download" style="display:inline-flex;">
-                <i class="fas fa-sync-alt"></i> Go regenerate files
-            </a>
+
+    {# ── Download all ── #}
+    <div class="dl-all-card">
+        <div class="icon"><i class="fas fa-download"></i></div>
+        <div class="text">
+            <h2>Download All Files</h2>
+            <p>{{ total_files }} file{{ total_files|pluralize }} &nbsp;&middot;&nbsp; Delivered as a single ZIP archive</p>
         </div>
+        <a href="{% url 'excel_hub_download_zip' client.id %}" class="btn-dl">
+            <i class="fas fa-download"></i> Download ZIP
+        </a>
+    </div>
+
+    {# ── How to update files ── #}
+    <div class="instructions-card">
+        <h3>How to Replace or Update a File</h3>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">Download the files using the button above. Make your changes to any Excel file on your computer.</div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">Go back to the <a href="{% url 'claim_detail' client.id %}" style="color:var(--purple);font-weight:600;">{{ client.pOwner }} claim page</a> and click the <strong>Files</strong> tab.</div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">Open the <strong>Templates</strong> folder in the file browser. Click <strong>Upload</strong> next to that folder and select your updated file. If a file with the same name already exists, you will be asked to confirm replacing it.</div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">Come back to this page — the date next to each file below will update to confirm your new version is live.</div>
+        </div>
+    </div>
+
+    {# ── File list with dates ── #}
+    <div class="files-card">
+        <div class="files-header">
+            <h3><i class="fas fa-clock me-1" style="color:var(--mgray);"></i> File Versions &amp; Last Updated Dates</h3>
+            <span style="font-size:11px;color:var(--mgray);">{{ total_files }} file{{ total_files|pluralize }}</span>
+        </div>
+
+        {% for group in file_groups %}
+        <div class="folder-group">
+            <div class="folder-toggle-row" onclick="toggleFolder(this)">
+                <i class="fas fa-caret-right folder-caret"></i>
+                <i class="fas fa-folder" style="color:#f59e0b;font-size:13px;"></i>
+                <span class="fname">{{ group.folder_name }}</span>
+                <span class="fcount">{{ group.files|length }} file{{ group.files|length|pluralize }}</span>
+            </div>
+            <div class="folder-files">
+                {% for file in group.files %}
+                {% with ext=file.name|lower %}
+                <div class="file-row">
+                    <span class="file-ext-badge {% if '.xlsx' in ext %}ext-xlsx{% elif '.xlsm' in ext %}ext-xlsm{% elif '.csv' in ext %}ext-csv{% elif '.pdf' in ext %}ext-pdf{% elif '.doc' in ext %}ext-docx{% else %}ext-other{% endif %}">
+                        {% if '.xlsx' in ext %}xlsx{% elif '.xlsm' in ext %}xlsm{% elif '.csv' in ext %}csv{% elif '.pdf' in ext %}pdf{% elif '.doc' in ext %}docx{% else %}file{% endif %}
+                    </span>
+                    <span class="file-name" title="{{ file.name }}">{{ file.name }}</span>
+                    <span class="file-date">
+                        {% if file.modified %}
+                        <i class="fas fa-clock" style="font-size:10px;margin-right:3px;color:var(--mgray);"></i>{{ file.modified }}
+                        {% else %}
+                        <span style="color:var(--mgray);">—</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ── Notice ── #}
+    <div class="notice">
+        <i class="fas fa-exclamation-circle"></i>
+        <div>
+            <strong>Files regenerated automatically?</strong> If you re-generate files from the claim page, your manually uploaded versions will be replaced. Keep a local copy of any edited files before regenerating.
+        </div>
+    </div>
+
     {% endif %}
 
+    {# ── Bottom back link ── #}
+    <div style="text-align:center;padding:10px 0 30px;">
+        <a href="{% url 'claim_detail' client.id %}" class="back-link" style="font-size:13px;font-weight:600;">
+            <i class="fas fa-arrow-left"></i> Back to {{ client.pOwner }} claim page
+        </a>
+    </div>
+
 </div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleFolder(row) {
+    const caret = row.querySelector('.folder-caret');
+    const files = row.nextElementSibling;
+    const open  = files.classList.toggle('open');
+    caret.classList.toggle('open', open);
+}
+</script>
 {% endblock %}
