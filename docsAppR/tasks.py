@@ -3747,23 +3747,21 @@ def duplicate_encircle_claim_task(self, source_claim_id, suffix='(TEST COPY)'):
 @shared_task(bind=True, max_retries=3)
 def send_templates_link_task(self, client_id):
     """
-    Email a signed download link for this claim's Excel templates to the
-    standard notification list.
+    Email a signed download link for this claim's Excel templates.
 
-    Triggered automatically at claim creation alongside the labels task.
-    Recipients can click the link — no login required — to browse and
-    download every Excel file generated for the claim.
+    Sends to:
+      - The insured's own email address (client.cEmail) if available
+      - The internal notification list
 
-    Uses Django's signing framework so the token is tamper-proof and
-    identifies the claim without exposing the DB primary key directly.
+    The email is written in plain English so any homeowner can follow it.
+    The link works in any browser with no login required.
     """
-    import os
     from django.conf import settings
     from django.core.mail import EmailMessage
     from django.core.signing import dumps as signing_dumps
 
-    RECIPIENTS = ['galaxielsaga@gmail.com', 'wsbjoe9@gmail.com']
-    SITE_URL = getattr(settings, 'SITE_URL', 'https://claimetapp.com')
+    INTERNAL = ['galaxielsaga@gmail.com', 'wsbjoe9@gmail.com']
+    SITE_URL  = getattr(settings, 'SITE_URL', 'https://claimetapp.com').rstrip('/')
 
     try:
         client = Client.objects.get(id=client_id)
@@ -3772,81 +3770,140 @@ def send_templates_link_task(self, client_id):
         return {'success': False, 'error': 'Client not found'}
 
     try:
-        # Sign the claim id — tamper-proof, no expiry
-        token = signing_dumps(client_id, salt='claim-templates-link')
+        token         = signing_dumps(client_id, salt='claim-templates-link')
         templates_url = f"{SITE_URL}/claims/templates/{token}/"
 
-        claim_name    = client.pOwner    or f'Claim {client_id}'
-        claim_address = client.pAddress  or '—'
-        claim_number  = client.claimNumber or '—'
-        cause         = client.causeOfLoss or '—'
+        claim_name    = client.pOwner      or f'Claim {client_id}'
+        claim_address = client.pAddress    or ''
+        claim_number  = client.claimNumber or ''
+        cause         = client.causeOfLoss or ''
 
-        subject = f'[CLAIM TEMPLATES READY] {claim_name}'
+        # Always include internal team; add client only if they have an email
+        recipients = list(INTERNAL)
+        if client.cEmail and client.cEmail.strip():
+            recipients.append(client.cEmail.strip())
 
-        body = f"""
+        # Subject line — personal and clear
+        subject = f'Your Claim Documents Are Ready — {claim_name}'
+
+        # Address line only if we have it
+        address_line = (
+            f'<p style="margin:0;font-size:15px;color:rgba(255,255,255,.8);">'
+            f'{claim_address}</p>'
+        ) if claim_address else ''
+
+        claim_details = ''
+        if claim_number:
+            claim_details += f'<tr><td style="padding:6px 0;color:#64748b;font-size:14px;width:140px;">Claim Number</td><td style="padding:6px 0;font-size:14px;font-family:monospace;font-weight:700;">{claim_number}</td></tr>'
+        if cause:
+            claim_details += f'<tr><td style="padding:6px 0;color:#64748b;font-size:14px;">Type of Loss</td><td style="padding:6px 0;font-size:14px;">{cause}</td></tr>'
+
+        body = f"""<!DOCTYPE html>
 <html>
-<body style="font-family:Arial,sans-serif;color:#1e293b;max-width:600px;margin:0 auto;">
+<body style="margin:0;padding:20px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:580px;margin:0 auto;">
 
-  <div style="background:linear-gradient(135deg,#1e40af,#0ea5e9);border-radius:12px;
-              padding:28px 32px;color:#fff;margin-bottom:24px;">
-    <h2 style="margin:0 0 6px;font-size:20px;">📂 Claim Templates Ready</h2>
-    <p style="margin:0;opacity:.85;font-size:14px;">
-      Excel templates have been generated and populated for the claim below.
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);
+              border-radius:14px;padding:32px 36px;margin-bottom:20px;">
+    <p style="margin:0 0 4px;font-size:13px;color:rgba(255,255,255,.5);
+              letter-spacing:1px;text-transform:uppercase;">Claimet App</p>
+    <h1 style="margin:0 0 10px;font-size:24px;font-weight:800;color:#fff;line-height:1.2;">
+      Your documents<br>are ready to download.
+    </h1>
+    <p style="margin:0;font-size:15px;color:rgba(255,255,255,.75);">
+      {claim_name}
     </p>
+    {address_line}
   </div>
 
-  <div style="background:#f8fafc;border-radius:10px;padding:20px 24px;
-              margin-bottom:24px;border:1px solid #e2e8f0;">
-    <table style="width:100%;font-size:14px;border-collapse:collapse;">
-      <tr><td style="padding:5px 0;color:#64748b;width:130px;">Insured</td>
-          <td style="padding:5px 0;font-weight:700;">{claim_name}</td></tr>
-      <tr><td style="padding:5px 0;color:#64748b;">Address</td>
-          <td style="padding:5px 0;">{claim_address}</td></tr>
-      <tr><td style="padding:5px 0;color:#64748b;">Claim #</td>
-          <td style="padding:5px 0;font-family:monospace;">{claim_number}</td></tr>
-      <tr><td style="padding:5px 0;color:#64748b;">Cause of Loss</td>
-          <td style="padding:5px 0;">{cause}</td></tr>
-    </table>
-  </div>
+  <!-- Claim info -->
+  {"<div style='background:#fff;border-radius:12px;padding:20px 24px;margin-bottom:20px;border:1px solid #e2e8f0;'><table style='width:100%;border-collapse:collapse;'>" + claim_details + "</table></div>" if claim_details else ""}
 
-  <div style="text-align:center;margin:32px 0;">
+  <!-- Big button -->
+  <div style="background:#fff;border-radius:12px;padding:32px 36px;
+              margin-bottom:20px;border:1px solid #e2e8f0;text-align:center;">
+    <p style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 8px;">
+      Tap the button below to get your files.
+    </p>
+    <p style="font-size:14px;color:#64748b;margin:0 0 28px;">
+      No password needed. Works on your phone, tablet, or computer.
+    </p>
     <a href="{templates_url}"
-       style="display:inline-block;background:#1e40af;color:#fff;
-              text-decoration:none;padding:16px 36px;border-radius:10px;
-              font-size:16px;font-weight:700;letter-spacing:.3px;">
-      📥 View &amp; Download Templates
+       style="display:inline-block;background:#10b981;color:#fff;
+              text-decoration:none;padding:18px 44px;border-radius:12px;
+              font-size:18px;font-weight:800;letter-spacing:.2px;">
+      Download My Files
     </a>
-    <p style="font-size:12px;color:#94a3b8;margin-top:12px;">
-      No login required — link is secure and specific to this claim.
+    <p style="font-size:12px;color:#94a3b8;margin:20px 0 0;">
+      Or copy this link into your browser:<br>
+      <span style="font-family:monospace;font-size:11px;color:#7c3aed;
+                   word-break:break-all;">{templates_url}</span>
     </p>
   </div>
 
-  <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0;">
-  <p style="font-size:11px;color:#94a3b8;text-align:center;">
-    Automated notification · Claimet App
+  <!-- Steps -->
+  <div style="background:#fff;border-radius:12px;padding:24px 36px;
+              margin-bottom:20px;border:1px solid #e2e8f0;">
+    <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 16px;
+              text-transform:uppercase;letter-spacing:.8px;">What to do</p>
+
+    <div style="display:flex;gap:14px;margin-bottom:14px;align-items:flex-start;">
+      <div style="width:28px;height:28px;min-width:28px;border-radius:50%;
+                  background:#7c3aed;color:#fff;font-size:13px;font-weight:800;
+                  display:flex;align-items:center;justify-content:center;
+                  line-height:28px;text-align:center;">1</div>
+      <p style="margin:4px 0 0;font-size:14px;color:#334155;">
+        <strong>Tap "Download My Files"</strong> above.
+      </p>
+    </div>
+    <div style="display:flex;gap:14px;margin-bottom:14px;align-items:flex-start;">
+      <div style="width:28px;height:28px;min-width:28px;border-radius:50%;
+                  background:#7c3aed;color:#fff;font-size:13px;font-weight:800;
+                  display:flex;align-items:center;justify-content:center;
+                  line-height:28px;text-align:center;">2</div>
+      <p style="margin:4px 0 0;font-size:14px;color:#334155;">
+        A page opens showing your files. Tap <strong>"Download ZIP"</strong> to save them all at once.
+      </p>
+    </div>
+    <div style="display:flex;gap:14px;align-items:flex-start;">
+      <div style="width:28px;height:28px;min-width:28px;border-radius:50%;
+                  background:#7c3aed;color:#fff;font-size:13px;font-weight:800;
+                  display:flex;align-items:center;justify-content:center;
+                  line-height:28px;text-align:center;">3</div>
+      <p style="margin:4px 0 0;font-size:14px;color:#334155;">
+        Open the downloaded ZIP folder — your Excel files are inside.
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <p style="text-align:center;font-size:12px;color:#94a3b8;margin:8px 0 0;">
+    Questions? Just reply to this email.
+    &nbsp;&middot;&nbsp; Claimet App &nbsp;&middot;&nbsp; claimetapp.com
   </p>
 
+</div>
 </body>
-</html>
-"""
+</html>"""
 
         email = EmailMessage(
             subject=subject,
             body=body,
             from_email=settings.DEFAULT_FROM_EMAIL,
-            to=RECIPIENTS,
+            to=recipients,
         )
         email.content_subtype = 'html'
         email.send()
 
         logger.info(
             f"send_templates_link_task: sent for client {client_id} "
-            f"({claim_name}) to {RECIPIENTS}"
+            f"({claim_name}) to {recipients}"
         )
         return {
-            'success': True,
-            'client_id': client_id,
-            'recipients': RECIPIENTS,
+            'success':       True,
+            'client_id':     client_id,
+            'recipients':    recipients,
             'templates_url': templates_url,
         }
 

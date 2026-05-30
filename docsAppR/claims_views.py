@@ -756,13 +756,13 @@ def create_claim_step3(request):
                         str(sdg_sub.id), ['siding_10000']
                     )
 
-            # Auto-generate and email labels for all rooms
+            # Email 1: Labels — attach generated box labels PDF
             labels_task = generate_and_email_labels_task.delay(str(client.id))
 
-            # Email a signed link to browse & download the claim's Excel templates
-            send_templates_link_task.delay(str(client.id))
+            # Email 2: Templates download link — goes to internal team + client email
+            templates_link_task = send_templates_link_task.delay(str(client.id))
 
-            # Auto-send room list email to default recipients (synchronous)
+            # Email 3: Room list with worktype PDF — internal team
             email_ok, email_err = _auto_send_room_list(client)
 
             # Clear session
