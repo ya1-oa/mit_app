@@ -294,8 +294,10 @@ def save_rooms(request):
         primary_work_types = [w for w in selected_work_types
                               if str(w).strip().isdigit() and int(w) != 700]
 
-        # Fallback: if user didn't pick any primary template, default to basic
-        if not primary_templates:
+        # Fallback: only use basic if the user has actual rooms AND chose no template.
+        # If they selected only sub-templates (siding/8000s/9000s) with no base rooms,
+        # respect that choice — don't inject the 100-700s list they didn't want.
+        if not primary_templates and rooms_data:
             primary_templates = ['basic']
 
         if not rooms_data and 'siding_10000' not in selected_templates:
@@ -508,6 +510,7 @@ def create_claim_step3(request):
             primary_templates   = request.session.get('primary_templates', ['basic'])
             primary_work_types  = request.session.get('primary_work_types', [])
             encircle_templates  = request.session.get('selected_templates', primary_templates)
+            selected_work_types = request.session.get('primary_work_types', [])
 
             encircle_task = push_claim_to_encircle_task.delay(
                 str(client.id), primary_templates, primary_work_types
