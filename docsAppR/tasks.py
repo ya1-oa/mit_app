@@ -3778,10 +3778,7 @@ def send_templates_link_task(self, client_id):
         claim_number  = client.claimNumber or ''
         cause         = client.causeOfLoss or ''
 
-        # Always include internal team; add client only if they have an email
         recipients = list(INTERNAL)
-        if client.cEmail and client.cEmail.strip():
-            recipients.append(client.cEmail.strip())
 
         # Subject line — personal and clear
         subject = f'Your Claim Documents Are Ready — {claim_name}'
