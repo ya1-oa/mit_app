@@ -303,6 +303,29 @@ def save_rooms(request):
         if not rooms_data and 'siding_10000' not in selected_templates:
             return JsonResponse({'success': False, 'error': 'No rooms provided'})
 
+        # Static room names for siding claims — used as base rooms when the user
+        # selects siding_10000 without entering any rooms.  These are the clean
+        # section names that will populate Excel templates (is_encircle_entry=False).
+        _SIDING_BASE_ROOMS = [
+            'JOBSITE VERIFICATION',
+            'SOURCE OF LOSS',
+            'ROOF',
+            'PPR NON SALVAGABLES',
+            'EXTERIOR',
+            'AIR CONDITIONING',
+            'PATIO/DECK',
+            'DOOR & WINDOWS TRIM',
+            'SOFFIT & FASCIA',
+            'SDG ACCESSORIES',
+            'JOB CONDITIONS',
+            'DOWN SPOUTS & GUTTERS',
+            'ELECTRICAL ACCESSORIES',
+            'DEMO & DUMPSTER',
+            'FINAL CLN',
+            'GARAGE',
+            'ROOF ACCESSORIES',
+        ]
+
         # Split rooms by claim type
         normal_rooms = [r for r in rooms_data if r.get('claim_type', 'normal') == 'normal']
         mit_rooms    = [r for r in rooms_data if r.get('claim_type') == 'mit']
@@ -420,6 +443,18 @@ def save_rooms(request):
                 selected_templates=primary_templates,
                 selected_work_types=primary_work_types or None,
             )
+
+            # Siding-only claim: seed the primary client with clean siding section
+            # names as base rooms (is_encircle_entry=False) so they populate Excel.
+            # Only runs when the user chose siding with no manual rooms.
+            if 'siding_10000' in selected_templates and not normal_rooms:
+                for seq, room_name in enumerate(_SIDING_BASE_ROOMS, 1):
+                    Room.objects.get_or_create(
+                        client=client,
+                        room_name=room_name,
+                        is_encircle_entry=False,
+                        defaults={'sequence': seq},
+                    )
 
             # MIT sub-claim — always uses 8000s MC Day Readings
             if mit_rooms or 'readings_8000' in selected_templates:
@@ -750,6 +785,23 @@ def create_claim_step3(request):
                     except Exception:
                         sdg_sub = None
                 if sdg_sub:
+                    # Seed siding base rooms on the SDG sub-claim so Excel
+                    # templates populate with the correct section names.
+                    _SDG_ROOMS = [
+                        'JOBSITE VERIFICATION', 'SOURCE OF LOSS', 'ROOF',
+                        'PPR NON SALVAGABLES', 'EXTERIOR', 'AIR CONDITIONING',
+                        'PATIO/DECK', 'DOOR & WINDOWS TRIM', 'SOFFIT & FASCIA',
+                        'SDG ACCESSORIES', 'JOB CONDITIONS', 'DOWN SPOUTS & GUTTERS',
+                        'ELECTRICAL ACCESSORIES', 'DEMO & DUMPSTER', 'FINAL CLN',
+                        'GARAGE', 'ROOF ACCESSORIES',
+                    ]
+                    for seq, rname in enumerate(_SDG_ROOMS, 1):
+                        Room.objects.get_or_create(
+                            client=sdg_sub,
+                            room_name=rname,
+                            is_encircle_entry=False,
+                            defaults={'sequence': seq},
+                        )
                     create_server_folder_structure_task.delay(sdg_sub.id)
                     copy_templates_to_server_task.delay(sdg_sub.id)
                     encircle_sdg_task = push_claim_to_encircle_task.delay(
