@@ -128,6 +128,7 @@ def claim_detail(request, claim_id):
         'last_modified_by': client.last_modified_by,
         'checklist_by_category': checklist_by_category,
         'checklist_items': checklist_items,
+        'contractors': Contractor.objects.filter(is_active=True).order_by('name'),
     }
 
     return render(request, 'docsAppR/claim_detail.html', context)
