@@ -507,6 +507,7 @@ def create_claim_step3(request):
             # them directly without re-computing.
             primary_templates   = request.session.get('primary_templates', ['basic'])
             primary_work_types  = request.session.get('primary_work_types', [])
+            encircle_templates  = request.session.get('selected_templates', primary_templates)
 
             encircle_task = push_claim_to_encircle_task.delay(
                 str(client.id), primary_templates, primary_work_types
