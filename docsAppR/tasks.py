@@ -1307,7 +1307,7 @@ def build_field_mapping(client):
     field_mapping['Loss of use/ ALE'] = 'Y' if getattr(client, 'lossOfUseALE', '') == 'Y' else ('TBD' if getattr(client, 'lossOfUseALE', '') == 'TBD' else 'N')
 
     # Add room data - support ALL label formats found across templates
-    rooms = client.rooms.all().prefetch_related('work_type_values__work_type').order_by('sequence')
+    rooms = client.rooms.filter(is_encircle_entry=False).prefetch_related('work_type_values__work_type').order_by('sequence')
     for idx, room in enumerate(rooms, 1):
         if idx <= 25:
             # Format 1: Room/Area 1, Room/Area 2, etc. (30-MASTER, 50-CONTRACT, etc.)
@@ -1560,7 +1560,7 @@ def create_libreoffice_macro_content(client):
     ])
 
     # Add room data to macro
-    rooms = client.rooms.all().order_by('sequence')
+    rooms = client.rooms.filter(is_encircle_entry=False).order_by('sequence')
     for idx, room in enumerate(rooms, 1):
         if idx <= 25:
             room_label = f"Room/Area {idx}"
@@ -2038,7 +2038,7 @@ def populate_room_data(sheet, client, start_row, max_row):
     Populate room data into the worksheet.
     Searches for Room/Area labels in Column B and fills in room names and work type values.
     """
-    rooms = client.rooms.all().order_by('sequence')
+    rooms = client.rooms.filter(is_encircle_entry=False).order_by('sequence')
     if not rooms:
         return 0
 
