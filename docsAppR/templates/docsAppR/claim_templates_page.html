@@ -58,6 +58,37 @@
 }
 .dl-all-card .btn-dl:hover { opacity: .9; color: var(--green); text-decoration: none; }
 
+/* share card */
+.share-card {
+    background: #fff; border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 22px 28px;
+    margin-bottom: 24px;
+}
+.share-card h3 {
+    font-size: 13px; font-weight: 700; color: var(--dark);
+    text-transform: uppercase; letter-spacing: .8px; margin: 0 0 6px;
+}
+.share-card .desc { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+.share-row { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+.share-input {
+    flex: 1; min-width: 0; font-size: 12px; font-family: monospace;
+    padding: 9px 14px; border: 1.5px solid var(--border); border-radius: 8px;
+    background: var(--lgray); color: var(--slate); outline: none;
+    transition: border-color .15s; cursor: text;
+}
+.share-input:focus { border-color: var(--purple); }
+.btn-copy {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; background: var(--purple); color: #fff;
+    border: none; border-radius: 8px; font-size: 13px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: opacity .15s;
+}
+.btn-copy:hover { opacity: .88; }
+.copy-confirm {
+    font-size: 12px; color: var(--green); font-weight: 600;
+    display: none; align-items: center; gap: 5px; margin-top: 8px;
+}
+
 /* instructions card */
 .instructions-card {
     background: #fff; border-radius: var(--radius);
@@ -199,6 +230,25 @@
         </a>
     </div>
 
+    {# ── Share link for client ── #}
+    <div class="share-card">
+        <h3><i class="fas fa-share-alt me-1" style="color:var(--purple);"></i> Send to Your Client</h3>
+        <p class="desc">
+            This link lets your client download the files without logging in.
+            Copy it and send it by text, email, or however you reach them.
+            The link works for any browser and never expires.
+        </p>
+        <div class="share-row">
+            <input class="share-input" id="public-url" type="text" value="{{ public_url }}" readonly onclick="this.select()">
+            <button class="btn-copy" onclick="copyLink()">
+                <i class="fas fa-copy"></i> Copy Link
+            </button>
+        </div>
+        <div class="copy-confirm" id="copy-confirm">
+            <i class="fas fa-check-circle"></i> Copied to clipboard
+        </div>
+    </div>
+
     {# ── How to update files ── #}
     <div class="instructions-card">
         <h3>How to Replace or Update a File</h3>
@@ -285,6 +335,21 @@ function toggleFolder(row) {
     const files = row.nextElementSibling;
     const open  = files.classList.toggle('open');
     caret.classList.toggle('open', open);
+}
+
+function copyLink() {
+    const input   = document.getElementById('public-url');
+    const confirm = document.getElementById('copy-confirm');
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => {
+        confirm.style.display = 'flex';
+        setTimeout(() => confirm.style.display = 'none', 3000);
+    }).catch(() => {
+        // fallback for older browsers
+        document.execCommand('copy');
+        confirm.style.display = 'flex';
+        setTimeout(() => confirm.style.display = 'none', 3000);
+    });
 }
 </script>
 {% endblock %}

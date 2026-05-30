@@ -3719,12 +3719,21 @@ def claim_templates_page(request, claim_id):
     public templates page, so the file list is always consistent.
     Each file is a direct download link via the existing download_claim_file view.
     """
+    from django.core.signing import dumps as signing_dumps
+    from django.conf import settings
+
     client      = get_object_or_404(Client, id=claim_id)
     file_groups = _eh_claim_excel_files(client)
     total_files = sum(len(g['files']) for g in file_groups)
+
+    # Build the public (no-login) shareable URL for clients
+    token       = signing_dumps(client.id, salt='claim-templates-link')
+    site_url    = getattr(settings, 'SITE_URL', 'https://claimetapp.com').rstrip('/')
+    public_url  = f"{site_url}/claims/templates/{token}/"
 
     return render(request, 'docsAppR/claim_templates_page.html', {
         'client':      client,
         'file_groups': file_groups,
         'total_files': total_files,
+        'public_url':  public_url,
     })
