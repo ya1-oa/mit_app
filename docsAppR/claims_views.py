@@ -3704,3 +3704,27 @@ def claim_templates_download(request, token, file_path):
         as_attachment=True,
         filename=_os.path.basename(full_path),
     )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INTERNAL TEMPLATES DOWNLOAD PAGE  (login required)
+# Simple one-click file list for staff — linked from the claim detail page.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@login_required
+def claim_templates_page(request, claim_id):
+    """
+    Clean page listing every Excel/template file for a claim.
+    Uses the same _eh_claim_excel_files helper as the Excel Hub and the
+    public templates page, so the file list is always consistent.
+    Each file is a direct download link via the existing download_claim_file view.
+    """
+    client      = get_object_or_404(Client, id=claim_id)
+    file_groups = _eh_claim_excel_files(client)
+    total_files = sum(len(g['files']) for g in file_groups)
+
+    return render(request, 'docsAppR/claim_templates_page.html', {
+        'client':      client,
+        'file_groups': file_groups,
+        'total_files': total_files,
+    })

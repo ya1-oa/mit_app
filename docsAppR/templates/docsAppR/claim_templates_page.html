@@ -1,0 +1,157 @@
+{% extends "account/base.html" %}
+
+{% block title %}Templates — {{ client.pOwner }}{% endblock %}
+{% block page_title %}Templates — {{ client.pOwner }}{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+    --purple: #7c3aed;
+    --teal:   #0ea5e9;
+    --green:  #10b981;
+    --dark:   #0f172a;
+    --slate:  #334155;
+    --muted:  #64748b;
+    --mgray:  #94a3b8;
+    --lgray:  #f1f5f9;
+    --border: #e2e8f0;
+}
+
+.page-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-radius: 12px; padding: 24px 28px; color: #fff;
+    margin-bottom: 20px;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 14px;
+}
+.page-hero .back { font-size: 12px; color: rgba(255,255,255,.55); text-decoration: none; display: flex; align-items: center; gap: 6px; margin-bottom: 10px; }
+.page-hero .back:hover { color: #fff; }
+.page-hero h1 { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.page-hero p  { font-size: 13px; color: rgba(255,255,255,.55); margin: 0; }
+
+.btn-dl-all {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 22px; background: var(--green); color: #fff;
+    border: none; border-radius: 9px; font-size: 13px; font-weight: 700;
+    text-decoration: none; cursor: pointer; transition: opacity .15s;
+    white-space: nowrap;
+}
+.btn-dl-all:hover { opacity: .88; color: #fff; text-decoration: none; }
+
+.folder-card {
+    background: #fff; border-radius: 12px;
+    border: 1px solid var(--border); box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    margin-bottom: 16px; overflow: hidden;
+}
+.folder-header {
+    background: var(--lgray); padding: 12px 20px;
+    display: flex; align-items: center; gap: 10px;
+    border-bottom: 1px solid var(--border);
+}
+.folder-header .folder-name {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--slate);
+}
+.folder-header .file-count {
+    font-size: 11px; color: var(--mgray); margin-left: auto;
+}
+
+.file-row {
+    display: flex; align-items: center; gap: 14px;
+    padding: 12px 20px; border-bottom: 1px solid var(--border);
+    transition: background .1s;
+}
+.file-row:last-child { border-bottom: none; }
+.file-row:hover { background: #f8fafc; }
+
+.file-icon {
+    width: 36px; height: 36px; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+}
+.file-icon.xlsx { background: #d1fae5; color: #065f46; }
+.file-icon.xlsm { background: #dbeafe; color: #1e40af; }
+.file-icon.csv  { background: #fef3c7; color: #92400e; }
+.file-icon.pdf  { background: #fee2e2; color: #991b1b; }
+.file-icon.doc  { background: #ede9fe; color: #5b21b6; }
+.file-icon.other{ background: var(--lgray); color: var(--muted); }
+
+.file-info { flex: 1; min-width: 0; }
+.file-name { font-size: 13px; font-weight: 600; color: var(--dark); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-meta { font-size: 11px; color: var(--mgray); margin-top: 1px; }
+
+.btn-download {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 16px; background: var(--purple); color: #fff;
+    border-radius: 8px; font-size: 12px; font-weight: 700;
+    text-decoration: none; transition: opacity .15s; white-space: nowrap; flex-shrink: 0;
+}
+.btn-download:hover { opacity: .88; color: #fff; text-decoration: none; }
+
+.empty-state {
+    text-align: center; padding: 60px 20px;
+    background: #fff; border-radius: 12px; border: 1px solid var(--border);
+}
+.empty-state i { font-size: 42px; color: var(--mgray); margin-bottom: 14px; display: block; }
+.empty-state p { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="col-lg-9 mx-auto">
+
+    <div class="page-hero">
+        <div>
+            <a href="{% url 'claim_detail' client.id %}" class="back">
+                <i class="fas fa-arrow-left"></i> Back to claim
+            </a>
+            <h1><i class="fas fa-file-excel me-2" style="color:#6ee7b7;"></i>Templates</h1>
+            <p>{{ client.pOwner }}{% if client.claimNumber %} &mdash; #{{ client.claimNumber }}{% endif %}</p>
+        </div>
+        {% if total_files > 0 %}
+        <a href="{% url 'excel_hub_download_zip' client.id %}" class="btn-dl-all">
+            <i class="fas fa-download"></i> Download All ({{ total_files }} file{{ total_files|pluralize }})
+        </a>
+        {% endif %}
+    </div>
+
+    {% if file_groups %}
+        {% for group in file_groups %}
+        <div class="folder-card">
+            <div class="folder-header">
+                <i class="fas fa-folder text-warning"></i>
+                <span class="folder-name">{{ group.folder_name }}</span>
+                <span class="file-count">{{ group.files|length }} file{{ group.files|length|pluralize }}</span>
+            </div>
+
+            {% for file in group.files %}
+            {% with ext=file.name|lower %}
+            <div class="file-row">
+                <div class="file-icon {% if '.xlsx' in ext %}xlsx{% elif '.xlsm' in ext %}xlsm{% elif '.csv' in ext %}csv{% elif '.pdf' in ext %}pdf{% elif '.doc' in ext %}doc{% else %}other{% endif %}">
+                    <i class="fas {% if '.xlsx' in ext or '.xlsm' in ext %}fa-file-excel{% elif '.csv' in ext %}fa-file-csv{% elif '.pdf' in ext %}fa-file-pdf{% elif '.doc' in ext %}fa-file-word{% else %}fa-file{% endif %}"></i>
+                </div>
+                <div class="file-info">
+                    <div class="file-name" title="{{ file.name }}">{{ file.name }}</div>
+                    <div class="file-meta">{{ file.size_str }}{% if file.modified %} &middot; {{ file.modified }}{% endif %}</div>
+                </div>
+                <a href="{% url 'download_claim_file' client.id %}?path={{ file.path|urlencode }}"
+                   class="btn-download">
+                    <i class="fas fa-download"></i> Download
+                </a>
+            </div>
+            {% endwith %}
+            {% endfor %}
+        </div>
+        {% endfor %}
+
+    {% else %}
+        <div class="empty-state">
+            <i class="fas fa-file-excel"></i>
+            <p>No template files found for this claim yet.</p>
+            <a href="{% url 'claim_detail' client.id %}" class="btn-download" style="display:inline-flex;">
+                <i class="fas fa-sync-alt"></i> Go regenerate files
+            </a>
+        </div>
+    {% endif %}
+
+</div>
+{% endblock %}

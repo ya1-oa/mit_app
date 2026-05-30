@@ -326,6 +326,9 @@
     <button id="sendFilesLinkBtn" class="btn-action ghost" onclick="sendFilesLink()" title="Email the files page link">
         <i class="fas fa-paper-plane"></i> Send Link
     </button>
+    <a href="{% url 'claim_templates_page' client.id %}" class="btn-action outline" title="Browse and download template files">
+        <i class="fas fa-file-excel"></i> Templates
+    </a>
     <a href="/claims/{{ client.id }}/files/" target="_blank" class="btn-action outline" title="Open shareable file browser">
         <i class="fas fa-external-link-alt"></i> Files Page
     </a>

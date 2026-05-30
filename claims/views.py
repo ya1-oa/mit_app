@@ -57,6 +57,8 @@ from docsAppR.claims_views import (
     # Public templates download page (no login — signed token)
     claim_templates_public,
     claim_templates_download,
+    # Internal templates page (login required)
+    claim_templates_page,
 )
 
 from docsAppR.views import (
