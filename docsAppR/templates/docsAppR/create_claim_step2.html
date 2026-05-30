@@ -280,17 +280,98 @@
                         </div>
                     </div>
 
+                    <!-- Encircle Room Lists — Option A: lives on the main page, not in the modal -->
+                    <div class="card mb-4" id="template-card">
+                        <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">
+                                <i class="fas fa-list-ul text-primary me-1"></i> Encircle Room Lists to Generate
+                            </h6>
+                            <small class="text-muted">Select which templates to create for this claim</small>
+                        </div>
+                        <div class="card-body p-3">
+                            <div id="template-selection-panel">
+                                <!-- 100–700s Complete Room List -->
+                                <div class="mb-2">
+                                    <div class="form-check">
+                                        <input class="form-check-input" type="checkbox" value="basic"
+                                               id="step2-tpl-basic" checked
+                                               onchange="document.getElementById('step2-wt-panel').style.display=this.checked?'block':'none'">
+                                        <label class="form-check-label small" for="step2-tpl-basic">
+                                            <strong>100–700s Complete Room List</strong>
+                                            <span class="text-muted d-block" style="font-size:0.75rem;">Overview, Source, CPS, PPR, Demo, Mitigation, HMR</span>
+                                        </label>
+                                    </div>
+                                    <div id="step2-wt-panel" class="ms-4 mt-1 p-2 border rounded bg-light">
+                                        <small class="text-muted d-block mb-1">Deselect work types you don't need:</small>
+                                        <div class="d-flex flex-wrap gap-2">
+                                            {% for wt_val, wt_label in work_types_for_template %}
+                                            <label class="d-flex align-items-center gap-1 small">
+                                                <input type="checkbox" class="step2-wt-cb" value="{{ wt_val }}" checked>
+                                                <span class="badge bg-secondary">{{ wt_val }}</span> {{ wt_label }}
+                                            </label>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="mt-1">
+                                            <button type="button" class="btn btn-link btn-sm p-0 me-2" onclick="document.querySelectorAll('.step2-wt-cb').forEach(cb=>cb.checked=true)">All</button>
+                                            <button type="button" class="btn btn-link btn-sm p-0" onclick="document.querySelectorAll('.step2-wt-cb').forEach(cb=>cb.checked=false)">None</button>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <hr class="my-2">
+
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" value="readings_8000" id="step2-tpl-8000">
+                                    <label class="form-check-label small" for="step2-tpl-8000">
+                                        <strong>8000s MC Day Readings</strong>
+                                        <span class="text-muted d-block" style="font-size:0.75rem;">Creates MIT sub-claim — Stabilization + Day 1–4 MC Readings per room</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-check mb-2">
+                                    <input class="form-check-input" type="checkbox" value="readings_9000" id="step2-tpl-9000">
+                                    <label class="form-check-label small" for="step2-tpl-9000">
+                                        <strong>9000s Dry Chamber Readings</strong>
+                                        <span class="text-muted d-block" style="font-size:0.75rem;">Creates RHT sub-claim — RH &amp; T &amp; GPP Dry Chambers Days 1–4</span>
+                                    </label>
+                                </div>
+
+                                <div class="form-check mb-1">
+                                    <input class="form-check-input" type="checkbox" value="siding_10000" id="step2-tpl-siding">
+                                    <label class="form-check-label small" for="step2-tpl-siding">
+                                        <strong>10000s Siding</strong>
+                                        <span class="text-muted d-block" style="font-size:0.75rem;">Exterior — Jobsite Verification, Roof, Soffit &amp; Fascia, Gutters, Demo, Final. No rooms required.</span>
+                                    </label>
+                                </div>
+                                <div id="siding-notice" class="ms-4 alert alert-success py-1 px-2 small mb-2" style="display:none;">
+                                    <i class="fas fa-check-circle"></i> Siding selected — you can proceed without adding rooms. Room entries will be generated automatically.
+                                </div>
+
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" value="readings default" id="step2-tpl-readings-default">
+                                    <label class="form-check-label small" for="step2-tpl-readings-default">
+                                        <strong>70000s Stabilization Readings</strong>
+                                        <span class="text-muted d-block" style="font-size:0.75rem;">Day 0 MC Readings only</span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Navigation Buttons -->
                     <div class="d-flex justify-content-between mt-4">
                         <a href="{% url 'create_claim_step1' %}" class="btn btn-secondary">
                             <i class="fas fa-arrow-left"></i> Back
                         </a>
-                        <div>
-                            <button type="button" class="btn btn-outline-primary me-2" id="skip-rooms-btn">
-                                Skip Rooms - Continue <i class="fas fa-arrow-right"></i>
+                        <div class="d-flex gap-2 align-items-center">
+                            <button type="button" class="btn btn-outline-secondary" id="skip-rooms-btn">
+                                Skip &amp; Continue <i class="fas fa-arrow-right"></i>
+                            </button>
+                            <button type="button" class="btn btn-success btn-lg" id="siding-direct-btn" style="display:none;">
+                                <i class="fas fa-save"></i> Create Siding Claim
                             </button>
                             <button type="button" class="btn btn-primary btn-lg" id="configure-work-types-btn" style="display:none;">
-                                Configure Work Types & Continue <i class="fas fa-arrow-right"></i>
+                                Configure Work Types &amp; Continue <i class="fas fa-arrow-right"></i>
                             </button>
                         </div>
                     </div>
@@ -368,93 +449,13 @@
                 <!-- Work Type Configuration Container -->
                 <div id="modal-work-type-container"></div>
             </div>
-            <!-- Encircle Template Selection (moved here from Step 3) -->
-            <div class="modal-footer flex-column align-items-stretch p-3">
-                <div class="border rounded p-3 mb-3 bg-light text-start w-100" id="template-selection-panel">
-                    <p class="fw-semibold mb-2 text-primary small">
-                        <i class="fas fa-list-ul me-1"></i> Encircle Room Lists to Generate
-                        <span class="text-muted fw-normal">(saved immediately with your rooms)</span>
-                    </p>
-
-                    <!-- 100–700s Complete Room List -->
-                    <div class="mb-1">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" value="basic"
-                                   id="step2-tpl-basic" checked
-                                   onchange="document.getElementById('step2-wt-panel').style.display=this.checked?'block':'none'">
-                            <label class="form-check-label small" for="step2-tpl-basic">
-                                <strong>100–700s Complete Room List</strong>
-                                <span class="text-muted d-block" style="font-size:0.75rem;">Overview, Source, CPS, PPR, Demo, Mitigation, HMR</span>
-                            </label>
-                        </div>
-                        <div id="step2-wt-panel" class="ms-4 mt-1 p-2 border rounded bg-white">
-                            <small class="text-muted d-block mb-1">Deselect work types you don't need:</small>
-                            <div class="d-flex flex-wrap gap-2">
-                                {% for wt_val, wt_label in work_types_for_template %}
-                                <label class="d-flex align-items-center gap-1 small">
-                                    <input type="checkbox" class="step2-wt-cb" value="{{ wt_val }}" checked>
-                                    <span class="badge bg-secondary">{{ wt_val }}</span> {{ wt_label }}
-                                </label>
-                                {% endfor %}
-                            </div>
-                            <div class="mt-1">
-                                <button type="button" class="btn btn-link btn-sm p-0 me-2" onclick="document.querySelectorAll('.step2-wt-cb').forEach(cb=>cb.checked=true)">All</button>
-                                <button type="button" class="btn btn-link btn-sm p-0" onclick="document.querySelectorAll('.step2-wt-cb').forEach(cb=>cb.checked=false)">None</button>
-                            </div>
-                        </div>
-                    </div>
-
-                    <hr class="my-2">
-
-                    <!-- 8000s MC Day Readings (auto-creates MIT sub-claim) -->
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" value="readings_8000" id="step2-tpl-8000">
-                        <label class="form-check-label small" for="step2-tpl-8000">
-                            <strong>8000s MC Day Readings</strong>
-                            <span class="text-muted d-block" style="font-size:0.75rem;">Creates MIT sub-claim — Stabilization + Day 1–4 MC Readings per room</span>
-                        </label>
-                    </div>
-
-                    <!-- 9000s Dry Chamber Readings (auto-creates RHT sub-claim) -->
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" value="readings_9000" id="step2-tpl-9000">
-                        <label class="form-check-label small" for="step2-tpl-9000">
-                            <strong>9000s Dry Chamber Readings</strong>
-                            <span class="text-muted d-block" style="font-size:0.75rem;">Creates RHT sub-claim — RH &amp; T &amp; GPP Dry Chambers Days 1–4</span>
-                        </label>
-                    </div>
-
-                    <!-- 10000s Siding (no room names required) -->
-                    <div class="form-check mb-1">
-                        <input class="form-check-input" type="checkbox" value="siding_10000" id="step2-tpl-siding"
-                               onchange="document.getElementById('siding-notice').style.display=this.checked?'block':'none'">
-                        <label class="form-check-label small" for="step2-tpl-siding">
-                            <strong>10000s Siding</strong>
-                            <span class="text-muted d-block" style="font-size:0.75rem;">Exterior — Jobsite Verification, Roof, Soffit &amp; Fascia, Gutters, Demo, Final</span>
-                        </label>
-                    </div>
-                    <div id="siding-notice" class="ms-4 alert alert-info py-1 px-2 small mb-1" style="display:none;">
-                        <i class="fas fa-info-circle"></i> Siding claims don't require room names — entries will be generated automatically.
-                    </div>
-
-                    <!-- 70000s Stabilization -->
-                    <div class="form-check">
-                        <input class="form-check-input" type="checkbox" value="readings default" id="step2-tpl-readings-default">
-                        <label class="form-check-label small" for="step2-tpl-readings-default">
-                            <strong>70000s Stabilization Readings</strong>
-                            <span class="text-muted d-block" style="font-size:0.75rem;">Day 0 MC Readings only</span>
-                        </label>
-                    </div>
-                </div>
-
-                <div class="d-flex w-100 gap-2 justify-content-between">
-                    <button type="button" class="btn btn-secondary" id="modal-back-btn">
-                        <i class="fas fa-arrow-left"></i> Back to Rooms
-                    </button>
-                    <button type="button" class="btn btn-success btn-lg" id="modal-save-btn">
-                        <i class="fas fa-save"></i> Save Rooms & Continue
-                    </button>
-                </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="modal-back-btn">
+                    <i class="fas fa-arrow-left"></i> Back to Rooms
+                </button>
+                <button type="button" class="btn btn-success btn-lg" id="modal-save-btn">
+                    <i class="fas fa-save"></i> Save Rooms &amp; Continue
+                </button>
             </div>
         </div>
     </div>
@@ -663,12 +664,25 @@ $(document).ready(function() {
 
     // Update button visibility
     function updateButtons() {
-        if ($('.room-item').length > 0) {
+        const hasRooms    = $('.room-item').length > 0;
+        const sidingOnly  = $('#step2-tpl-siding').is(':checked') && !$('#step2-tpl-basic').is(':checked');
+        const sidingAny   = $('#step2-tpl-siding').is(':checked');
+
+        if (hasRooms) {
+            // Rooms present — normal flow
             $('#configure-work-types-btn').show();
             $('#skip-rooms-btn').hide();
+            $('#siding-direct-btn').hide();
+        } else if (sidingAny) {
+            // No rooms but siding is checked — show direct-save button
+            $('#configure-work-types-btn').hide();
+            $('#skip-rooms-btn').hide();
+            $('#siding-direct-btn').show();
         } else {
+            // No rooms, no siding — show skip
             $('#configure-work-types-btn').hide();
             $('#skip-rooms-btn').show();
+            $('#siding-direct-btn').hide();
         }
     }
 
@@ -871,6 +885,47 @@ $(document).ready(function() {
         // Update all follower work types in this room
         configContainer.find('.work-type-select[data-follows-master="true"]').each(function() {
             $(this).val(masterValue);
+        });
+    });
+
+    // Siding checkbox — re-evaluate button state and show/hide notice
+    $(document).on('change', '#step2-tpl-siding', function() {
+        $('#siding-notice').toggle(this.checked);
+        updateButtons();
+    });
+
+    // Direct-save for siding claims with no rooms
+    $('#siding-direct-btn').click(function() {
+        const btn = $(this);
+        btn.prop('disabled', true).html('<i class="fas fa-spinner fa-spin"></i> Creating...');
+
+        const selectedTemplates = [];
+        document.querySelectorAll('#template-selection-panel input[type=checkbox]:checked').forEach(function(cb) {
+            if (!cb.classList.contains('step2-wt-cb')) selectedTemplates.push(cb.value);
+        });
+        const selectedWorkTypes = [...document.querySelectorAll('.step2-wt-cb:checked')].map(cb => cb.value);
+
+        $.ajax({
+            url: '{% url "save_rooms" %}',
+            type: 'POST',
+            data: {
+                'rooms_data': JSON.stringify([]),
+                'selected_templates': JSON.stringify(selectedTemplates),
+                'selected_work_types': JSON.stringify(selectedWorkTypes),
+                'csrfmiddlewaretoken': '{{ csrf_token }}'
+            },
+            success: function(response) {
+                if (response.success) {
+                    window.location.href = '{% url "create_claim_step3" %}';
+                } else {
+                    alert('Error: ' + response.error);
+                    btn.prop('disabled', false).html('<i class="fas fa-save"></i> Create Siding Claim');
+                }
+            },
+            error: function() {
+                alert('Failed to save. Please try again.');
+                btn.prop('disabled', false).html('<i class="fas fa-save"></i> Create Siding Claim');
+            }
         });
     });
 

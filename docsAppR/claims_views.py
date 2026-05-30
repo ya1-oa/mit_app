@@ -13,6 +13,7 @@ import json
 import logging
 
 from .models import Client, Room, WorkType, RoomWorkTypeValue, ChecklistItem
+from contractor_hub.models import Contractor
 # OneDrive models removed: OneDriveFolder, OneDriveFile, SyncLog
 from .forms import OneDriveClientForm, RoomSelectionForm, BulkWorkTypeForm
 # UPDATED: Use server-side tasks instead of OneDrive tasks
@@ -168,6 +169,7 @@ def create_claim_step1(request):
         'form': form,
         'client': client,
         'step': 1,
+        'contractors': Contractor.objects.filter(is_active=True).order_by('name'),
     }
 
     return render(request, 'docsAppR/create_claim_step1_full.html', context)
