@@ -294,6 +294,31 @@ def _parse_box_count_file(file_obj):
                         except (ValueError, TypeError):
                             pass
 
+        # Strategy 3: per-room grid with a Totals row (CPS Box Summary format).
+        # Row 5 = column headers (Small Box, Medium Box, …), rows 6-N = per room,
+        # last data row first cell = "Total" with column sums.
+        if not counts:
+            # Find the header row — the first row that has ≥2 box-type keywords
+            hdr_idx, hdr_cells = None, None
+            for i, row in enumerate(rows_raw):
+                cells = [str(c or '').strip() for c in row]
+                if sum(1 for c in cells if _match_box_field(c)) >= 2:
+                    hdr_idx, hdr_cells = i, cells
+                    break
+            if hdr_idx is not None:
+                # Find the Total row — first non-None cell is "total"
+                for row in rows_raw[hdr_idx + 1:]:
+                    first = str(row[0] or '').strip().lower() if row else ''
+                    if first == 'total':
+                        for col_idx, header_cell in enumerate(hdr_cells):
+                            field = _match_box_field(header_cell)
+                            if field and col_idx < len(row) and row[col_idx] is not None:
+                                try:
+                                    counts[field] = int(float(str(row[col_idx])))
+                                except (ValueError, TypeError):
+                                    pass
+                        break
+
     else:
         # CSV path
         raw = file_obj.read()
