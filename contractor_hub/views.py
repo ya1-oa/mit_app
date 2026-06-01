@@ -363,6 +363,54 @@ def _parse_box_count_file(file_obj):
     return counts, name, None
 
 
+@login_required
+def section_invoice_html(request, pk, section_pk):
+    """
+    Return the sub-contractor invoice as a print-ready HTML page.
+    The user opens it in the browser and uses File → Print → Save as PDF.
+    No WeasyPrint dependency.
+
+    URL: /<uuid:pk>/section/<int:section_pk>/invoice-html/
+    """
+    from django.shortcuts import get_object_or_404
+    from .models import GCEstimate, GCSection
+    from .invoice_html_builder import render_sub_invoice_html
+
+    estimate = get_object_or_404(
+        GCEstimate.objects.select_related('client', 'gc_contractor', 'estimator'),
+        pk=pk,
+    )
+    section = get_object_or_404(
+        GCSection.objects.prefetch_related('line_items').select_related('subcontractor'),
+        pk=section_pk, estimate=estimate,
+    )
+    return render_sub_invoice_html(request, estimate, section)
+
+
+# ── New view: PDF via WeasyPrint (optional — requires: pip install weasyprint) ─
+@login_required
+def section_invoice_html_pdf(request, pk, section_pk):
+    """
+    Return the sub-contractor invoice as a PDF rendered by WeasyPrint.
+    Pixel-perfect match to the Xactimate format.
+
+    URL: /<uuid:pk>/section/<int:section_pk>/invoice-html-pdf/
+    """
+    from django.shortcuts import get_object_or_404
+    from .models import GCEstimate, GCSection
+    from .invoice_html_builder import render_sub_invoice_pdf_weasyprint
+
+    estimate = get_object_or_404(
+        GCEstimate.objects.select_related('client', 'gc_contractor', 'estimator'),
+        pk=pk,
+    )
+    section = get_object_or_404(
+        GCSection.objects.prefetch_related('line_items').select_related('subcontractor'),
+        pk=section_pk, estimate=estimate,
+    )
+    return render_sub_invoice_pdf_weasyprint(request, estimate, section)
+
+
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------

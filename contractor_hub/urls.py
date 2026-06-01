@@ -40,4 +40,8 @@ urlpatterns = [
     path('api/lineitem/add/', views.api_lineitem_add, name='api_lineitem_add'),
     path('api/lineitem/<int:pk>/update/', views.api_lineitem_update, name='api_lineitem_update'),
     path('api/lineitem/<int:pk>/delete/', views.api_lineitem_delete, name='api_lineitem_delete'),
+
+    # Invoice Generation
+    path('<uuid:pk>/section/<int:section_pk>/invoice-html/', views.section_invoice_html, name='section_invoice_html'),
+    path('<uuid:pk>/section/<int:section_pk>/invoice-html-pdf/', views.section_invoice_html_pdf,name='section_invoice_html_pdf'),
 ]

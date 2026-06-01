@@ -1,0 +1,816 @@
+{% comment %}
+=============================================================================
+  xactimate_invoice.html  —  Xactimate-format sub-contractor invoice
+=============================================================================
+Context variables
+-----------------
+  sub            : Contractor  (name, ein, address, city, state, zip_code,
+                               phone, contact_person, email, website,
+                               certification, tagline)
+  client         : Client      (pOwner, claimNumber, billingAddress,
+                               billingCity, billingState, billingZip,
+                               homeAddress, homeCity, homeState, homeZip,
+                               phone)
+  estimate       : GCEstimate  (estimate_number, file_number, date_entered,
+                               price_list, type_of_estimate, tax_rate)
+  reference      : dict        (company="Allstate Insurance Company",
+                               phone, email)
+  operator       : str         e.g. "WSBJOE9"
+  estimator_name : str         e.g. "JOE JONES"
+  estimator_phone: str
+  estimator_email: str
+  estimator_company_name : str  e.g. "ALL PHASE CONSULTING, LLC"
+  estimator_address      : str
+  section_label  : str         e.g. "CPS PACKOUT & Evaluation"
+  bid_confirmed_label : str    e.g. "CPS PACKOUT & Evaluation BID ACCEPTED & CONFIRMED"
+  line_items     : list of dicts (see below)
+  section_totals : dict  {tax, line_item_total, rcv}
+  summary_rows   : list of dicts  [{label, value, bold}]
+  recap_by_room  : list of dicts  [{label, value, pct}]
+  recap_by_cat   : list of dicts  [{label, value, pct}]
+  today_str      : str   "5/21/2026"
+  page_count     : int
+
+Each line_item dict:
+  num, cat, sel, act, description, calc, qty, unit,
+  remove, replace, tax, total,
+  notes (list of str),   is_memo (bool),   is_bid_item (bool)
+=============================================================================
+{% endcomment %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>{{ estimate.estimate_number }} — {{ sub.name }}</title>
+<style>
+/* ── RESET & BASE ──────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+html, body {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 9pt;
+  color: #000;
+  background: #fff;
+}
+
+/* ── PRINT PAGE SETUP ──────────────────────────────────────────────────── */
+@page {
+  size: letter portrait;        /* 8.5" × 11" */
+  margin: 0.4in 0.4in 0.4in 0.4in;
+}
+
+/* ── INVOICE PAGE (one per PDF page) ───────────────────────────────────── */
+.invoice-page {
+  width: 100%;
+  min-height: 10.2in;          /* letter minus margins */
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  page-break-after: always;
+}
+.invoice-page:last-child { page-break-after: auto; }
+
+/* ── HEADER ─────────────────────────────────────────────────────────────── */
+.hdr {
+  width: 100%;
+  padding-bottom: 4pt;
+  border-bottom: 0.5pt solid #000;
+  margin-bottom: 4pt;
+}
+
+/* company name row — bold Times 12pt, all-caps per Xactimate */
+.hdr-company-name {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 12pt;
+  font-weight: bold;
+  line-height: 1.35;
+}
+.hdr-line {
+  font-family: 'Times New Roman', Times, serif;
+  font-size: 10pt;
+  font-weight: bold;
+  line-height: 1.35;
+}
+
+/* ── COVER PAGE client/claim table ─────────────────────────────────────── */
+.cover-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 6pt;
+  font-size: 9pt;
+}
+.cover-table td {
+  vertical-align: top;
+  padding: 1.5pt 4pt 1.5pt 0;
+  line-height: 1.4;
+}
+.cover-table .lbl { font-weight: bold; padding-right: 6pt; white-space: nowrap; }
+.cover-table .val { }
+
+/* ── BODY ────────────────────────────────────────────────────────────────── */
+.body { flex: 1; }
+
+/* ── SECTION HEADING (centered bold) ───────────────────────────────────── */
+.section-heading {
+  text-align: center;
+  font-weight: bold;
+  font-size: 9pt;
+  font-family: Helvetica, Arial, sans-serif;
+  margin: 6pt 0 4pt 0;
+  text-transform: uppercase;
+}
+
+/* ── COLUMN HEADER ROW ──────────────────────────────────────────────────── */
+.col-hdr {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  border-bottom: 0.3pt solid #000;
+  margin-bottom: 2pt;
+}
+.col-hdr-row1 { display: flex; }
+.col-hdr-row2 {
+  display: flex;
+  padding-bottom: 2pt;
+}
+
+/* ── LINE ITEM ───────────────────────────────────────────────────────────── */
+.li-row1, .li-row2 {
+  display: flex;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  line-height: 1.3;
+}
+.li-notes {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  padding-left: 60pt;
+  line-height: 1.3;
+  color: #000;
+}
+
+/* ── SEPARATOR LINES ─────────────────────────────────────────────────────── */
+.sep-equals {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 7.5pt;
+  color: #000;
+  white-space: pre;
+  line-height: 1.1;
+  margin: 1pt 0;
+}
+.sep-dashes {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 7.5pt;
+  color: #000;
+  white-space: pre;
+  line-height: 1.1;
+  margin: 1pt 0;
+}
+.sep-rule {
+  border: none;
+  border-top: 0.3pt solid #000;
+  margin: 3pt 0;
+}
+
+/* ── TOTALS ROWS ─────────────────────────────────────────────────────────── */
+.totals-row {
+  display: flex;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  font-weight: bold;
+  margin-top: 2pt;
+}
+
+/* ── SUMMARY / RECAP TABLES ──────────────────────────────────────────────── */
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 9pt;
+  margin-top: 4pt;
+}
+.summary-table td {
+  padding: 1.5pt 4pt;
+  line-height: 1.5;
+}
+.summary-table .lbl { }
+.summary-table .val {
+  text-align: right;
+  font-family: 'Courier New', Courier, monospace;
+}
+.summary-table .bold td { font-weight: bold; }
+
+/* ── FOOTER ──────────────────────────────────────────────────────────────── */
+.ftr {
+  border-top: 0.5pt solid #000;
+  padding-top: 3pt;
+  display: flex;
+  justify-content: space-between;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  margin-top: auto;
+}
+
+/* ── COLUMN WIDTHS (mirror Xactimate column positions) ───────────────────── */
+/*
+  Total usable width ≈ 540pt (letter 612 - 36L - 36R)
+  Columns (right-edges from Xactimate source):
+    NUM   : 0 – 17pt    (item number)
+    CAT   : 17 – 40pt
+    SEL   : 40 – 64pt
+    ACT+DESC: 64 – 240pt
+    CALC+QTY: 0 – 177pt (row 2 only)
+    REMOVE  : ~ 320pt right
+    REPLACE : ~ 384pt right
+    TAX     : ~ 432pt right
+    TOTAL   : ~ 490pt right  (sub invoice, no O&P)
+*/
+.c-num   { width: 20pt;  flex-shrink: 0; text-align: right; font-family: Helvetica, Arial, sans-serif; }
+.c-cat   { width: 26pt;  flex-shrink: 0; font-family: Helvetica, Arial, sans-serif; font-size: 8pt; font-weight: bold; }
+.c-sel   { width: 30pt;  flex-shrink: 0; font-family: Helvetica, Arial, sans-serif; font-size: 8pt; font-weight: bold; }
+.c-act   { width: 14pt;  flex-shrink: 0; text-align: center; }
+.c-desc  { flex: 1;      font-family: Helvetica, Arial, sans-serif; }
+.c-calc  { width: 120pt; flex-shrink: 0; font-family: 'Courier New', Courier, monospace; font-size: 8pt; }
+.c-qty   { width: 60pt;  flex-shrink: 0; text-align: right; font-family: 'Courier New', Courier, monospace; font-size: 8pt; }
+.c-rmv   { width: 60pt;  flex-shrink: 0; text-align: right; font-family: 'Courier New', Courier, monospace; font-size: 8pt; }
+.c-rep   { width: 64pt;  flex-shrink: 0; text-align: right; font-family: 'Courier New', Courier, monospace; font-size: 8pt; }
+.c-tax   { width: 52pt;  flex-shrink: 0; text-align: right; font-family: 'Courier New', Courier, monospace; font-size: 8pt; }
+.c-tot   { width: 60pt;  flex-shrink: 0; text-align: right; font-family: 'Courier New', Courier, monospace; font-size: 8pt; }
+
+/* spacer for row-2 (skip num+cat+sel+act cols = 90pt) */
+.c-row2-spacer { width: 90pt; flex-shrink: 0; }
+
+/* ── SUBCONTRACTOR INFO BLOCK ────────────────────────────────────────────── */
+.sub-block {
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8.5pt;
+  margin: 3pt 0;
+  line-height: 1.4;
+}
+.sub-block .sub-name { font-weight: bold; }
+
+/* ── GRAND TOTAL AREAS TABLE ─────────────────────────────────────────────── */
+.areas-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 8pt;
+  margin-top: 4pt;
+}
+.areas-table td {
+  padding: 1pt 4pt 1pt 0;
+}
+.areas-table .av { text-align: right; font-family: 'Courier New', Courier, monospace; }
+
+/* ── SIGNATURE BLOCK ─────────────────────────────────────────────────────── */
+.sig-block {
+  margin-top: 12pt;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 9pt;
+}
+.sig-name {
+  font-weight: bold;
+  font-size: 11pt;
+  text-align: center;
+  margin-top: 8pt;
+}
+
+/* ── THANK YOU ───────────────────────────────────────────────────────────── */
+.thank-you {
+  text-align: center;
+  font-family: Helvetica, Arial, sans-serif;
+  font-size: 10pt;
+  font-weight: bold;
+  margin-top: 16pt;
+}
+
+/* ── PRINT OVERRIDE ──────────────────────────────────────────────────────── */
+@media print {
+  body { background: #fff; }
+  .invoice-page { min-height: 0; }
+}
+</style>
+</head>
+<body>
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{#  PAGE 1 — COVER / HEADER PAGE                                               #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+<div class="invoice-page">
+
+  {# ── HEADER ─────────────────────────────────────────────────────────────── #}
+  <div class="hdr">
+    <div class="hdr-company-name">{{ sub.name|upper }}{% if sub.ein %} .... EIN {{ sub.ein }}{% endif %}</div>
+    <div class="hdr-line">{{ sub.name|upper }} EIN # {{ sub.ein }}</div>
+    {% if sub.address %}
+    <div class="hdr-line">{{ sub.address|upper }}</div>
+    {% endif %}
+    {% if sub.city %}
+    <div class="hdr-line">{{ sub.city|upper }}, {{ sub.state }} {{ sub.zip_code }}</div>
+    {% endif %}
+    {% if sub.website %}
+    <div class="hdr-line">{{ sub.website|upper }}</div>
+    {% endif %}
+    {% if sub.phone %}
+    <div class="hdr-line">{{ sub.phone }}{% if sub.contact_person %}&nbsp;&nbsp;&nbsp;&nbsp;{{ sub.contact_person|upper }}{% endif %}</div>
+    {% endif %}
+    {% if sub.email %}
+    <div class="hdr-line">{{ sub.email|lower }}</div>
+    {% endif %}
+    {% if sub.certification %}
+    <div class="hdr-line">{{ sub.certification|upper }}</div>
+    {% endif %}
+  </div>
+
+  {# ── COVER BODY — Client / Claim info table ──────────────────────────────── #}
+  <div class="body">
+    <table class="cover-table">
+      <tbody>
+        <tr>
+          <td style="width:50%; vertical-align:top;">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr>
+                <td class="lbl" style="font-size:9pt;">Client:</td>
+                <td class="val" style="font-size:9pt; font-weight:bold;">{{ client.pOwner|upper }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Home:</td>
+                <td class="val">{{ client.phone }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Billing:</td>
+                <td class="val">
+                  {{ client.billingAddress }}<br>
+                  {{ client.billingCity }}, {{ client.billingState }} {{ client.billingZip }}
+                </td>
+              </tr>
+              <tr>
+                <td class="lbl">Home:</td>
+                <td class="val">
+                  {{ client.homeAddress }}<br>
+                  {{ client.homeCity }}, {{ client.homeState }} {{ client.homeZip }}
+                </td>
+              </tr>
+              <tr>
+                <td class="lbl">Property:</td>
+                <td class="val">
+                  {{ client.homeAddress }}<br>
+                  {{ client.homeCity }}, {{ client.homeState }} {{ client.homeZip }}
+                </td>
+              </tr>
+            </table>
+          </td>
+          <td style="width:50%; vertical-align:top; padding-left:12pt;">
+            <table style="width:100%; border-collapse:collapse;">
+              <tr>
+                <td class="lbl">Operator:</td>
+                <td class="val">{{ operator }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Estimator:</td>
+                <td class="val" style="font-weight:bold;">{{ estimator_name }}</td>
+              </tr>
+              <tr>
+                <td class="lbl"></td>
+                <td class="val">Business: {{ estimator_phone }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Company:</td>
+                <td class="val">{{ estimator_company_name }}</td>
+              </tr>
+              <tr>
+                <td class="lbl"></td>
+                <td class="val">E-mail: {{ estimator_email }}</td>
+              </tr>
+              <tr>
+                <td class="lbl"></td>
+                <td class="val">Business: {{ estimator_address }}</td>
+              </tr>
+              <tr><td colspan="2"><br></td></tr>
+              <tr>
+                <td class="lbl">Reference:</td>
+                <td class="val">Business: {{ reference.phone }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Company:</td>
+                <td class="val">{{ reference.company }}</td>
+              </tr>
+              <tr>
+                <td class="lbl"></td>
+                <td class="val">E-mail: {{ reference.email }}</td>
+              </tr>
+              <tr><td colspan="2"><br></td></tr>
+              <tr>
+                <td class="lbl">Type of Estimate:</td>
+                <td class="val">{{ estimate.type_of_estimate }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Date Entered:</td>
+                <td class="val">{{ estimate.date_entered }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Date Assigned:</td>
+                <td class="val"></td>
+              </tr>
+              <tr><td colspan="2"><br></td></tr>
+              <tr>
+                <td class="lbl">Price List:</td>
+                <td class="val">{{ estimate.price_list }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">Labor Efficiency:</td>
+                <td class="val">Restoration/Service/Remodel</td>
+              </tr>
+              <tr><td colspan="2"><br></td></tr>
+              <tr>
+                <td class="lbl">Estimate:</td>
+                <td class="val" style="font-weight:bold;">{{ estimate.estimate_number }}</td>
+              </tr>
+              <tr>
+                <td class="lbl">File Number:</td>
+                <td class="val">#{{ estimate.file_number }}</td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+
+    {# Bid confirmed banner #}
+    <div style="margin-top:18pt; text-align:center; font-family:Helvetica,Arial,sans-serif; font-size:10pt; font-weight:bold; letter-spacing:0.5pt;">
+      {{ bid_confirmed_label|upper }}
+    </div>
+  </div>
+
+  {# ── FOOTER ─────────────────────────────────────────────────────────────── #}
+  <div class="ftr">
+    <span>{{ estimate.estimate_number }}</span>
+    <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: 1</span>
+  </div>
+</div>
+
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{#  PAGE 2+ — LINE ITEMS                                                       #}
+{#  This block loops; in a real multi-page doc you would split line_items      #}
+{#  into page chunks in the view and pass pages=[[items], [items], ...]        #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{% for page_items in line_item_pages %}
+<div class="invoice-page">
+
+  {# ── HEADER (repeated every page) ───────────────────────────────────────── #}
+  <div class="hdr">
+    <div class="hdr-company-name">{{ sub.name|upper }}{% if sub.ein %} .... EIN {{ sub.ein }}{% endif %}</div>
+    <div class="hdr-line">{{ sub.name|upper }} EIN # {{ sub.ein }}</div>
+    {% if sub.address %}<div class="hdr-line">{{ sub.address|upper }}</div>{% endif %}
+    {% if sub.city %}<div class="hdr-line">{{ sub.city|upper }}, {{ sub.state }} {{ sub.zip_code }}</div>{% endif %}
+    {% if sub.website %}<div class="hdr-line">{{ sub.website|upper }}</div>{% endif %}
+    {% if sub.phone %}<div class="hdr-line">{{ sub.phone }}{% if sub.contact_person %}&nbsp;&nbsp;&nbsp;&nbsp;{{ sub.contact_person|upper }}{% endif %}</div>{% endif %}
+    {% if sub.email %}<div class="hdr-line">{{ sub.email|lower }}</div>{% endif %}
+    {% if sub.certification %}<div class="hdr-line">{{ sub.certification|upper }}</div>{% endif %}
+  </div>
+
+  <div class="body">
+
+    {# ── Estimate number / date / page ─────────────────────────────────────── #}
+    <div style="font-family:Helvetica,Arial,sans-serif; font-size:8.5pt; display:flex; justify-content:space-between; margin-bottom:4pt;">
+      <span style="font-weight:bold;">{{ estimate.estimate_number }}</span>
+      <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ forloop.counter|add:1 }}</span>
+    </div>
+
+    {# ── Estimate / CON reference ──────────────────────────────────────────── #}
+    <div style="font-family:Helvetica,Arial,sans-serif; font-size:8.5pt; font-weight:bold; margin-bottom:2pt;">
+      {{ estimate.estimate_number|upper }}-CON
+    </div>
+
+    {# ── Section heading ───────────────────────────────────────────────────── #}
+    {% if forloop.first %}
+    <div class="section-heading">{{ section_label }}</div>
+    {% else %}
+    <div class="section-heading">CONTINUED - {{ section_label }}</div>
+    {% endif %}
+
+    {# ── Sub-section / room label (if present) ────────────────────────────── #}
+    {% if page_items.room_label %}
+    <div class="section-heading" style="font-size:8.5pt; margin-top:2pt;">{{ page_items.room_label }}</div>
+    {% endif %}
+
+    {# ── Column header ─────────────────────────────────────────────────────── #}
+    <div class="col-hdr">
+      <div class="col-hdr-row1">
+        <span class="c-num"></span>
+        <span class="c-cat" style="font-weight:normal; font-size:8.5pt;">CAT</span>
+        <span class="c-sel" style="font-weight:normal; font-size:8.5pt;">SEL</span>
+        <span class="c-act" style="font-weight:normal; font-size:8.5pt;">ACT</span>
+        <span class="c-desc" style="font-size:8.5pt;">DESCRIPTION</span>
+        <span class="c-rmv" style="font-size:8.5pt; font-weight:normal;"></span>
+        <span class="c-rep" style="font-size:8.5pt; font-weight:normal;"></span>
+        <span class="c-tax" style="font-size:8.5pt; font-weight:normal;"></span>
+        <span class="c-tot" style="font-size:8.5pt; font-weight:normal;"></span>
+      </div>
+      <div class="col-hdr-row2">
+        <span class="c-row2-spacer"></span>
+        <span class="c-calc" style="font-size:8.5pt; font-weight:normal;">CALC</span>
+        <span class="c-qty"  style="font-size:8.5pt; font-weight:normal;">QTY</span>
+        <span class="c-rmv"  style="font-size:8.5pt; font-weight:normal;">REMOVE</span>
+        <span class="c-rep"  style="font-size:8.5pt; font-weight:normal;">REPLACE</span>
+        <span class="c-tax"  style="font-size:8.5pt; font-weight:normal;">TAX</span>
+        <span class="c-tot"  style="font-size:8.5pt; font-weight:normal;">TOTAL</span>
+      </div>
+    </div>
+
+    {# ── Line items ────────────────────────────────────────────────────────── #}
+    {% for li in page_items.items %}
+
+      {% if li.is_separator_eq %}
+      <div class="sep-equals">{{ li.text }}</div>
+      {% elif li.is_separator_dash %}
+      <div class="sep-dashes">{{ li.text }}</div>
+      {% elif li.is_note_only %}
+      <div class="li-notes">{{ li.text }}</div>
+      {% elif li.is_sub_block %}
+      {# sub contractor info block #}
+      <div class="sub-block">
+        <div class="sep-equals">{% spaceless %}{% for i in "123456789012345678901234567890123456789012345678901234567890123456789" %}={% endfor %}{% endspaceless %}</div>
+        <div>.............. SUBCONTRACTOR ..................</div>
+        <div class="sep-equals">{% spaceless %}{% for i in "12345678901234567890123456789012345678901234567890123456789012345678901234567890123456789" %}={% endfor %}{% endspaceless %}</div>
+        <div class="sub-name">{{ li.sub_name|upper }}&nbsp;&nbsp;EIN # {{ li.sub_ein }}</div>
+        {% if li.sub_address %}<div>{{ li.sub_address }}</div>{% endif %}
+        {% if li.sub_city %}<div>{{ li.sub_city }}, {{ li.sub_state }} {{ li.sub_zip }}</div>{% endif %}
+        {% if li.sub_phone %}<div>{{ li.sub_phone }}{% if li.sub_contact %}&nbsp;&nbsp;{{ li.sub_contact|upper }}{% endif %}</div>{% endif %}
+        {% if li.sub_email %}<div>{{ li.sub_email }}</div>{% endif %}
+        {% if li.sub_cert %}<div>{{ li.sub_cert }}</div>{% endif %}
+        {% if li.sub_tagline %}<div style="font-style:italic;">"{{ li.sub_tagline }}"</div>{% endif %}
+        <div class="sep-equals">{% spaceless %}{% for i in "123456789012345678901234567890123456789012345678901234567890123456789" %}={% endfor %}{% endspaceless %}</div>
+      </div>
+      {% else %}
+      {# ── Standard line item ─────────────────────────────────────────────── #}
+      <div class="li-row1">
+        <span class="c-num">{{ li.num }}.</span>
+        <span class="c-cat">{{ li.cat }}</span>
+        <span class="c-sel">{{ li.sel }}</span>
+        <span class="c-act">{% if li.is_bid_item %}[*]{% else %}+{% endif %}</span>
+        <span class="c-desc">{{ li.description }}</span>
+        {% if not li.is_memo %}
+        <span class="c-rmv"></span>
+        <span class="c-rep"></span>
+        <span class="c-tax"></span>
+        <span class="c-tot"></span>
+        {% endif %}
+      </div>
+      <div class="li-row2">
+        <span class="c-row2-spacer"></span>
+        <span class="c-calc">{{ li.calc }}</span>
+        <span class="c-qty">{% if not li.is_memo %}{{ li.qty }} {{ li.unit }}{% endif %}</span>
+        <span class="c-rmv">{% if not li.is_memo %}{{ li.remove }}{% else %}0.00{% endif %}</span>
+        <span class="c-rep">{% if not li.is_memo %}{{ li.replace }}{% else %}0.00{% endif %}</span>
+        <span class="c-tax">{% if not li.is_memo %}{{ li.tax }}{% else %}0.00{% endif %}</span>
+        <span class="c-tot">{% if not li.is_memo %}{{ li.total }}{% else %}0.00{% endif %}</span>
+      </div>
+      {% for note in li.notes %}
+      <div class="li-notes">&nbsp;&nbsp;{{ note }}</div>
+      {% endfor %}
+      {% endif %}
+
+    {% endfor %}
+
+    {# ── Section / Room totals ─────────────────────────────────────────────── #}
+    {% if page_items.show_totals %}
+    <hr class="sep-rule">
+    {% for t in page_items.totals_rows %}
+    <div class="totals-row" style="font-weight:{% if t.bold %}bold{% else %}normal{% endif %};">
+      <span style="flex:1;">{{ t.label }}</span>
+      <span class="c-rmv">{{ t.remove }}</span>
+      <span class="c-rep">{{ t.replace }}</span>
+      <span class="c-tax">{{ t.tax }}</span>
+      <span class="c-tot">{{ t.total }}</span>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+  </div>{# /body #}
+
+  {# ── FOOTER ─────────────────────────────────────────────────────────────── #}
+  <div class="ftr">
+    <span>{{ estimate.estimate_number }}</span>
+    <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ forloop.counter|add:1 }}</span>
+  </div>
+
+</div>{# /invoice-page #}
+{% endfor %}
+
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{#  SUMMARY PAGE                                                                #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+<div class="invoice-page">
+  <div class="hdr">
+    <div class="hdr-company-name">{{ sub.name|upper }}{% if sub.ein %} .... EIN {{ sub.ein }}{% endif %}</div>
+    <div class="hdr-line">{{ sub.name|upper }} EIN # {{ sub.ein }}</div>
+    {% if sub.address %}<div class="hdr-line">{{ sub.address|upper }}</div>{% endif %}
+    {% if sub.city %}<div class="hdr-line">{{ sub.city|upper }}, {{ sub.state }} {{ sub.zip_code }}</div>{% endif %}
+    {% if sub.website %}<div class="hdr-line">{{ sub.website|upper }}</div>{% endif %}
+    {% if sub.phone %}<div class="hdr-line">{{ sub.phone }}{% if sub.contact_person %}&nbsp;&nbsp;&nbsp;&nbsp;{{ sub.contact_person|upper }}{% endif %}</div>{% endif %}
+    {% if sub.email %}<div class="hdr-line">{{ sub.email|lower }}</div>{% endif %}
+    {% if sub.certification %}<div class="hdr-line">{{ sub.certification|upper }}</div>{% endif %}
+  </div>
+
+  <div class="body">
+    <div style="font-family:Helvetica,Arial,sans-serif; font-size:8.5pt; display:flex; justify-content:space-between; margin-bottom:4pt;">
+      <span style="font-weight:bold;">{{ estimate.estimate_number }}</span>
+      <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ summary_page_num }}</span>
+    </div>
+
+    <div style="margin-top:8pt;">
+      <table class="summary-table">
+        <tbody>
+          {% for row in summary_rows %}
+          <tr class="{% if row.bold %}bold{% endif %}">
+            <td class="lbl">{{ row.label }}</td>
+            <td class="val">${{ row.value }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+
+    {# Estimator signature #}
+    <div class="sig-name">{{ estimator_name|upper }}</div>
+  </div>
+
+  <div class="ftr">
+    <span></span>
+    <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ summary_page_num }}</span>
+  </div>
+</div>
+
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{#  RECAP OF TAXES PAGE                                                         #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+<div class="invoice-page">
+  <div class="hdr">
+    <div class="hdr-company-name">{{ sub.name|upper }}{% if sub.ein %} .... EIN {{ sub.ein }}{% endif %}</div>
+    <div class="hdr-line">{{ sub.name|upper }} EIN # {{ sub.ein }}</div>
+    {% if sub.address %}<div class="hdr-line">{{ sub.address|upper }}</div>{% endif %}
+    {% if sub.city %}<div class="hdr-line">{{ sub.city|upper }}, {{ sub.state }} {{ sub.zip_code }}</div>{% endif %}
+    {% if sub.website %}<div class="hdr-line">{{ sub.website|upper }}</div>{% endif %}
+    {% if sub.phone %}<div class="hdr-line">{{ sub.phone }}{% if sub.contact_person %}&nbsp;&nbsp;&nbsp;&nbsp;{{ sub.contact_person|upper }}{% endif %}</div>{% endif %}
+    {% if sub.email %}<div class="hdr-line">{{ sub.email|lower }}</div>{% endif %}
+    {% if sub.certification %}<div class="hdr-line">{{ sub.certification|upper }}</div>{% endif %}
+  </div>
+
+  <div class="body">
+    <div style="font-family:Helvetica,Arial,sans-serif; font-size:8.5pt; display:flex; justify-content:space-between; margin-bottom:4pt;">
+      <span style="font-weight:bold;">{{ estimate.estimate_number }}</span>
+      <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ recap_tax_page_num }}</span>
+    </div>
+
+    <div class="section-heading" style="margin-bottom:8pt;">Recap of Taxes</div>
+
+    <table style="width:100%; border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; font-size:9pt;">
+      <thead>
+        <tr style="font-weight:bold; border-bottom:0.5pt solid #000;">
+          <td style="padding:2pt 4pt;"></td>
+          <td style="padding:2pt 4pt; text-align:right;">Total Tax ({{ estimate.tax_rate }}%)</td>
+        </tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td style="padding:2pt 4pt;">Line Items</td>
+          <td style="padding:2pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ section_totals.tax }}</td>
+        </tr>
+        <tr style="font-weight:bold; border-top:0.5pt solid #000;">
+          <td style="padding:2pt 4pt;">Total</td>
+          <td style="padding:2pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ section_totals.tax }}</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ftr">
+    <span></span>
+    <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ recap_tax_page_num }}</span>
+  </div>
+</div>
+
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{#  RECAP BY ROOM PAGE                                                          #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+<div class="invoice-page">
+  <div class="hdr">
+    <div class="hdr-company-name">{{ sub.name|upper }}{% if sub.ein %} .... EIN {{ sub.ein }}{% endif %}</div>
+    <div class="hdr-line">{{ sub.name|upper }} EIN # {{ sub.ein }}</div>
+    {% if sub.address %}<div class="hdr-line">{{ sub.address|upper }}</div>{% endif %}
+    {% if sub.city %}<div class="hdr-line">{{ sub.city|upper }}, {{ sub.state }} {{ sub.zip_code }}</div>{% endif %}
+    {% if sub.website %}<div class="hdr-line">{{ sub.website|upper }}</div>{% endif %}
+    {% if sub.phone %}<div class="hdr-line">{{ sub.phone }}{% if sub.contact_person %}&nbsp;&nbsp;&nbsp;&nbsp;{{ sub.contact_person|upper }}{% endif %}</div>{% endif %}
+    {% if sub.email %}<div class="hdr-line">{{ sub.email|lower }}</div>{% endif %}
+    {% if sub.certification %}<div class="hdr-line">{{ sub.certification|upper }}</div>{% endif %}
+  </div>
+
+  <div class="body">
+    <div style="font-family:Helvetica,Arial,sans-serif; font-size:8.5pt; display:flex; justify-content:space-between; margin-bottom:4pt;">
+      <span style="font-weight:bold;">{{ estimate.estimate_number }}</span>
+      <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ recap_room_page_num }}</span>
+    </div>
+
+    <div class="section-heading" style="margin-bottom:8pt;">Recap by Room</div>
+
+    <table style="width:100%; border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; font-size:9pt;">
+      <tbody>
+        <tr>
+          <td colspan="3" style="padding:1pt 4pt; font-weight:bold;">Estimate: {{ estimate.estimate_number }}</td>
+        </tr>
+        {% for r in recap_by_room %}
+        <tr>
+          <td style="padding:1pt 4pt 1pt {% if r.indent %}16pt{% else %}4pt{% endif %};">{{ r.label }}</td>
+          <td style="padding:1pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ r.value }}</td>
+          <td style="padding:1pt 4pt; text-align:right; width:60pt;">{{ r.pct }}%</td>
+        </tr>
+        {% endfor %}
+        <tr style="font-weight:bold; border-top:0.5pt solid #000;">
+          <td style="padding:2pt 4pt;">Total</td>
+          <td style="padding:2pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ section_totals.line_item_total }}</td>
+          <td style="padding:2pt 4pt; text-align:right;">100.00%</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="ftr">
+    <span></span>
+    <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ recap_room_page_num }}</span>
+  </div>
+</div>
+
+
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+{#  RECAP BY CATEGORY PAGE                                                      #}
+{# ═══════════════════════════════════════════════════════════════════════════ #}
+<div class="invoice-page">
+  <div class="hdr">
+    <div class="hdr-company-name">{{ sub.name|upper }}{% if sub.ein %} .... EIN {{ sub.ein }}{% endif %}</div>
+    <div class="hdr-line">{{ sub.name|upper }} EIN # {{ sub.ein }}</div>
+    {% if sub.address %}<div class="hdr-line">{{ sub.address|upper }}</div>{% endif %}
+    {% if sub.city %}<div class="hdr-line">{{ sub.city|upper }}, {{ sub.state }} {{ sub.zip_code }}</div>{% endif %}
+    {% if sub.website %}<div class="hdr-line">{{ sub.website|upper }}</div>{% endif %}
+    {% if sub.phone %}<div class="hdr-line">{{ sub.phone }}{% if sub.contact_person %}&nbsp;&nbsp;&nbsp;&nbsp;{{ sub.contact_person|upper }}{% endif %}</div>{% endif %}
+    {% if sub.email %}<div class="hdr-line">{{ sub.email|lower }}</div>{% endif %}
+    {% if sub.certification %}<div class="hdr-line">{{ sub.certification|upper }}</div>{% endif %}
+  </div>
+
+  <div class="body">
+    <div style="font-family:Helvetica,Arial,sans-serif; font-size:8.5pt; display:flex; justify-content:space-between; margin-bottom:4pt;">
+      <span style="font-weight:bold;">{{ estimate.estimate_number }}</span>
+      <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ recap_cat_page_num }}</span>
+    </div>
+
+    <div class="section-heading" style="margin-bottom:8pt;">Recap by Category</div>
+
+    <table style="width:100%; border-collapse:collapse; font-family:Helvetica,Arial,sans-serif; font-size:9pt;">
+      <thead>
+        <tr style="font-weight:bold; border-bottom:0.5pt solid #000;">
+          <td style="padding:2pt 4pt;">Items</td>
+          <td style="padding:2pt 4pt; text-align:right;">Total</td>
+          <td style="padding:2pt 4pt; text-align:right; width:60pt;">%</td>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in recap_by_cat %}
+        <tr>
+          <td style="padding:1pt 4pt;">{{ c.label }}</td>
+          <td style="padding:1pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ c.value }}</td>
+          <td style="padding:1pt 4pt; text-align:right;">{{ c.pct }}%</td>
+        </tr>
+        {% endfor %}
+        <tr><td colspan="3"><br></td></tr>
+        <tr>
+          <td style="padding:1pt 4pt;">Subtotal</td>
+          <td style="padding:1pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ section_totals.line_item_total }}</td>
+          <td style="padding:1pt 4pt; text-align:right;">{{ recap_subtotal_pct }}%</td>
+        </tr>
+        <tr>
+          <td style="padding:1pt 4pt;">Total Tax</td>
+          <td style="padding:1pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ section_totals.tax }}</td>
+          <td style="padding:1pt 4pt; text-align:right;">{{ recap_tax_pct }}%</td>
+        </tr>
+        <tr style="font-weight:bold; border-top:0.5pt solid #000;">
+          <td style="padding:2pt 4pt;">Total</td>
+          <td style="padding:2pt 4pt; text-align:right; font-family:'Courier New',Courier,monospace;">{{ section_totals.rcv }}</td>
+          <td style="padding:2pt 4pt; text-align:right;">100.00%</td>
+        </tr>
+      </tbody>
+    </table>
+
+    <div class="thank-you">THANK YOU</div>
+  </div>
+
+  <div class="ftr">
+    <span></span>
+    <span>{{ today_str }}&nbsp;&nbsp;&nbsp;&nbsp;Page: {{ recap_cat_page_num }}</span>
+  </div>
+</div>
+
+</body>
+</html>

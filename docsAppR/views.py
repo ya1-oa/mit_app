@@ -764,7 +764,7 @@ def calculate_polygon_area(coordinates):
 
 
 from .forms import UploadClientForm
-
+from contractor_hub.models import Contractor
 @login_required
 def create(request):
     if request.method == "POST":
@@ -772,11 +772,15 @@ def create(request):
             return handle_excel_import(request)
         else:
             form = UploadClientForm(request.POST)
+            contractors = Contractor.objects.filter(is_active=True).order_by('name')
             if form.is_valid():
                 form.save()
                 messages.success(request, 'Client created successfully!')
                 return redirect('dashboard')
-            return render(request, 'account/create.html', {'form': form})
+            return render(request, 'account/create.html', {
+                'form': form,
+                'contractors': contractors,
+                })
     
     form = UploadClientForm()
     return render(request, 'account/create.html', {'form': form})

@@ -173,6 +173,13 @@ class Client(models.Model):
     drawRequest = models.CharField(max_length=255, blank=True)
 
     #Contractor
+    contractor = models.ForeignKey(
+        'contractor_hub.Contractor',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='claims'
+    )
+    
     coName = models.CharField(max_length=255, blank=True)
     coWebsite = models.CharField(max_length=255, blank=True)
     coEmailstatus = models.CharField(max_length=255, blank=True)
