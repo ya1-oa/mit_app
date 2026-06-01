@@ -47,33 +47,53 @@
                     <div class="mb-3">
                         <label class="form-label fw-semibold">
                             To <span class="text-danger">*</span>
-                            <small class="text-muted fw-normal ms-1">
-                                (RE company and broker pre-selected — click contacts to add/remove)
-                            </small>
+                            <small class="text-muted fw-normal ms-1">— click × to remove, type + Enter to add</small>
                         </label>
-                        <input type="text" id="toField" name="to" class="form-control"
-                               value="{{ to_contacts|join:', ' }}"
-                               placeholder="recipient@example.com, another@example.com">
-                        <div id="toTags" class="d-flex flex-wrap gap-1 mt-1"></div>
+                        <!-- Hidden field submitted with form -->
+                        <input type="hidden" id="toHidden" name="to">
+                        <div class="tag-input-box" id="toBox" onclick="focusTagInput('to')">
+                            <div class="tag-list" id="toTagList"></div>
+                            <input type="text" class="tag-text-input" id="toInput"
+                                   placeholder="Type email, press Enter or comma…"
+                                   autocomplete="off"
+                                   onkeydown="tagKeydown(event,'to')"
+                                   onblur="commitTagInput('to')">
+                        </div>
+                        <div id="toError" class="text-danger mt-1" style="font-size:12px; display:none;">
+                            Please add at least one recipient.
+                        </div>
                     </div>
 
                     <!-- ── CC ──────────────────────────────────────────── -->
                     <div class="mb-3">
                         <label class="form-label fw-semibold">
                             CC
-                            <small class="text-muted fw-normal ms-1">(lessor, lessee, owner pre-filled)</small>
+                            <small class="text-muted fw-normal ms-1">— click × to remove</small>
                         </label>
-                        <input type="text" id="ccField" name="cc" class="form-control"
-                               value="{{ cc_contacts|join:', ' }}"
-                               placeholder="cc@example.com">
+                        <input type="hidden" id="ccHidden" name="cc">
+                        <div class="tag-input-box" id="ccBox" onclick="focusTagInput('cc')">
+                            <div class="tag-list" id="ccTagList"></div>
+                            <input type="text" class="tag-text-input" id="ccInput"
+                                   placeholder="Type email, press Enter or comma…"
+                                   autocomplete="off"
+                                   onkeydown="tagKeydown(event,'cc')"
+                                   onblur="commitTagInput('cc')">
+                        </div>
                     </div>
 
                     <!-- ── BCC ─────────────────────────────────────────── -->
                     <details class="mb-3">
                         <summary class="text-muted" style="cursor:pointer; font-size:13px;">+ Add BCC</summary>
                         <div class="mt-2">
-                            <input type="text" name="bcc" class="form-control"
-                                   placeholder="bcc@example.com">
+                            <input type="hidden" id="bccHidden" name="bcc">
+                            <div class="tag-input-box" id="bccBox" onclick="focusTagInput('bcc')">
+                                <div class="tag-list" id="bccTagList"></div>
+                                <input type="text" class="tag-text-input" id="bccInput"
+                                       placeholder="Type email, press Enter or comma…"
+                                       autocomplete="off"
+                                       onkeydown="tagKeydown(event,'bcc')"
+                                       onblur="commitTagInput('bcc')">
+                            </div>
                         </div>
                     </details>
 
@@ -233,62 +253,186 @@
 
 <style>
 .btn-xs { padding: 2px 8px; font-size: 11px; }
+
+/* Tag input box — looks like a form-control, holds tags + inline text input */
+.tag-input-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-height: 40px;
+    padding: 5px 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    background: #fff;
+    cursor: text;
+    transition: border-color .15s, box-shadow .15s;
+}
+.tag-input-box:focus-within {
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 .25rem rgba(13,110,253,.25);
+    outline: 0;
+}
+.tag-list {
+    display: contents; /* tags flow inline with the text input */
+}
+.email-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #e7f0ff;
+    color: #1e40af;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 2px 8px 2px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+    max-width: 260px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.email-tag .tag-remove {
+    background: none;
+    border: none;
+    padding: 0;
+    margin: 0;
+    line-height: 1;
+    cursor: pointer;
+    color: #6b7280;
+    font-size: 14px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+}
+.email-tag .tag-remove:hover { color: #dc2626; }
+.tag-text-input {
+    border: none;
+    outline: none;
+    flex: 1;
+    min-width: 180px;
+    font-size: 13px;
+    padding: 2px 0;
+    background: transparent;
+}
 </style>
 
 <script>
-// ── Schedule toggle ───────────────────────────────────────────────────────
-function toggleSchedule(cb) {
-    const fields = document.getElementById('scheduleFields');
-    fields.style.display = cb.checked ? 'block' : 'none';
-    document.getElementById('sendBtn').textContent = cb.checked
-        ? '📅 Schedule Send'
-        : '✉️ Send Package';
+// ── Tag input engine ──────────────────────────────────────────────────────
+// Each "field" ('to', 'cc', 'bcc') has:
+//   - #<field>TagList   — div holding rendered tags
+//   - #<field>Input     — the inline text input users type into
+//   - #<field>Hidden    — the hidden <input name="<field>"> sent with the form
+
+const _tags = { to: [], cc: [], bcc: [] };
+
+function _getTags(field)          { return _tags[field]; }
+function _setTags(field, arr)     { _tags[field] = arr; _syncHidden(field); _renderTags(field); }
+
+function _syncHidden(field) {
+    const h = document.getElementById(field + 'Hidden');
+    if (h) h.value = _tags[field].join(', ');
 }
 
-// ── Add email to field ────────────────────────────────────────────────────
-function addToField(fieldId, email) {
-    const field = document.getElementById(fieldId + 'Field');
-    const current = field.value.split(',').map(e => e.trim()).filter(Boolean);
-    if (!current.includes(email)) {
-        current.push(email);
-        field.value = current.join(', ');
-        renderTags(fieldId, current);
-    }
-}
-
-function renderTags(fieldId, emails) {
-    const container = document.getElementById(fieldId + 'Tags');
-    if (!container) return;
-    container.innerHTML = emails.map(e =>
-        `<span class="badge bg-light text-dark border" style="font-size:11px; cursor:default;">
-            ${e}
-            <button type="button" class="btn-close" style="font-size:8px; margin-left:4px;"
-                    onclick="removeEmail('${fieldId}', '${e}')"></button>
+function _renderTags(field) {
+    const list = document.getElementById(field + 'TagList');
+    if (!list) return;
+    list.innerHTML = _tags[field].map(email =>
+        `<span class="email-tag" title="${email}">
+            <span style="max-width:200px;overflow:hidden;text-overflow:ellipsis;">${email}</span>
+            <button type="button" class="tag-remove" onclick="removeTag('${field}','${email}')" title="Remove">×</button>
          </span>`
     ).join('');
 }
 
-function removeEmail(fieldId, email) {
-    const field = document.getElementById(fieldId + 'Field');
-    const current = field.value.split(',').map(e => e.trim()).filter(e => e && e !== email);
-    field.value = current.join(', ');
-    renderTags(fieldId, current);
+function addTag(field, raw) {
+    const emails = raw.split(/[\s,;]+/).map(e => e.trim().toLowerCase()).filter(e => e.includes('@'));
+    let changed = false;
+    emails.forEach(email => {
+        if (!_tags[field].includes(email)) {
+            _tags[field].push(email);
+            changed = true;
+        }
+    });
+    if (changed) _setTags(field, _tags[field]);
 }
 
-// Init tags on load
-(function() {
-    const toField = document.getElementById('toField');
-    if (toField && toField.value) {
-        const emails = toField.value.split(',').map(e => e.trim()).filter(Boolean);
-        renderTags('to', emails);
+function removeTag(field, email) {
+    _setTags(field, _tags[field].filter(e => e !== email));
+}
+
+function focusTagInput(field) {
+    document.getElementById(field + 'Input')?.focus();
+}
+
+function tagKeydown(e, field) {
+    const input = e.target;
+    if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        const val = input.value.trim();
+        if (val) { addTag(field, val); input.value = ''; }
+    } else if (e.key === 'Backspace' && !input.value && _tags[field].length) {
+        // Delete last tag on Backspace when input is empty
+        const last = _tags[field][_tags[field].length - 1];
+        removeTag(field, last);
     }
+}
+
+function commitTagInput(field) {
+    // Add whatever is in the text box when user leaves the field
+    const input = document.getElementById(field + 'Input');
+    if (!input) return;
+    const val = input.value.trim();
+    if (val) { addTag(field, val); input.value = ''; }
+}
+
+// Click on a contact row button → add to field
+function addToField(field, email) {
+    addTag(field, email);
+    focusTagInput(field);
+}
+
+// ── Initialise from server-rendered values ────────────────────────────────
+(function init() {
+    // To: RE company + broker emails
+    const toInit = [
+        {% for c in to_contacts %}'{{ c.email }}',{% endfor %}
+    ].filter(Boolean);
+
+    // CC: lessor, lessee, owner emails
+    const ccInit = [
+        {% for c in cc_contacts %}'{{ c.email }}',{% endfor %}
+    ].filter(Boolean);
+
+    _setTags('to', toInit);
+    _setTags('cc', ccInit);
 })();
 
-// Send button loading state
-document.getElementById('sendPackageForm').addEventListener('submit', function() {
+// ── Schedule toggle ───────────────────────────────────────────────────────
+function toggleSchedule(cb) {
+    document.getElementById('scheduleFields').style.display = cb.checked ? 'block' : 'none';
+    const btn = document.getElementById('sendBtn');
+    btn.innerHTML = cb.checked
+        ? '<i class="fas fa-clock me-1"></i> Schedule Send'
+        : '<i class="fas fa-paper-plane me-1"></i> Send Package';
+}
+
+// ── Form submit guard ─────────────────────────────────────────────────────
+document.getElementById('sendPackageForm').addEventListener('submit', function(e) {
+    // Flush any pending text input
+    ['to', 'cc', 'bcc'].forEach(commitTagInput);
+
+    if (!_tags.to.length) {
+        e.preventDefault();
+        document.getElementById('toError').style.display = 'block';
+        focusTagInput('to');
+        return;
+    }
+    document.getElementById('toError').style.display = 'none';
+
     const btn = document.getElementById('sendBtn');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending...';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Sending…';
 });
 </script>
 
