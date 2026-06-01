@@ -993,6 +993,10 @@ class EmailSchedule(models.Model):
     notify_on_open = models.BooleanField(default=True)
     admin_notification_email = models.EmailField()
 
+    # Tracking — required to avoid re-sending on every Beat poll
+    last_sent  = models.DateTimeField(null=True, blank=True)
+    send_count = models.IntegerField(default=0)
+
     def __str__(self):
         return self.name
 
@@ -1036,6 +1040,20 @@ class SentEmail(models.Model):
     notify_on_open = models.BooleanField(default=False)
     admin_notification_email = models.EmailField(null=True, blank=True)
 
+    # Extended recipients
+    cc  = models.JSONField(default=list, blank=True)
+    bcc = models.JSONField(default=list, blank=True)
+
+    # Optional claim link (for claim-linked recipient selection)
+    claim = models.ForeignKey('Client', on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name='sent_emails')
+
+    # New attachment types
+    generated_files      = models.ManyToManyField('GeneratedFile', blank=True,
+                                                   related_name='sent_in_emails')
+    uploaded_attachments = models.ManyToManyField('UploadedAttachment', blank=True,
+                                                   related_name='sent_in_emails')
+
     class Meta:
         ordering = ['-sent_at']
 
@@ -1048,9 +1066,121 @@ class EmailOpenEvent(models.Model):
     opened_at = models.DateTimeField(auto_now_add=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
-    
+
     class Meta:
         ordering = ['-opened_at']
+
+
+# ==================== Email Attachment Models ====================
+
+class GeneratedFile(models.Model):
+    """App-generated files (PDFs, Excel, invoices) available to attach to outbound emails."""
+    CATEGORY_CHOICES = [
+        ('pdf',     'PDF Report'),
+        ('excel',   'Excel Spreadsheet'),
+        ('invoice', 'Invoice'),
+        ('other',   'Other'),
+    ]
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name       = models.CharField(max_length=255)
+    file_path  = models.CharField(max_length=1000, help_text='Absolute server path to the file')
+    mime_type  = models.CharField(max_length=100, default='application/octet-stream')
+    category   = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
+    client     = models.ForeignKey('Client', on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='generated_files')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                   null=True, blank=True, related_name='generated_files')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+
+class UploadedAttachment(models.Model):
+    """User-uploaded files attached to outbound emails."""
+    id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file          = models.FileField(upload_to='email_attachments/%Y/%m/')
+    original_name = models.CharField(max_length=255)
+    mime_type     = models.CharField(max_length=100, default='application/octet-stream')
+    size          = models.PositiveIntegerField(default=0, help_text='File size in bytes')
+    uploaded_by   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                      null=True, related_name='uploaded_attachments')
+    uploaded_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return self.original_name
+
+
+# ==================== Email Campaign Model ====================
+
+class EmailCampaign(models.Model):
+    STATUS_CHOICES = [
+        ('draft',     'Draft'),
+        ('scheduled', 'Scheduled'),
+        ('running',   'Running'),
+        ('complete',  'Complete'),
+        ('cancelled', 'Cancelled'),
+    ]
+    UNIT_CHOICES = [
+        ('hours', 'Hours'),
+        ('days',  'Days'),
+        ('weeks', 'Weeks'),
+    ]
+
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name           = models.CharField(max_length=255)
+
+    # Campaign template — copied to each SentEmail on dispatch
+    subject        = models.CharField(max_length=255)
+    body           = models.TextField()
+    recipients     = models.JSONField(default=list)
+    cc             = models.JSONField(default=list, blank=True)
+    bcc            = models.JSONField(default=list, blank=True)
+
+    # Cadence
+    total_sends    = models.PositiveIntegerField()
+    interval_value = models.PositiveIntegerField()
+    interval_unit  = models.CharField(max_length=10, choices=UNIT_CHOICES, default='days')
+    start_at       = models.DateTimeField()
+
+    # State
+    status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    sends_completed = models.PositiveIntegerField(default=0)
+
+    # FK to each sent instance (populated as tasks fire)
+    sent_emails    = models.ManyToManyField('SentEmail', blank=True, related_name='campaigns')
+
+    # Celery task IDs so we can revoke on cancellation
+    beat_task_ids  = models.JSONField(default=list, blank=True)
+
+    created_by     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.status})'
+
+    def interval_as_timedelta(self):
+        from datetime import timedelta
+        if self.interval_unit == 'hours':
+            return timedelta(hours=self.interval_value)
+        elif self.interval_unit == 'weeks':
+            return timedelta(weeks=self.interval_value)
+        return timedelta(days=self.interval_value)
+
+    def compute_send_datetimes(self):
+        """Return list of N datetimes, one per scheduled send."""
+        delta = self.interval_as_timedelta()
+        return [self.start_at + delta * i for i in range(self.total_sends)]
 
 
 # ==================== Server-Based File Management Models ====================

@@ -248,11 +248,16 @@ from celery.schedules import crontab
 CELERY_BEAT_SCHEDULE = {
     'renew-onedrive-subscriptions': {
         'task': 'docsAppR.tasks.renew_subscriptions_task',
-        'schedule': crontab(minute='*/15'),  # Every 15 minutes
+        'schedule': crontab(minute='*/15'),
     },
     'check-delta-sync': {
         'task': 'docsAppR.tasks.check_all_folders_for_changes',
-        'schedule': crontab(minute='*/5'),  # Every 5 minutes (fallback)
+        'schedule': crontab(minute='*/5'),
+    },
+    # ── Email scheduling (was completely missing — root cause of scheduling bug)
+    'process-scheduled-emails': {
+        'task': 'email_manager.tasks.send_scheduled_emails_task',
+        'schedule': crontab(minute='*'),  # poll every minute
     },
 }
 
