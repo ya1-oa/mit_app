@@ -763,6 +763,17 @@
                                     <button class="btn btn-sm btn-outline-secondary" onclick="openNotesModal('{{ lease.id }}')">
                                         <i class="fas fa-sticky-note"></i> Add Note
                                     </button>
+                                    <!-- ALE import button -->
+                                    <button class="btn btn-sm btn-outline-warning"
+                                            title="Re-import ALE data from claim"
+                                            onclick="importALE('{{ lease.id }}', this)">
+                                        <i class="fas fa-sync-alt"></i> Sync ALE
+                                    </button>
+                                    <!-- Send package button -->
+                                    <a href="/lease-manager/lease/{{ lease.id }}/send-package/"
+                                       class="btn btn-sm btn-success">
+                                        <i class="fas fa-envelope"></i> Send Package
+                                    </a>
                                 </div>
 
                                 {% if lease.notes %}
@@ -1152,5 +1163,53 @@
             }
         });
     });
+
+    // ── ALE Import ────────────────────────────────────────────────────────
+    async function importALE(leaseId, btn) {
+        const overwrite = confirm(
+            'Re-import ALE data from the claim?\n\n' +
+            'Blank fields will be filled automatically.\n' +
+            'Click OK to also overwrite existing values, Cancel to only fill blanks.'
+        );
+        const url = `/lease-manager/api/lease/${leaseId}/ale-import/` +
+                    (overwrite ? '?overwrite=1' : '');
+        btn.disabled = true;
+        const orig = btn.innerHTML;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+        try {
+            const resp = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': '{{ csrf_token }}',
+                    'Content-Type': 'application/json',
+                },
+            });
+            const data = await resp.json();
+            if (data.success) {
+                btn.innerHTML = '<i class="fas fa-check text-success"></i>';
+                setTimeout(() => {
+                    btn.innerHTML = orig;
+                    btn.disabled = false;
+                }, 2000);
+                // Show a brief summary
+                const msg = `ALE sync complete: ${data.updated_count} fields updated` +
+                            (data.skipped_count ? `, ${data.skipped_count} skipped (not blank).` : '.');
+                const flash = document.createElement('div');
+                flash.className = 'alert alert-success alert-dismissible fade show';
+                flash.style.cssText = 'position:fixed;top:70px;right:20px;z-index:9999;max-width:400px;';
+                flash.innerHTML = msg + '<button type="button" class="btn-close" data-bs-dismiss="alert"></button>';
+                document.body.appendChild(flash);
+                setTimeout(() => flash.remove(), 5000);
+            } else {
+                alert('ALE import failed: ' + (data.error || 'Unknown error'));
+                btn.innerHTML = orig;
+                btn.disabled = false;
+            }
+        } catch (err) {
+            alert('Network error: ' + err.message);
+            btn.innerHTML = orig;
+            btn.disabled = false;
+        }
+    }
 </script>
 {% endblock %}
