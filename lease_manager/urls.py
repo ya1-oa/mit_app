@@ -18,6 +18,12 @@ urlpatterns = [
     path('download/<uuid:document_id>/', views.download_lease_document, name='download_lease_document'),
     path('view/<uuid:document_id>/',     views.view_lease_document,     name='view_lease_document'),
 
+    # ── NEW: ALE check + demand letter ──────────────────────────────────────
+    path('api/client/<int:client_id>/ale-check/',
+         views.api_ale_check, name='api_ale_check'),
+    path('lease/<uuid:lease_id>/demand-letter/',
+         views.demand_letter_compose, name='demand_letter_compose'),
+
     # ── NEW: ALE import ─────────────────────────────────────────────────────
     # POST: import ALE fields into an existing lease
     path('api/lease/<uuid:lease_id>/ale-import/',

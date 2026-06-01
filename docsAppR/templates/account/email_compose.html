@@ -1,0 +1,584 @@
+{% extends "account/base.html" %}
+
+{% block title %}{{ source_label }} — Compose{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Layout ─────────────────────────────────────────────────────────────── */
+.compose-layout {
+    display: grid;
+    grid-template-columns: 1fr 300px;
+    gap: 20px;
+    align-items: start;
+}
+@media (max-width: 960px) {
+    .compose-layout { grid-template-columns: 1fr; }
+}
+
+/* ── Card shell ─────────────────────────────────────────────────────────── */
+.compose-card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08);
+    overflow: hidden;
+}
+.compose-card-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid #e9ecef;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: #f8fafc;
+}
+.compose-card-header h5 { margin: 0; font-size: 15px; font-weight: 600; color: #0f172a; }
+.compose-card-body { padding: 20px; }
+
+/* ── Recipient row ──────────────────────────────────────────────────────── */
+.recipient-row {
+    display: grid;
+    grid-template-columns: 42px 1fr;
+    gap: 0;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 8px;
+}
+.recipient-row + .recipient-row { margin-top: -1px; border-top: 1px solid #e9ecef; border-radius: 0; }
+.recipient-row:first-child { border-radius: 8px 8px 0 0; }
+.recipient-row:last-child  { border-radius: 0 0 8px 8px; border-bottom: 1px solid #dee2e6; }
+.recipient-label {
+    padding: 10px 0 10px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
+    background: #f8fafc;
+    border-right: 1px solid #e9ecef;
+    display: flex;
+    align-items: flex-start;
+    padding-top: 12px;
+    user-select: none;
+    cursor: text;
+}
+.tag-box {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    min-height: 42px;
+    padding: 6px 10px;
+    background: #fff;
+    cursor: text;
+}
+.tag-box:focus-within { background: #fafbff; }
+.etag {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: #eff6ff;
+    color: #1d4ed8;
+    border: 1px solid #bfdbfe;
+    border-radius: 4px;
+    padding: 2px 6px 2px 8px;
+    font-size: 12px;
+    white-space: nowrap;
+    max-width: 240px;
+}
+.etag span { overflow: hidden; text-overflow: ellipsis; }
+.etag-x {
+    border: none; background: none; color: #6b7280; cursor: pointer;
+    font-size: 14px; font-weight: 700; line-height: 1; padding: 0;
+    flex-shrink: 0; display: flex; align-items: center;
+}
+.etag-x:hover { color: #dc2626; }
+.tag-input {
+    border: none; outline: none; flex: 1;
+    min-width: 140px; font-size: 13px; padding: 2px 0;
+    background: transparent;
+}
+.tag-input::placeholder { color: #94a3b8; }
+
+/* ── Subject + body ─────────────────────────────────────────────────────── */
+.subject-input {
+    width: 100%;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 14px;
+    margin-bottom: 12px;
+    font-weight: 600;
+    transition: border-color .15s;
+}
+.subject-input:focus { border-color: #86b7fe; box-shadow: 0 0 0 3px rgba(13,110,253,.12); outline: none; }
+.body-textarea {
+    width: 100%;
+    min-height: 320px;
+    border: 1px solid #dee2e6;
+    border-radius: 8px;
+    padding: 14px;
+    font-size: 13.5px;
+    font-family: 'Courier New', monospace;
+    line-height: 1.6;
+    resize: vertical;
+    transition: border-color .15s;
+}
+.body-textarea:focus { border-color: #86b7fe; box-shadow: 0 0 0 3px rgba(13,110,253,.12); outline: none; }
+
+/* ── Actions bar ────────────────────────────────────────────────────────── */
+.actions-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 14px 20px;
+    border-top: 1px solid #e9ecef;
+    background: #f8fafc;
+    flex-wrap: wrap;
+}
+.btn-send {
+    display: inline-flex; align-items: center; gap: 8px;
+    background: #1e40af; color: #fff; border: none;
+    padding: 10px 24px; border-radius: 7px; font-size: 14px;
+    font-weight: 600; cursor: pointer; transition: background .15s;
+}
+.btn-send:hover { background: #1d4ed8; }
+.btn-send:disabled { background: #94a3b8; cursor: not-allowed; }
+.btn-secondary {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; color: #475569;
+    border: 1px solid #cbd5e1; padding: 9px 18px;
+    border-radius: 7px; font-size: 13px; font-weight: 500;
+    cursor: pointer; transition: all .15s; text-decoration: none;
+}
+.btn-secondary:hover { background: #f1f5f9; border-color: #94a3b8; }
+.schedule-toggle { font-size: 13px; color: #64748b; cursor: pointer; }
+
+/* ── Sidebar ────────────────────────────────────────────────────────────── */
+.sidebar-section { margin-bottom: 16px; }
+.sidebar-heading {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; color: #64748b; padding: 0 4px 6px;
+    border-bottom: 1px solid #e9ecef; margin-bottom: 8px;
+}
+.contact-item {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 4px; border-radius: 6px; gap: 6px;
+}
+.contact-item:hover { background: #f8fafc; }
+.contact-info { flex: 1; min-width: 0; }
+.contact-name { font-size: 12px; font-weight: 600; color: #334155; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-email { font-size: 11px; color: #64748b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.contact-btns { display: flex; gap: 3px; flex-shrink: 0; }
+.contact-btn {
+    font-size: 10px; padding: 2px 7px; border-radius: 4px;
+    border: 1px solid; cursor: pointer; font-weight: 600;
+    background: none; transition: all .1s;
+}
+.contact-btn.to-btn  { border-color: #1e40af; color: #1e40af; }
+.contact-btn.to-btn:hover  { background: #1e40af; color: #fff; }
+.contact-btn.cc-btn  { border-color: #64748b; color: #64748b; }
+.contact-btn.cc-btn:hover  { background: #64748b; color: #fff; }
+.role-badge {
+    font-size: 9px; padding: 1px 5px; border-radius: 3px;
+    background: #f1f5f9; color: #475569; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .4px;
+}
+
+/* ── Document checklist ─────────────────────────────────────────────────── */
+.doc-item {
+    display: flex; align-items: center; gap: 8px;
+    padding: 6px 4px; border-radius: 6px; cursor: pointer;
+}
+.doc-item:hover { background: #f8fafc; }
+.doc-item label { margin: 0; cursor: pointer; font-size: 12px; flex: 1; }
+.doc-item .doc-type { font-size: 10px; color: #94a3b8; }
+
+/* ── Schedule panel ─────────────────────────────────────────────────────── */
+.schedule-panel {
+    border: 1px solid #e9ecef; border-radius: 8px;
+    padding: 12px 16px; margin-top: 12px;
+    background: #fafbff;
+}
+.schedule-panel label { font-size: 13px; font-weight: 600; margin-bottom: 6px; display: block; }
+
+/* ── Success banner ─────────────────────────────────────────────────────── */
+.sent-banner {
+    background: #d1fae5; border: 1px solid #6ee7b7; border-radius: 8px;
+    padding: 12px 18px; margin-bottom: 20px; display: flex; align-items: center; gap: 10px;
+    color: #065f46; font-weight: 500;
+}
+
+/* ── Source badge ───────────────────────────────────────────────────────── */
+.source-badge {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 4px 10px; border-radius: 20px; font-size: 12px;
+    font-weight: 600;
+}
+.source-lease_package { background: #dbeafe; color: #1e40af; }
+.source-demand_letter { background: #fee2e2; color: #b91c1c; }
+.source-general       { background: #e9ecef; color: #495057; }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'emails' %}">Email</a></li>
+            {% if lease %}<li class="breadcrumb-item"><a href="{% url 'lease_manager' %}">Leases</a></li>{% endif %}
+            <li class="breadcrumb-item active">Compose</li>
+        </ol>
+    </nav>
+    <div class="ms-3 d-flex align-items-center gap-2">
+        <h1 style="font-size:17px; font-weight:600;">{{ source_label }}</h1>
+        <span class="source-badge source-{{ source }}">
+            {% if source == 'lease_package' %}<i class="fas fa-file-contract"></i> Lease Package
+            {% elif source == 'demand_letter' %}<i class="fas fa-gavel"></i> Demand Letter
+            {% else %}<i class="fas fa-envelope"></i> Compose
+            {% endif %}
+        </span>
+    </div>
+</div>
+{% endblock %}
+
+{% block content %}
+
+{% if request.GET.sent %}
+<div class="sent-banner">
+    <i class="fas fa-check-circle fa-lg"></i>
+    Email sent successfully. <a href="{% url 'emails' %}" class="ms-2 text-decoration-underline">View sent mail</a>
+</div>
+{% endif %}
+
+{% for message in messages %}
+<div class="alert alert-{{ message.tags }} alert-dismissible fade show mb-3">
+    {{ message }}<button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endfor %}
+
+<form method="post" enctype="multipart/form-data" id="composeForm">
+{% csrf_token %}
+{% if lease %}<input type="hidden" name="lease_id" value="{{ lease.id }}">{% endif %}
+<input type="hidden" name="source" value="{{ source }}">
+
+<div class="compose-layout">
+
+    <!-- ── MAIN COMPOSE AREA ──────────────────────────────────────────── -->
+    <div>
+        <div class="compose-card">
+
+            <!-- Recipients block -->
+            <div class="compose-card-body pb-0">
+
+                <!-- Hidden fields for form submission -->
+                <input type="hidden" id="toHidden"  name="to">
+                <input type="hidden" id="ccHidden"  name="cc">
+                <input type="hidden" id="bccHidden" name="bcc">
+
+                <div class="recipient-row">
+                    <div class="recipient-label" onclick="focusTags('to')">To</div>
+                    <div class="tag-box" id="toBox" onclick="focusTags('to')">
+                        <div id="toTags" style="display:contents;"></div>
+                        <input class="tag-input" id="toInput" type="text"
+                               placeholder="Type email, press Enter or comma…"
+                               autocomplete="off"
+                               onkeydown="tagKey(event,'to')"
+                               onblur="commitTag('to')">
+                    </div>
+                </div>
+
+                <div class="recipient-row">
+                    <div class="recipient-label" onclick="focusTags('cc')">Cc</div>
+                    <div class="tag-box" id="ccBox" onclick="focusTags('cc')">
+                        <div id="ccTags" style="display:contents;"></div>
+                        <input class="tag-input" id="ccInput" type="text"
+                               placeholder="Add CC…"
+                               autocomplete="off"
+                               onkeydown="tagKey(event,'cc')"
+                               onblur="commitTag('cc')">
+                    </div>
+                </div>
+
+                <div class="recipient-row">
+                    <div class="recipient-label" onclick="focusTags('bcc')">Bcc</div>
+                    <div class="tag-box" id="bccBox" onclick="focusTags('bcc')">
+                        <div id="bccTags" style="display:contents;"></div>
+                        <input class="tag-input" id="bccInput" type="text"
+                               placeholder="Add BCC…"
+                               autocomplete="off"
+                               onkeydown="tagKey(event,'bcc')"
+                               onblur="commitTag('bcc')">
+                    </div>
+                </div>
+
+                <div style="height:12px;"></div>
+            </div>
+
+            <div class="compose-card-body pt-0">
+                <!-- Subject -->
+                <input type="text" name="subject" class="subject-input"
+                       placeholder="Subject"
+                       value="{{ prefill.subject }}">
+
+                <!-- Body -->
+                <textarea name="body" class="body-textarea"
+                          placeholder="Compose your message…">{{ prefill.body }}</textarea>
+
+                <!-- Uploaded files -->
+                <div class="mt-2">
+                    <label style="font-size:12px; color:#64748b; cursor:pointer;">
+                        <i class="fas fa-paperclip me-1"></i>
+                        <input type="file" name="uploaded_files" multiple style="display:none;"
+                               onchange="showFileNames(this)">
+                        Attach additional files
+                    </label>
+                    <div id="fileNames" style="font-size:11px; color:#64748b; margin-top:3px;"></div>
+                </div>
+
+                <!-- Schedule toggle -->
+                <div class="mt-3">
+                    <label class="schedule-toggle d-flex align-items-center gap-2" style="cursor:pointer;">
+                        <input type="checkbox" id="schedToggle" onchange="toggleSchedule(this)" style="cursor:pointer;">
+                        <i class="fas fa-clock text-primary"></i>
+                        Schedule for later
+                    </label>
+                    <div class="schedule-panel" id="schedPanel" style="display:none;">
+                        <label>Send at:</label>
+                        <input type="datetime-local" name="schedule_at" class="form-control form-control-sm"
+                               style="max-width:240px;">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Actions -->
+            <div class="actions-bar">
+                <button type="submit" class="btn-send" id="sendBtn">
+                    <i class="fas fa-paper-plane"></i>
+                    <span id="sendLabel">Send Email</span>
+                </button>
+                <a href="javascript:history.back()" class="btn-secondary">
+                    <i class="fas fa-arrow-left"></i> Back
+                </a>
+                {% if lease %}
+                <a href="/lease-manager/" class="btn-secondary">
+                    <i class="fas fa-file-contract"></i> Lease Manager
+                </a>
+                {% endif %}
+                <div id="toError" class="text-danger ms-2" style="font-size:12px; display:none;">
+                    <i class="fas fa-exclamation-circle"></i> At least one recipient required.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── SIDEBAR ────────────────────────────────────────────────────── -->
+    <div>
+
+        <!-- Contacts -->
+        {% if lease_contacts %}
+        <div class="compose-card sidebar-section">
+            <div class="compose-card-header">
+                <i class="fas fa-address-book text-primary"></i>
+                <h5>Contacts</h5>
+            </div>
+            <div class="compose-card-body p-2">
+                {% for contact in lease_contacts %}
+                <div class="contact-item">
+                    <div class="contact-info">
+                        <div class="contact-name">{{ contact.label }}</div>
+                        <div class="contact-email">{{ contact.email }}</div>
+                    </div>
+                    <div class="contact-btns">
+                        <button type="button" class="contact-btn to-btn"
+                                onclick="addTag('to','{{ contact.email }}')">To</button>
+                        <button type="button" class="contact-btn cc-btn"
+                                onclick="addTag('cc','{{ contact.email }}')">CC</button>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Lease Documents -->
+        {% if lease_docs %}
+        <div class="compose-card sidebar-section">
+            <div class="compose-card-header">
+                <i class="fas fa-paperclip text-danger"></i>
+                <h5>Lease Documents</h5>
+                <small class="text-muted ms-auto">check to attach</small>
+            </div>
+            <div class="compose-card-body p-2">
+                {% for doc in lease_docs %}
+                <div class="doc-item">
+                    <input type="checkbox" name="document_ids" value="{{ doc.id }}"
+                           id="doc-{{ doc.id }}"
+                           {% if source == 'lease_package' %}checked{% endif %}>
+                    <label for="doc-{{ doc.id }}">
+                        <div>{{ doc.document_name }}</div>
+                        <div class="doc-type">{{ doc.get_document_type_display }}</div>
+                    </label>
+                    {% if doc.file_path %}
+                    <a href="/lease-manager/view/{{ doc.id }}/" target="_blank"
+                       class="text-muted ms-auto" title="Preview" style="font-size:11px;">
+                        <i class="fas fa-eye"></i>
+                    </a>
+                    {% endif %}
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Generated Files -->
+        {% if all_docs %}
+        <div class="compose-card sidebar-section">
+            <div class="compose-card-header">
+                <i class="fas fa-file-alt text-secondary"></i>
+                <h5>Generated Files</h5>
+                <small class="text-muted ms-auto">optional attach</small>
+            </div>
+            <div class="compose-card-body p-2" style="max-height:200px; overflow-y:auto;">
+                {% for gf in all_docs %}
+                <div class="doc-item">
+                    <input type="checkbox" name="generated_file_ids" value="{{ gf.id }}"
+                           id="gf-{{ gf.id }}">
+                    <label for="gf-{{ gf.id }}">
+                        <div>{{ gf.name }}</div>
+                        <div class="doc-type">{{ gf.get_category_display }} · {{ gf.created_at|date:"M d" }}</div>
+                    </label>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Lease summary (if attached) -->
+        {% if lease %}
+        <div class="compose-card sidebar-section">
+            <div class="compose-card-header">
+                <i class="fas fa-info-circle text-info"></i>
+                <h5>Lease Info</h5>
+            </div>
+            <div class="compose-card-body p-3">
+                <table style="width:100%; font-size:12px; border-collapse:collapse;">
+                    <tr><td style="color:#64748b; padding:3px 0; width:90px;">Tenant</td>
+                        <td style="font-weight:600;">{{ lease.client.ale_lessee_name|default:lease.client.pOwner }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Property</td>
+                        <td>{{ lease.property_address|default:"—" }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Lessor</td>
+                        <td>{{ lease.lessor_name|default:"—" }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">RE Co.</td>
+                        <td>{{ lease.real_estate_company|default:"—" }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Term</td>
+                        <td>{{ lease.lease_start_date|date:"M d, Y"|default:"TBD" }} –<br>{{ lease.lease_end_date|date:"M d, Y"|default:"TBD" }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Rent</td>
+                        <td style="font-weight:600;">${{ lease.monthly_rent }}/mo</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Status</td>
+                        <td><span class="badge bg-secondary" style="font-size:10px;">{{ lease.get_status_display }}</span></td></tr>
+                </table>
+                <div class="mt-2 d-flex gap-2">
+                    <a href="/lease-manager/lease/{{ lease.id }}/send-package/"
+                       class="btn btn-outline-primary btn-sm w-100" style="font-size:11px;">
+                        <i class="fas fa-box"></i> Full Package
+                    </a>
+                    <a href="/lease-manager/lease/{{ lease.id }}/demand-letter/"
+                       class="btn btn-outline-danger btn-sm w-100" style="font-size:11px;">
+                        <i class="fas fa-gavel"></i> Demand Letter
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+    </div>
+</div>
+</form>
+
+<script>
+// ── Tag input engine ──────────────────────────────────────────────────────
+const _state = { to: [], cc: [], bcc: [] };
+
+function syncHidden(f) {
+    document.getElementById(f + 'Hidden').value = _state[f].join(', ');
+}
+function render(f) {
+    const el = document.getElementById(f + 'Tags');
+    if (!el) return;
+    el.innerHTML = _state[f].map(e =>
+        `<span class="etag">
+            <span title="${e}">${e}</span>
+            <button type="button" class="etag-x" onclick="removeTag('${f}','${e}')">×</button>
+         </span>`
+    ).join('');
+}
+function addTag(f, raw) {
+    raw.replace(/[\s;]+/g, ',').split(',').forEach(e => {
+        e = e.trim().toLowerCase();
+        if (e.includes('@') && !_state[f].includes(e)) {
+            _state[f].push(e);
+        }
+    });
+    syncHidden(f); render(f);
+}
+function removeTag(f, e) {
+    _state[f] = _state[f].filter(x => x !== e);
+    syncHidden(f); render(f);
+}
+function tagKey(e, f) {
+    if (e.key === 'Enter' || e.key === ',') {
+        e.preventDefault();
+        const v = e.target.value.trim();
+        if (v) { addTag(f, v); e.target.value = ''; }
+    } else if (e.key === 'Backspace' && !e.target.value && _state[f].length) {
+        removeTag(f, _state[f][_state[f].length - 1]);
+    }
+}
+function commitTag(f) {
+    const inp = document.getElementById(f + 'Input');
+    if (!inp) return;
+    const v = inp.value.trim();
+    if (v) { addTag(f, v); inp.value = ''; }
+}
+function focusTags(f) { document.getElementById(f + 'Input')?.focus(); }
+
+// Init from server-provided prefill values
+(function init() {
+    const toInit  = '{{ prefill.to|escapejs }}'.split(',').map(e=>e.trim()).filter(Boolean);
+    const ccInit  = '{{ prefill.cc|escapejs }}'.split(',').map(e=>e.trim()).filter(Boolean);
+    const bccInit = '{{ prefill.bcc|escapejs }}'.split(',').map(e=>e.trim()).filter(Boolean);
+    if (toInit.length)  { _state.to  = toInit;  syncHidden('to');  render('to'); }
+    if (ccInit.length)  { _state.cc  = ccInit;  syncHidden('cc');  render('cc'); }
+    if (bccInit.length) { _state.bcc = bccInit; syncHidden('bcc'); render('bcc'); }
+})();
+
+// ── Schedule toggle ───────────────────────────────────────────────────────
+function toggleSchedule(cb) {
+    document.getElementById('schedPanel').style.display = cb.checked ? 'block' : 'none';
+    document.getElementById('sendLabel').textContent = cb.checked ? 'Schedule Send' : 'Send Email';
+}
+
+// ── Uploaded file names ───────────────────────────────────────────────────
+function showFileNames(input) {
+    const el = document.getElementById('fileNames');
+    if (!input.files.length) { el.textContent = ''; return; }
+    el.textContent = Array.from(input.files).map(f =>
+        f.name + ' (' + (f.size / 1024).toFixed(0) + ' KB)'
+    ).join(' · ');
+}
+
+// ── Submit guard ─────────────────────────────────────────────────────────
+document.getElementById('composeForm').addEventListener('submit', function(e) {
+    ['to','cc','bcc'].forEach(commitTag);
+    if (!_state.to.length) {
+        e.preventDefault();
+        document.getElementById('toError').style.display = 'inline';
+        focusTags('to');
+        return;
+    }
+    document.getElementById('toError').style.display = 'none';
+    const btn = document.getElementById('sendBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Sending…';
+});
+</script>
+{% endblock %}

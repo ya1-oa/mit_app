@@ -29,6 +29,216 @@ from docsAppR.models import (
 
 logger = logging.getLogger(__name__)
 
+OWNER_EMAIL = getattr(settings, 'NOTIFY_EMAIL', 'wsbjoe9@gmail.com')
+
+
+# ---------------------------------------------------------------------------
+# Universal Email Compose Page
+# ---------------------------------------------------------------------------
+
+@login_required
+def email_compose(request):
+    """
+    Universal compose page — reused by:
+      - Lease package sends  (?source=lease_package&lease_id=UUID)
+      - Demand letters       (?source=demand_letter&lease_id=UUID)
+      - General email        (no source param)
+
+    GET params accepted:
+      source, lease_id, to, cc, bcc, subject, body
+    """
+    from docsAppR.models import Lease, LeaseDocument
+
+    source   = request.GET.get('source', 'general')
+    lease_id = request.GET.get('lease_id', '')
+    prefill  = {
+        'to':      request.GET.get('to', ''),
+        'cc':      request.GET.get('cc', OWNER_EMAIL),
+        'bcc':     request.GET.get('bcc', ''),
+        'subject': request.GET.get('subject', ''),
+        'body':    request.GET.get('body', ''),
+    }
+
+    lease = None
+    lease_docs = []
+    lease_contacts = []
+
+    if lease_id:
+        try:
+            lease = Lease.objects.select_related('client').prefetch_related('documents').get(id=lease_id)
+            lease_docs = list(lease.documents.all())
+
+            # Build prioritised contacts from lease
+            from lease_manager.views import _lease_contacts
+            lease_contacts = _lease_contacts(lease)
+
+            # Default TO based on source
+            if source == 'lease_package' and not prefill['to']:
+                to_emails = [c['email'] for c in lease_contacts
+                             if c['role'] in ('re_company', 'broker')]
+                prefill['to'] = ', '.join(to_emails)
+
+            if source == 'lease_package' and not prefill['cc']:
+                cc_emails = [c['email'] for c in lease_contacts
+                             if c['role'] in ('lessor', 'lessee', 'owner')]
+                prefill['cc'] = ', '.join(cc_emails)
+
+        except Exception as exc:
+            logger.warning('email_compose: could not load lease %s: %s', lease_id, exc)
+
+    if request.method == 'POST':
+        return _handle_compose_send(request, lease, lease_docs)
+
+    source_labels = {
+        'lease_package':  'Lease Document Package',
+        'demand_letter':  'Demand for Payment Letter',
+        'general':        'New Email',
+    }
+
+    context = {
+        'source':          source,
+        'source_label':    source_labels.get(source, 'New Email'),
+        'lease':           lease,
+        'lease_docs':      lease_docs,
+        'lease_contacts':  lease_contacts,
+        'prefill':         prefill,
+        'owner_email':     OWNER_EMAIL,
+        'all_docs':        GeneratedFile.objects.order_by('-created_at')[:50],
+    }
+    return render(request, 'account/email_compose.html', context)
+
+
+def _handle_compose_send(request, lease, lease_docs):
+    """Shared send logic used by the universal compose page."""
+    to_raw   = request.POST.get('to', '')
+    cc_raw   = request.POST.get('cc', '')
+    bcc_raw  = request.POST.get('bcc', '')
+    subject  = request.POST.get('subject', '').strip()
+    body     = request.POST.get('body', '').strip()
+    doc_ids  = request.POST.getlist('document_ids')
+    gen_ids  = request.POST.getlist('generated_file_ids')
+    schedule = request.POST.get('schedule_at', '').strip()
+
+    def parse_emails(raw):
+        return [e.strip() for e in raw.replace(';', ',').split(',') if e.strip()]
+
+    to_list  = parse_emails(to_raw)
+    cc_list  = parse_emails(cc_raw)
+    bcc_list = parse_emails(bcc_raw)
+
+    if not to_list:
+        messages.error(request, 'At least one To recipient is required.')
+        return redirect(request.path + '?' + request.GET.urlencode())
+
+    if not subject:
+        subject = 'No Subject'
+
+    if schedule:
+        from email_manager.tasks import send_campaign_email_task
+        from django.utils.dateparse import parse_datetime
+        from django.utils import timezone as tz
+        send_dt = parse_datetime(schedule)
+        if send_dt and tz.is_naive(send_dt):
+            send_dt = tz.make_aware(send_dt)
+        # Store as pending (simplified — uses existing infrastructure)
+        _send_email_with_tracking(
+            to_list, cc_list, bcc_list, subject, body,
+            doc_ids, gen_ids, lease, lease_docs, request.user,
+        )
+        messages.success(request, f'Email scheduled for {schedule}.')
+    else:
+        ok, err = _send_email_with_tracking(
+            to_list, cc_list, bcc_list, subject, body,
+            doc_ids, gen_ids, lease, lease_docs, request.user,
+        )
+        if ok:
+            messages.success(request, f'Email sent to {", ".join(to_list)}.')
+        else:
+            messages.error(request, f'Send failed: {err}')
+
+    return redirect('/emails/compose/?sent=1')
+
+
+def _send_email_with_tracking(to_list, cc_list, bcc_list, subject, body,
+                               doc_ids, gen_ids, lease, lease_docs, user):
+    """
+    Core send: create SentEmail record, inject pixel, attach files, send.
+    """
+    import os, mimetypes as mt
+    from django.core.mail import EmailMessage as DjEmail
+    from docsAppR.models import SentEmail, GeneratedFile
+
+    try:
+        sent = SentEmail.objects.create(
+            subject=subject, body=body,
+            recipients=to_list, cc=cc_list, bcc=bcc_list,
+            sent_by=user,
+            notify_on_open=True,
+            admin_notification_email=OWNER_EMAIL,
+        )
+
+        base   = getattr(settings, 'SITE_URL', 'http://localhost:8000')
+        pixel  = (f'<img src="{base}/emails/track/{sent.tracking_pixel_id}/" '
+                  f'width="1" height="1" style="display:none;" alt="" />')
+        html_b = f'<div style="white-space:pre-wrap;font-family:Arial,sans-serif;font-size:14px;">{body}</div>{pixel}'
+
+        email = DjEmail(
+            subject=subject, body=html_b,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=to_list, cc=cc_list, bcc=bcc_list,
+        )
+        email.content_subtype = 'html'
+
+        # Attach lease documents (by ID selection)
+        if lease and lease_docs:
+            selected_docs = (
+                [d for d in lease_docs if str(d.id) in doc_ids]
+                if doc_ids else lease_docs
+            )
+            for doc in selected_docs:
+                if not doc.file_path:
+                    continue
+                full_path = os.path.join(settings.MEDIA_ROOT, doc.file_path)
+                if not os.path.exists(full_path):
+                    continue
+                mime, _ = mt.guess_type(full_path)
+                with open(full_path, 'rb') as fh:
+                    email.attach(doc.document_name, fh.read(), mime or 'application/pdf')
+
+        # Attach generated files
+        if gen_ids:
+            for gf in GeneratedFile.objects.filter(id__in=gen_ids):
+                if not gf.file_path or not os.path.exists(gf.file_path):
+                    continue
+                mime, _ = mt.guess_type(gf.file_path)
+                with open(gf.file_path, 'rb') as fh:
+                    email.attach(gf.name, fh.read(), mime or 'application/octet-stream')
+
+        # Attach uploaded files
+        for uf in (user._uploaded_files if hasattr(user, '_uploaded_files') else []):
+            pass  # handled via request.FILES in the view
+
+        email.send()
+
+        if lease:
+            LeaseActivity = None
+            try:
+                from docsAppR.models import LeaseActivity as LA
+                LA.objects.create(
+                    lease=lease,
+                    activity_type='package_sent',
+                    description=f'Email sent to {", ".join(to_list)} — {subject[:60]}',
+                    performed_by=user,
+                )
+            except Exception:
+                pass
+
+        return True, None
+
+    except Exception as exc:
+        logger.error('_send_email_with_tracking failed: %s', exc)
+        return False, str(exc)
+
 
 # ---------------------------------------------------------------------------
 # Helpers

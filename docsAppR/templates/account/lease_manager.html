@@ -698,6 +698,12 @@
                                         {% elif lease.is_expired %}
                                         <span class="active-badge expired">EXPIRED</span>
                                         {% endif %}
+                                        {% if not lease.client.ale_lessor_name and not lease.client.ale_lessor_leased_address %}
+                                        <span class="badge bg-warning text-dark ms-1" style="font-size:10px;"
+                                              title="No ALE data on this claim — fill in the ALE section to auto-populate leases">
+                                            <i class="fas fa-exclamation-triangle"></i> No ALE
+                                        </span>
+                                        {% endif %}
                                     </h4>
                                     <div class="property">
                                         <i class="fas fa-home"></i> {{ lease.full_property_address }}
@@ -756,23 +762,36 @@
                                     {% endfor %}
                                 </div>
 
-                                <div class="lease-actions">
-                                    <button class="btn btn-sm btn-outline-primary" onclick="openStatusModal('{{ lease.id }}', '{{ lease.status }}')">
-                                        <i class="fas fa-edit"></i> Update Status
+                                <!-- Action bar -->
+                                <div class="lease-actions" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:16px; padding-top:14px; border-top:1px solid #f1f5f9;">
+
+                                    <!-- Primary sends -->
+                                    <a href="/emails/compose/?source=lease_package&lease_id={{ lease.id }}"
+                                       class="btn btn-sm btn-primary" title="Send the 4-document lease package via email">
+                                        <i class="fas fa-paper-plane me-1"></i> Send Package
+                                    </a>
+                                    <a href="/lease-manager/lease/{{ lease.id }}/demand-letter/"
+                                       class="btn btn-sm btn-danger" title="Generate demand for payment letter">
+                                        <i class="fas fa-gavel me-1"></i> Demand Letter
+                                    </a>
+
+                                    <!-- Secondary -->
+                                    <button class="btn btn-sm btn-outline-primary"
+                                            onclick="openStatusModal('{{ lease.id }}', '{{ lease.status }}')">
+                                        <i class="fas fa-edit"></i> Status
                                     </button>
-                                    <button class="btn btn-sm btn-outline-secondary" onclick="openNotesModal('{{ lease.id }}')">
-                                        <i class="fas fa-sticky-note"></i> Add Note
+                                    <button class="btn btn-sm btn-outline-secondary"
+                                            onclick="openNotesModal('{{ lease.id }}')">
+                                        <i class="fas fa-sticky-note"></i> Note
                                     </button>
-                                    <!-- ALE import button -->
                                     <button class="btn btn-sm btn-outline-warning"
-                                            title="Re-import ALE data from claim"
+                                            title="Re-sync ALE data from claim"
                                             onclick="importALE('{{ lease.id }}', this)">
                                         <i class="fas fa-sync-alt"></i> Sync ALE
                                     </button>
-                                    <!-- Send package button -->
-                                    <a href="/lease-manager/lease/{{ lease.id }}/send-package/"
-                                       class="btn btn-sm btn-success">
-                                        <i class="fas fa-envelope"></i> Send Package
+                                    <a href="/emails/compose/?source=general&lease_id={{ lease.id }}"
+                                       class="btn btn-sm btn-outline-info" title="Send any email with lease context">
+                                        <i class="fas fa-envelope"></i> Email
                                     </a>
                                 </div>
 

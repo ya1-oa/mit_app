@@ -179,6 +179,238 @@ def _lease_contacts(lease):
 
 
 # ============================================================================
+# ALE DATA CHECK  — confirms whether a client actually has ALE fields filled
+# ============================================================================
+
+@login_required
+def api_ale_check(request, client_id):
+    """
+    GET: Return a summary of which ALE fields are filled on a client.
+    Used to confirm pre-population before creating a lease.
+    """
+    client = get_object_or_404(Client, id=client_id)
+
+    ale_summary = {
+        'has_lessor':    bool(client.ale_lessor_name),
+        'has_property':  bool(client.ale_lessor_leased_address),
+        'has_dates':     bool(client.ale_rental_start_date and client.ale_rental_end_date),
+        'has_rent':      bool(client.ale_rental_amount_per_month),
+        'has_re':        bool(client.ale_re_company_name or client.ale_re_email),
+        'has_broker':    bool(client.ale_re_owner_broker_email),
+        'filled_count':  sum([
+            bool(client.ale_lessor_name),
+            bool(client.ale_lessor_leased_address),
+            bool(client.ale_rental_start_date),
+            bool(client.ale_rental_end_date),
+            bool(client.ale_rental_amount_per_month),
+            bool(client.ale_re_company_name),
+            bool(client.ale_re_email),
+            bool(client.ale_re_owner_broker_email),
+            bool(client.ale_lessor_email),
+            bool(client.ale_lessor_phone),
+        ]),
+        'total_checked': 10,
+        # Raw values for UI display
+        'lessor_name':       client.ale_lessor_name,
+        'leased_address':    client.ale_lessor_leased_address,
+        'start_date':        client.ale_rental_start_date.isoformat() if client.ale_rental_start_date else '',
+        'end_date':          client.ale_rental_end_date.isoformat() if client.ale_rental_end_date else '',
+        'monthly_rent':      str(client.ale_rental_amount_per_month or ''),
+        're_company':        client.ale_re_company_name,
+        're_email':          client.ale_re_email,
+        'broker_email':      client.ale_re_owner_broker_email,
+        'lessor_email':      client.ale_lessor_email,
+        'lessee_name':       client.ale_lessee_name,
+    }
+
+    return JsonResponse({
+        'success':     True,
+        'client_name': client.pOwner,
+        'has_ale_data': ale_summary['filled_count'] > 0,
+        'ale_summary':  ale_summary,
+        'warning':      '' if ale_summary['filled_count'] > 0
+                        else 'This claim has no ALE data. Fill in the ALE section of the claim first.',
+    })
+
+
+# ============================================================================
+# DEMAND LETTER  —  select which ALE payments are outstanding, generate letter
+# ============================================================================
+
+DEMAND_PAYMENT_ITEMS = [
+    # key, label, lease_field (or None for computed)
+    ('rent_total',       'Total Rent',                    None),          # monthly_rent × rental_months
+    ('security_deposit', 'Security Deposit',              'security_deposit'),
+    ('brokerage_fee',    'Brokerage Fee (1 month rent)',  None),          # = monthly_rent
+    ('inspection_fee',   'Inspection / Cleanup Fee',      'inspection_fee'),
+    ('parking_fee',      'Parking Fee',                   'parking_fee'),
+    ('late_fee',         'Late Fee',                      'late_fee'),
+]
+
+
+def _payment_items_for_lease(lease):
+    """Build the list of payment items with computed amounts."""
+    items = []
+    monthly = float(lease.monthly_rent or 0)
+    months  = lease.rental_months or 1
+
+    amounts = {
+        'rent_total':       round(monthly * months, 2),
+        'security_deposit': float(lease.security_deposit or 0),
+        'brokerage_fee':    monthly,
+        'inspection_fee':   float(lease.inspection_fee or 0),
+        'parking_fee':      float(lease.parking_fee or 0),
+        'late_fee':         float(lease.late_fee or 0),
+    }
+    for key, label, field in DEMAND_PAYMENT_ITEMS:
+        amount = amounts[key]
+        if amount > 0:
+            items.append({'key': key, 'label': label, 'amount': amount})
+    return items
+
+
+@login_required
+def demand_letter_compose(request, lease_id):
+    """
+    GET : Show the demand letter form — select outstanding items, preview letter.
+    POST: Build the letter body and redirect to the universal compose page.
+    """
+    lease  = get_object_or_404(Lease.objects.select_related('client'), id=lease_id)
+    client = lease.client
+
+    payment_items = _payment_items_for_lease(lease)
+
+    if request.method == 'GET':
+        # Determine insurance company contacts for demand letter "To"
+        ins_contacts = []
+        def _add_ins(label, email):
+            if email and email.strip():
+                ins_contacts.append({'label': label, 'email': email.strip()})
+
+        _add_ins(f'Insurance Co — {client.insuranceCo_Name}',   client.emailInsCo)
+        _add_ins(f'Desk Adjuster — {client.deskAdjusterDA}',    client.DAEmail)
+        _add_ins(f'Field Adjuster — {client.fieldAdjusterName}', client.fieldAdjEmail)
+        _add_ins('Owner',                                         OWNER_EMAIL)
+
+        context = {
+            'lease':         lease,
+            'client':        client,
+            'payment_items': payment_items,
+            'ins_contacts':  ins_contacts,
+            'today':         timezone.now().date(),
+            'deadline_days': 30,
+        }
+        return render(request, 'account/lease_demand_letter.html', context)
+
+    # ── POST: build letter and redirect to compose ────────────────────────
+    outstanding_keys = request.POST.getlist('outstanding_items')
+    custom_amounts   = {}
+    for key, _, _ in DEMAND_PAYMENT_ITEMS:
+        raw = request.POST.get(f'amount_{key}', '')
+        if raw:
+            try:
+                custom_amounts[key] = float(raw)
+            except ValueError:
+                pass
+
+    # Build outstanding list with amounts
+    outstanding = []
+    for item in payment_items:
+        if item['key'] in outstanding_keys:
+            amt = custom_amounts.get(item['key'], item['amount'])
+            outstanding.append({'label': item['label'], 'amount': amt})
+
+    total_due = sum(i['amount'] for i in outstanding)
+
+    letter_date    = timezone.now().date()
+    deadline       = letter_date + timedelta(days=int(request.POST.get('deadline_days', 30)))
+    insured_name   = client.ale_lessee_name or client.pOwner or ''
+    claim_number   = client.claimNumber or ''
+    ins_company    = client.insuranceCo_Name or 'Insurance Company'
+    property_addr  = lease.property_address or ''
+    ale_start      = lease.lease_start_date.strftime('%B %d, %Y') if lease.lease_start_date else 'TBD'
+    ale_end        = lease.lease_end_date.strftime('%B %d, %Y')   if lease.lease_end_date   else 'TBD'
+    re_company     = lease.real_estate_company or ''
+    contact_name   = request.POST.get('contact_name', 'Julius Cartwright')
+    contact_phone  = request.POST.get('contact_phone', '(216) 990-1501')
+    contact_email  = request.POST.get('contact_email', OWNER_EMAIL)
+
+    # ── Build the outstanding items list for the letter ───────────────────
+    items_text = '\n'.join(
+        f'  • {i["label"]}: ${i["amount"]:,.2f}' for i in outstanding
+    )
+
+    # ── Disbursed items (everything NOT in outstanding) ───────────────────
+    disbursed = [i for i in payment_items if i['key'] not in outstanding_keys]
+    disbursed_text = ' and '.join(
+        f'{i["label"]} (${custom_amounts.get(i["key"], i["amount"]):,.2f})'
+        for i in disbursed
+    ) if disbursed else 'other components'
+
+    body = f"""DEMAND FOR PAYMENT
+
+Date: {letter_date.strftime('%B %d, %Y')}
+Via Certified Mail – Return Receipt Requested
+
+TO: {ins_company}
+    Attn: Claims Department / Additional Living Expense Unit
+
+RE: Insured: {insured_name} | Claim #{claim_number} | Amount Due: ${total_due:,.2f}
+
+This letter serves as FORMAL DEMAND FOR PAYMENT of ${total_due:,.2f} owed to {re_company or 'Dream Team Realty, Inc.'} in connection with the above-referenced Additional Living Expense (ALE) claim for your insured, {insured_name}.
+
+{re_company or 'Dream Team Realty'} located, procured, and executed a lease on behalf of your insured at {property_addr}, for the ALE period {ale_start} through {ale_end}. The fully executed Engagement Agreement — already in your claim file — expressly provides that the brokerage fee "will be provided directly by the designated Insurance Company or other third party responsible for covering the insured's living expenses."
+
+{ins_company} has disbursed {disbursed_text}. The following item(s) remain outstanding and are neither disputed nor contingent:
+
+{items_text}
+
+TOTAL AMOUNT DUE: ${total_due:,.2f}
+
+Payment of ${total_due:,.2f}, payable to {re_company or 'Dream Team Realty, Inc.'}, is demanded on or before {deadline.strftime('%B %d, %Y')}.
+
+If any additional documentation (W-9, invoice, or payee verification) is required to process disbursement, please direct that request in writing to the undersigned and it will be provided within three (3) business days.
+
+If payment is not received by the above deadline, we may exercise any or all of the following rights:
+
+  • Formal complaint to the state Department of Insurance for unfair claims settlement practices;
+  • Referral to counsel for civil action, with recovery of all interest, attorneys' fees, and costs of collection;
+  • Upon judgment, all post-judgment collection remedies available, including garnishment and levy upon commercial assets;
+  • Reporting of the delinquency to commercial credit reporting agencies.
+
+We prefer to resolve this matter administratively. To arrange payment or discuss this file, please contact {contact_name} at {contact_phone} or {contact_email}.
+
+All rights and remedies are expressly reserved.
+
+Sincerely,
+
+{contact_name}
+{re_company or 'Dream Team Realty, Inc.'}
+
+Enclosures: Engagement Agreement | Term Sheet | Monthly Short-Term Rental Agreement"""
+
+    # Log activity
+    LeaseActivity.objects.create(
+        lease=lease,
+        activity_type='note_added',
+        description=f'Demand letter composed — ${total_due:,.2f} outstanding to {ins_company}',
+        performed_by=request.user,
+    )
+
+    # ── Redirect to universal compose page ────────────────────────────────
+    to_email = request.POST.get('to_email', client.emailInsCo or client.DAEmail or '')
+    params = urllib.parse.urlencode({
+        'source':    'demand_letter',
+        'lease_id':  str(lease.id),
+        'to':        to_email,
+        'cc':        OWNER_EMAIL,
+        'subject':   f'Demand for Payment — {insured_name} | Claim #{claim_number} | ${total_due:,.2f} Due',
+        'body':      body,
+    })
+    return redirect(f'/emails/compose/?{params}')
+
+
+# ============================================================================
 # EXISTING VIEWS (unchanged logic, fixed ALE import in create_draft_lease)
 # ============================================================================
 

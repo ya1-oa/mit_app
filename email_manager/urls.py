@@ -3,6 +3,7 @@ from . import views
 
 urlpatterns = [
     path('', views.emails, name='emails'),
+    path('compose/', views.email_compose, name='email_compose'),
 
     # Tracking pixel — no login, called by remote email clients
     path('track/<uuid:tracking_pixel_id>/', views.track_email_open, name='track_email_open'),

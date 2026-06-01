@@ -1,0 +1,403 @@
+{% extends "account/base.html" %}
+
+{% block title %}Demand Letter — {{ client.pOwner }}{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'lease_manager' %}">Lease Manager</a></li>
+            <li class="breadcrumb-item active">Demand Letter</li>
+        </ol>
+    </nav>
+    <h1 class="ms-3">Demand for Payment</h1>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.demand-layout { display: grid; grid-template-columns: 1fr 340px; gap: 24px; align-items: start; }
+@media (max-width: 960px) { .demand-layout { grid-template-columns: 1fr; } }
+
+.demand-card { background:#fff; border-radius:10px; box-shadow:0 1px 6px rgba(0,0,0,.08); overflow:hidden; margin-bottom:20px; }
+.demand-card-header { padding:14px 20px; border-bottom:1px solid #e9ecef; background:#f8fafc; display:flex; align-items:center; gap:10px; }
+.demand-card-header h5 { margin:0; font-size:15px; font-weight:600; color:#0f172a; }
+.demand-card-body { padding:20px; }
+
+/* Payment item table */
+.payment-table { width:100%; border-collapse:collapse; }
+.payment-table th { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:#64748b; padding:8px 10px; border-bottom:2px solid #e9ecef; text-align:left; }
+.payment-table td { padding:10px; border-bottom:1px solid #f1f5f9; vertical-align:middle; }
+.payment-table tr:last-child td { border-bottom:none; }
+.payment-table .amt-input { width:100px; border:1px solid #dee2e6; border-radius:5px; padding:5px 8px; font-size:13px; text-align:right; }
+.payment-table .amt-input:focus { outline:none; border-color:#86b7fe; box-shadow:0 0 0 3px rgba(13,110,253,.12); }
+
+/* Outstanding badge */
+.outstanding-row { background:#fff5f5; }
+.outstanding-row td { color:#b91c1c; }
+
+/* Total bar */
+.total-bar { display:flex; justify-content:space-between; align-items:center; padding:14px 20px; border-top:2px solid #1e40af; background:#eff6ff; border-radius:0 0 10px 10px; }
+.total-label { font-weight:700; font-size:15px; color:#1e40af; }
+.total-amount { font-size:22px; font-weight:800; color:#1e40af; }
+
+/* Contact settings */
+.field-group { margin-bottom:14px; }
+.field-group label { display:block; font-size:12px; font-weight:600; color:#475569; margin-bottom:4px; }
+.field-group input, .field-group select, .field-group textarea {
+    width:100%; border:1px solid #dee2e6; border-radius:6px; padding:8px 10px;
+    font-size:13px; transition:border-color .15s;
+}
+.field-group input:focus, .field-group select:focus {
+    border-color:#86b7fe; box-shadow:0 0 0 3px rgba(13,110,253,.12); outline:none;
+}
+
+/* Preview panel */
+.letter-preview {
+    background:#fafbff; border:1px solid #e2e8f0; border-radius:8px;
+    padding:20px 24px; font-family:'Courier New',monospace; font-size:12px;
+    line-height:1.7; white-space:pre-wrap; max-height:500px; overflow-y:auto;
+    color:#334155;
+}
+
+.btn-generate {
+    display:inline-flex; align-items:center; gap:8px;
+    background:#b91c1c; color:#fff; border:none; padding:11px 26px;
+    border-radius:7px; font-size:14px; font-weight:600; cursor:pointer;
+    transition:background .15s;
+}
+.btn-generate:hover { background:#991b1b; }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="post" id="demandForm">
+{% csrf_token %}
+
+<div class="demand-layout">
+
+    <!-- ── LEFT: Payment items ─────────────────────────────────────────── -->
+    <div>
+
+        <!-- Client / Claim Info -->
+        <div class="demand-card">
+            <div class="demand-card-header">
+                <i class="fas fa-user text-primary"></i>
+                <h5>Claim Information</h5>
+            </div>
+            <div class="demand-card-body">
+                <div class="row g-3">
+                    <div class="col-sm-6">
+                        <div class="field-group">
+                            <label>Insured Name</label>
+                            <input type="text" name="insured_name"
+                                   value="{{ client.ale_lessee_name|default:client.pOwner }}">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="field-group">
+                            <label>Claim Number</label>
+                            <input type="text" name="claim_number"
+                                   value="{{ client.claimNumber }}">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="field-group">
+                            <label>Insurance Company</label>
+                            <input type="text" name="ins_company"
+                                   value="{{ client.insuranceCo_Name }}">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="field-group">
+                            <label>Send To (Insurance Email)</label>
+                            <input type="email" name="to_email"
+                                   value="{{ client.emailInsCo|default:client.DAEmail }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Payment Items -->
+        <div class="demand-card">
+            <div class="demand-card-header">
+                <i class="fas fa-dollar-sign text-success"></i>
+                <h5>ALE Payment Items</h5>
+                <small class="text-muted ms-auto">Check items that have NOT been paid (outstanding)</small>
+            </div>
+            <div class="demand-card-body p-0">
+                <table class="payment-table">
+                    <thead>
+                        <tr>
+                            <th style="width:40px;">Out?</th>
+                            <th>Description</th>
+                            <th style="width:130px; text-align:right;">Amount ($)</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for item in payment_items %}
+                        <tr class="item-row" id="row-{{ item.key }}">
+                            <td>
+                                <input type="checkbox" name="outstanding_items" value="{{ item.key }}"
+                                       id="chk-{{ item.key }}"
+                                       class="item-checkbox form-check-input"
+                                       onchange="updateRow('{{ item.key }}', this.checked)">
+                            </td>
+                            <td>
+                                <label for="chk-{{ item.key }}" style="cursor:pointer; margin:0; font-size:13px; font-weight:500;">
+                                    {{ item.label }}
+                                </label>
+                            </td>
+                            <td>
+                                <input type="number" name="amount_{{ item.key }}"
+                                       id="amt-{{ item.key }}"
+                                       class="amt-input"
+                                       value="{{ item.amount|floatformat:2 }}"
+                                       min="0" step="0.01"
+                                       onchange="recalcTotal()">
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            <div class="total-bar">
+                <span class="total-label">Total Outstanding:</span>
+                <span class="total-amount" id="totalDisplay">$0.00</span>
+            </div>
+        </div>
+
+        <!-- Letter Settings -->
+        <div class="demand-card">
+            <div class="demand-card-header">
+                <i class="fas fa-sliders-h text-secondary"></i>
+                <h5>Letter Settings</h5>
+            </div>
+            <div class="demand-card-body">
+                <div class="row g-3">
+                    <div class="col-sm-4">
+                        <div class="field-group">
+                            <label>Payment Deadline (days)</label>
+                            <input type="number" name="deadline_days" value="30" min="1" max="90">
+                        </div>
+                    </div>
+                    <div class="col-sm-8">
+                        <div class="field-group">
+                            <label>Contact Name (Signatory)</label>
+                            <input type="text" name="contact_name" value="Julius Cartwright">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="field-group">
+                            <label>Contact Phone</label>
+                            <input type="text" name="contact_phone" value="(216) 990-1501">
+                        </div>
+                    </div>
+                    <div class="col-sm-6">
+                        <div class="field-group">
+                            <label>Contact Email</label>
+                            <input type="email" name="contact_email" value="{{ owner_email }}">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Actions -->
+        <div class="d-flex gap-3 flex-wrap">
+            <button type="submit" class="btn-generate">
+                <i class="fas fa-envelope"></i> Generate Letter &amp; Compose Email
+            </button>
+            <a href="{% url 'lease_manager' %}" class="btn btn-outline-secondary">
+                <i class="fas fa-arrow-left me-1"></i> Back
+            </a>
+        </div>
+
+    </div>
+
+    <!-- ── RIGHT: Preview & Contacts ──────────────────────────────────── -->
+    <div>
+
+        <!-- Lease quick-info -->
+        <div class="demand-card mb-3">
+            <div class="demand-card-header">
+                <i class="fas fa-file-contract text-primary"></i>
+                <h5>Lease</h5>
+            </div>
+            <div class="demand-card-body p-3">
+                <table style="width:100%; font-size:12px; border-collapse:collapse;">
+                    <tr><td style="color:#64748b; padding:3px 0; width:80px;">Tenant</td>
+                        <td style="font-weight:600;">{{ client.ale_lessee_name|default:client.pOwner }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Property</td>
+                        <td>{{ lease.property_address|default:"—" }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">RE Co.</td>
+                        <td>{{ lease.real_estate_company|default:"—" }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">ALE Term</td>
+                        <td>{{ lease.lease_start_date|date:"M d, Y"|default:"TBD" }} – {{ lease.lease_end_date|date:"M d, Y"|default:"TBD" }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Monthly</td>
+                        <td style="font-weight:600;">${{ lease.monthly_rent|floatformat:2 }}</td></tr>
+                    <tr><td style="color:#64748b; padding:3px 0;">Claim #</td>
+                        <td>{{ client.claimNumber|default:"—" }}</td></tr>
+                </table>
+            </div>
+        </div>
+
+        <!-- Insurance contacts -->
+        {% if ins_contacts %}
+        <div class="demand-card">
+            <div class="demand-card-header">
+                <i class="fas fa-building text-warning"></i>
+                <h5>Insurance Contacts</h5>
+            </div>
+            <div class="demand-card-body p-2">
+                {% for c in ins_contacts %}
+                <div style="display:flex; align-items:center; justify-content:space-between; padding:6px 4px; border-radius:6px;"
+                     class="contact-row">
+                    <div>
+                        <div style="font-size:12px; font-weight:600; color:#334155;">{{ c.label }}</div>
+                        <div style="font-size:11px; color:#64748b;">{{ c.email }}</div>
+                    </div>
+                    <button type="button" class="btn btn-xs btn-outline-danger"
+                            onclick="setToEmail('{{ c.email }}')">Use</button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Live letter preview -->
+        <div class="demand-card mt-3">
+            <div class="demand-card-header">
+                <i class="fas fa-file-alt text-secondary"></i>
+                <h5>Letter Preview</h5>
+                <small class="text-muted ms-auto">auto-updates as you check items</small>
+            </div>
+            <div class="demand-card-body p-2">
+                <div class="letter-preview" id="letterPreview">
+                    Select outstanding items on the left to preview the letter.
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+</form>
+
+<script>
+// ── Payment data from Django ──────────────────────────────────────────────
+const ITEMS = [
+    {% for item in payment_items %}
+    { key: '{{ item.key }}', label: '{{ item.label }}', amount: {{ item.amount }} },
+    {% endfor %}
+];
+
+const leaseData = {
+    insured:   '{{ client.ale_lessee_name|default:client.pOwner|escapejs }}',
+    claimNum:  '{{ client.claimNumber|escapejs }}',
+    insCo:     '{{ client.insuranceCo_Name|escapejs }}',
+    property:  '{{ lease.property_address|escapejs }}',
+    re:        '{{ lease.real_estate_company|escapejs }}',
+    aleStart:  '{{ lease.lease_start_date|date:"F d, Y"|default:"TBD" }}',
+    aleEnd:    '{{ lease.lease_end_date|date:"F d, Y"|default:"TBD" }}',
+};
+
+function getCheckedItems() {
+    return ITEMS.filter(item => {
+        const cb = document.getElementById('chk-' + item.key);
+        return cb && cb.checked;
+    }).map(item => {
+        const amtInput = document.getElementById('amt-' + item.key);
+        return { ...item, amount: parseFloat(amtInput?.value || item.amount) };
+    });
+}
+
+function getDisbursedItems() {
+    return ITEMS.filter(item => {
+        const cb = document.getElementById('chk-' + item.key);
+        return !(cb && cb.checked);
+    }).map(item => {
+        const amtInput = document.getElementById('amt-' + item.key);
+        return { ...item, amount: parseFloat(amtInput?.value || item.amount) };
+    });
+}
+
+function recalcTotal() {
+    const outstanding = getCheckedItems();
+    const total = outstanding.reduce((s, i) => s + i.amount, 0);
+    document.getElementById('totalDisplay').textContent =
+        '$' + total.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    updatePreview();
+}
+
+function updateRow(key, isOutstanding) {
+    const row = document.getElementById('row-' + key);
+    if (isOutstanding) {
+        row.classList.add('outstanding-row');
+    } else {
+        row.classList.remove('outstanding-row');
+    }
+    recalcTotal();
+}
+
+function updatePreview() {
+    const outstanding = getCheckedItems();
+    const disbursed   = getDisbursedItems().filter(i => i.amount > 0);
+    const total       = outstanding.reduce((s, i) => s + i.amount, 0);
+
+    if (!outstanding.length) {
+        document.getElementById('letterPreview').textContent =
+            'Select outstanding items on the left to preview the letter.';
+        return;
+    }
+
+    const today    = new Date();
+    const deadline = new Date(today.getTime() + 30 * 24 * 60 * 60 * 1000);
+    const fmtDate  = d => d.toLocaleDateString('en-US', { year:'numeric', month:'long', day:'numeric' });
+    const fmtAmt   = a => '$' + a.toLocaleString('en-US', { minimumFractionDigits:2, maximumFractionDigits:2 });
+
+    const disbursedText = disbursed.length
+        ? disbursed.map(i => i.label + ' (' + fmtAmt(i.amount) + ')').join(', ')
+        : 'other components';
+
+    const itemsList = outstanding.map(i => '  • ' + i.label + ': ' + fmtAmt(i.amount)).join('\n');
+
+    const preview = `DEMAND FOR PAYMENT
+
+Date: ${fmtDate(today)}
+Via Certified Mail – Return Receipt Requested
+
+TO: ${leaseData.insCo || '[Insurance Company]'}
+    Attn: Claims Department / ALE Unit
+
+RE: Insured: ${leaseData.insured} | Claim #${leaseData.claimNum || '[#]'}
+    Amount Due: ${fmtAmt(total)}
+
+This letter serves as FORMAL DEMAND FOR PAYMENT of ${fmtAmt(total)} owed to ${leaseData.re || 'Dream Team Realty, Inc.'} in connection with the Additional Living Expense (ALE) claim for ${leaseData.insured}.
+
+${leaseData.re || 'Dream Team Realty'} located, procured, and executed a lease at ${leaseData.property}, for the ALE period ${leaseData.aleStart} through ${leaseData.aleEnd}.
+
+${leaseData.insCo} has disbursed ${disbursedText}. The following remain outstanding:
+
+${itemsList}
+
+TOTAL AMOUNT DUE: ${fmtAmt(total)}
+
+Payment is demanded on or before ${fmtDate(deadline)}.
+
+[Signatory / Company]
+`;
+
+    document.getElementById('letterPreview').textContent = preview;
+}
+
+function setToEmail(email) {
+    const input = document.querySelector('input[name="to_email"]');
+    if (input) input.value = email;
+}
+
+// Init
+recalcTotal();
+</script>
+{% endblock %}
