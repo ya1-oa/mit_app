@@ -67,6 +67,7 @@ INSTALLED_APPS = [
     'box_calculator',
     'cps_report',
     'contractor_hub',
+    'dev_hub',
 
     # Auth
     #'django.contrib.sites',
@@ -245,6 +246,9 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 # Celery Beat Schedule
 from celery.schedules import crontab
 
+# ── Dev Hub notification email ────────────────────────────────────────────
+NOTIFY_EMAIL = os.getenv('NOTIFY_EMAIL', 'wsbjoe9@gmail.com')
+
 CELERY_BEAT_SCHEDULE = {
     'renew-onedrive-subscriptions': {
         'task': 'docsAppR.tasks.renew_subscriptions_task',
@@ -258,6 +262,11 @@ CELERY_BEAT_SCHEDULE = {
     'process-scheduled-emails': {
         'task': 'email_manager.tasks.send_scheduled_emails_task',
         'schedule': crontab(minute='*'),  # poll every minute
+    },
+    # ── Dev Hub: weekly progress report — Monday 8 AM
+    'dev-hub-weekly-report': {
+        'task': 'dev_hub.tasks.send_weekly_progress_report',
+        'schedule': crontab(hour=8, minute=0, day_of_week=1),
     },
 }
 

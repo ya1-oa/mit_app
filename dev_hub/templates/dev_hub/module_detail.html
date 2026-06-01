@@ -1,0 +1,382 @@
+{% extends "account/base.html" %}
+
+{% block title %}{{ module.name }} — Dev Hub{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'dev_hub:dashboard' %}">Dev Hub</a></li>
+            <li class="breadcrumb-item active">{{ module.name }}</li>
+        </ol>
+    </nav>
+    <span class="badge bg-{{ module.status_color }} ms-3">{{ module.get_status_display }}</span>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+    <!-- ── Left: task list ───────────────────────────────────────────────── -->
+    <div class="col-12 col-lg-7">
+
+        <!-- Progress -->
+        <div class="card p-3 mb-4">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <h5 class="mb-0">Progress</h5>
+                <span class="fw-bold text-primary fs-5" id="pct-display">{{ module.completion_pct }}%</span>
+            </div>
+            <div class="progress mb-2" style="height:12px;">
+                <div class="progress-bar bg-primary" id="main-bar"
+                     style="width:{{ module.completion_pct }}%"
+                     role="progressbar"
+                     aria-valuenow="{{ module.completion_pct }}"
+                     aria-valuemin="0" aria-valuemax="100">
+                </div>
+            </div>
+            <div class="d-flex gap-4" style="font-size:13px;">
+                <span class="text-success"><i class="fas fa-check-circle me-1"></i><strong id="cnt-done">{{ task_counts.done }}</strong> done</span>
+                <span class="text-warning"><i class="fas fa-circle me-1"></i><strong id="cnt-inprog">{{ task_counts.in_progress }}</strong> in progress</span>
+                <span class="text-muted"><i class="far fa-circle me-1"></i><strong id="cnt-todo">{{ task_counts.todo }}</strong> todo</span>
+                <span class="text-muted">of <strong>{{ task_counts.total }}</strong> total</span>
+            </div>
+        </div>
+
+        <!-- Task list -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Tasks</h5>
+                <button class="btn btn-sm btn-outline-primary" onclick="showAddForm()">
+                    <i class="fas fa-plus me-1"></i> Add Task
+                </button>
+            </div>
+            <div class="card-body p-0" id="full-task-list">
+
+                {% for task in tasks %}
+                <div class="d-flex align-items-start gap-3 px-3 py-2 border-bottom task-row"
+                     id="task-{{ task.id }}">
+                    <input type="checkbox"
+                           class="form-check-input task-checkbox mt-1"
+                           {% if task.status == 'done' %}checked{% endif %}
+                           data-task-id="{{ task.id }}"
+                           style="cursor:pointer; width:17px; height:17px; flex-shrink:0;">
+
+                    <div class="flex-grow-1">
+                        <div class="d-flex align-items-center gap-2 flex-wrap">
+                            <span class="task-title {% if task.status == 'done' %}text-decoration-line-through text-muted{% endif %}"
+                                  style="font-size:14px; font-weight:500;">{{ task.title }}</span>
+                            <span class="badge bg-{% if task.task_type == 'bug' %}danger{% elif task.task_type == 'test' %}info{% elif task.task_type == 'secretarial' %}warning{% else %}primary{% endif %}"
+                                  style="font-size:10px;">{{ task.get_task_type_display }}</span>
+                            <span class="badge bg-{{ task.status_color }}" style="font-size:10px;">
+                                {{ task.get_status_display }}
+                            </span>
+                        </div>
+                        {% if task.description %}
+                        <p class="text-muted mb-0 mt-1" style="font-size:12px;">{{ task.description }}</p>
+                        {% endif %}
+                        <div style="font-size:11px; color:#94a3b8; margin-top:2px;">
+                            {% if task.added_by %}Added by {{ task.added_by.email }}{% endif %}
+                            {% if task.completed_at %}— Completed {{ task.completed_at|date:"M d, Y H:i" }}{% endif %}
+                        </div>
+                    </div>
+
+                    <div class="d-flex gap-1 flex-shrink-0 align-items-center">
+                        <button class="btn btn-link btn-sm p-1 queue-btn {% if task.queue_for_weekly_report %}text-primary{% else %}text-muted{% endif %}"
+                                title="{% if task.queue_for_weekly_report %}Remove from report queue{% else %}Queue for weekly report{% endif %}"
+                                onclick="toggleQueue(this, '{{ task.id }}')">
+                            <i class="fas fa-calendar-plus"></i>
+                        </button>
+                        <a href="{% url 'dev_hub:notify_client' task.id %}"
+                           class="btn btn-link btn-sm p-1 text-muted"
+                           title="Notify client about this feature">
+                            <i class="fas fa-paper-plane"></i>
+                        </a>
+                    </div>
+                </div>
+                {% empty %}
+                <div class="p-4 text-center text-muted">
+                    <i class="fas fa-tasks fa-2x mb-2 opacity-25"></i>
+                    <p>No tasks yet. Add one below.</p>
+                </div>
+                {% endfor %}
+
+            </div>
+
+            <!-- Add task form (hidden by default) -->
+            <div class="card-footer p-3" id="add-task-form" style="display:none;">
+                <h6 class="mb-3">Add New Task</h6>
+                <div class="row g-2">
+                    <div class="col-12">
+                        <input type="text" id="new-task-title" class="form-control" placeholder="Task title *" required>
+                    </div>
+                    <div class="col-12">
+                        <textarea id="new-task-desc" class="form-control" rows="2" placeholder="Description (optional)"></textarea>
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <select id="new-task-type" class="form-select">
+                            <option value="feature">Feature</option>
+                            <option value="bug">Bug Fix</option>
+                            <option value="test">Test</option>
+                            <option value="secretarial">Secretarial</option>
+                        </select>
+                    </div>
+                    <div class="col-6 col-md-4">
+                        <div class="form-check mt-2">
+                            <input class="form-check-input" type="checkbox" id="new-task-notify">
+                            <label class="form-check-label" for="new-task-notify" style="font-size:13px;">
+                                Notify on complete
+                            </label>
+                        </div>
+                    </div>
+                    <div class="col-12 d-flex gap-2 justify-content-end">
+                        <button class="btn btn-secondary btn-sm" onclick="hideAddForm()">Cancel</button>
+                        <button class="btn btn-primary btn-sm" onclick="submitAddTask({{ module.id }})">
+                            <i class="fas fa-plus me-1"></i> Add Task
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ── Right: coverage + reports ─────────────────────────────────────── -->
+    <div class="col-12 col-lg-5">
+
+        <!-- Module info -->
+        {% if module.description %}
+        <div class="card p-3 mb-4">
+            <h6 class="text-muted mb-1">About</h6>
+            <p class="mb-0" style="font-size:14px;">{{ module.description }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Test coverage -->
+        <div class="card mb-4">
+            <div class="card-header">
+                <h5 class="mb-0">Test Coverage</h5>
+            </div>
+            <div class="card-body">
+                <form method="post" action="{% url 'dev_hub:coverage_update' module.id %}">
+                    {% csrf_token %}
+                    <div class="d-flex gap-4 mb-3">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="unit_tested"
+                                   id="unit_tested" {% if coverage and coverage.unit_tested %}checked{% endif %}>
+                            <label class="form-check-label" for="unit_tested">Unit Tested</label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" name="human_tested"
+                                   id="human_tested" {% if coverage and coverage.human_tested %}checked{% endif %}>
+                            <label class="form-check-label" for="human_tested">Human Tested</label>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" style="font-size:13px;">Coverage %</label>
+                        <input type="number" name="coverage_pct" class="form-control form-control-sm"
+                               min="0" max="100" step="0.1"
+                               value="{{ coverage.coverage_pct|default:'0' }}"
+                               style="width:100px;">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label" style="font-size:13px;">Notes</label>
+                        <textarea name="notes" class="form-control form-control-sm" rows="2">{{ coverage.notes|default:'' }}</textarea>
+                    </div>
+                    <button type="submit" class="btn btn-sm btn-primary">Save Coverage</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Report history -->
+        <div class="card">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">Report History</h5>
+                <form method="post" action="{% url 'dev_hub:report_adhoc' %}">
+                    {% csrf_token %}
+                    <input type="hidden" name="module_ids" value="{{ module.id }}">
+                    <button type="submit" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-paper-plane me-1"></i> Send Now
+                    </button>
+                </form>
+            </div>
+            <div class="card-body p-0">
+                {% for report in reports %}
+                <div class="px-3 py-2 border-bottom">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <span class="badge bg-{% if report.report_type == 'weekly' %}primary{% else %}secondary{% endif %} me-1">
+                                {{ report.get_report_type_display }}
+                            </span>
+                            <span style="font-size:13px;">{{ report.sent_at|date:"M d, Y H:i" }}</span>
+                        </div>
+                        {% if report.email_log %}
+                            {% if report.email_log.is_opened %}
+                                <span class="badge bg-success"><i class="fas fa-envelope-open me-1"></i>Opened</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-envelope me-1"></i>Unread</span>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+                    {% if report.response_notes %}
+                    <p class="text-muted mb-1 mt-1" style="font-size:12px;">
+                        <i class="fas fa-reply me-1"></i>{{ report.response_notes }}
+                    </p>
+                    {% endif %}
+                    <!-- Response notes form -->
+                    <form method="post" action="{% url 'dev_hub:report_response' report.id %}"
+                          class="d-flex gap-2 mt-1">
+                        {% csrf_token %}
+                        <input type="hidden" name="next" value="{{ request.path }}">
+                        <input type="text" name="response_notes" class="form-control form-control-sm"
+                               placeholder="Add response notes..." style="font-size:12px;"
+                               value="{{ report.response_notes }}">
+                        <button type="submit" class="btn btn-sm btn-outline-secondary">Save</button>
+                    </form>
+                </div>
+                {% empty %}
+                <div class="p-3 text-muted text-center" style="font-size:13px;">No reports sent yet.</div>
+                {% endfor %}
+            </div>
+        </div>
+
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF     = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+const MODULE_ID = {{ module.id }};
+
+// ── Task checkbox ─────────────────────────────────────────────────────────
+document.querySelectorAll('.task-checkbox').forEach(cb => {
+    cb.addEventListener('change', function () {
+        toggleTask(this.dataset.taskId, this);
+    });
+});
+
+async function toggleTask(taskId, checkbox) {
+    checkbox.disabled = true;
+    try {
+        const resp = await fetch(`/dev-hub/api/task/${taskId}/toggle/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF },
+        });
+        const data = await resp.json();
+
+        // Update global progress
+        document.getElementById('pct-display').textContent = data.completion_pct + '%';
+        document.getElementById('main-bar').style.width    = data.completion_pct + '%';
+        document.getElementById('cnt-done').textContent    = data.task_counts.done;
+        document.getElementById('cnt-inprog').textContent  = data.task_counts.in_progress;
+        document.getElementById('cnt-todo').textContent    = data.task_counts.todo;
+
+        // Strike title
+        const title = document.querySelector(`#task-${taskId} .task-title`);
+        if (title) {
+            title.classList.toggle('text-decoration-line-through', data.status === 'done');
+            title.classList.toggle('text-muted',                   data.status === 'done');
+        }
+
+        if (data.notify_redirect) window.open(data.notify_redirect, '_blank');
+    } catch (err) {
+        console.error(err);
+        checkbox.checked = !checkbox.checked;
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
+// ── Queue toggle ──────────────────────────────────────────────────────────
+async function toggleQueue(btn, taskId) {
+    try {
+        const resp = await fetch(`/dev-hub/api/task/${taskId}/queue/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF },
+        });
+        const data = await resp.json();
+        btn.classList.toggle('text-primary', data.queued);
+        btn.classList.toggle('text-muted', !data.queued);
+        btn.title = data.queued ? 'Remove from report queue' : 'Queue for weekly report';
+    } catch (err) { console.error(err); }
+}
+
+// ── Add task form ─────────────────────────────────────────────────────────
+function showAddForm() {
+    document.getElementById('add-task-form').style.display = 'block';
+    document.getElementById('new-task-title').focus();
+}
+function hideAddForm() {
+    document.getElementById('add-task-form').style.display = 'none';
+}
+
+async function submitAddTask(moduleId) {
+    const title   = document.getElementById('new-task-title').value.trim();
+    const desc    = document.getElementById('new-task-desc').value.trim();
+    const type    = document.getElementById('new-task-type').value;
+    const notify  = document.getElementById('new-task-notify').checked;
+
+    if (!title) { document.getElementById('new-task-title').focus(); return; }
+
+    try {
+        const resp = await fetch(`/dev-hub/api/module/${moduleId}/task/add/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                title, description: desc,
+                task_type: type, notify_on_complete: notify,
+            }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed'); return; }
+
+        const list = document.getElementById('full-task-list');
+        const row  = document.createElement('div');
+        row.className = 'd-flex align-items-start gap-3 px-3 py-2 border-bottom task-row';
+        row.id        = `task-${data.id}`;
+        row.innerHTML = `
+            <input type="checkbox" class="form-check-input task-checkbox mt-1"
+                   data-task-id="${data.id}" style="cursor:pointer;width:17px;height:17px;flex-shrink:0;">
+            <div class="flex-grow-1">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                    <span class="task-title" style="font-size:14px;font-weight:500;">${data.title}</span>
+                    <span class="badge bg-secondary" style="font-size:10px;">${data.type_label}</span>
+                    <span class="badge bg-secondary" style="font-size:10px;">To Do</span>
+                </div>
+            </div>
+            <div class="d-flex gap-1 flex-shrink-0">
+                <button class="btn btn-link btn-sm p-1 queue-btn text-muted"
+                        title="Queue for weekly report"
+                        onclick="toggleQueue(this,'${data.id}')">
+                    <i class="fas fa-calendar-plus"></i>
+                </button>
+                <a href="/dev-hub/task/${data.id}/notify-client/"
+                   class="btn btn-link btn-sm p-1 text-muted">
+                    <i class="fas fa-paper-plane"></i>
+                </a>
+            </div>
+        `;
+        list.appendChild(row);
+        row.querySelector('.task-checkbox').addEventListener('change', function () {
+            toggleTask(data.id, this);
+        });
+
+        // Update stats
+        document.getElementById('pct-display').textContent = data.completion_pct + '%';
+        document.getElementById('main-bar').style.width    = data.completion_pct + '%';
+        document.getElementById('cnt-todo').textContent    = data.task_counts.todo;
+
+        // Clear form
+        document.getElementById('new-task-title').value   = '';
+        document.getElementById('new-task-desc').value    = '';
+        document.getElementById('new-task-notify').checked = false;
+        hideAddForm();
+    } catch (err) { console.error(err); }
+}
+
+document.getElementById('new-task-title')?.addEventListener('keydown', function (e) {
+    if (e.key === 'Enter') submitAddTask(MODULE_ID);
+});
+</script>
+{% endblock %}

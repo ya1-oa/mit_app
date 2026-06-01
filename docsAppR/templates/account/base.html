@@ -414,6 +414,12 @@
         <li><a href="{% url 'calculator_home' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}">
             <i class="fas fa-boxes"></i> Box Calc
         </a></li>
+
+        <li class="nav-divider"></li>
+
+        <li><a href="{% url 'dev_hub:dashboard' %}" class="{% if '/dev-hub' in request.path %}active{% endif %}">
+            <i class="fas fa-code-branch"></i> Dev Hub
+        </a></li>
     </ul>
 
     <!-- Right: user + logout -->
@@ -474,6 +480,11 @@
 
     <div class="drawer-section">Reports & Pricing</div>
     <a href="{% url 'calculator_home' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}"><i class="fas fa-boxes"></i> Box Calculator</a>
+
+    <div class="drawer-section">Dev</div>
+    <a href="{% url 'dev_hub:dashboard' %}" class="{% if '/dev-hub' in request.path %}active{% endif %}">
+        <i class="fas fa-code-branch"></i> Dev Hub
+    </a>
 
     <div class="drawer-section">Account</div>
     <a href="{% url 'logout' %}"><i class="fas fa-sign-out-alt"></i> Logout</a>

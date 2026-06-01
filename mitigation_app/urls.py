@@ -58,4 +58,7 @@ urlpatterns = [
     # Contractor Bid Hub
     path('contractor-hub/', include('contractor_hub.urls')),
 
+    # Dev Hub — internal project tracking + notification hub
+    path('dev-hub/', include('dev_hub.urls')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
