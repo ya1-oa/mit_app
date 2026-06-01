@@ -1884,6 +1884,7 @@ class RoomScopeChecklist(models.Model):
         return f"Scope Checklist - {self.room.room_name} ({self.client.pOwner})"
 
     def to_dict(self):
+
         """Convert to dictionary for JSON serialization"""
         return {
             'clg_material': self.clg_material,
@@ -1935,3 +1936,201 @@ class RoomScopeChecklist(models.Model):
             'frm_lf': str(self.frm_lf) if self.frm_lf else '',
             'activity_notes': self.activity_notes,
         }
+
+
+# ── Global System Activity Log ────────────────────────────────────────────────
+
+class SystemActivity(models.Model):
+    """
+    App-wide audit trail.  Every significant action across every feature app
+    (email sends, lease events, document generation, logins, etc.) is recorded
+    here so there is one place to review what happened and who did it.
+    """
+    ACTION_CHOICES = [
+        ('email_sent',           'Email Sent'),
+        ('package_sent',         'Package Sent'),
+        ('demand_letter',        'Demand Letter Generated'),
+        ('lease_created',        'Lease Created'),
+        ('lease_status_changed', 'Lease Status Changed'),
+        ('document_generated',   'Document Generated'),
+        ('pdf_generated',        'PDF Generated'),
+        ('note_added',           'Note Added'),
+        ('claim_created',        'Claim Created'),
+        ('file_uploaded',        'File Uploaded'),
+        ('login',                'User Login'),
+        ('ale_sync',             'ALE Data Synced'),
+        ('other',                'Other'),
+    ]
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, default='other', db_index=True)
+    description = models.TextField()
+    performed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='system_activities',
+    )
+    related_client = models.ForeignKey(
+        'Client',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='system_activities',
+    )
+    related_lease = models.ForeignKey(
+        'Lease',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='system_activities',
+    )
+    metadata    = models.JSONField(default=dict, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['performed_by', '-created_at']),
+            models.Index(fields=['action_type', '-created_at']),
+        ]
+        verbose_name = 'System Activity'
+        verbose_name_plural = 'System Activities'
+
+    def __str__(self):
+        return f'{self.get_action_type_display()} — {self.description[:80]}'
+
+
+def log_activity(action_type, description, user=None, client=None, lease=None, **metadata):
+    """
+    Convenience wrapper — call from any view to write a SystemActivity row.
+
+        log_activity('email_sent', 'Sent demand letter to foo@bar.com',
+                     user=request.user, lease=lease, subject=subject)
+    """
+    try:
+        SystemActivity.objects.create(
+            action_type=action_type,
+            description=description,
+            performed_by=user if (user and user.is_authenticated) else None,
+            related_client=client,
+            related_lease=lease,
+            metadata=metadata or {},
+        )
+    except Exception:
+        pass  # never let activity logging crash the caller
+
+
+# ── Task Management ───────────────────────────────────────────────────────────
+
+class TaskItem(models.Model):
+    """
+    General-purpose task / to-do item usable across every app.
+    Can be linked to a claim (Client) or lease for context,
+    or kept standalone as a general action item.
+    """
+
+    STATUS_CHOICES = [
+        ('backlog',     'Backlog'),
+        ('todo',        'To Do'),
+        ('in_progress', 'In Progress'),
+        ('review',      'Needs Review'),
+        ('done',        'Done'),
+        ('cancelled',   'Cancelled'),
+    ]
+
+    PRIORITY_CHOICES = [
+        ('low',    'Low'),
+        ('medium', 'Medium'),
+        ('high',   'High'),
+        ('urgent', 'Urgent'),
+    ]
+
+    CATEGORY_CHOICES = [
+        ('general',    'General'),
+        ('claim',      'Claim'),
+        ('lease',      'Lease / ALE'),
+        ('email',      'Email'),
+        ('follow_up',  'Follow Up'),
+        ('admin',      'Admin'),
+        ('billing',    'Billing'),
+        ('legal',      'Legal'),
+    ]
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title       = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES,
+                                    default='todo', db_index=True)
+    priority    = models.CharField(max_length=10, choices=PRIORITY_CHOICES,
+                                    default='medium', db_index=True)
+    category    = models.CharField(max_length=20, choices=CATEGORY_CHOICES,
+                                    default='general', db_index=True)
+
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_tasks',
+    )
+    created_by  = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='created_tasks',
+    )
+
+    due_date    = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    related_client = models.ForeignKey(
+        'Client',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='tasks',
+    )
+    related_lease = models.ForeignKey(
+        'Lease',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='tasks',
+    )
+
+    notes      = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['assigned_to', 'status']),
+            models.Index(fields=['due_date']),
+        ]
+        verbose_name = 'Task'
+        verbose_name_plural = 'Tasks'
+
+    def __str__(self):
+        return self.title
+
+    # ── Computed helpers ──────────────────────────────────────────────────────
+
+    @property
+    def is_overdue(self):
+        from django.utils import timezone
+        if self.due_date and self.status not in ('done', 'cancelled'):
+            return self.due_date < timezone.now().date()
+        return False
+
+    @property
+    def priority_color(self):
+        return {'low': '#10b981', 'medium': '#f59e0b',
+                'high': '#ef4444', 'urgent': '#7c3aed'}.get(self.priority, '#64748b')
+
+    @property
+    def status_color(self):
+        return {
+            'backlog':     '#94a3b8', 'todo': '#3b82f6',
+            'in_progress': '#f59e0b', 'review': '#8b5cf6',
+            'done':        '#10b981', 'cancelled': '#ef4444',
+        }.get(self.status, '#94a3b8')

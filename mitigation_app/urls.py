@@ -61,4 +61,7 @@ urlpatterns = [
     # Dev Hub — internal project tracking + notification hub
     path('dev-hub/', include('dev_hub.urls')),
 
+    # Task Manager — team to-do / kanban board
+    path('tasks/', include('tasks.urls')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

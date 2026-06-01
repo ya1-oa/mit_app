@@ -289,4 +289,51 @@
 
 </div>
 
+<!-- Task & Productivity group -->
+<div class="section-label">Tasks &amp; Productivity</div>
+<div class="app-grid">
+
+    <a href="{% url 'tasks:board' %}" class="app-card" style="--app-color:#6366f1;">
+        <div class="app-card-icon"><i class="fas fa-tasks"></i></div>
+        <div class="app-card-name">Task Board</div>
+        <div class="app-card-desc">Kanban-style task manager — create, assign and track to-dos across every claim, lease and project.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'email_compose' %}" class="app-card" style="--app-color:#f59e0b;">
+        <div class="app-card-icon"><i class="fas fa-pen-to-square"></i></div>
+        <div class="app-card-name">Compose Email</div>
+        <div class="app-card-desc">Open the universal email composer directly — recipients, attachments, tracking pixel and scheduling in one place.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+</div>
+
+<!-- System group -->
+<div class="section-label">System</div>
+<div class="app-grid">
+
+    <a href="{% url 'activity_page' %}" class="app-card" style="--app-color:#0f172a;">
+        <div class="app-card-icon"><i class="fas fa-history"></i></div>
+        <div class="app-card-name">Activity Log</div>
+        <div class="app-card-desc">Full audit trail of every action across all apps — emails sent, leases created, demand letters, uploads and more.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'dashboard' %}" class="app-card" style="--app-color:#475569;">
+        <div class="app-card-icon"><i class="fas fa-chart-bar"></i></div>
+        <div class="app-card-name">Dashboard Stats</div>
+        <div class="app-card-desc">Claims overview, statistics, and pipeline summary across all active claims.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+    <a href="{% url 'dev_hub:dashboard' %}" class="app-card" style="--app-color:#334155;">
+        <div class="app-card-icon"><i class="fas fa-code-branch"></i></div>
+        <div class="app-card-name">Dev Hub</div>
+        <div class="app-card-desc">Internal development tracking — app module status, dev tasks, test coverage and automated progress reports.</div>
+        <div class="app-card-arrow">Open <i class="fas fa-arrow-right"></i></div>
+    </a>
+
+</div>
+
 {% endblock %}

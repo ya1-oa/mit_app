@@ -49,9 +49,10 @@ def email_compose(request):
     """
     from docsAppR.models import Lease, LeaseDocument
 
-    source   = request.GET.get('source', 'general')
-    lease_id = request.GET.get('lease_id', '')
-    prefill  = {
+    source      = request.GET.get('source', 'general')
+    lease_id    = request.GET.get('lease_id', '')
+    gen_file_id = request.GET.get('gen_file_id', '')
+    prefill = {
         'to':      request.GET.get('to', ''),
         'cc':      request.GET.get('cc', OWNER_EMAIL),
         'bcc':     request.GET.get('bcc', ''),
@@ -62,17 +63,23 @@ def email_compose(request):
     lease = None
     lease_docs = []
     lease_contacts = []
+    preselected_gen_file = None
+
+    # Pre-selected generated file (e.g. demand letter PDF)
+    if gen_file_id:
+        try:
+            preselected_gen_file = GeneratedFile.objects.get(id=gen_file_id)
+        except (GeneratedFile.DoesNotExist, Exception):
+            pass
 
     if lease_id:
         try:
             lease = Lease.objects.select_related('client').prefetch_related('documents').get(id=lease_id)
             lease_docs = list(lease.documents.all())
 
-            # Build prioritised contacts from lease
             from lease_manager.views import _lease_contacts
             lease_contacts = _lease_contacts(lease)
 
-            # Default TO based on source
             if source == 'lease_package' and not prefill['to']:
                 to_emails = [c['email'] for c in lease_contacts
                              if c['role'] in ('re_company', 'broker')]
@@ -90,20 +97,22 @@ def email_compose(request):
         return _handle_compose_send(request, lease, lease_docs)
 
     source_labels = {
-        'lease_package':  'Lease Document Package',
-        'demand_letter':  'Demand for Payment Letter',
-        'general':        'New Email',
+        'lease_package': 'Lease Document Package',
+        'demand_letter': 'Demand for Payment Letter',
+        'general':       'New Email',
     }
 
     context = {
-        'source':          source,
-        'source_label':    source_labels.get(source, 'New Email'),
-        'lease':           lease,
-        'lease_docs':      lease_docs,
-        'lease_contacts':  lease_contacts,
-        'prefill':         prefill,
-        'owner_email':     OWNER_EMAIL,
-        'all_docs':        GeneratedFile.objects.order_by('-created_at')[:50],
+        'source':                source,
+        'source_label':          source_labels.get(source, 'New Email'),
+        'lease':                 lease,
+        'lease_docs':            lease_docs,
+        'lease_contacts':        lease_contacts,
+        'prefill':               prefill,
+        'owner_email':           OWNER_EMAIL,
+        'all_docs':              GeneratedFile.objects.order_by('-created_at')[:50],
+        'preselected_gen_file':  preselected_gen_file,
+        'sent_ok':               request.GET.get('sent') == '1',
     }
     return render(request, 'account/email_compose.html', context)
 
@@ -221,7 +230,6 @@ def _send_email_with_tracking(to_list, cc_list, bcc_list, subject, body,
         email.send()
 
         if lease:
-            LeaseActivity = None
             try:
                 from docsAppR.models import LeaseActivity as LA
                 LA.objects.create(
@@ -232,6 +240,21 @@ def _send_email_with_tracking(to_list, cc_list, bcc_list, subject, body,
                 )
             except Exception:
                 pass
+
+        # Global activity log
+        try:
+            from docsAppR.models import log_activity
+            log_activity(
+                'email_sent',
+                f'Email sent to {", ".join(to_list)} — {subject[:80]}',
+                user=user,
+                client=lease.client if lease else None,
+                lease=lease,
+                recipients=to_list,
+                subject=subject[:120],
+            )
+        except Exception:
+            pass
 
         return True, None
 

@@ -302,7 +302,7 @@ def demand_letter_compose(request, lease_id):
         }
         return render(request, 'account/lease_demand_letter.html', context)
 
-    # ── POST: build letter and redirect to compose ────────────────────────
+    # ── POST: build letter data ───────────────────────────────────────────
     outstanding_keys = request.POST.getlist('outstanding_items')
     custom_amounts   = {}
     for key, _, _ in DEMAND_PAYMENT_ITEMS:
@@ -313,7 +313,6 @@ def demand_letter_compose(request, lease_id):
             except ValueError:
                 pass
 
-    # Build outstanding list with amounts
     outstanding = []
     for item in payment_items:
         if item['key'] in outstanding_keys:
@@ -335,79 +334,113 @@ def demand_letter_compose(request, lease_id):
     contact_phone  = request.POST.get('contact_phone', '(216) 990-1501')
     contact_email  = request.POST.get('contact_email', OWNER_EMAIL)
 
-    # ── Build the outstanding items list for the letter ───────────────────
-    items_text = '\n'.join(
-        f'  • {i["label"]}: ${i["amount"]:,.2f}' for i in outstanding
-    )
-
-    # ── Disbursed items (everything NOT in outstanding) ───────────────────
     disbursed = [i for i in payment_items if i['key'] not in outstanding_keys]
     disbursed_text = ' and '.join(
         f'{i["label"]} (${custom_amounts.get(i["key"], i["amount"]):,.2f})'
         for i in disbursed
     ) if disbursed else 'other components'
 
-    body = f"""DEMAND FOR PAYMENT
+    # ── Generate the demand letter PDF ───────────────────────────────────
+    letter_data = {
+        'date_str':        letter_date.strftime('%B %d, %Y'),
+        'insured_name':    insured_name,
+        'claim_number':    claim_number,
+        'ins_company':     ins_company,
+        'property_addr':   property_addr,
+        're_company':      re_company or 'Dream Team Realty, Inc.',
+        'ale_start':       ale_start,
+        'ale_end':         ale_end,
+        'outstanding_items': outstanding,
+        'disbursed_text':  disbursed_text,
+        'total_due':       total_due,
+        'deadline_str':    deadline.strftime('%B %d, %Y'),
+        'contact_name':    contact_name,
+        'contact_phone':   contact_phone,
+        'contact_email':   contact_email,
+    }
 
-Date: {letter_date.strftime('%B %d, %Y')}
-Via Certified Mail – Return Receipt Requested
+    gen_file_id = ''
+    try:
+        from docsAppR.pdf_utils import generate_demand_letter_pdf
+        from docsAppR.models import GeneratedFile
+        import os
 
-TO: {ins_company}
-    Attn: Claims Department / Additional Living Expense Unit
+        pdf_buf = generate_demand_letter_pdf(letter_data)
 
-RE: Insured: {insured_name} | Claim #{claim_number} | Amount Due: ${total_due:,.2f}
+        # Save PDF to media/demand_letters/
+        safe_name = f'demand_letter_{insured_name.replace(" ", "_")}_{claim_number}_{letter_date.strftime("%Y%m%d")}.pdf'
+        rel_dir   = os.path.join('demand_letters', str(letter_date.year))
+        abs_dir   = os.path.join(settings.MEDIA_ROOT, rel_dir)
+        os.makedirs(abs_dir, exist_ok=True)
+        abs_path  = os.path.join(abs_dir, safe_name)
+        with open(abs_path, 'wb') as fh:
+            fh.write(pdf_buf.read())
 
-This letter serves as FORMAL DEMAND FOR PAYMENT of ${total_due:,.2f} owed to {re_company or 'Dream Team Realty, Inc.'} in connection with the above-referenced Additional Living Expense (ALE) claim for your insured, {insured_name}.
+        gf = GeneratedFile.objects.create(
+            name=f'Demand Letter — {insured_name} — Claim #{claim_number}',
+            file_path=abs_path,
+            mime_type='application/pdf',
+            category='pdf',
+            client=client,
+            created_by=request.user,
+        )
+        gen_file_id = str(gf.id)
+    except Exception as exc:
+        logger.error('demand_letter PDF generation failed: %s', exc)
 
-{re_company or 'Dream Team Realty'} located, procured, and executed a lease on behalf of your insured at {property_addr}, for the ALE period {ale_start} through {ale_end}. The fully executed Engagement Agreement — already in your claim file — expressly provides that the brokerage fee "will be provided directly by the designated Insurance Company or other third party responsible for covering the insured's living expenses."
+    # ── Build plain-text email body (kept as fallback / message body) ────
+    items_text = '\n'.join(
+        f'  • {i["label"]}: ${i["amount"]:,.2f}' for i in outstanding
+    )
+    body = (
+        f'DEMAND FOR PAYMENT\n\n'
+        f'Date: {letter_date.strftime("%B %d, %Y")}\n'
+        f'Via Certified Mail – Return Receipt Requested\n\n'
+        f'TO: {ins_company}\n    Attn: Claims Department / Additional Living Expense Unit\n\n'
+        f'RE: Insured: {insured_name} | Claim #{claim_number} | Amount Due: ${total_due:,.2f}\n\n'
+        f'This letter serves as FORMAL DEMAND FOR PAYMENT of ${total_due:,.2f} owed to '
+        f'{re_company or "Dream Team Realty, Inc."} in connection with the above-referenced '
+        f'Additional Living Expense (ALE) claim for your insured, {insured_name}.\n\n'
+        f'{re_company or "Dream Team Realty"} located, procured, and executed a lease on behalf '
+        f'of your insured at {property_addr}, for the ALE period {ale_start} through {ale_end}.\n\n'
+        f'{ins_company} has disbursed {disbursed_text}. The following item(s) remain outstanding:\n\n'
+        f'{items_text}\n\nTOTAL AMOUNT DUE: ${total_due:,.2f}\n\n'
+        f'Payment demanded on or before {deadline.strftime("%B %d, %Y")}.\n\n'
+        f'Contact: {contact_name} | {contact_phone} | {contact_email}\n\n'
+        f'All rights and remedies are expressly reserved.\n\nSincerely,\n{contact_name}\n'
+        f'{re_company or "Dream Team Realty, Inc."}\n\n'
+        f'Enclosures: Engagement Agreement | Term Sheet | Monthly Short-Term Rental Agreement'
+    )
 
-{ins_company} has disbursed {disbursed_text}. The following item(s) remain outstanding and are neither disputed nor contingent:
-
-{items_text}
-
-TOTAL AMOUNT DUE: ${total_due:,.2f}
-
-Payment of ${total_due:,.2f}, payable to {re_company or 'Dream Team Realty, Inc.'}, is demanded on or before {deadline.strftime('%B %d, %Y')}.
-
-If any additional documentation (W-9, invoice, or payee verification) is required to process disbursement, please direct that request in writing to the undersigned and it will be provided within three (3) business days.
-
-If payment is not received by the above deadline, we may exercise any or all of the following rights:
-
-  • Formal complaint to the state Department of Insurance for unfair claims settlement practices;
-  • Referral to counsel for civil action, with recovery of all interest, attorneys' fees, and costs of collection;
-  • Upon judgment, all post-judgment collection remedies available, including garnishment and levy upon commercial assets;
-  • Reporting of the delinquency to commercial credit reporting agencies.
-
-We prefer to resolve this matter administratively. To arrange payment or discuss this file, please contact {contact_name} at {contact_phone} or {contact_email}.
-
-All rights and remedies are expressly reserved.
-
-Sincerely,
-
-{contact_name}
-{re_company or 'Dream Team Realty, Inc.'}
-
-Enclosures: Engagement Agreement | Term Sheet | Monthly Short-Term Rental Agreement"""
-
-    # Log activity
+    # ── Log activity ─────────────────────────────────────────────────────
     LeaseActivity.objects.create(
         lease=lease,
         activity_type='note_added',
-        description=f'Demand letter composed — ${total_due:,.2f} outstanding to {ins_company}',
+        description=f'Demand letter generated — ${total_due:,.2f} outstanding to {ins_company}',
         performed_by=request.user,
     )
+    try:
+        from docsAppR.models import log_activity
+        log_activity('demand_letter',
+                     f'Demand letter generated for {insured_name} | Claim #{claim_number} | ${total_due:,.2f} due',
+                     user=request.user, client=client, lease=lease,
+                     ins_company=ins_company, total_due=str(total_due))
+    except Exception:
+        pass
 
     # ── Redirect to universal compose page ────────────────────────────────
     to_email = request.POST.get('to_email', client.emailInsCo or client.DAEmail or '')
-    params = urllib.parse.urlencode({
+    params_dict = {
         'source':    'demand_letter',
         'lease_id':  str(lease.id),
         'to':        to_email,
         'cc':        OWNER_EMAIL,
         'subject':   f'Demand for Payment — {insured_name} | Claim #{claim_number} | ${total_due:,.2f} Due',
         'body':      body,
-    })
-    return redirect(f'/emails/compose/?{params}')
+    }
+    if gen_file_id:
+        params_dict['gen_file_id'] = gen_file_id
+    return redirect(f'/emails/compose/?{urllib.parse.urlencode(params_dict)}')
 
 
 # ============================================================================
@@ -581,6 +614,17 @@ def create_draft_lease(request):
             draft_completion.completed_at = timezone.now()
             draft_completion.save()
 
+        try:
+            from docsAppR.models import log_activity
+            log_activity(
+                'lease_created',
+                f'Draft lease created for {client.pOwner} with ALE data auto-imported',
+                user=request.user if request.user.is_authenticated else None,
+                client=client, lease=lease,
+            )
+        except Exception:
+            pass
+
         # Return the ALE data so the UI can show what was auto-filled
         return JsonResponse({
             'success':   True,
@@ -633,6 +677,16 @@ def api_ale_import(request, lease_id):
             description=f'ALE data re-imported from claim ({len(updated)} fields updated)',
             performed_by=request.user,
         )
+        try:
+            from docsAppR.models import log_activity
+            log_activity(
+                'ale_sync',
+                f'ALE data synced for {lease.client.pOwner} — {len(updated)} fields updated',
+                user=request.user, client=lease.client, lease=lease,
+                updated_count=len(updated),
+            )
+        except Exception:
+            pass
 
     return JsonResponse({
         'success': True,
@@ -881,6 +935,17 @@ def _send_lease_package_email(lease, to_emails, cc_emails, bcc_emails,
             performed_by=user,
         )
 
+        try:
+            from docsAppR.models import log_activity
+            log_activity(
+                'package_sent',
+                f'Lease package sent to {", ".join(to_emails)} — {lease.client.pOwner}',
+                user=user, client=lease.client, lease=lease,
+                recipients=to_emails, docs_attached=len(attached),
+            )
+        except Exception:
+            pass
+
         # Advance lease status if still at draft/generated
         if lease.status in ('draft', 'generated', 'review'):
             lease.status        = 'package_sent'
@@ -970,6 +1035,17 @@ def update_lease_status(request):
             old_status=old_status, new_status=new_status,
             performed_by=request.user if request.user.is_authenticated else None,
         )
+        try:
+            from docsAppR.models import log_activity
+            log_activity(
+                'lease_status_changed',
+                f'Lease status changed: {old_status} → {new_status} — {lease.client.pOwner}',
+                user=request.user if request.user.is_authenticated else None,
+                client=lease.client, lease=lease,
+                old_status=old_status, new_status=new_status,
+            )
+        except Exception:
+            pass
         return JsonResponse({'success': True, 'new_status': new_status,
                              'status_display': lease.get_status_display()})
     except Lease.DoesNotExist:

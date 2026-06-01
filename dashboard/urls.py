@@ -5,6 +5,9 @@ urlpatterns = [
     # Home — app grid landing page (shown after login)
     path('', views.home, name='home'),
 
+    # Global activity log
+    path('activity/', views.activity_page, name='activity_page'),
+
     # Dashboard — statistics & claims overview
     path('dashboard/', views.dashboard, name='dashboard'),
 

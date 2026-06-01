@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'cps_report',
     'contractor_hub',
     'dev_hub',
+    'tasks',
 
     # Auth
     #'django.contrib.sites',
