@@ -125,7 +125,7 @@ def _parse_xactimate_excel(file_obj):
         return None, None, f'Cannot open Excel file: {e}'
 
     # Find the right sheet
-    preferred = ['prices xact in', 'prices xact', 'price list', 'xactimate prices', 'rates']
+    preferred = ['prices xact in', 'prices xact', 'xact in', 'price list', 'xactimate prices', 'rates']
     sheet = None
     for name in wb.sheetnames:
         if name.strip().lower() in preferred:

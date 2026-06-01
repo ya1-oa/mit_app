@@ -112,7 +112,19 @@
     <div class="stat-card">
         <div class="icon-wrap" style="background:#f59e0b;"><i class="fas fa-tags"></i></div>
         <div class="val">{{ total_rates }}</div>
-        <div class="lbl">Price Line Items{% if latest_pl %}<br><span style="font-size:10px;font-weight:400;">{{ latest_pl.code }}</span>{% endif %}</div>
+        <div class="lbl">Price Line Items</div>
+        {% if latest_pl %}
+        <div style="margin-top:8px;">
+            <div style="font-size:12px;font-weight:700;color:#0f172a;font-family:monospace;">{{ latest_pl.code }}</div>
+            <div style="font-size:10px;color:#94a3b8;margin-top:2px;">{{ latest_pl.imported_at|date:"M d, Y  g:i a" }}</div>
+            {% if latest_pl.market %}<div style="font-size:10px;color:#94a3b8;">{{ latest_pl.market }}</div>{% endif %}
+        </div>
+        {% else %}
+        <div style="margin-top:6px;font-size:10px;color:#ef4444;">No price list imported yet</div>
+        {% endif %}
+        <a href="{% url 'contractor_hub:price_list_import' %}" style="display:inline-block;margin-top:8px;font-size:10px;color:#7c3aed;font-weight:600;text-decoration:none;">
+            <i class="fas fa-upload" style="font-size:9px;"></i> {% if latest_pl %}Update{% else %}Import Now{% endif %}
+        </a>
     </div>
 </div>
 
