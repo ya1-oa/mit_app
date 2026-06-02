@@ -41,4 +41,9 @@ urlpatterns = [
     # GET renders compose page; POST sends immediately or schedules
     path('lease/<uuid:lease_id>/send-package/',
          views.lease_send_package, name='lease_send_package'),
+
+    # ── NEW: ALE Workflow task tracking (mobile-friendly) ──────────────────
+    # POST: mark task as complete/incomplete
+    path('task/<uuid:task_id>/update/',
+         views.update_lease_task, name='update_lease_task'),
 ]

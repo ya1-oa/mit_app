@@ -351,7 +351,7 @@ class Client(models.Model):
         create_checklist_items_for_client(self)
 
 class WorkType(models.Model):
-    """Definition of work types (100, 200, 300, 400, 500, 800, 900)"""
+    """Definition of work types (100, 200, 300, 400, 500, 800, 900, ALE)"""
     WORK_TYPE_CHOICES = [
         (100, 'Work Type 100'),
         (200, 'Work Type 200'),
@@ -360,6 +360,7 @@ class WorkType(models.Model):
         (500, 'Work Type 500'),
         (800, 'Work Type 800'),
         (900, 'Work Type 900 - HMR'),
+        (1000, 'ALE - Temporary Housing'),
         (8100, 'MC DAY 1'),
         (8200, 'MC DAY 2'),
         (8300, 'MC DAY 3'),
@@ -1576,6 +1577,58 @@ class Lease(models.Model):
             'cancelled': 'danger',
         }
         return color_map.get(self.status, 'secondary')
+
+
+class LeaseTask(models.Model):
+    """
+    Tracks workflow steps for each lease (ALE temporary housing process).
+    Allows field users to check off tasks on mobile as work progresses.
+    """
+    TASK_CHOICES = [
+        ('draft', 'Draft Lease Created'),
+        ('send_for_signature', 'Send for Signature'),
+        ('re_company_signed', 'Signed by Real Estate Company'),
+        ('tenant_signed', 'Signed by Tenant'),
+        ('landlord_signed', 'Signed by Landlord'),
+        ('completed', 'All Signatures Received'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lease = models.ForeignKey(
+        Lease, on_delete=models.CASCADE, related_name='workflow_tasks'
+    )
+    task_type = models.CharField(max_length=30, choices=TASK_CHOICES)
+    is_completed = models.BooleanField(default=False)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='completed_lease_tasks',
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, help_text='Field notes on completion')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['lease', 'created_at']
+        indexes = [
+            models.Index(fields=['lease', 'is_completed']),
+            models.Index(fields=['lease', 'task_type']),
+        ]
+        unique_together = [['lease', 'task_type']]
+
+    def __str__(self):
+        return f"{self.lease.client.pOwner} - {self.get_task_type_display()}"
+
+    @property
+    def is_overdue(self):
+        """Check if task has been pending for > 7 days"""
+        if self.is_completed or not self.created_at:
+            return False
+        from datetime import timedelta
+        return timezone.now() - self.created_at > timedelta(days=7)
 
 
 
