@@ -360,7 +360,6 @@ class WorkType(models.Model):
         (500, 'Work Type 500'),
         (800, 'Work Type 800'),
         (900, 'Work Type 900 - HMR'),
-        (1000, 'ALE - Temporary Housing'),
         (8100, 'MC DAY 1'),
         (8200, 'MC DAY 2'),
         (8300, 'MC DAY 3'),
