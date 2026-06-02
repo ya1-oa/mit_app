@@ -39,82 +39,156 @@ FROM_EMAIL   = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@claimetapp.com')
 
 def _parse_city_state_zip(raw):
     """
-    Parse 'City, State ZIP' or 'City, ZIP' strings.
-    Returns (city, state, zip_code).
+    Robustly parse address strings into (city, state, zip).
+
+    Handles all formats actually stored in the ALE fields:
+      "Cleveland, OH 44102"   → ('Cleveland', 'OH', '44102')
+      "Cleveland, 44102"      → ('Cleveland', '',   '44102')
+      "Cleveland OH 44102"    → ('Cleveland', 'OH', '44102')
+      "Cleveland 44102"       → ('Cleveland', '',   '44102')
+      "44102"                 → ('',          '',   '44102')
+      ""  / None              → ('',          '',   '')
     """
     if not raw:
         return '', '', ''
-    parts = [p.strip() for p in raw.split(',', 1)]
-    city = parts[0]
-    rest = parts[1].strip() if len(parts) > 1 else ''
-    tokens = rest.split()
-    if len(tokens) >= 2:
-        state    = tokens[0]
-        zip_code = tokens[-1]
-    elif len(tokens) == 1:
-        # Could be only a ZIP (all digits) or only a state
-        state    = '' if tokens[0].isdigit() else tokens[0]
-        zip_code = tokens[0] if tokens[0].isdigit() else ''
-    else:
-        state = zip_code = ''
-    return city, state, zip_code
+    raw = raw.strip()
+
+    def _is_zip(token):
+        # US ZIP: 5 digits or 5+4 with dash
+        return token.replace('-', '').isdigit() and len(token.replace('-', '')) >= 5
+
+    if ',' in raw:
+        city, rest = raw.split(',', 1)
+        city   = city.strip()
+        tokens = rest.strip().split()
+        if not tokens:
+            return city, '', ''
+        if _is_zip(tokens[-1]):
+            zip_code = tokens[-1]
+            state    = ' '.join(tokens[:-1]).strip()   # '' when no state token
+        else:
+            zip_code = ''
+            state    = ' '.join(tokens).strip()
+        return city, state, zip_code
+
+    # No comma — split on whitespace
+    tokens = raw.split()
+    if not tokens:
+        return '', '', ''
+    if len(tokens) == 1:
+        return ('', '', tokens[0]) if _is_zip(tokens[0]) else (tokens[0], '', '')
+    if _is_zip(tokens[-1]):
+        zip_code   = tokens[-1]
+        inner      = tokens[:-1]
+        # 2-letter all-alpha token before ZIP = state abbreviation
+        if len(inner) >= 1 and len(inner[-1]) == 2 and inner[-1].isalpha():
+            state = inner[-1].upper()
+            city  = ' '.join(inner[:-1])
+        else:
+            state = ''
+            city  = ' '.join(inner)
+        return city, state, zip_code
+
+    # Cannot identify zip — treat everything as city
+    return raw, '', ''
 
 
 def _ale_to_lease_fields(client):
     """
-    Map every ALE field on a Client instance to the corresponding Lease model field.
-    Returns a dict ready to pass to Lease.objects.create() or update().
+    Map every ALE field on Client to the corresponding Lease model field.
+    Returns a dict ready for Lease.objects.create(**ale_fields).
+
+    Coverage:
+    - Lessor name, mailing address, city/state/zip, phone, email, contact person
+    - Property (leased) address, city/state/zip, bedrooms
+    - Rental terms: start/end dates, months, monthly rent
+    - RE company: name, mailing address, city/state/zip, contact, phone, email
+    - Broker: name, phone, email
+    - Contact phone/email echoed from lessor fields (single source in ALE model)
+    - Special notes: lessee info summary (Lease has no dedicated lessee fields)
+
+    NOT mappable (no corresponding ALE field on Client):
+    - security_deposit, rent_due_day, late_fee, late_fee_start_day,
+      eviction_day, nsf_fee, max_occupants, parking_spaces, parking_fee,
+      inspection_fee  — these stay at Lease model defaults.
     """
-    # ── Parse compound city/state/zip strings ─────────────────────────────
+    # ── Parse compound address strings ────────────────────────────────────
     lessor_mail_city, lessor_mail_state, lessor_mail_zip = _parse_city_state_zip(
         client.ale_lessor_mailing_city_zip
     )
-    prop_city, prop_state, prop_zip = _parse_city_state_zip(client.ale_lessor_city_zip)
+    prop_city, prop_state, prop_zip = _parse_city_state_zip(
+        client.ale_lessor_city_zip
+    )
     re_city, re_state, re_zip = _parse_city_state_zip(client.ale_re_city_zip)
 
-    # ── Numeric coercion ─────────────────────────────────────────────────
+    # ── Numeric coercion ──────────────────────────────────────────────────
     def _int(val, default=0):
         try:
-            return int(val) if val not in (None, '') else default
+            # strip non-numeric suffix like "12 months"
+            cleaned = str(val).strip().split()[0] if val not in (None, '') else ''
+            return int(float(cleaned)) if cleaned else default
         except (ValueError, TypeError):
             return default
 
+    # ── Build lessee summary for special_notes (lessee has no Lease fields) ─
+    lessee_parts = []
+    if client.ale_lessee_name:
+        lessee_parts.append(f'Lessee: {client.ale_lessee_name}')
+    if client.ale_lessee_phone:
+        lessee_parts.append(f'Phone: {client.ale_lessee_phone}')
+    if client.ale_lessee_email:
+        lessee_parts.append(f'Email: {client.ale_lessee_email}')
+    if client.ale_lessee_home_address:
+        lessee_parts.append(f'Home Address: {client.ale_lessee_home_address}')
+    if client.ale_lessee_city_state_zip:
+        lessee_parts.append(client.ale_lessee_city_state_zip)
+    lessee_summary = ' | '.join(lessee_parts)
+
     return {
-        # Lessor (landlord)
-        'lessor_name':             client.ale_lessor_name              or '',
-        'lessor_address':          client.ale_lessor_mailing_address   or '',
+        # ── Lessor (landlord) ─────────────────────────────────────────────
+        'lessor_name':             client.ale_lessor_name           or '',
+        'lessor_address':          client.ale_lessor_mailing_address or '',
         'lessor_city':             lessor_mail_city,
         'lessor_state':            lessor_mail_state,
         'lessor_zip':              lessor_mail_zip,
-        'lessor_phone':            client.ale_lessor_phone             or '',
-        'lessor_email':            client.ale_lessor_email             or '',
-        'lessor_contact_person_1': client.ale_lessor_contact_person    or '',
+        'lessor_phone':            client.ale_lessor_phone           or '',
+        'lessor_email':            client.ale_lessor_email           or '',
+        'lessor_contact_person_1': client.ale_lessor_contact_person  or '',
+        # Contact phone/email: ALE has one phone/email field for lessor —
+        # mirror it here so the template always has something to show.
+        'lessor_contact_phone':    client.ale_lessor_phone           or '',
+        'lessor_contact_email':    client.ale_lessor_email           or '',
 
-        # Property (the rental address — the house/unit being rented)
+        # ── Property (the leased address) ────────────────────────────────
         'property_address': client.ale_lessor_leased_address or client.pAddress or '',
         'property_city':    prop_city,
         'property_state':   prop_state,
         'property_zip':     prop_zip,
         'bedrooms':         _int(client.ale_rental_bedrooms, 1),
 
-        # Rental terms
+        # ── Rental terms ──────────────────────────────────────────────────
         'lease_start_date': client.ale_rental_start_date,
         'lease_end_date':   client.ale_rental_end_date,
         'rental_months':    _int(client.ale_rental_months, 12),
         'monthly_rent':     client.ale_rental_amount_per_month or 0,
 
-        # Real estate company
-        'real_estate_company':      client.ale_re_company_name        or '',
-        'company_mailing_address':  client.ale_re_mailing_address     or '',
-        'company_city':             re_city,
-        'company_state':            re_state,
-        'company_zip':              re_zip,
-        'company_contact_person':   client.ale_re_contact_person      or '',
-        'company_phone':            client.ale_re_phone                or '',
-        'company_email':            client.ale_re_email                or '',
-        'broker_name':              client.ale_re_owner_broker_name    or '',
-        'broker_phone':             client.ale_re_owner_broker_phone   or '',
-        'broker_email':             client.ale_re_owner_broker_email   or '',
+        # ── Real estate company ───────────────────────────────────────────
+        'real_estate_company':     client.ale_re_company_name     or '',
+        'company_mailing_address': client.ale_re_mailing_address  or '',
+        'company_city':            re_city,
+        'company_state':           re_state,
+        'company_zip':             re_zip,
+        'company_contact_person':  client.ale_re_contact_person   or '',
+        'company_phone':           client.ale_re_phone             or '',
+        'company_email':           client.ale_re_email             or '',
+
+        # ── Broker ────────────────────────────────────────────────────────
+        'broker_name':  client.ale_re_owner_broker_name  or '',
+        'broker_phone': client.ale_re_owner_broker_phone or '',
+        'broker_email': client.ale_re_owner_broker_email or '',
+
+        # ── Lessee summary (Lease model has no dedicated lessee fields) ───
+        'special_notes': lessee_summary,
     }
 
 
