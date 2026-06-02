@@ -426,6 +426,9 @@
         <li><a href="{% url 'activity_page' %}" class="{% if '/activity' in request.path %}active{% endif %}">
             <i class="fas fa-history"></i> Activity
         </a></li>
+        <li><a href="{% url 'guides' %}" class="{% if '/guides' in request.path %}active{% endif %}">
+            <i class="fas fa-book"></i> Guides
+        </a></li>
     </ul>
 
     <!-- Right: user + logout -->
@@ -496,6 +499,9 @@
     </a>
     <a href="{% url 'dev_hub:dashboard' %}" class="{% if '/dev-hub' in request.path %}active{% endif %}">
         <i class="fas fa-code-branch"></i> Dev Hub
+    </a>
+    <a href="{% url 'guides' %}" class="{% if '/guides' in request.path %}active{% endif %}">
+        <i class="fas fa-book"></i> Guides & Help
     </a>
 
     <div class="drawer-section">Account</div>
