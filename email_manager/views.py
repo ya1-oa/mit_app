@@ -810,3 +810,183 @@ body{{font-family:Arial,sans-serif;background:#f4f4f4;padding:20px}}
 .email-table tbody tr:nth-child(even){{background:#f8f9fa}}
 </style></head>
 <body><div class="email-container">{html_table}</div></body></html>"""
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# EMAIL BATCH SCHEDULING + HISTORY
+# ──────────────────────────────────────────────────────────────────────────────
+
+def get_claim_files(claim):
+    """
+    Discover all attachable files for a claim:
+    - Generated leases (Lease PDFs)
+    - Generated files (reports, invoices, Excel)
+    - System documents
+    """
+    from docsAppR.models import Lease
+
+    files = {
+        'leases': [],
+        'generated': [],
+        'documents': [],
+    }
+
+    # Get leases and their documents
+    leases = Lease.objects.filter(client=claim).prefetch_related('documents')
+    for lease in leases:
+        for doc in lease.documents.all():
+            files['leases'].append({
+                'id': str(doc.id),
+                'name': f'{lease.lessor_name} - {doc.document_type}',
+                'type': 'lease_doc',
+            })
+
+    # Get generated files for this claim
+    gen_files = GeneratedFile.objects.filter(client=claim)
+    for gf in gen_files:
+        files['generated'].append({
+            'id': str(gf.id),
+            'name': gf.name,
+            'category': gf.category,
+            'type': 'generated',
+        })
+
+    # Get system documents
+    docs = Document.objects.filter(client=claim)
+    for doc in docs:
+        files['documents'].append({
+            'id': str(doc.id),
+            'name': doc.document_name,
+            'type': 'document',
+        })
+
+    return files
+
+
+@login_required
+def batch_schedule_emails(request):
+    """
+    Schedule a batch of emails with optional follow-ups.
+    Modal/form to configure batch, pick send times on calendar, set follow-up rules.
+    """
+    from docsAppR.models import EmailBatch, ScheduledEmail, Lease
+
+    claims = Client.objects.all().order_by('pOwner')
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body) if request.content_type == 'application/json' else request.POST
+
+            batch_name = (data.get('batch_name') or '').strip()
+            claim_id = data.get('claim_id')
+            emails = data.get('emails', [])  # List of email dicts
+
+            if not batch_name:
+                return JsonResponse({'error': 'Batch name required'}, status=400)
+            if not emails:
+                return JsonResponse({'error': 'At least one email required'}, status=400)
+
+            # Create batch
+            batch = EmailBatch.objects.create(
+                name=batch_name,
+                claim_id=claim_id if claim_id else None,
+                created_by=request.user,
+            )
+
+            # Create scheduled emails
+            for email_data in emails:
+                ScheduledEmail.objects.create(
+                    batch=batch,
+                    subject=email_data.get('subject', ''),
+                    body=email_data.get('body', ''),
+                    recipients=email_data.get('recipients', []),
+                    cc=email_data.get('cc', []),
+                    bcc=email_data.get('bcc', []),
+                    scheduled_send_time=timezone.make_aware(
+                        timezone.datetime.fromisoformat(email_data['scheduled_send_time'])
+                    ) if email_data.get('scheduled_send_time') else timezone.now(),
+                    has_followup=email_data.get('has_followup', False),
+                    followup_trigger=email_data.get('followup_trigger', ''),
+                    followup_days=email_data.get('followup_days'),
+                    followup_subject=email_data.get('followup_subject', ''),
+                    followup_body=email_data.get('followup_body', ''),
+                )
+
+            return JsonResponse({
+                'success': True,
+                'batch_id': str(batch.id),
+                'email_count': len(emails),
+            })
+        except Exception as exc:
+            logger.error('batch_schedule_emails: %s', exc)
+            return JsonResponse({'error': str(exc)}, status=500)
+
+    context = {
+        'claims': claims,
+    }
+    return render(request, 'account/batch_schedule.html', context)
+
+
+@login_required
+def sent_emails_history(request):
+    """
+    View sent emails with filtering by claim, date, open status.
+    Shows: recipient, subject, sent_at, opened_at, status.
+    """
+    from docsAppR.models import EmailBatch
+
+    # Filters
+    claim_id = request.GET.get('claim')
+    date_from = request.GET.get('date_from')
+    date_to = request.GET.get('date_to')
+    status_filter = request.GET.get('status')  # all, opened, unopened
+
+    qs = SentEmail.objects.select_related('claim', 'sent_by').prefetch_related('link_clicks').order_by('-sent_at')
+
+    if claim_id:
+        qs = qs.filter(claim_id=claim_id)
+    if date_from:
+        from django.utils.dateparse import parse_date
+        df = parse_date(date_from)
+        if df:
+            qs = qs.filter(sent_at__date__gte=df)
+    if date_to:
+        from django.utils.dateparse import parse_date
+        dt = parse_date(date_to)
+        if dt:
+            qs = qs.filter(sent_at__date__lte=dt)
+    if status_filter == 'opened':
+        qs = qs.filter(is_opened=True)
+    elif status_filter == 'unopened':
+        qs = qs.filter(is_opened=False)
+
+    # Pagination
+    from django.core.paginator import Paginator
+    paginator = Paginator(qs, 50)
+    page_num = request.GET.get('page', 1)
+    page_obj = paginator.get_page(page_num)
+
+    # Enrich with stats
+    emails = []
+    for email in page_obj:
+        click_count = email.link_clicks.count()
+        emails.append({
+            'email': email,
+            'click_count': click_count,
+            'status': 'opened' if email.is_opened else 'unopened',
+            'recipient_count': len(email.recipients) if email.recipients else 0,
+        })
+
+    claims = Client.objects.all().order_by('pOwner')
+
+    context = {
+        'page_obj': page_obj,
+        'emails': emails,
+        'claims': claims,
+        'claim_id': claim_id,
+        'date_from': date_from,
+        'date_to': date_to,
+        'status_filter': status_filter,
+        'total_count': qs.count(),
+    }
+    return render(request, 'account/sent_emails_history.html', context)

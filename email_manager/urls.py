@@ -18,4 +18,9 @@ urlpatterns = [
     path('api/campaign/preview/', views.api_campaign_preview, name='api_campaign_preview'),
     path('api/campaign/confirm/', views.api_campaign_confirm, name='api_campaign_confirm'),
     path('api/campaign/<uuid:campaign_id>/cancel/', views.api_campaign_cancel, name='api_campaign_cancel'),
+
+    # ── NEW: Batch scheduling + history ────────────────────────────────────
+    path('batch-schedule/', views.batch_schedule_emails, name='batch_schedule_emails'),
+    path('history/', views.sent_emails_history, name='sent_emails_history'),
+    path('api/claim/<int:claim_id>/files/', views.get_claim_files, name='api_claim_files'),
 ]

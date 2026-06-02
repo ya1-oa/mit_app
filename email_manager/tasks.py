@@ -214,3 +214,108 @@ def send_campaign_email_task(self, campaign_id, send_index):
             raise self.retry(exc=exc)
         except self.MaxRetriesExceededError:
             logger.error('Campaign %s send #%s max retries exceeded', campaign_id, send_index)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# BATCH EMAIL SCHEDULING
+# ──────────────────────────────────────────────────────────────────────────────
+
+@shared_task(name='email_manager.tasks.process_scheduled_batch_emails')
+def process_scheduled_batch_emails():
+    """
+    Send scheduled emails from batches.
+    Runs every minute. Checks for emails whose scheduled_send_time has passed.
+    """
+    from docsAppR.models import ScheduledEmail, SentEmail
+
+    now = timezone.now()
+    pending = ScheduledEmail.objects.filter(is_sent=False, scheduled_send_time__lte=now).order_by('scheduled_send_time')[:10]
+
+    for scheduled in pending:
+        try:
+            # Build and send email
+            sent = SentEmail.objects.create(
+                subject=scheduled.subject,
+                body=scheduled.body,
+                recipients=scheduled.recipients,
+                cc=scheduled.cc,
+                bcc=scheduled.bcc,
+                claim=scheduled.batch.claim,
+                sent_at=now,
+                notify_on_open=False,
+            )
+
+            # Attach files
+            sent.generated_files.set(scheduled.generated_files.all())
+            sent.uploaded_attachments.set(scheduled.uploaded_attachments.all())
+
+            # Actually send
+            msg = EmailMessage(
+                subject=scheduled.subject,
+                body=scheduled.body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=scheduled.recipients,
+                cc=scheduled.cc,
+                bcc=scheduled.bcc,
+            )
+            msg.send(fail_silently=False)
+
+            # Mark as sent
+            scheduled.is_sent = True
+            scheduled.sent_at = now
+            scheduled.save(update_fields=['is_sent', 'sent_at'])
+
+            logger.info(f'Batch email sent: {scheduled.subject} → {len(scheduled.recipients)} recipients')
+
+            # If follow-up configured, create follow-up scheduled email
+            if scheduled.has_followup:
+                from datetime import timedelta
+                if scheduled.followup_trigger == 'time':
+                    followup_time = now + timedelta(days=scheduled.followup_days or 3)
+                    ScheduledEmail.objects.create(
+                        batch=scheduled.batch,
+                        subject=scheduled.followup_subject,
+                        body=scheduled.followup_body,
+                        recipients=scheduled.recipients,
+                        cc=scheduled.cc,
+                        bcc=scheduled.bcc,
+                        scheduled_send_time=followup_time,
+                        has_followup=False,
+                    )
+                    logger.info(f'Follow-up scheduled for {followup_time}')
+                # Note: unopened/opened triggers are checked separately by check_followup_triggers
+
+        except Exception as exc:
+            logger.error(f'Error sending scheduled email {scheduled.id}: {exc}')
+
+
+@shared_task(name='email_manager.tasks.check_followup_triggers')
+def check_followup_triggers():
+    """
+    Check for unopened/opened follow-up triggers.
+    Runs hourly. Creates follow-up emails when conditions are met.
+    """
+    from docsAppR.models import ScheduledEmail, SentEmail
+    from datetime import timedelta
+
+    now = timezone.now()
+
+    # Find all scheduled emails with unopened follow-up that are due
+    for scheduled in ScheduledEmail.objects.filter(has_followup=True, is_sent=True, followup_trigger='unopened'):
+        threshold = scheduled.sent_at + timedelta(days=scheduled.followup_days or 3)
+        if now >= threshold and not SentEmail.objects.filter(
+            created_at__gt=scheduled.sent_at,
+            recipients__contains=scheduled.recipients[0] if scheduled.recipients else ''
+        ).exists():
+            # Email wasn't opened within X days, create follow-up
+            ScheduledEmail.objects.create(
+                batch=scheduled.batch,
+                subject=scheduled.followup_subject,
+                body=scheduled.followup_body,
+                recipients=scheduled.recipients,
+                cc=scheduled.cc,
+                bcc=scheduled.bcc,
+                scheduled_send_time=now,
+                has_followup=False,
+            )
+            logger.info(f'Unopened follow-up created for {scheduled.id}')

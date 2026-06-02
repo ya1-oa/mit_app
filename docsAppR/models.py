@@ -1071,6 +1071,109 @@ class EmailOpenEvent(models.Model):
         ordering = ['-opened_at']
 
 
+class EmailLinkClick(models.Model):
+    """Track when recipients click links in emails."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sent_email = models.ForeignKey(SentEmail, on_delete=models.CASCADE, related_name='link_clicks')
+    url = models.URLField()
+    clicked_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-clicked_at']
+        indexes = [models.Index(fields=['sent_email', 'clicked_at'])]
+
+    def __str__(self):
+        return f"Click on {self.url} at {self.clicked_at}"
+
+
+class EmailBatch(models.Model):
+    """Group related emails sent as a batch (e.g. monthly newsletters, follow-up campaigns)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, help_text='e.g. "July Follow-up Campaign"')
+    claim = models.ForeignKey('Client', on_delete=models.CASCADE, related_name='email_batches',
+                              null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                   null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def total_scheduled(self):
+        """Count total emails (including follow-ups) in this batch."""
+        return self.scheduled_emails.count()
+
+    @property
+    def total_sent(self):
+        """Count sent emails in this batch."""
+        return self.sent_emails.count()
+
+
+class ScheduledEmail(models.Model):
+    """An email scheduled to be sent, with optional follow-up rules."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(EmailBatch, on_delete=models.CASCADE, related_name='scheduled_emails')
+
+    # Email content
+    subject = models.TextField()
+    body = models.TextField()
+    recipients = models.JSONField(help_text='List of email addresses')
+    cc = models.JSONField(default=list, blank=True)
+    bcc = models.JSONField(default=list, blank=True)
+
+    # Attachments
+    generated_files = models.ManyToManyField(GeneratedFile, blank=True)
+    uploaded_attachments = models.ManyToManyField('UploadedAttachment', blank=True)
+
+    # Scheduling
+    scheduled_send_time = models.DateTimeField(help_text='When this email should be sent')
+    is_sent = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Follow-up configuration
+    has_followup = models.BooleanField(default=False)
+    followup_trigger = models.CharField(
+        max_length=20,
+        choices=[
+            ('time', 'After X days'),
+            ('unopened', 'If not opened after X days'),
+            ('opened', 'When opened'),
+        ],
+        blank=True,
+        help_text='How to trigger the follow-up'
+    )
+    followup_days = models.PositiveIntegerField(null=True, blank=True,
+                                                help_text='Days to wait before follow-up')
+    followup_subject = models.TextField(blank=True, help_text='Subject of follow-up email')
+    followup_body = models.TextField(blank=True, help_text='Body of follow-up email')
+
+    # Tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['scheduled_send_time']
+        indexes = [
+            models.Index(fields=['batch', 'is_sent']),
+            models.Index(fields=['scheduled_send_time', 'is_sent']),
+        ]
+
+    def __str__(self):
+        return f"{self.subject} → {', '.join(self.recipients[:3])}"
+
+    @property
+    def is_overdue(self):
+        """Check if scheduled send time has passed but not yet sent."""
+        return not self.is_sent and self.scheduled_send_time <= timezone.now()
+
+
 # ==================== Email Attachment Models ====================
 
 class GeneratedFile(models.Model):
