@@ -1130,7 +1130,7 @@ class ScheduledEmail(models.Model):
     bcc = models.JSONField(default=list, blank=True)
 
     # Attachments
-    generated_files = models.ManyToManyField(GeneratedFile, blank=True)
+    generated_files = models.ManyToManyField('GeneratedFile', blank=True)
     uploaded_attachments = models.ManyToManyField('UploadedAttachment', blank=True)
 
     # Scheduling
