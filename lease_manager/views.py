@@ -1353,3 +1353,60 @@ def save_landlord(request):
         except Exception as exc:
             return JsonResponse({'success': False, 'error': str(exc), 'type': type(exc).__name__})
     return JsonResponse({'success': False, 'error': 'Invalid request'})
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ALE WORKFLOW TASK TRACKING
+# ──────────────────────────────────────────────────────────────────────────────
+
+@login_required
+@require_POST
+def update_lease_task(request, task_id):
+    """
+    Mark a lease task as complete. Mobile-friendly endpoint.
+    Called from claim detail page when user checks off a task.
+    """
+    from docsAppR.models import LeaseTask
+
+    task = get_object_or_404(LeaseTask, id=task_id)
+    try:
+        data = json.loads(request.body) if request.content_type == 'application/json' else request.POST
+        is_completed = data.get('is_completed', False)
+        notes = (data.get('notes') or '').strip()
+
+        task.is_completed = is_completed
+        task.notes = notes
+        if is_completed:
+            task.completed_by = request.user
+            task.completed_at = timezone.now()
+        else:
+            task.completed_by = None
+            task.completed_at = None
+        task.save()
+
+        # Log activity
+        try:
+            from docsAppR.models import log_activity
+            action = f'Lease task {"completed" if is_completed else "uncompleted"}: {task.get_task_type_display()}'
+            log_activity(
+                'other', action,
+                user=request.user,
+                client=task.lease.client,
+                lease=task.lease,
+                **{'lease_task_id': str(task.id), 'is_completed': is_completed}
+            )
+        except Exception:
+            pass
+
+        return JsonResponse({
+            'success': True,
+            'task': {
+                'id': str(task.id),
+                'task_type': task.task_type,
+                'is_completed': task.is_completed,
+                'completed_at': task.completed_at.isoformat() if task.completed_at else None,
+            }
+        })
+    except Exception as exc:
+        logger.error('update_lease_task: %s', exc)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)

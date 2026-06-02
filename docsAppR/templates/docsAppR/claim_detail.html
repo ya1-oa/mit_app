@@ -350,6 +350,12 @@
         <i class="fas fa-tasks"></i> Checklist
         <span id="tab-checklist-badge" style="background:{% if client.completion_percent == 100 %}#d1fae5;color:#065f46{% elif client.completion_percent > 0 %}#fef3c7;color:#92400e{% else %}#e2e8f0;color:#64748b{% endif %};font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;">{{ client.completion_percent|default:0 }}%</span>
     </button>
+    {% if leases_with_progress %}
+    <button class="page-tab-btn" onclick="switchTab('ale', this)">
+        <i class="fas fa-file-contract"></i> ALE / Leases
+        <span style="background:#dbeafe;color:#1e40af;font-size:10px;font-weight:700;padding:1px 7px;border-radius:10px;">{{ leases_with_progress|length }}</span>
+    </button>
+    {% endif %}
 </div>
 
 {# ──────────────────────────────────────────────────────────────── TAB: FILES #}
@@ -810,6 +816,87 @@
         </div></div>
         {% endif %}
     </form>
+</div>
+
+{# ──────────────────────────────────────────────────────────────── TAB: ALE LEASES #}
+<div id="tab-ale" class="page-tab-content">
+    {% if leases_with_progress %}
+        {% for lease_info in leases_with_progress %}
+        <div class="card mb-4" style="border-left: 4px solid #3b82f6;">
+            <div class="card-header" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+                <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
+                    <div>
+                        <h5 style="margin:0;font-size:15px;font-weight:700;color:#0f172a;">
+                            Lease: {{ lease_info.lease.lessor_name }}
+                            <span style="color:#64748b;font-size:13px;font-weight:400;">
+                                ({{ lease_info.lease.lease_start_date|date:"M d, Y" }} – {{ lease_info.lease.lease_end_date|date:"M d, Y" }})
+                            </span>
+                        </h5>
+                        <div style="margin-top:6px;font-size:12px;color:#64748b;">
+                            Status: <span style="color:#0f172a;font-weight:600;">{{ lease_info.lease.get_status_display }}</span>
+                        </div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:24px;font-weight:800;color:#3b82f6;">{{ lease_info.percent }}%</div>
+                        <div style="font-size:11px;color:#64748b;">{{ lease_info.completed }}/{{ lease_info.total }} tasks</div>
+                    </div>
+                </div>
+                <!-- Progress bar -->
+                <div style="margin-top:12px;height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;">
+                    <div style="height:100%;width:{{ lease_info.percent }}%;background:linear-gradient(90deg, #3b82f6, #0ea5e9);transition:width .3s;"></div>
+                </div>
+            </div>
+            <div class="card-body" style="padding:0;">
+                {# Tasks list #}
+                {% for task in lease_info.tasks %}
+                <div class="lease-task-row" style="padding:14px 18px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;gap:12px;{% if task.is_overdue %}background:#fff5f5;{% endif %}" data-task-id="{{ task.id }}">
+                    <label style="margin:0;display:flex;align-items:center;gap:10px;flex:1;cursor:pointer;">
+                        <input type="checkbox" class="lease-task-checkbox" {% if task.is_completed %}checked{% endif %} style="width:18px;height:18px;cursor:pointer;">
+                        <span style="flex:1;">
+                            <span style="font-weight:600;color:{% if task.is_completed %}#64748b;text-decoration:line-through;{% else %}#0f172a;{% endif %};font-size:13px;">
+                                {{ task.get_task_type_display }}
+                            </span>
+                            {% if task.is_completed and task.completed_by %}
+                            <div style="font-size:11px;color:#10b981;margin-top:3px;">✓ Completed by {{ task.completed_by.email|truncatechars:20 }} on {{ task.completed_at|date:"M d" }}</div>
+                            {% endif %}
+                            {% if task.notes %}
+                            <div style="font-size:11px;color:#64748b;margin-top:4px;font-style:italic;">{{ task.notes }}</div>
+                            {% endif %}
+                        </span>
+                    </label>
+                    <button type="button" class="task-notes-btn" data-task-id="{{ task.id }}" style="padding:6px 12px;background:#f1f5f9;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;cursor:pointer;" title="Add notes">
+                        <i class="fas fa-note-sticky"></i>
+                    </button>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+
+        {# Notes modal #}
+        <div class="modal fade" id="taskNotesModal" tabindex="-1">
+            <div class="modal-dialog modal-sm">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Task Notes</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <textarea id="taskNotesText" class="form-control" rows="4" placeholder="Add notes about this task..."></textarea>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+                        <button type="button" class="btn btn-primary btn-sm" onclick="saveTaskNotes()">Save Notes</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    {% else %}
+    <div class="alert alert-info">
+        <i class="fas fa-info-circle"></i> No leases created yet. <a href="{% url 'lease_manager' %}">Create a lease</a> to begin ALE workflow tracking.
+    </div>
+    {% endif %}
 </div>
 
 </div>{# /col-lg-11 #}
@@ -1347,6 +1434,84 @@ document.addEventListener('DOMContentLoaded', function() {
     function showSaveError(msg) {
         const el = document.getElementById('save-indicator');
         if (el) { el.innerHTML = `<i class="fas fa-exclamation-triangle"></i> ${msg}`; el.style.background = '#ef4444'; setTimeout(() => el.style.display = 'none', 4000); }
+    }
+
+    // ── ALE Lease Task Handling (mobile-friendly) ─────────────────────────────
+    let currentTaskId = null;
+
+    document.addEventListener('DOMContentLoaded', function() {
+        // Attach checkbox change handlers
+        document.querySelectorAll('.lease-task-checkbox').forEach(cb => {
+            cb.addEventListener('change', function() {
+                const taskRow = this.closest('.lease-task-row');
+                const taskId = taskRow.dataset.taskId;
+                const isCompleted = this.checked;
+                updateLeaseTask(taskId, isCompleted, '');
+            });
+        });
+
+        // Attach notes button handlers
+        document.querySelectorAll('.task-notes-btn').forEach(btn => {
+            btn.addEventListener('click', function() {
+                currentTaskId = this.dataset.taskId;
+                const taskRow = document.querySelector(`[data-task-id="${currentTaskId}"]`);
+                const notesEl = taskRow.querySelector('[style*="font-style:italic"]');
+                const notes = notesEl ? notesEl.textContent : '';
+                document.getElementById('taskNotesText').value = notes;
+                new bootstrap.Modal(document.getElementById('taskNotesModal')).show();
+            });
+        });
+    });
+
+    async function updateLeaseTask(taskId, isCompleted, notes) {
+        showSavingIndicator();
+        try {
+            const r = await fetch(`/lease/task/${taskId}/update/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ is_completed: isCompleted, notes: notes }),
+            });
+            const d = await r.json();
+            if (d.success) {
+                showSaveSuccess();
+                // Update the UI
+                const taskRow = document.querySelector(`[data-task-id="${taskId}"]`);
+                if (isCompleted) {
+                    taskRow.style.opacity = '0.7';
+                } else {
+                    taskRow.style.opacity = '1';
+                }
+                // Recalculate progress
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showSaveError(d.error || 'Error updating task');
+            }
+        } catch (e) {
+            showSaveError('Network error: ' + e.message);
+        }
+    }
+
+    async function saveTaskNotes() {
+        const notes = document.getElementById('taskNotesText').value.trim();
+        if (!currentTaskId) return;
+        showSavingIndicator();
+        try {
+            const r = await fetch(`/lease/task/${currentTaskId}/update/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCookie('csrftoken') },
+                body: JSON.stringify({ is_completed: document.querySelector(`[data-task-id="${currentTaskId}"] .lease-task-checkbox`).checked, notes: notes }),
+            });
+            const d = await r.json();
+            if (d.success) {
+                showSaveSuccess();
+                bootstrap.Modal.getInstance(document.getElementById('taskNotesModal')).hide();
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showSaveError(d.error || 'Error saving notes');
+            }
+        } catch (e) {
+            showSaveError('Network error: ' + e.message);
+        }
     }
 });
 </script>

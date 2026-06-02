@@ -118,6 +118,24 @@ def claim_detail(request, claim_id):
         completed = checklist_by_category[category]['completed']
         checklist_by_category[category]['percent'] = round((completed / total) * 100) if total > 0 else 0
 
+    # Get leases for this claim with their workflow tasks
+    from .models import Lease, LeaseTask
+    leases = Lease.objects.filter(client=client).prefetch_related('workflow_tasks', 'workflow_tasks__completed_by').order_by('-created_at')
+
+    # Build lease summary with task progress
+    leases_with_progress = []
+    for lease in leases:
+        tasks = lease.workflow_tasks.all()
+        completed_tasks = sum(1 for t in tasks if t.is_completed)
+        task_pct = round((completed_tasks / len(tasks)) * 100) if tasks.exists() else 0
+        leases_with_progress.append({
+            'lease': lease,
+            'tasks': tasks,
+            'completed': completed_tasks,
+            'total': tasks.count(),
+            'percent': task_pct,
+        })
+
     context = {
         'client': client,
         'rooms': rooms,
@@ -128,6 +146,7 @@ def claim_detail(request, claim_id):
         'last_modified_by': client.last_modified_by,
         'checklist_by_category': checklist_by_category,
         'checklist_items': checklist_items,
+        'leases_with_progress': leases_with_progress,
         'contractors': Contractor.objects.filter(is_active=True).order_by('name'),
     }
 
