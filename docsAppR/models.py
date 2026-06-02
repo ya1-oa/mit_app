@@ -2046,14 +2046,15 @@ class TaskItem(models.Model):
     ]
 
     CATEGORY_CHOICES = [
-        ('general',    'General'),
-        ('claim',      'Claim'),
-        ('lease',      'Lease / ALE'),
-        ('email',      'Email'),
-        ('follow_up',  'Follow Up'),
-        ('admin',      'Admin'),
-        ('billing',    'Billing'),
-        ('legal',      'Legal'),
+        ('general',     'General'),
+        ('claim',       'Claim'),
+        ('lease',       'Lease / ALE'),
+        ('email',       'Email'),
+        ('follow_up',   'Follow Up'),
+        ('admin',       'Admin'),
+        ('billing',     'Billing'),
+        ('legal',       'Legal'),
+        ('development', 'Development / Code'),
     ]
 
     id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -2097,6 +2098,32 @@ class TaskItem(models.Model):
     )
 
     notes      = models.TextField(blank=True)
+
+    # ── Completion tracking ───────────────────────────────────────────────────
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='task_completions',
+    )
+    completion_notes = models.TextField(
+        blank=True,
+        help_text='Notes added by the person who completed this task',
+    )
+    # Code/dev task audit fields (only relevant when category='development')
+    unit_tests_passed = models.BooleanField(
+        null=True, blank=True,
+        help_text='None = N/A, True = passed, False = failed',
+    )
+    beta_tested = models.BooleanField(
+        null=True, blank=True,
+        help_text='None = N/A, True = yes, False = no',
+    )
+    test_notes = models.TextField(
+        blank=True,
+        help_text='Unit test / beta test details for development tasks',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

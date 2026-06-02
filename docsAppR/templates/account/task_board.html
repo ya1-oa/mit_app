@@ -360,6 +360,73 @@
     font-size: 12px;
 }
 .col-empty i { display: block; font-size: 28px; margin-bottom: 8px; }
+
+/* ── Completion notes display (done cards) ──────────────────────────────────── */
+.completion-block {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    padding: 7px 10px;
+    margin-top: 7px;
+    font-size: 11px;
+    color: #166534;
+    line-height: 1.5;
+}
+.completion-block .cb-label {
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-bottom: 2px;
+    display: block;
+}
+.audit-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-right: 4px;
+    margin-top: 4px;
+}
+.audit-pass   { background: #d1fae5; color: #065f46; }
+.audit-fail   { background: #fee2e2; color: #b91c1c; }
+.audit-na     { background: #f1f5f9; color: #64748b; }
+.assigned-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 9px; color: #3b82f6; font-weight: 600;
+    padding: 1px 5px; background: #eff6ff; border-radius: 3px;
+    margin-left: 4px;
+}
+
+/* ── Complete button ────────────────────────────────────────────────────────── */
+.btn-complete {
+    background: #10b981; color: #fff; border: none;
+    border-radius: 5px; padding: 5px 12px; font-size: 11px;
+    font-weight: 700; cursor: pointer; transition: background .15s;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-complete:hover { background: #059669; }
+
+/* ── Completion modal extras ────────────────────────────────────────────────── */
+.audit-section {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 12px;
+}
+.audit-section h6 {
+    font-size: 12px; font-weight: 700; color: #1e40af;
+    margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
+}
+.audit-radio { display: flex; gap: 14px; margin-top: 4px; }
+.audit-radio label {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+}
 </style>
 {% endblock %}
 
@@ -547,8 +614,8 @@
                         {% endif %}
                     </div>
                     <div class="task-actions">
-                        <button class="task-act-btn done-btn" onclick="moveTask('{{ task.id }}','done')" title="Done" style="color:#10b981;">✓</button>
-                        <button class="task-act-btn" onclick="moveTask('{{ task.id }}','review')" title="Send to Review">⇒</button>
+                        <button class="task-act-btn done-btn" onclick="markComplete('{{ task.id }}','{{ task.category }}')" title="Mark Complete" style="color:#10b981;">✓ Done</button>
+                        <button class="task-act-btn" onclick="moveTask('{{ task.id }}','review')" title="Send to Review">⇒ Review</button>
                         <button class="task-act-btn" onclick="editTask('{{ task.id }}')" title="Edit"><i class="fas fa-pen"></i></button>
                         <button class="task-act-btn del" onclick="deleteTask('{{ task.id }}')" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
@@ -600,7 +667,7 @@
                         {% endif %}
                     </div>
                     <div class="task-actions">
-                        <button class="task-act-btn done-btn" onclick="moveTask('{{ task.id }}','done')" title="Approve & Done" style="color:#10b981;">✓</button>
+                        <button class="task-act-btn done-btn" onclick="markComplete('{{ task.id }}','{{ task.category }}')" title="Approve & Mark Complete" style="color:#10b981;">✓ Done</button>
                         <button class="task-act-btn" onclick="moveTask('{{ task.id }}','in_progress')" title="Back to In Progress">↩</button>
                         <button class="task-act-btn" onclick="editTask('{{ task.id }}')" title="Edit"><i class="fas fa-pen"></i></button>
                         <button class="task-act-btn del" onclick="deleteTask('{{ task.id }}')" title="Delete"><i class="fas fa-trash"></i></button>
@@ -644,6 +711,27 @@
                         <button class="task-act-btn del" onclick="deleteTask('{{ task.id }}')" title="Delete"><i class="fas fa-trash"></i></button>
                     </div>
                 </div>
+                {% if task.completed_by or task.completion_notes or task.unit_tests_passed is not None or task.beta_tested is not None %}
+                <div class="completion-block">
+                    <span class="cb-label">✓ Completed by {{ task.completed_by.email|default:"unknown" }}</span>
+                    {% if task.completion_notes %}<div style="margin-bottom:5px;">{{ task.completion_notes }}</div>{% endif %}
+                    {% if task.category == 'development' %}
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                            {% if task.unit_tests_passed is not None %}
+                                <span class="audit-badge {% if task.unit_tests_passed %}audit-pass{% else %}audit-fail{% endif %}">
+                                    {% if task.unit_tests_passed %}✓ Tests Passed{% else %}✗ Tests Failed{% endif %}
+                                </span>
+                            {% endif %}
+                            {% if task.beta_tested is not None %}
+                                <span class="audit-badge {% if task.beta_tested %}audit-pass{% else %}audit-fail{% endif %}">
+                                    {% if task.beta_tested %}✓ Beta Tested{% else %}✗ Not Tested{% endif %}
+                                </span>
+                            {% endif %}
+                        </div>
+                        {% if task.test_notes %}<div style="margin-top:4px;font-size:10px;color:#166534;">{{ task.test_notes|truncatechars:100 }}</div>{% endif %}
+                    {% endif %}
+                </div>
+                {% endif %}
             </div>
             {% empty %}
             <div class="col-empty"><i class="fas fa-trophy"></i>Nothing done yet</div>
@@ -744,6 +832,60 @@
             </button>
             <button class="btn btn-primary btn-sm" onclick="saveTask()">
                 <i class="fas fa-save me-1"></i> <span id="saveLabel">Create Task</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Completion Modal ───────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="completeModal">
+    <div class="modal-box">
+        <div class="modal-hdr">
+            <i class="fas fa-check-circle text-success"></i>
+            <h3>Mark Task Complete</h3>
+            <button class="modal-close" onclick="closeCompleteModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="completeTaskId">
+            <input type="hidden" id="completeTaskCategory">
+
+            <div class="field-row">
+                <label>Completion Notes</label>
+                <textarea id="completionNotes" placeholder="What did you do? Any blockers or notes for the assigner?" style="min-height:100px;"></textarea>
+            </div>
+
+            <!-- Code/dev task audit section -->
+            <div id="auditSection" class="audit-section" style="display:none;">
+                <h6><i class="fas fa-microscope"></i> Code Audit</h6>
+
+                <div class="field-row" style="margin-top:8px;">
+                    <label>Unit Tests</label>
+                    <div class="audit-radio">
+                        <label><input type="radio" name="unitTests" value="true"> ✓ Passed</label>
+                        <label><input type="radio" name="unitTests" value="false"> ✗ Failed</label>
+                        <label><input type="radio" name="unitTests" value="na" checked> — N/A</label>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <label>Beta Tested</label>
+                    <div class="audit-radio">
+                        <label><input type="radio" name="betaTested" value="true"> ✓ Yes</label>
+                        <label><input type="radio" name="betaTested" value="false"> ✗ No</label>
+                        <label><input type="radio" name="betaTested" value="na" checked> — N/A</label>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <label>Test Notes</label>
+                    <textarea id="testNotes" placeholder="Details on tests run, environment, results…" style="min-height:70px;"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-ftr">
+            <button class="btn btn-outline-secondary btn-sm" onclick="closeCompleteModal()">Cancel</button>
+            <button class="btn btn-success btn-sm" onclick="submitComplete()">
+                <i class="fas fa-check me-1"></i> Mark Complete
             </button>
         </div>
     </div>
@@ -959,6 +1101,72 @@ function toggleBacklog() {
     const open    = body.style.display === 'block';
     body.style.display = open ? 'none' : 'block';
     chevron.className  = open ? 'fas fa-chevron-down ms-auto' : 'fas fa-chevron-up ms-auto';
+}
+
+// ── Completion flow (with code audit for dev tasks) ─────────────────────────
+function markComplete(taskId, category) {
+    document.getElementById('completeTaskId').value = taskId;
+    document.getElementById('completeTaskCategory').value = category;
+    document.getElementById('completionNotes').value = '';
+    document.getElementById('testNotes').value = '';
+    document.querySelectorAll('input[name="unitTests"]').forEach(r => r.checked = false);
+    document.querySelectorAll('input[name="betaTested"]').forEach(r => r.checked = false);
+    document.querySelector('input[name="unitTests"][value="na"]').checked = true;
+    document.querySelector('input[name="betaTested"][value="na"]').checked = true;
+
+    // Show code audit section only for development tasks
+    const auditSec = document.getElementById('auditSection');
+    if (category === 'development') {
+        auditSec.style.display = 'block';
+    } else {
+        auditSec.style.display = 'none';
+    }
+
+    document.getElementById('completeModal').classList.add('open');
+    setTimeout(() => document.getElementById('completionNotes').focus(), 100);
+}
+
+function closeCompleteModal() {
+    document.getElementById('completeModal').classList.remove('open');
+}
+
+document.getElementById('completeModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('completeModal')) closeCompleteModal();
+});
+
+async function submitComplete() {
+    const taskId = document.getElementById('completeTaskId').value;
+    const category = document.getElementById('completeTaskCategory').value;
+    const notes = document.getElementById('completionNotes').value.trim();
+
+    const body = { completion_notes: notes };
+
+    // Code audit fields (dev tasks only)
+    if (category === 'development') {
+        const ut = document.querySelector('input[name="unitTests"]:checked').value;
+        const bt = document.querySelector('input[name="betaTested"]:checked').value;
+        body.unit_tests_passed = ut === 'true' ? true : (ut === 'false' ? false : null);
+        body.beta_tested = bt === 'true' ? true : (bt === 'false' ? false : null);
+        body.test_notes = document.getElementById('testNotes').value.trim();
+    }
+
+    try {
+        const r = await fetch(`/tasks/${taskId}/complete/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (d.success) {
+            toast('Task marked complete — admin has been notified');
+            closeCompleteModal();
+            setTimeout(() => location.reload(), 800);
+        } else {
+            toast(d.error || 'Error marking complete', false);
+        }
+    } catch (e) {
+        toast('Network error: ' + e.message, false);
+    }
 }
 </script>
 {% endblock %}
