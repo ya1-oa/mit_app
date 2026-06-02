@@ -9,6 +9,11 @@ PORT=${PORT:-8080}
 
 echo "Starting application on port $PORT..."
 
+# Apply any pending database migrations before starting
+echo "Running database migrations..."
+python manage.py migrate --noinput
+echo "Migrations complete."
+
 # Start the application
 exec gunicorn \
     --bind 0.0.0.0:$PORT \
