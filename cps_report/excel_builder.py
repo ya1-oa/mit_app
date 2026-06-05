@@ -15,12 +15,14 @@ from openpyxl.worksheet.pagebreak import Break
 
 
 # ── Column definitions ────────────────────────────────────────────────────────
-# Removed always-empty columns (Room, Box, Location) from original format.
+# Room column restored and populated with actual room name per item.
+# Box and Location omitted for now (to be added later).
 # Headers shortened so they wrap cleanly in narrow columns.
 COLUMNS = [
     # (header_row5,        header_row6,  width)
     ('#',                  '',           4),
-    ('Description',        '',           24),
+    ('Room',               '',           18),   # populated with room.room_name
+    ('Description',        '',           22),
     ('Brand',              '',           14),
     ('Disposition',        '',           11),
     ('Condition',          '',           9),
@@ -45,16 +47,16 @@ COLUMNS = [
 NUM_COLS    = len(COLUMNS)
 LAST_COL    = get_column_letter(NUM_COLS)
 
-# Column indices (1-based) for financial values
-COL_RV_EACH  = 15
-COL_RV_TOTAL = 16
-COL_DEP_AMT  = 19
-COL_ACV_EACH = 20
-COL_ACV_TOT  = 21
+# Column indices (1-based) for financial values — shift +1 due to Room column
+COL_RV_EACH  = 16
+COL_RV_TOTAL = 17
+COL_DEP_AMT  = 20
+COL_ACV_EACH = 21
+COL_ACV_TOT  = 22
 
-CURRENCY_COLS = {11, 12, 15, 16, 19, 20, 21}
-PCT_COLS      = {18}
-NUM_COLS_SET  = {6, 13, 14}
+CURRENCY_COLS = {12, 13, 16, 17, 20, 21, 22}
+PCT_COLS      = {19}
+NUM_COLS_SET  = {7, 14, 15}
 
 # Colour palette
 CLR_HEADER_BG    = 'FF1F3864'
@@ -212,8 +214,9 @@ def _write_room_header(ws, row: int, room) -> None:
     c.border    = _border()
 
 
-def _write_item_row(ws, row: int, item, item_num: int, alt: bool = False) -> None:
-    """One data row per item."""
+def _write_item_row(ws, row: int, item, item_num: int, room_name: str = '',
+                    alt: bool = False) -> None:
+    """One data row per item. room_name is written into the Room column."""
     ws.row_dimensions[row].height = 14
     fill = _fill(CLR_ALT_ROW) if alt else None
 
@@ -228,6 +231,7 @@ def _write_item_row(ws, row: int, item, item_num: int, alt: bool = False) -> Non
 
     row_data = [
         item_num,
+        room_name,                              # Room — populated per item
         item.description,
         item.brand or '',
         item.disposition or 'Replacement',
@@ -254,7 +258,7 @@ def _write_item_row(ws, row: int, item, item_num: int, alt: bool = False) -> Non
         c = ws.cell(row=row, column=col_idx, value=value)
         c.border    = _border()
         c.font      = _font(size=9)
-        c.alignment = _left(wrap=(col_idx == 2))   # wrap description
+        c.alignment = _left(wrap=(col_idx == 3))   # wrap description (col 3)
         if fill:
             c.fill = fill
         if col_idx in CURRENCY_COLS and isinstance(value, (int, float)):
@@ -414,8 +418,10 @@ def build_excel(session, share_url: str | None = None) -> bytes:
         current_row += 1
 
         # --- Item rows ---
+        room_label = f"{room.room_number} {room.room_name}".strip()
         for i, item in enumerate(items):
-            _write_item_row(ws, current_row, item, global_item_num, alt=(i % 2 == 1))
+            _write_item_row(ws, current_row, item, global_item_num,
+                            room_name=room_label, alt=(i % 2 == 1))
             global_item_num += 1
             current_row += 1
 
