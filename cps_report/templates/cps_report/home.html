@@ -145,14 +145,17 @@
           </div>
         </div>
         <div class="card-footer py-2">
-          <button id="btn-start" class="btn btn-primary btn-sm w-100 mb-1" disabled>
+          <button id="btn-start" class="btn btn-primary btn-sm w-100" disabled>
             <i class="fas fa-play me-1"></i> Find CPS Rooms &amp; Start Report
           </button>
-          <button id="btn-import-excel" type="button" class="btn btn-outline-secondary btn-sm w-100"
-                  data-bs-toggle="modal" data-bs-target="#importExcelModal">
-            <i class="fas fa-file-upload me-1"></i> Import Previous Excel Run
-          </button>
         </div>
+      </div>
+      {# Import button lives OUTSIDE the card so Driver.js spotlight never gets clipped by card overflow #}
+      <div class="mt-2">
+        <button id="btn-import-excel" type="button" class="btn btn-outline-secondary btn-sm w-100"
+                data-bs-toggle="modal" data-bs-target="#importExcelModal">
+          <i class="fas fa-file-upload me-1"></i> Import Previous Excel Run
+        </button>
       </div>
     </div>
 
