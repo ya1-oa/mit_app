@@ -5,7 +5,24 @@
 {% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss — Building Report{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
 <style>
+  /* ── Tour button ── */
+  #tour-btn {
+    position: fixed; bottom: 28px; right: 28px; z-index: 1050;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 22px; font-weight: 700;
+    border: none; box-shadow: 0 4px 16px rgba(102,126,234,.45);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform .15s;
+  }
+  #tour-btn:hover { transform: scale(1.1); }
+  .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
+  .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; }
+  .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
+  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; }
+
   /* ── Stats bar ── */
   .stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 20px; text-align:center; }
   .stat-card .stat-val { font-size:1.6rem; font-weight:700; color:#1e40af; }
@@ -58,6 +75,9 @@
 
 {% block content %}
 <div class="container-fluid py-3" style="max-width:1100px">
+
+<!-- Floating tour button -->
+<button id="tour-btn" onclick="launchProgressTour()" title="Explain this page">?</button>
 
   <!-- Done banner (hidden until complete) -->
   <div id="done-banner">
@@ -165,6 +185,72 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
+<script>
+function launchProgressTour() {
+  const d = window.driver.js.driver({
+    showProgress: true,
+    animate: true,
+    overlayColor: 'rgba(0,0,0,0.72)',
+    smoothScroll: true,
+    allowClose: false,
+    steps: [
+      {
+        popover: {
+          title: '⚡ Live AI Processing — Here\'s What You\'re Seeing',
+          description: 'Claude AI is analyzing room photos right now, identifying and pricing every item it finds. This page updates automatically — no need to refresh.',
+          side: 'over', align: 'center',
+          nextBtnText: 'Show me →',
+        },
+      },
+      {
+        element: '.progress',
+        popover: {
+          title: '📊 Master Progress Bar',
+          description: 'This bar fills as each room completes. The percentage shows how many of the total rooms have been fully analyzed.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '.row.g-2.mb-3',
+        popover: {
+          title: '📈 Live Stats',
+          description: '<strong>Rooms Done</strong> — count of finished rooms.<br><strong>Images Analyzed</strong> — total photos processed.<br><strong>Items Found</strong> — individual line items priced so far.<br><strong>Est. Replacement Value</strong> — running dollar total, updating live.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '#rooms-container .room-card:first-child',
+        popover: {
+          title: '🏠 Room Cards',
+          description: 'Each room starts <strong>grey (Pending)</strong>, turns <strong>green with a spinner</strong> while Claude is analyzing it, then shows item count and replacement value when done. <strong>Click a completed room</strong> to expand its item list.',
+          side: 'right', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '#done-banner',
+        popover: {
+          title: '✅ When All Rooms Finish',
+          description: 'This completion banner appears automatically when every room is done. It gives you one-click access to <strong>PDF download</strong> and <strong>Excel export</strong>. You can also open the full session to edit individual items before finalizing.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Done!',
+        },
+      },
+    ],
+    onDestroyStarted: () => d.destroy(),
+  });
+  d.drive();
+}
+
+// Auto-show once per session load if first visit to a progress page
+if (!sessionStorage.getItem('cps_progress_tour_shown')) {
+  sessionStorage.setItem('cps_progress_tour_shown', '1');
+  window.addEventListener('load', () => setTimeout(launchProgressTour, 1200));
+}
+</script>
 <script>
 (function () {
   const SESSION_ID  = {{ session.id }};

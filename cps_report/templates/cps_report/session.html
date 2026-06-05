@@ -5,7 +5,24 @@
 {% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Report — {{ session.insured_name }}{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
 <style>
+  /* ── Tour button ── */
+  #tour-btn {
+    position: fixed; bottom: 28px; right: 28px; z-index: 1050;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 22px; font-weight: 700;
+    border: none; box-shadow: 0 4px 16px rgba(102,126,234,.45);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform .15s;
+  }
+  #tour-btn:hover { transform: scale(1.1); }
+  .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
+  .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; }
+  .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
+  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; }
+
   .room-section { margin-bottom: 2rem; }
   .room-header { background: #d6e4bc; font-weight: 600; padding: .5rem 1rem; border-radius: 6px 6px 0 0; border-bottom: 2px solid #a4c265; }
   .item-table th { font-size: .78rem; background: #1f3864; color: #fff; position: sticky; top: 0; }
@@ -39,6 +56,9 @@
 {% endblock %}
 
 {% block content %}
+<!-- Floating tour button -->
+<button id="tour-btn" onclick="launchSessionTour()" title="Explain this report">?</button>
+
 <div class="container-fluid py-3">
 
   <!-- Report Header -->
@@ -283,6 +303,105 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
+<script>
+const SESSION_TOUR_KEY = 'cps_session_tour_v1';
+
+function launchSessionTour() {
+  const d = window.driver.js.driver({
+    showProgress: true,
+    animate: true,
+    overlayColor: 'rgba(0,0,0,0.72)',
+    smoothScroll: true,
+    allowClose: false,
+    steps: [
+      {
+        popover: {
+          title: '📄 Your Completed CPS Report',
+          description: 'This is the full Schedule of Loss for this claim. All items have been AI-priced. You can review, edit any value inline, then export or share for signature.',
+          side: 'over', align: 'center',
+          nextBtnText: 'Show me around →',
+        },
+      },
+      {
+        element: '#grand-total-banner',
+        popover: {
+          title: '💰 Total Replacement Value',
+          description: 'This is the claim\'s bottom line — the total replacement cost across all rooms and all items. It updates automatically any time you edit a quantity or price.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '.col-md-4.text-end',
+        popover: {
+          title: '📤 Export & Share Options',
+          description: 'Four actions are available from the header:<br><br><strong>Summary</strong> — a condensed totals view.<br><strong>PDF</strong> — download a formatted report.<br><strong>Excel</strong> — export the full data sheet.<br><strong>Share Link</strong> — copy a link for your client to digitally sign.',
+          side: 'bottom', align: 'end',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '[onclick="copyShareLink(this)"]:first-of-type',
+        popover: {
+          title: '🔗 Client Signature Link',
+          description: '<strong>Click "Share Link"</strong> to copy a unique URL to your clipboard. Send it to your insured — they can open it on any device and sign each room\'s items directly. No login required.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '.sig-panel',
+        popover: {
+          title: '✍️ Signature Status Panel',
+          description: 'Every room is listed here. <span class="badge bg-success">Green badges</span> mean the room has been signed. <span class="badge bg-warning text-dark">Yellow badges</span> are still waiting. Hover a signed badge to see who signed and when.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '.item-table:first-of-type',
+        popover: {
+          title: '✏️ Inline Editing',
+          description: '<strong>Click any cell</strong> that\'s highlighted on hover to edit it directly. You can update descriptions, quantities, ages, and replacement values. Changes are saved automatically when you click away.',
+          side: 'top', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: 'a[href*="export-pdf"]',
+        popover: {
+          title: '📕 Download the PDF',
+          description: '<strong>Click here to download a formatted PDF</strong> of the complete report. The PDF is ready to submit to the insurance carrier or share with your team.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: 'a[href*="export/"]:not([href*="pdf"])',
+        popover: {
+          title: '📗 Export to Excel',
+          description: '<strong>Click here to download the Excel file.</strong> The spreadsheet includes all rooms and items with full pricing columns — useful for further editing, importing into other systems, or re-running a future session.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Finish tour ✓',
+        },
+      },
+    ],
+    onDestroyStarted: () => {
+      localStorage.setItem(SESSION_TOUR_KEY, '1');
+      d.destroy();
+    },
+  });
+  d.drive();
+}
+
+// Auto-show tour once on first visit to any session page
+document.addEventListener('DOMContentLoaded', () => {
+  if (!localStorage.getItem(SESSION_TOUR_KEY)) {
+    setTimeout(launchSessionTour, 600);
+  }
+});
+</script>
 <script>
 (function () {
   const CSRF = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';

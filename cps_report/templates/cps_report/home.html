@@ -5,7 +5,79 @@
 {% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss Report{% endblock %}
 
 {% block extra_css %}
+<!-- Driver.js spotlight tour library -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
 <style>
+  /* ── Tour floating button ── */
+  #tour-btn {
+    position: fixed; bottom: 28px; right: 28px; z-index: 1050;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 22px; font-weight: 700;
+    border: none; box-shadow: 0 4px 16px rgba(102,126,234,.45);
+    cursor: pointer; transition: transform .15s, box-shadow .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #tour-btn:hover { transform: scale(1.1); box-shadow: 0 8px 24px rgba(102,126,234,.6); }
+  #tour-btn title { display: none; }
+
+  /* ── Welcome modal overlay ── */
+  #welcome-overlay {
+    display: none; position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,.65); align-items: center; justify-content: center;
+  }
+  #welcome-overlay.show { display: flex; }
+  #welcome-card {
+    background: #fff; border-radius: 20px; width: 90%; max-width: 540px;
+    overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.4);
+    animation: wc-in .25s ease;
+  }
+  @keyframes wc-in { from { opacity:0; transform:scale(.92) translateY(20px); } to { opacity:1; transform:none; } }
+  #welcome-card .wc-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    padding: 32px 36px 24px; text-align: center; color: #fff;
+  }
+  #welcome-card .wc-icon { font-size: 44px; margin-bottom: 12px; }
+  #welcome-card .wc-header h2 { font-size: 22px; font-weight: 800; margin: 0 0 6px; }
+  #welcome-card .wc-header p  { opacity: .85; font-size: 14px; margin: 0; }
+  #welcome-card .wc-body { padding: 28px 36px; }
+  #welcome-card .wc-steps { list-style: none; padding: 0; margin: 0 0 24px; }
+  #welcome-card .wc-steps li {
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: 14px; color: #334155; margin-bottom: 12px;
+  }
+  #welcome-card .wc-steps li .step-num {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wc-actions { display: flex; gap: 10px; }
+  .wc-actions .btn-tour  {
+    flex: 1; background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; border: none; padding: 12px; border-radius: 10px;
+    font-weight: 700; font-size: 15px; cursor: pointer;
+  }
+  .wc-actions .btn-tour:hover { opacity: .9; }
+  .wc-actions .btn-skip {
+    flex-shrink: 0; background: #f1f5f9; color: #64748b;
+    border: none; padding: 12px 18px; border-radius: 10px;
+    font-size: 14px; cursor: pointer;
+  }
+  .wc-actions .btn-skip:hover { background: #e2e8f0; }
+
+  /* ── Driver.js theme overrides ── */
+  .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
+  .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; color: #0f172a !important; }
+  .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
+  .driver-popover-next-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    border-color: transparent !important; border-radius: 8px !important;
+    font-weight: 700 !important;
+  }
+  .driver-popover-prev-btn { border-radius: 8px !important; }
+  .driver-popover-progress-text { font-size: 11px !important; color: #94a3b8 !important; }
+
   .claim-card { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
   .claim-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.12); border-color: #0d6efd !important; }
   .claim-card.selected { border-color: #0d6efd !important; background: #e8f0fe; }
@@ -190,6 +262,46 @@
     </div>
   </div>
 </div>
+<!-- ─── Floating tour button (always visible) ─────────────────────────── -->
+<button id="tour-btn" onclick="launchTour()" title="Take the guided tour">?</button>
+
+<!-- ─── Welcome modal (shown on first visit) ──────────────────────────── -->
+<div id="welcome-overlay">
+  <div id="welcome-card">
+    <div class="wc-header">
+      <div class="wc-icon">📋</div>
+      <h2>CPS Schedule of Loss</h2>
+      <p>AI-powered pricing reports for your contents claims</p>
+    </div>
+    <div class="wc-body">
+      <ul class="wc-steps">
+        <li>
+          <div class="step-num">1</div>
+          <span><strong>Search & select a claim</strong> from the left panel by name, claim number, or address</span>
+        </li>
+        <li>
+          <div class="step-num">2</div>
+          <span><strong>Click "Find CPS Rooms & Start Report"</strong> — the AI finds all rooms automatically</span>
+        </li>
+        <li>
+          <div class="step-num">3</div>
+          <span><strong>Watch live progress</strong> as Claude AI prices every item room by room</span>
+        </li>
+        <li>
+          <div class="step-num">4</div>
+          <span><strong>Edit, export & share</strong> the finished report — PDF, Excel, or client signature link</span>
+        </li>
+      </ul>
+      <div class="wc-actions">
+        <button class="btn-tour" onclick="closeTourModal(); launchTour()">
+          <i class="fas fa-play me-2"></i> Start Guided Tour
+        </button>
+        <button class="btn-skip" onclick="closeTourModal()">Skip</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Import Excel Modal -->
 <div class="modal fade" id="importExcelModal" tabindex="-1" aria-labelledby="importExcelModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -225,6 +337,132 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Driver.js spotlight tour -->
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
+<script>
+// ── Welcome modal logic ─────────────────────────────────────────────────────
+const TOUR_KEY = 'cps_home_tour_v1';
+
+function closeTourModal() {
+  document.getElementById('welcome-overlay').classList.remove('show');
+  localStorage.setItem(TOUR_KEY, '1');
+}
+
+function launchTour() {
+  closeTourModal();
+  const driverObj = window.driver.js.driver({
+    showProgress: true,
+    animate: true,
+    overlayColor: 'rgba(0,0,0,0.72)',
+    smoothScroll: true,
+    allowClose: false,
+    popoverClass: 'cps-tour-popover',
+    steps: [
+      {
+        // Step 1 — centred intro (no element)
+        popover: {
+          title: '👋 Welcome to CPS Schedule of Loss',
+          description: 'This is your AI-powered pricing system. In a few minutes you\'ll have a complete Schedule of Loss with replacement values for every CPS room. Let\'s walk through it step by step.',
+          side: 'over',
+          align: 'center',
+          nextBtnText: 'Let\'s go →',
+        },
+      },
+      {
+        // Step 2 — search box
+        element: '#claim-search',
+        popover: {
+          title: '🔍 Step 1 — Search for a Claim',
+          description: 'Type the insured\'s name, claim number, or address here. The list updates instantly as you type. <strong>Try clicking the search box now.</strong>',
+          side: 'bottom',
+          align: 'start',
+          nextBtnText: 'Got it →',
+        },
+      },
+      {
+        // Step 3 — claims list
+        element: '#claims-list',
+        popover: {
+          title: '📋 Step 2 — Select a Claim',
+          description: 'Matching claims appear here as cards. <strong>Click a card to select it</strong> — it will highlight in blue. Each card shows the insured name, claim number, and Encircle ID.',
+          side: 'right',
+          align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        // Step 4 — start button
+        element: '#btn-start',
+        popover: {
+          title: '🚀 Step 3 — Launch the Report',
+          description: 'Once a claim is selected, this button activates. <strong>Click "Find CPS Rooms & Start Report"</strong> — our system automatically finds all CPS rooms in Encircle and starts the AI analysis. You\'ll be taken to the live progress page.',
+          side: 'top',
+          align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        // Step 5 — import button
+        element: '[data-bs-target="#importExcelModal"]',
+        popover: {
+          title: '📁 Import a Previous Run',
+          description: 'Already have a Schedule of Loss from a prior session? Click here to upload an existing Excel file. It creates a new session pre-loaded with all the data — ready to share, edit, or export.',
+          side: 'top',
+          align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+      {% if grouped_sessions %}
+      {
+        // Step 6 — previous runs accordion (only if sessions exist)
+        element: '#sessions-accordion',
+        popover: {
+          title: '📂 Step 4 — Your Report History',
+          description: 'Every report you\'ve ever run is saved here, grouped by claim. <strong>Reports are never overwritten</strong> — each run creates a new record. Click a claim row to expand its runs.',
+          side: 'top',
+          align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        // Step 7 — first session entry
+        element: '#sessions-accordion .list-group-item:first-child',
+        popover: {
+          title: '📄 Open or Download a Past Report',
+          description: '<strong>Click a run</strong> to open the full report for viewing and editing. The <span style="color:#dc3545"><i class="fas fa-file-pdf"></i> PDF</span> icon lets you download the report directly without opening it. Status badges show <span class="badge bg-success">complete</span> or <span class="badge bg-warning text-dark">processing</span>.',
+          side: 'left',
+          align: 'start',
+          nextBtnText: 'Finish tour',
+        },
+      },
+      {% else %}
+      {
+        // Step 6 — no sessions yet
+        popover: {
+          title: '📂 Your Report History Lives Here',
+          description: 'Once you run your first report, all sessions appear here grouped by claim. Reports are never overwritten — each run is a separate record you can re-open, compare, and download at any time.',
+          side: 'over',
+          align: 'center',
+          nextBtnText: 'Finish tour',
+        },
+      },
+      {% endif %}
+    ],
+    onDestroyStarted: () => {
+      localStorage.setItem(TOUR_KEY, '1');
+      driverObj.destroy();
+    },
+  });
+  driverObj.drive();
+}
+
+// Auto-show welcome modal on first visit
+document.addEventListener('DOMContentLoaded', () => {
+  if (!localStorage.getItem(TOUR_KEY)) {
+    document.getElementById('welcome-overlay').classList.add('show');
+  }
+});
+</script>
 <script>
 (function () {
   const CSRF = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
