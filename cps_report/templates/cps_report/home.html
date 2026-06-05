@@ -382,116 +382,113 @@ let driverObj = null;
 
 function launchTour() {
   closeTourModal(false);
+
+  // ── Pre-open the first accordion panel BEFORE the driver starts ──────────
+  // Bootstrap animates from height:0 → height:auto via a CSS transition.
+  // If we open it inside onNextClick the element still has height:0 when
+  // Driver.js measures it for the spotlight → sliver-sized highlight.
+  // Opening here (and bypassing the animation by forcing height:auto) means
+  // Driver.js always sees a fully-rendered element with correct dimensions.
+  {% if grouped_sessions %}
+  (function () {
+    const firstBtn   = document.querySelector('#sessions-accordion .accordion-button');
+    const firstPanel = document.querySelector('#sessions-accordion .accordion-collapse');
+    if (firstBtn && firstPanel) {
+      firstBtn.classList.remove('collapsed');
+      firstPanel.classList.add('show');
+      firstPanel.style.height = 'auto';   // bypass animation — full height immediately
+    }
+  })();
+  {% endif %}
+
   driverObj = window.driver.js.driver({
     showProgress: true,
     animate: true,
     overlayColor: 'rgba(0,0,0,0.72)',
     smoothScroll: true,
-    allowClose: false,
+    allowClose: true,   // let Escape / overlay-click also finish the tour
     popoverClass: 'cps-tour-popover',
     steps: [
       {
-        // Step 1 — centred intro (no element)
         popover: {
           title: '👋 Welcome to CPS Schedule of Loss',
           description: 'This is your AI-powered pricing system. In a few minutes you\'ll have a complete Schedule of Loss with replacement values for every CPS room. Let\'s walk through it step by step.',
-          side: 'over',
-          align: 'center',
+          side: 'over', align: 'center',
           nextBtnText: 'Let\'s go →',
         },
       },
       {
-        // Step 2 — search box
         element: '#claim-search',
         popover: {
           title: '🔍 Step 1 — Search for a Claim',
-          description: 'Type the insured\'s name, claim number, or address here. The list updates instantly as you type. <strong>Try clicking & typing in the search box now.</strong>',
-          side: 'bottom',
-          align: 'start',
+          description: 'Type the insured\'s name, claim number, or address here. The list updates instantly as you type.',
+          side: 'bottom', align: 'start',
           nextBtnText: 'Got it →',
         },
       },
       {
-        // Step 3 — claims list
         element: '#claims-list',
         popover: {
           title: '📋 Step 2 — Select a Claim',
-          description: 'Matching claims appear here as cards. <strong>Click a card to select it</strong> — it will highlight in blue. Each card shows the insured name, claim number, and Encircle ID.',
-          side: 'right',
-          align: 'start',
+          description: 'Matching claims appear here as cards. <strong>Click a card to select it</strong> — it highlights in blue. Each card shows the insured name, claim number, and Encircle ID.',
+          side: 'right', align: 'start',
           nextBtnText: 'Next →',
         },
       },
       {
-        // Step 4 — start button
         element: '#btn-start',
         popover: {
           title: '🚀 Step 3 — Launch the Report',
-          description: 'Once a claim is selected, this button activates. <strong>Click "Find CPS Rooms & Start Report"</strong> — our system automatically finds all CPS rooms in Encircle and starts the AI analysis. You\'ll be taken to the live progress page.',
-          side: 'top',
-          align: 'center',
+          description: 'Once a claim is selected, this button activates. <strong>Click "Find CPS Rooms & Start Report"</strong> — the system finds all CPS rooms in Encircle automatically and starts the AI analysis.',
+          side: 'top', align: 'center',
           nextBtnText: 'Next →',
         },
       },
       {
-        // Step 5 — import button (now has ID)
         element: '#btn-import-excel',
         popover: {
           title: '📁 Import a Previous Run',
-          description: 'Already have a Schedule of Loss from a prior session? Click here to upload an existing Excel file. It creates a new session pre-loaded with all the data — ready to share, edit, or export.',
-          side: 'top',
-          align: 'center',
+          description: 'Already have an exported Schedule of Loss? Upload it here to create a new session pre-loaded with that data — ready to share, edit, or re-export.',
+          side: 'top', align: 'center',
           nextBtnText: 'Next →',
         },
       },
       {% if grouped_sessions %}
       {
-        // Step 6 — previous runs accordion header
-        element: '#sessions-accordion',
+        // Targets the first full accordion item (header + body, always rendered)
+        element: '#sessions-accordion .accordion-item:first-child',
         popover: {
           title: '📂 Your Report History',
-          description: 'Every report you\'ve ever run is saved here, grouped by claim. <strong>Reports are never overwritten</strong> — each run creates a new record. Click any claim row to expand its list of runs.',
-          side: 'top',
-          align: 'start',
-          nextBtnText: 'Open one →',
-          onNextClick: () => {
-            // Expand the first accordion panel before moving to next step
-            const firstBtn = document.querySelector('#sessions-accordion .accordion-button');
-            const firstPanel = document.querySelector('#sessions-accordion .accordion-collapse');
-            if (firstBtn && firstPanel && !firstPanel.classList.contains('show')) {
-              firstBtn.classList.remove('collapsed');
-              firstPanel.classList.add('show');
-            }
-            driverObj.moveNext();
-          },
+          description: 'Every report you\'ve ever run is saved here, grouped by claim. <strong>Reports are never overwritten</strong> — each run creates a new record you can compare, re-open, and download at any time.',
+          side: 'top', align: 'start',
+          nextBtnText: 'Next →',
         },
       },
       {
-        // Step 7 — first session entry (accordion must be open)
-        element: '#sessions-accordion .list-group-item',
+        // Targets the first list-group-item inside any OPEN (.show) panel.
+        // The panel was forced open above, so this always resolves correctly.
+        element: '#sessions-accordion .accordion-collapse.show .list-group-item:first-child',
         popover: {
           title: '📄 Open or Download a Past Report',
-          description: '<strong>Click a run row</strong> to open the full report for viewing and editing.<br><br>The <span class="badge bg-danger"><i class="fas fa-file-pdf"></i> PDF</span> button downloads the report instantly. The <span class="badge bg-success"><i class="fas fa-file-excel"></i> Excel</span> button exports the data — no need to open the session.',
-          side: 'left',
-          align: 'start',
+          description: '<strong>Click a run row</strong> to open the full report for viewing and editing.<br><br><span class="badge bg-danger"><i class="fas fa-file-pdf"></i> PDF</span> downloads the report instantly. <span class="badge bg-success"><i class="fas fa-file-excel"></i> Excel</span> exports the data — no need to open the session first.',
+          side: 'left', align: 'start',
           nextBtnText: 'Finish tour ✓',
         },
       },
       {% else %}
       {
-        // Step 6 — no sessions yet
         popover: {
           title: '📂 Your Report History Lives Here',
           description: 'Once you run your first report, all sessions appear here grouped by claim. Reports are never overwritten — each run is a separate record you can re-open, compare, and download at any time.',
-          side: 'over',
-          align: 'center',
+          side: 'over', align: 'center',
           nextBtnText: 'Finish tour ✓',
         },
       },
       {% endif %}
     ],
     onDestroyStarted: () => {
-      localStorage.setItem(TOUR_KEY, '1');
+      // BUG FIX: was incorrectly referencing TOUR_KEY (undefined) — now uses DISABLE_KEY
+      localStorage.setItem(DISABLE_KEY, '1');
       driverObj.destroy();
     },
   });
