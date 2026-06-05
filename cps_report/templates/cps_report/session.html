@@ -23,6 +23,19 @@
   .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
   .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; color: #fff !important; }
 
+  /* ── Drag-and-drop ── */
+  .item-row { cursor: default; }
+  .item-row[draggable="true"] { cursor: grab; }
+  .item-row[draggable="true"]:active { cursor: grabbing; }
+  .item-row.dragging { opacity: .35; }
+  .item-row.drag-over td { border-top: 3px solid #667eea !important; }
+  .drag-handle { color: #aaa; font-size: 13px; cursor: grab; user-select: none; letter-spacing: -2px; }
+  .drag-handle:hover { color: #667eea; }
+  /* ── Dirty room indicator ── */
+  .save-dirty { background: #fef3c7 !important; border-color: #f59e0b !important; }
+  /* ── Move item modal room list ── */
+  .move-room-btn:disabled { opacity: .4; cursor: not-allowed; }
+
   .room-section { margin-bottom: 2rem; }
   .room-header { background: #d6e4bc; font-weight: 600; padding: .5rem 1rem; border-radius: 6px 6px 0 0; border-bottom: 2px solid #a4c265; }
   .item-table th { font-size: .78rem; background: #1f3864; color: #fff; position: sticky; top: 0; }
@@ -258,7 +271,8 @@
       <table class="table table-sm table-bordered item-table mb-0" id="table-{{ room.id }}">
         <thead>
           <tr>
-            <th style="width:32px">#</th>
+            <th style="width:20px"></th>
+            <th style="width:28px">#</th>
             <th>Description</th>
             <th>Brand</th>
             <th>Condition</th>
@@ -268,12 +282,13 @@
             <th class="text-center" style="width:55px">Age Y</th>
             <th class="text-center" style="width:55px">Age M</th>
             <th class="text-end rv-col" style="width:100px">Repl. Value</th>
-            <th style="width:30px"></th>
+            <th style="width:50px"></th>
           </tr>
         </thead>
         <tbody id="tbody-{{ room.id }}">
           {% for item in room.items.all %}
-          <tr class="item-row" data-item-id="{{ item.id }}">
+          <tr class="item-row" data-item-id="{{ item.id }}" draggable="true">
+            <td class="text-center"><span class="drag-handle">⣿</span></td>
             <td class="item-num"></td>
             <td class="editable-cell" contenteditable="true">{{ item.description }}</td>
             <td class="editable-cell" contenteditable="true">{{ item.brand }}</td>
@@ -290,18 +305,21 @@
             <td class="text-center editable-cell" contenteditable="true">{{ item.age_years }}</td>
             <td class="text-center editable-cell" contenteditable="true">{{ item.age_months }}</td>
             <td class="text-end rv-col editable-cell" contenteditable="true">{{ item.replacement_value_each|floatformat:2 }}</td>
-            <td class="text-center">
+            <td class="text-center" style="white-space:nowrap;">
+              <button class="btn btn-link btn-sm p-0 text-secondary me-1" onclick="openMoveModal(this)" title="Move to another room">
+                <i class="fas fa-share" style="font-size:.8em;"></i>
+              </button>
               <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
                 <i class="fas fa-times"></i>
               </button>
             </td>
           </tr>
           <tr class="notes-row" data-item-id="{{ item.id }}">
-            <td colspan="11" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
+            <td colspan="12" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
           </tr>
           {% empty %}
           <tr class="no-items-row">
-            <td colspan="11" class="text-center no-items-msg py-3">No items — click Add Item</td>
+            <td colspan="12" class="text-center no-items-msg py-3">No items — click Add Item</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -341,6 +359,31 @@
   <div class="alert alert-warning">No rooms found for this session.</div>
   {% endfor %}
 
+</div>
+
+<!-- ─── Move Item Modal ────────────────────────────────────────────────────── -->
+<div class="modal fade" id="moveItemModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content" style="border-radius:14px;overflow:hidden;">
+      <div class="modal-header py-2" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+        <h6 class="modal-title mb-0">
+          <i class="fas fa-share me-2 text-primary"></i>Move Item to Room
+        </h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2">
+        <div class="list-group list-group-flush" id="move-room-list">
+          {% for room in rooms %}
+          <button class="list-group-item list-group-item-action py-2 px-3 move-room-btn"
+                  data-room-id="{{ room.id }}"
+                  style="font-size:.85rem;border-radius:0;">
+            <strong class="me-1">{{ room.room_number }}</strong> {{ room.room_name }}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}
 
@@ -415,8 +458,17 @@ function launchSessionTour() {
         element: '.item-table:first-of-type',
         popover: {
           title: '✏️ Inline Editing',
-          description: '<strong>Click any cell</strong> that\'s highlighted on hover to edit it directly. You can update descriptions, quantities, ages, and replacement values. Changes are saved automatically when you click away.',
+          description: '<strong>Click any highlighted cell</strong> to edit it directly — descriptions, quantities, ages, and replacement values. The room total and grand total update instantly. Click <strong>Save</strong> when done.',
           side: 'top', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '.item-row:first-of-type',
+        popover: {
+          title: '🔀 Reorder & Move Items',
+          description: 'Grab the <strong>⣿ grip icon</strong> on the left of any row and drag it up or down to reorder items within the room. Numbers update automatically and stay sequential across the whole report.<br><br>Click the <i class="fas fa-share" style="color:#667eea"></i> <strong>move icon</strong> to send an item to a completely different room. The Save button will highlight amber on any room that needs saving.',
+          side: 'right', align: 'start',
           nextBtnText: 'Next →',
         },
       },
@@ -464,14 +516,13 @@ document.addEventListener('DOMContentLoaded', () => {
   }).then(r => r.json());
   const fmt = v => isNaN(v) ? '—' : '$' + parseFloat(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
-  // Sequential numbering across ALL rooms
+  // ── Sequential numbering across ALL rooms ──────────────────────────────────
   function renumberItems() {
     let n = 1;
     document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
       let even = false;
       tbody.querySelectorAll('tr.item-row').forEach(tr => {
         tr.querySelector('.item-num').textContent = n++;
-        // Alternating stripe via class (nth-child breaks with interleaved notes rows)
         tr.classList.toggle('even-item', even);
         const notesRow = tr.nextElementSibling;
         if (notesRow && notesRow.classList.contains('notes-row')) {
@@ -482,37 +533,166 @@ document.addEventListener('DOMContentLoaded', () => {
     });
   }
 
-  // Read data from an item-row; notes come from the paired notes-row beneath it
+  // ── Dirty-room tracking ─────────────────────────────────────────────────────
+  const dirtyRooms = new Set();
+  function markRoomDirty(roomId) {
+    dirtyRooms.add(String(roomId));
+    const saveBtn = document.querySelector(`button[onclick="saveRoom(${roomId})"]`);
+    if (saveBtn) {
+      saveBtn.classList.add('save-dirty');
+      saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save';
+    }
+  }
+
+  // ── Read data from an item-row (12 columns: handle + # + 10 data + actions) ─
+  // col[0]=handle  col[1]=# col[2]=desc col[3]=brand col[4]=condition(select)
+  // col[5]=qty col[6]=retailer col[7]=purchase col[8]=ageY col[9]=ageM
+  // col[10]=rv col[11]=actions
   function getRowData(tr) {
-    const cells = tr.querySelectorAll('td');
-    const condEl = cells[3].querySelector('select');
+    const cells  = tr.querySelectorAll('td');
+    const condEl = cells[4].querySelector('select');
     const notesRow = tr.nextElementSibling;
     const notes = (notesRow && notesRow.classList.contains('notes-row'))
       ? notesRow.querySelector('td').textContent.trim()
       : '';
     return {
-      description:            cells[1].textContent.trim(),
-      brand:                  cells[2].textContent.trim(),
-      condition:              condEl ? condEl.value : cells[3].textContent.trim(),
-      qty:                    parseInt(cells[4].textContent.trim()) || 1,
-      retailer:               cells[5].textContent.trim(),
-      purchase_price_each:    parseFloat(cells[6].textContent.trim()) || 0,
-      age_years:              parseInt(cells[7].textContent.trim()) || 0,
-      age_months:             parseInt(cells[8].textContent.trim()) || 0,
-      replacement_value_each: parseFloat(cells[9].textContent.trim()) || 0,
+      description:            cells[2].textContent.trim(),
+      brand:                  cells[3].textContent.trim(),
+      condition:              condEl ? condEl.value : cells[4].textContent.trim(),
+      qty:                    parseInt(cells[5].textContent.trim()) || 1,
+      retailer:               cells[6].textContent.trim(),
+      purchase_price_each:    parseFloat(cells[7].textContent.trim()) || 0,
+      age_years:              parseInt(cells[8].textContent.trim()) || 0,
+      age_months:             parseInt(cells[9].textContent.trim()) || 0,
+      replacement_value_each: parseFloat(cells[10].textContent.trim()) || 0,
       notes,
       ai_suggested: false,
     };
   }
+
+  // ── Drag-and-drop reorder (within room) and move (across rooms) ────────────
+  let dragSrcRow  = null;
+  let dragSrcBody = null;
+
+  function initDragRow(tr) {
+    tr.setAttribute('draggable', 'true');
+    tr.addEventListener('dragstart', e => {
+      dragSrcRow  = tr;
+      dragSrcBody = tr.closest('tbody');
+      tr.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    tr.addEventListener('dragend', () => {
+      tr.classList.remove('dragging');
+      document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+    });
+  }
+
+  function initTbodyDrop(tbody) {
+    tbody.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+      const target = e.target.closest('tr.item-row');
+      if (target && target !== dragSrcRow) target.classList.add('drag-over');
+    });
+
+    tbody.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragSrcRow) return;
+
+      const targetRow  = e.target.closest('tr.item-row');
+      const targetBody = tbody;
+      const notesRow   = dragSrcRow.nextElementSibling?.classList.contains('notes-row')
+                         ? dragSrcRow.nextElementSibling : null;
+
+      if (targetRow && targetRow !== dragSrcRow) {
+        const rect = targetRow.getBoundingClientRect();
+        const after = e.clientY > rect.top + rect.height / 2;
+        const ref = after
+          ? (targetRow.nextElementSibling?.classList.contains('notes-row')
+             ? targetRow.nextElementSibling.nextSibling : targetRow.nextSibling)
+          : targetRow;
+        targetBody.insertBefore(dragSrcRow, ref);
+      } else {
+        // Dropped on empty area of target tbody
+        targetBody.appendChild(dragSrcRow);
+      }
+      if (notesRow) dragSrcRow.after(notesRow);
+
+      // Remove placeholder in target if present
+      targetBody.querySelector('.no-items-row')?.remove();
+
+      const srcId = dragSrcBody.id.replace('tbody-', '');
+      const tgtId = targetBody.id.replace('tbody-', '');
+      markRoomDirty(srcId);
+      if (srcId !== tgtId) markRoomDirty(tgtId);
+
+      renumberItems();
+      calcTotals(parseInt(srcId));
+      if (srcId !== tgtId) calcTotals(parseInt(tgtId));
+      calcGrandTotals();
+
+      dragSrcRow  = null;
+      dragSrcBody = null;
+    });
+  }
+
+  // Initialise drag on all existing rows and tbodies
+  document.querySelectorAll('tr.item-row').forEach(initDragRow);
+  document.querySelectorAll('[id^="tbody-"]').forEach(initTbodyDrop);
+
+  // ── Move-Item Modal ─────────────────────────────────────────────────────────
+  let moveSourceRow    = null;
+  let moveSourceRoomId = null;
+
+  window.openMoveModal = function(btn) {
+    const tr   = btn.closest('tr.item-row');
+    moveSourceRow    = tr;
+    moveSourceRoomId = String(tr.closest('tbody').id.replace('tbody-', ''));
+
+    document.querySelectorAll('.move-room-btn').forEach(b => {
+      const isCurrentRoom = b.dataset.roomId === moveSourceRoomId;
+      b.disabled = isCurrentRoom;
+      b.classList.toggle('text-muted', isCurrentRoom);
+      b.classList.toggle('active', false);
+    });
+    new bootstrap.Modal(document.getElementById('moveItemModal')).show();
+  };
+
+  document.querySelectorAll('.move-room-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!moveSourceRow || btn.disabled) return;
+      const targetRoomId = btn.dataset.roomId;
+      const targetTbody  = document.getElementById(`tbody-${targetRoomId}`);
+
+      const notesRow = moveSourceRow.nextElementSibling?.classList.contains('notes-row')
+                       ? moveSourceRow.nextElementSibling : null;
+      targetTbody.appendChild(moveSourceRow);
+      if (notesRow) targetTbody.appendChild(notesRow);
+      targetTbody.querySelector('.no-items-row')?.remove();
+
+      markRoomDirty(moveSourceRoomId);
+      markRoomDirty(targetRoomId);
+      renumberItems();
+      calcTotals(parseInt(moveSourceRoomId));
+      calcTotals(parseInt(targetRoomId));
+      calcGrandTotals();
+
+      bootstrap.Modal.getInstance(document.getElementById('moveItemModal')).hide();
+      moveSourceRow    = null;
+      moveSourceRoomId = null;
+    });
+  });
 
   function calcTotals(roomId) {
     const tbody = document.getElementById(`tbody-${roomId}`);
     let rvTotal = 0;
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
       const cells = tr.querySelectorAll('td');
-      if (cells.length < 10) return;
-      const rv  = parseFloat(cells[9].textContent) || 0;
-      const qty = parseInt(cells[4].textContent)   || 1;
+      if (cells.length < 11) return;
+      const rv  = parseFloat(cells[10].textContent) || 0;  // col index 10 = Repl. Value
+      const qty = parseInt(cells[5].textContent)    || 1;  // col index 5  = QTY
       rvTotal += rv * qty;
     });
     const rvEl = document.getElementById(`room-rv-${roomId}`);
@@ -540,26 +720,28 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   window.removeRow = function(btn) {
-    const tr = btn.closest('tr');
-    const tbody = tr.closest('tbody');
-    // Also remove the paired notes row
+    const tr     = btn.closest('tr');
+    const tbody  = tr.closest('tbody');
+    const roomId = tbody.id.replace('tbody-', '');
     const notesRow = tr.nextElementSibling;
     if (notesRow && notesRow.classList.contains('notes-row')) notesRow.remove();
     tr.remove();
-    const roomId = tbody.id.replace('tbody-', '');
+    markRoomDirty(roomId);
     calcTotals(parseInt(roomId));
     calcGrandTotals();
     renumberItems();
   };
 
   window.addItemRow = function(roomId) {
-    const tbody = document.getElementById(`tbody-${roomId}`);
+    const tbody       = document.getElementById(`tbody-${roomId}`);
     const placeholder = tbody.querySelector('.no-items-row');
     if (placeholder) placeholder.remove();
 
-    const tr = document.createElement('tr');
-    tr.className = 'item-row';
+    const tr       = document.createElement('tr');
+    tr.className   = 'item-row';
+    tr.setAttribute('draggable', 'true');
     tr.innerHTML = `
+      <td class="text-center"><span class="drag-handle">⣿</span></td>
       <td class="item-num"></td>
       <td class="editable-cell" contenteditable="true">New Item</td>
       <td class="editable-cell" contenteditable="true"></td>
@@ -572,20 +754,24 @@ document.addEventListener('DOMContentLoaded', () => {
       <td class="text-center editable-cell" contenteditable="true">0</td>
       <td class="text-center editable-cell" contenteditable="true">0</td>
       <td class="text-end rv-col editable-cell" contenteditable="true">0</td>
-      <td class="text-center">
+      <td class="text-center" style="white-space:nowrap;">
+        <button class="btn btn-link btn-sm p-0 text-secondary me-1" onclick="openMoveModal(this)" title="Move to another room">
+          <i class="fas fa-share" style="font-size:.8em;"></i>
+        </button>
         <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
           <i class="fas fa-times"></i>
         </button>
       </td>`;
 
-    const notesRow = document.createElement('tr');
+    const notesRow     = document.createElement('tr');
     notesRow.className = 'notes-row';
-    notesRow.innerHTML = `<td colspan="11" class="editable-cell" contenteditable="true"></td>`;
+    notesRow.innerHTML = `<td colspan="12" class="editable-cell" contenteditable="true"></td>`;
 
     tbody.appendChild(tr);
     tbody.appendChild(notesRow);
+    initDragRow(tr);   // wire up drag events for newly created row
+    markRoomDirty(roomId);
     renumberItems();
-    // Focus the description cell
     tr.querySelectorAll('[contenteditable]')[0].focus();
   };
 
@@ -593,7 +779,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tbody = document.getElementById(`tbody-${roomId}`);
     const items = [];
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
-      if (tr.querySelectorAll('td').length >= 10) items.push(getRowData(tr));
+      if (tr.querySelectorAll('td').length >= 11) items.push(getRowData(tr));
     });
 
     const btn = event.target.closest('button');
@@ -603,22 +789,24 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       const data = await post('{% url "cps_api_save_room" %}', { room_id: roomId, items });
       if (data.success) {
+        dirtyRooms.delete(String(roomId));
+        btn.classList.remove('save-dirty');
         btn.innerHTML = '<i class="fas fa-check"></i> Saved';
         btn.className = btn.className.replace('btn-success', 'btn-outline-success');
         setTimeout(() => {
           btn.innerHTML = '<i class="fas fa-save"></i> Save';
           btn.className = btn.className.replace('btn-outline-success', 'btn-success');
-          btn.disabled = false;
+          btn.disabled  = false;
         }, 2000);
       } else {
         alert('Save failed: ' + (data.error || 'unknown'));
         btn.innerHTML = '<i class="fas fa-save"></i> Save';
-        btn.disabled = false;
+        btn.disabled  = false;
       }
     } catch (e) {
       alert('Save failed: ' + e);
       btn.innerHTML = '<i class="fas fa-save"></i> Save';
-      btn.disabled = false;
+      btn.disabled  = false;
     }
   };
 
