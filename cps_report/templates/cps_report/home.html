@@ -65,6 +65,17 @@
     font-size: 14px; cursor: pointer;
   }
   .wc-actions .btn-skip:hover { background: #e2e8f0; }
+  /* X close button inside header */
+  .wc-x {
+    position: absolute; top: 14px; right: 16px;
+    background: rgba(255,255,255,.25); border: none;
+    color: #fff; font-size: 22px; line-height: 1; width: 32px; height: 32px;
+    border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .wc-x:hover { background: rgba(255,255,255,.4); }
+  .wc-header { position: relative; } /* needed for absolute X */
+  /* "Don't show again" row */
+  .wc-disable { margin-top: 14px; border-top: 1px solid #f1f5f9; padding-top: 10px; }
 
   /* ── Driver.js theme overrides ── */
   .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
@@ -73,9 +84,9 @@
   .driver-popover-next-btn {
     background: linear-gradient(135deg, #667eea, #764ba2) !important;
     border-color: transparent !important; border-radius: 8px !important;
-    font-weight: 700 !important;
+    font-weight: 700 !important; color: #fff !important;
   }
-  .driver-popover-prev-btn { border-radius: 8px !important; }
+  .driver-popover-prev-btn { border-radius: 8px !important; color: #334155 !important; }
   .driver-popover-progress-text { font-size: 11px !important; color: #94a3b8 !important; }
 
   .claim-card { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
@@ -137,7 +148,7 @@
           <button id="btn-start" class="btn btn-primary btn-sm w-100 mb-1" disabled>
             <i class="fas fa-play me-1"></i> Find CPS Rooms &amp; Start Report
           </button>
-          <button type="button" class="btn btn-outline-secondary btn-sm w-100"
+          <button id="btn-import-excel" type="button" class="btn btn-outline-secondary btn-sm w-100"
                   data-bs-toggle="modal" data-bs-target="#importExcelModal">
             <i class="fas fa-file-upload me-1"></i> Import Previous Excel Run
           </button>
@@ -241,9 +252,14 @@
                         </span>
                         {% if s.status == 'complete' %}
                         <a href="{% url 'cps_report_export_pdf' s.id %}"
-                           class="btn btn-danger btn-sm py-0 px-1" style="font-size:.72rem"
+                           class="btn btn-danger btn-sm px-2"
                            onclick="event.stopPropagation()" title="Download PDF">
-                          <i class="fas fa-file-pdf"></i>
+                          <i class="fas fa-file-pdf me-1"></i> PDF
+                        </a>
+                        <a href="{% url 'cps_report_export' s.id %}"
+                           class="btn btn-success btn-sm px-2"
+                           onclick="event.stopPropagation()" title="Download Excel">
+                          <i class="fas fa-file-excel me-1"></i> Excel
                         </a>
                         {% endif %}
                       </div>
@@ -265,10 +281,11 @@
 <!-- ─── Floating tour button (always visible) ─────────────────────────── -->
 <button id="tour-btn" onclick="launchTour()" title="Take the guided tour">?</button>
 
-<!-- ─── Welcome modal (shown on first visit) ──────────────────────────── -->
+<!-- ─── Welcome modal (shown every visit unless user opts out) ────────── -->
 <div id="welcome-overlay">
   <div id="welcome-card">
     <div class="wc-header">
+      <button class="wc-x" onclick="closeTourModal(false)" title="Close">×</button>
       <div class="wc-icon">📋</div>
       <h2>CPS Schedule of Loss</h2>
       <p>AI-powered pricing reports for your contents claims</p>
@@ -277,7 +294,7 @@
       <ul class="wc-steps">
         <li>
           <div class="step-num">1</div>
-          <span><strong>Search & select a claim</strong> from the left panel by name, claim number, or address</span>
+          <span><strong>Search & select a claim</strong> from the left panel by name, claim #, or address</span>
         </li>
         <li>
           <div class="step-num">2</div>
@@ -293,10 +310,16 @@
         </li>
       </ul>
       <div class="wc-actions">
-        <button class="btn-tour" onclick="closeTourModal(); launchTour()">
+        <button class="btn-tour" onclick="closeTourModal(false); launchTour()">
           <i class="fas fa-play me-2"></i> Start Guided Tour
         </button>
-        <button class="btn-skip" onclick="closeTourModal()">Skip</button>
+        <button class="btn-skip" onclick="closeTourModal(false)">Skip for now</button>
+      </div>
+      <div class="wc-disable">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;cursor:pointer;">
+          <input type="checkbox" id="chk-disable-welcome" style="width:14px;height:14px;">
+          Don't show this again
+        </label>
       </div>
     </div>
   </div>
@@ -341,16 +364,22 @@
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <script>
 // ── Welcome modal logic ─────────────────────────────────────────────────────
-const TOUR_KEY = 'cps_home_tour_v1';
+const DISABLE_KEY = 'cps_home_disable_welcome';
 
-function closeTourModal() {
+function closeTourModal(permanently) {
   document.getElementById('welcome-overlay').classList.remove('show');
-  localStorage.setItem(TOUR_KEY, '1');
+  // If checkbox is checked OR caller explicitly passes true, disable forever
+  const chk = document.getElementById('chk-disable-welcome');
+  if (permanently || (chk && chk.checked)) {
+    localStorage.setItem(DISABLE_KEY, '1');
+  }
 }
 
+let driverObj = null;
+
 function launchTour() {
-  closeTourModal();
-  const driverObj = window.driver.js.driver({
+  closeTourModal(false);
+  driverObj = window.driver.js.driver({
     showProgress: true,
     animate: true,
     overlayColor: 'rgba(0,0,0,0.72)',
@@ -373,7 +402,7 @@ function launchTour() {
         element: '#claim-search',
         popover: {
           title: '🔍 Step 1 — Search for a Claim',
-          description: 'Type the insured\'s name, claim number, or address here. The list updates instantly as you type. <strong>Try clicking the search box now.</strong>',
+          description: 'Type the insured\'s name, claim number, or address here. The list updates instantly as you type. <strong>Try clicking & typing in the search box now.</strong>',
           side: 'bottom',
           align: 'start',
           nextBtnText: 'Got it →',
@@ -402,8 +431,8 @@ function launchTour() {
         },
       },
       {
-        // Step 5 — import button
-        element: '[data-bs-target="#importExcelModal"]',
+        // Step 5 — import button (now has ID)
+        element: '#btn-import-excel',
         popover: {
           title: '📁 Import a Previous Run',
           description: 'Already have a Schedule of Loss from a prior session? Click here to upload an existing Excel file. It creates a new session pre-loaded with all the data — ready to share, edit, or export.',
@@ -414,25 +443,35 @@ function launchTour() {
       },
       {% if grouped_sessions %}
       {
-        // Step 6 — previous runs accordion (only if sessions exist)
+        // Step 6 — previous runs accordion header
         element: '#sessions-accordion',
         popover: {
-          title: '📂 Step 4 — Your Report History',
-          description: 'Every report you\'ve ever run is saved here, grouped by claim. <strong>Reports are never overwritten</strong> — each run creates a new record. Click a claim row to expand its runs.',
+          title: '📂 Your Report History',
+          description: 'Every report you\'ve ever run is saved here, grouped by claim. <strong>Reports are never overwritten</strong> — each run creates a new record. Click any claim row to expand its list of runs.',
           side: 'top',
           align: 'start',
-          nextBtnText: 'Next →',
+          nextBtnText: 'Open one →',
+          onNextClick: () => {
+            // Expand the first accordion panel before moving to next step
+            const firstBtn = document.querySelector('#sessions-accordion .accordion-button');
+            const firstPanel = document.querySelector('#sessions-accordion .accordion-collapse');
+            if (firstBtn && firstPanel && !firstPanel.classList.contains('show')) {
+              firstBtn.classList.remove('collapsed');
+              firstPanel.classList.add('show');
+            }
+            driverObj.moveNext();
+          },
         },
       },
       {
-        // Step 7 — first session entry
-        element: '#sessions-accordion .list-group-item:first-child',
+        // Step 7 — first session entry (accordion must be open)
+        element: '#sessions-accordion .list-group-item',
         popover: {
           title: '📄 Open or Download a Past Report',
-          description: '<strong>Click a run</strong> to open the full report for viewing and editing. The <span style="color:#dc3545"><i class="fas fa-file-pdf"></i> PDF</span> icon lets you download the report directly without opening it. Status badges show <span class="badge bg-success">complete</span> or <span class="badge bg-warning text-dark">processing</span>.',
+          description: '<strong>Click a run row</strong> to open the full report for viewing and editing.<br><br>The <span class="badge bg-danger"><i class="fas fa-file-pdf"></i> PDF</span> button downloads the report instantly. The <span class="badge bg-success"><i class="fas fa-file-excel"></i> Excel</span> button exports the data — no need to open the session.',
           side: 'left',
           align: 'start',
-          nextBtnText: 'Finish tour',
+          nextBtnText: 'Finish tour ✓',
         },
       },
       {% else %}
@@ -443,7 +482,7 @@ function launchTour() {
           description: 'Once you run your first report, all sessions appear here grouped by claim. Reports are never overwritten — each run is a separate record you can re-open, compare, and download at any time.',
           side: 'over',
           align: 'center',
-          nextBtnText: 'Finish tour',
+          nextBtnText: 'Finish tour ✓',
         },
       },
       {% endif %}
@@ -456,9 +495,9 @@ function launchTour() {
   driverObj.drive();
 }
 
-// Auto-show welcome modal on first visit
+// Auto-show welcome modal every visit UNLESS user checked "Don't show again"
 document.addEventListener('DOMContentLoaded', () => {
-  if (!localStorage.getItem(TOUR_KEY)) {
+  if (!localStorage.getItem(DISABLE_KEY)) {
     document.getElementById('welcome-overlay').classList.add('show');
   }
 });

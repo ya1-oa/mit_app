@@ -21,7 +21,7 @@
   .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
   .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; }
   .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
-  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; }
+  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; color: #fff !important; }
 
   /* ── Stats bar ── */
   .stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 20px; text-align:center; }
@@ -78,6 +78,36 @@
 
 <!-- Floating tour button -->
 <button id="tour-btn" onclick="launchProgressTour()" title="Explain this page">?</button>
+
+<!-- ─── Progress page welcome modal ─────────────────────────────────────── -->
+<div id="welcome-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;width:90%;max-width:480px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);">
+    <div style="background:linear-gradient(135deg,#667eea,#764ba2);padding:28px 36px 20px;text-align:center;color:#fff;position:relative;">
+      <button onclick="closeProgressWelcome()" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.25);border:none;color:#fff;font-size:22px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
+      <div style="font-size:40px;margin-bottom:10px;">⚡</div>
+      <h2 style="font-size:20px;font-weight:800;margin:0 0 6px;">AI Report In Progress</h2>
+      <p style="opacity:.85;font-size:13px;margin:0;">Claude AI is analyzing your CPS rooms right now</p>
+    </div>
+    <div style="padding:24px 32px;">
+      <p style="font-size:14px;color:#475569;margin-bottom:16px;line-height:1.6;">
+        Your report is building automatically. Claude AI is reviewing photos and pricing every item it finds in each room.
+        <strong>This page updates in real time</strong> — no need to refresh.
+      </p>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button onclick="closeProgressWelcome(); launchProgressTour()" style="flex:1;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:12px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;">
+          <i class="fas fa-play me-2"></i> Explain This Page
+        </button>
+        <button onclick="closeProgressWelcome()" style="flex-shrink:0;background:#f1f5f9;color:#64748b;border:none;padding:12px 18px;border-radius:10px;font-size:14px;cursor:pointer;">Got it</button>
+      </div>
+      <div style="border-top:1px solid #f1f5f9;padding-top:10px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;cursor:pointer;">
+          <input type="checkbox" id="chk-progress-disable" style="width:14px;height:14px;">
+          Don't show this again
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
 
   <!-- Done banner (hidden until complete) -->
   <div id="done-banner">
@@ -245,11 +275,23 @@ function launchProgressTour() {
   d.drive();
 }
 
-// Auto-show once per session load if first visit to a progress page
-if (!sessionStorage.getItem('cps_progress_tour_shown')) {
-  sessionStorage.setItem('cps_progress_tour_shown', '1');
-  window.addEventListener('load', () => setTimeout(launchProgressTour, 1200));
+const PROGRESS_DISABLE_KEY = 'cps_progress_disable_welcome';
+
+function closeProgressWelcome() {
+  const overlay = document.getElementById('welcome-overlay');
+  overlay.style.display = 'none';
+  const chk = document.getElementById('chk-progress-disable');
+  if (chk && chk.checked) {
+    localStorage.setItem(PROGRESS_DISABLE_KEY, '1');
+  }
 }
+
+// Show modal every visit unless disabled
+window.addEventListener('load', () => {
+  if (!localStorage.getItem(PROGRESS_DISABLE_KEY)) {
+    document.getElementById('welcome-overlay').style.display = 'flex';
+  }
+});
 </script>
 <script>
 (function () {

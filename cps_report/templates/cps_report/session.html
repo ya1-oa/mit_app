@@ -21,7 +21,7 @@
   .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
   .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; }
   .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
-  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; }
+  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; color: #fff !important; }
 
   .room-section { margin-bottom: 2rem; }
   .room-header { background: #d6e4bc; font-weight: 600; padding: .5rem 1rem; border-radius: 6px 6px 0 0; border-bottom: 2px solid #a4c265; }
@@ -58,6 +58,48 @@
 {% block content %}
 <!-- Floating tour button -->
 <button id="tour-btn" onclick="launchSessionTour()" title="Explain this report">?</button>
+
+<!-- ─── Welcome modal for session page ───────────────────────────────────── -->
+<div id="welcome-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;width:90%;max-width:520px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#059669,#1e40af);padding:28px 36px 20px;text-align:center;color:#fff;position:relative;">
+      <button onclick="closeSessionWelcome(false)" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.25);border:none;color:#fff;font-size:22px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
+      <div style="font-size:40px;margin-bottom:10px;">📄</div>
+      <h2 style="font-size:20px;font-weight:800;margin:0 0 6px;">CPS Report — {{ session.insured_name|truncatechars:30 }}</h2>
+      <p style="opacity:.85;font-size:13px;margin:0;">Your completed Schedule of Loss report</p>
+    </div>
+    <!-- Body -->
+    <div style="padding:24px 32px;">
+      <ul style="list-style:none;padding:0;margin:0 0 20px;">
+        <li style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#334155;margin-bottom:10px;">
+          <span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✏</span>
+          <span><strong>Click any cell</strong> to edit a value inline — quantities, descriptions, and prices all update automatically</span>
+        </li>
+        <li style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#334155;margin-bottom:10px;">
+          <span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">📕</span>
+          <span><strong>Export as PDF or Excel</strong> using the buttons in the header — ready to submit or share</span>
+        </li>
+        <li style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#334155;margin-bottom:10px;">
+          <span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">🔗</span>
+          <span><strong>Share Link</strong> sends a signature link to your insured — they sign each room on any device</span>
+        </li>
+      </ul>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button onclick="closeSessionWelcome(false); launchSessionTour()" style="flex:1;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;border:none;padding:12px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;">
+          <i class="fas fa-play me-2"></i> Start Guided Tour
+        </button>
+        <button onclick="closeSessionWelcome(false)" style="flex-shrink:0;background:#f1f5f9;color:#64748b;border:none;padding:12px 18px;border-radius:10px;font-size:14px;cursor:pointer;">Skip</button>
+      </div>
+      <div style="border-top:1px solid #f1f5f9;padding-top:10px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;cursor:pointer;">
+          <input type="checkbox" id="chk-session-disable" style="width:14px;height:14px;">
+          Don't show this again
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
 
 <div class="container-fluid py-3">
 
@@ -305,10 +347,20 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <script>
-const SESSION_TOUR_KEY = 'cps_session_tour_v1';
+const SESSION_DISABLE_KEY = 'cps_session_disable_welcome';
+let sessionDriver = null;
+
+function closeSessionWelcome(permanently) {
+  const overlay = document.getElementById('welcome-overlay');
+  overlay.style.display = 'none';
+  const chk = document.getElementById('chk-session-disable');
+  if (permanently || (chk && chk.checked)) {
+    localStorage.setItem(SESSION_DISABLE_KEY, '1');
+  }
+}
 
 function launchSessionTour() {
-  const d = window.driver.js.driver({
+  sessionDriver = window.driver.js.driver({
     showProgress: true,
     animate: true,
     overlayColor: 'rgba(0,0,0,0.72)',
@@ -388,17 +440,17 @@ function launchSessionTour() {
       },
     ],
     onDestroyStarted: () => {
-      localStorage.setItem(SESSION_TOUR_KEY, '1');
-      d.destroy();
+      sessionDriver.destroy();
     },
   });
-  d.drive();
+  sessionDriver.drive();
 }
 
-// Auto-show tour once on first visit to any session page
+// Auto-show welcome modal every visit UNLESS user disabled it
 document.addEventListener('DOMContentLoaded', () => {
-  if (!localStorage.getItem(SESSION_TOUR_KEY)) {
-    setTimeout(launchSessionTour, 600);
+  if (!localStorage.getItem(SESSION_DISABLE_KEY)) {
+    const overlay = document.getElementById('welcome-overlay');
+    overlay.style.display = 'flex';
   }
 });
 </script>
