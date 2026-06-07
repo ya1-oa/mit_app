@@ -178,8 +178,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Django Allauth settings
 SITE_ID = 1  # Required for allauth
 LOGIN_REDIRECT_URL = '/'  # Where to redirect after successful login
-ACCOUNT_EMAIL_REQUIRED = True        # Email is required at signup
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory'  # Users must verify email before logging in
+ACCOUNT_EMAIL_REQUIRED = True                    # Email is required at signup
+ACCOUNT_EMAIL_VERIFICATION = 'mandatory'         # Must verify before first login
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3       # Verification link lives 3 days
+ACCOUNT_ADAPTER = 'docsAppR.adapters.AccountAdapter'  # Custom: resend on unverified re-signup
 #settings.ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
 
 AUTH_PASSWORD_VALIDATORS = [{'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'}, {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'}, {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'}, {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'}]
