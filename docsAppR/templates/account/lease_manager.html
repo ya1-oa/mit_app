@@ -1016,11 +1016,11 @@
         const params = new URLSearchParams();
         if (status) params.set('status', status);
         if (client) params.set('client', client);
-        window.location.href = '{% url "lease_manager" %}?' + params.toString();
+        window.location.href = '{% url "lease_manager:lease_manager" %}?' + params.toString();
     }
 
     function clearFilters() {
-        window.location.href = '{% url "lease_manager" %}';
+        window.location.href = '{% url "lease_manager:lease_manager" %}';
     }
 
     // Toggle lease card details
@@ -1098,7 +1098,7 @@
         const leaseId = document.getElementById('statusModalLeaseId').value;
         const newStatus = document.getElementById('newStatusSelect').value;
 
-        fetch('{% url "update_lease_status" %}', {
+        fetch('{% url "lease_manager:update_lease_status" %}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -1144,7 +1144,7 @@
             return;
         }
 
-        fetch('{% url "add_lease_note" %}', {
+        fetch('{% url "lease_manager:add_lease_note" %}', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
