@@ -189,7 +189,7 @@
         <div class="indented">Months</div>
         <div class="indented">Security Deposit</div>
         <div class="indented">Subtotal</div>
-        <div class="indented">{% if landlord.real_estate_company %}{{ landlord.real_estate_company }} — {% endif %}Real Estate Fee:</div>
+        <div class="indented" style="white-space:nowrap;">{% if landlord.real_estate_company %}{{ landlord.real_estate_company }} Fee:{% else %}Real Estate Fee:{% endif %}</div>
         <div class="indented">Final Inspection & Clean-up:</div>
     </div>
     <div class="content-column">
