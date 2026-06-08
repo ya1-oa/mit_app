@@ -60,7 +60,9 @@ def _parse_city_state_zip(raw):
     if ',' in raw:
         city, rest = raw.split(',', 1)
         city   = city.strip()
-        tokens = rest.strip().split()
+        # Replace any further commas with spaces so "City, State, ZIP" parses
+        # correctly (otherwise the state keeps a trailing comma: "OH,").
+        tokens = rest.replace(',', ' ').split()
         if not tokens:
             return city, '', ''
         if _is_zip(tokens[-1]):
@@ -69,6 +71,8 @@ def _parse_city_state_zip(raw):
         else:
             zip_code = ''
             state    = ' '.join(tokens).strip()
+        if len(state) == 2 and state.isalpha():
+            state = state.upper()
         return city, state, zip_code
 
     # No comma — split on whitespace
