@@ -1181,10 +1181,20 @@ def download_lease_document(request, document_id):
     try:
         lease_doc = LeaseDocument.objects.select_related('lease').get(id=document_id)
         if not lease_doc.file_path:
-            return HttpResponse('Document file path not set', status=404)
+            return HttpResponse(
+                f'<p>Document has no file path. '
+                f'<a href="/lease-manager/lease/{lease_doc.lease.id}/">Go back</a> and click '
+                f'"Regenerate Documents" to rebuild the PDFs.</p>', status=404,
+                content_type='text/html'
+            )
         full_path = os.path.join(settings.MEDIA_ROOT, lease_doc.file_path)
         if not os.path.exists(full_path):
-            return HttpResponse(f'Document file not found at {full_path}', status=404)
+            return HttpResponse(
+                f'<p>PDF file not found on server (<code>{lease_doc.file_path}</code>). '
+                f'<a href="/lease-manager/lease/{lease_doc.lease.id}/">Go back</a> and click '
+                f'"Regenerate Documents" to rebuild it.</p>', status=404,
+                content_type='text/html'
+            )
         LeaseActivity.objects.create(lease=lease_doc.lease, activity_type='downloaded',
                                      description=f'Downloaded {lease_doc.document_name}',
                                      performed_by=request.user if request.user.is_authenticated else None)
@@ -1204,10 +1214,18 @@ def view_lease_document(request, document_id):
     try:
         lease_doc = LeaseDocument.objects.select_related('lease').get(id=document_id)
         if not lease_doc.file_path:
-            return HttpResponse('Document file path not set', status=404)
+            return HttpResponse(
+                f'<p>Document has no file path. '
+                f'<a href="/lease-manager/lease/{lease_doc.lease.id}/">Go back</a> and click '
+                f'"Regenerate Documents".</p>', status=404, content_type='text/html'
+            )
         full_path = os.path.join(settings.MEDIA_ROOT, lease_doc.file_path)
         if not os.path.exists(full_path):
-            return HttpResponse('Document file not found', status=404)
+            return HttpResponse(
+                f'<p>PDF not found on server. '
+                f'<a href="/lease-manager/lease/{lease_doc.lease.id}/">Go back</a> and click '
+                f'"Regenerate Documents" to rebuild it.</p>', status=404, content_type='text/html'
+            )
         LeaseActivity.objects.create(lease=lease_doc.lease, activity_type='viewed',
                                      description=f'Viewed {lease_doc.document_name}',
                                      performed_by=request.user if request.user.is_authenticated else None)

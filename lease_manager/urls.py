@@ -59,6 +59,14 @@ urlpatterns = [
     path('lease/<uuid:lease_id>/send-for-signature/',
          sv.send_for_signature, name='send_for_signature'),
 
+    # Regenerate documents (POST)
+    path('lease/<uuid:lease_id>/regenerate/',
+         sv.regenerate_documents, name='regenerate_documents'),
+
+    # Delete lease (POST)
+    path('lease/<uuid:lease_id>/delete/',
+         sv.delete_lease, name='delete_lease'),
+
     # ── Public signing pages (no login required) ─────────────────────────────
     path('sign/<uuid:token>/',
          sv.sign_page, name='sign_page'),

@@ -302,6 +302,14 @@
           <i class="bi bi-send me-2"></i>Send for Signature
         </button>
         {% endif %}
+
+        {# Regenerate button — always available #}
+        <button class="btn btn-outline-warning" id="regen-btn" onclick="regenDocuments()">
+          <span id="regen-spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+          <i class="bi bi-arrow-clockwise me-2"></i>Regenerate Documents
+        </button>
+        <div id="regen-result" class="alert d-none py-2 px-3" style="font-size:.82rem;"></div>
+
         <a href="{% url 'lease_manager:demand_letter_compose' lease.id %}" class="btn btn-outline-secondary">
           <i class="bi bi-envelope-open me-2"></i>Compose Demand Letter
         </a>
@@ -311,6 +319,11 @@
         <a href="/claims/{{ client.id }}/" class="btn btn-outline-secondary">
           <i class="bi bi-pencil me-2"></i>Edit ALE in Claims Manager
         </a>
+
+        <hr class="my-1">
+        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete()">
+          <i class="bi bi-trash me-2"></i>Delete This Lease
+        </button>
       </div>
     </div>
 
@@ -427,6 +440,54 @@
 function openSendModal() {
   const m = new bootstrap.Modal(document.getElementById('sendSigModal'));
   m.show();
+}
+
+async function regenDocuments() {
+  const btn     = document.getElementById('regen-btn');
+  const spinner = document.getElementById('regen-spinner');
+  const result  = document.getElementById('regen-result');
+  result.className = 'alert d-none py-2 px-3';
+
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+
+  try {
+    const res = await fetch('{% url "lease_manager:regenerate_documents" lease.id %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+    });
+    const data = await res.json();
+    result.classList.remove('d-none');
+    if (data.success) {
+      result.classList.add('alert-success');
+      result.innerHTML = '<i class="bi bi-check-circle me-1"></i>' + data.message;
+      setTimeout(() => location.reload(), 1500);
+    } else {
+      result.classList.add('alert-warning');
+      result.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || data.message);
+    }
+  } catch(e) {
+    result.classList.remove('d-none');
+    result.classList.add('alert-danger');
+    result.textContent = 'Network error — please try again.';
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+  }
+}
+
+async function confirmDelete() {
+  if (!confirm('Delete this lease and all its documents? This cannot be undone.')) return;
+  try {
+    const res = await fetch('{% url "lease_manager:delete_lease" lease.id %}', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+    });
+    // delete view does a redirect — just follow the Location
+    window.location.href = res.url || '/lease-manager/';
+  } catch(e) {
+    alert('Error deleting lease. Please try again.');
+  }
 }
 
 async function submitSendForSignature() {
