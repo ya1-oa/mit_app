@@ -321,3 +321,124 @@ def _compose_params_for_task(task):
 def _compose_url_for_task(task):
     params = _compose_params_for_task(task)
     return f'/emails/?{urllib.parse.urlencode(params)}'
+
+
+# ---------------------------------------------------------------------------
+# AI Resources — cost & usage dashboard
+# ---------------------------------------------------------------------------
+
+@login_required
+def ai_resources(request):
+    """
+    Internal dashboard showing AI token usage, cost per operation,
+    cost per CPS session, and all-time totals across the platform.
+    """
+    from django.db.models import Sum, Count, Avg, F
+    from docsAppR.models import AIUsageLog
+
+    # ── All-time summary ────────────────────────────────────────────────────
+    totals = AIUsageLog.objects.aggregate(
+        total_calls    = Count('id'),
+        total_input    = Sum('input_tokens'),
+        total_output   = Sum('output_tokens'),
+        total_cost     = Sum('cost_usd'),
+        total_images   = Sum('images_count'),
+    )
+
+    # ── Per-operation breakdown ──────────────────────────────────────────────
+    by_operation = list(
+        AIUsageLog.objects.values('operation')
+        .annotate(
+            calls        = Count('id'),
+            input_tok    = Sum('input_tokens'),
+            output_tok   = Sum('output_tokens'),
+            cost         = Sum('cost_usd'),
+            images       = Sum('images_count'),
+            avg_cost     = Avg('cost_usd'),
+        )
+        .order_by('-cost')
+    )
+
+    # ── Per-model breakdown ──────────────────────────────────────────────────
+    by_model = list(
+        AIUsageLog.objects.values('model')
+        .annotate(calls=Count('id'), cost=Sum('cost_usd'))
+        .order_by('-cost')
+    )
+
+    # ── Last 30 CPS sessions with their cost ────────────────────────────────
+    from cps_report.models import CPSReportSession
+    recent_sessions = []
+    for s in CPSReportSession.objects.order_by('-created_at')[:30]:
+        cost = float(
+            AIUsageLog.objects.filter(cps_session_id=s.id)
+            .aggregate(t=Sum('cost_usd'))['t'] or 0
+        )
+        rooms = s.rooms.count()
+        recent_sessions.append({
+            'id':           s.id,
+            'insured':      s.insured_name or '—',
+            'claim':        s.claim_number or '—',
+            'rooms':        rooms,
+            'cost':         cost,
+            'cost_per_room': round(cost / rooms, 4) if rooms else 0,
+            'date':         s.created_at,
+            'status':       s.status,
+        })
+
+    # ── Average cost per room across all sessions ───────────────────────────
+    avg_cost_per_room = (
+        AIUsageLog.objects.filter(operation='cps_room')
+        .aggregate(avg=Avg('cost_usd'))['avg'] or 0
+    )
+    avg_images_per_room = (
+        AIUsageLog.objects.filter(operation='cps_room')
+        .aggregate(avg=Avg('images_count'))['avg'] or 0
+    )
+
+    # ── Recent log entries ──────────────────────────────────────────────────
+    recent_logs = AIUsageLog.objects.order_by('-created_at')[:50]
+
+    # ── Estimated budget left (using configured threshold) ─────────────────
+    MONTHLY_BUDGET = float(getattr(settings, 'AI_MONTHLY_BUDGET_USD', 50.0))
+    from django.utils import timezone as tz
+    from datetime import datetime
+    month_start = tz.now().replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_cost  = float(
+        AIUsageLog.objects.filter(created_at__gte=month_start)
+        .aggregate(t=Sum('cost_usd'))['t'] or 0
+    )
+    budget_pct  = min(100, round((month_cost / MONTHLY_BUDGET * 100) if MONTHLY_BUDGET else 0, 1))
+
+    return render(request, 'dev_hub/ai_resources.html', {
+        'totals':            totals,
+        'by_operation':      by_operation,
+        'by_model':          by_model,
+        'recent_sessions':   recent_sessions,
+        'recent_logs':       recent_logs,
+        'avg_cost_per_room': float(avg_cost_per_room),
+        'avg_images_per_room': float(avg_images_per_room),
+        'monthly_budget':    MONTHLY_BUDGET,
+        'month_cost':        month_cost,
+        'budget_pct':        budget_pct,
+    })
+
+
+@login_required
+def ai_usage_data(request):
+    """JSON endpoint — daily cost series for the last 30 days (chart data)."""
+    from django.db.models import Sum
+    from django.db.models.functions import TruncDate
+    from docsAppR.models import AIUsageLog
+
+    rows = (
+        AIUsageLog.objects
+        .annotate(day=TruncDate('created_at'))
+        .values('day')
+        .annotate(cost=Sum('cost_usd'), calls=Sum('id'))
+        .order_by('day')
+    )
+    return JsonResponse({
+        'labels': [str(r['day']) for r in rows],
+        'costs':  [float(r['cost']) for r in rows],
+    })

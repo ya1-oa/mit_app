@@ -274,3 +274,163 @@ def _build_weekly_report_html(modules, queued_tasks, now):
       </p>
     </div>
     """
+
+
+
+# ---------------------------------------------------------------------------
+# AI cost reporting & low-balance alerts
+# ---------------------------------------------------------------------------
+
+@shared_task
+def send_weekly_ai_cost_report():
+    """
+    Fires every Monday 8 AM (via Celery Beat).
+    Sends Joe a summary of last week's AI spend with top-up instructions.
+    """
+    from django.db.models import Sum, Count, Avg
+    from docsAppR.models import AIUsageLog
+    from datetime import timedelta
+
+    now        = timezone.now()
+    week_start = now - timedelta(days=7)
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+    week = AIUsageLog.objects.filter(created_at__gte=week_start).aggregate(
+        calls  = Count('id'),
+        cost   = Sum('cost_usd'),
+        images = Sum('images_count'),
+    )
+    month = AIUsageLog.objects.filter(created_at__gte=month_start).aggregate(
+        cost = Sum('cost_usd'),
+    )
+    all_time = AIUsageLog.objects.aggregate(cost=Sum('cost_usd'))
+    avg_room  = float(AIUsageLog.objects.filter(operation='cps_room').aggregate(a=Avg('cost_usd'))['a'] or 0)
+
+    monthly_budget = getattr(settings, 'AI_MONTHLY_BUDGET_USD', 50.0)
+    month_cost     = float(month['cost'] or 0)
+    budget_pct     = round(month_cost / monthly_budget * 100, 1) if monthly_budget else 0
+
+    subject = f'[Claimet] Weekly AI Cost Report — {now.strftime("%B %d, %Y")}'
+
+    body = f"""Hi Joe,
+
+Here's your weekly Claimet AI usage summary:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+  LAST 7 DAYS
+  API calls       : {week['calls'] or 0}
+  Images processed: {week['images'] or 0}
+  Total cost      : ${float(week['cost'] or 0):.4f}
+
+  THIS MONTH
+  Spent so far    : ${month_cost:.4f}
+  Monthly budget  : ${monthly_budget:.2f}
+  Budget used     : {budget_pct}%
+
+  ALL TIME
+  Total AI spend  : ${float(all_time['cost'] or 0):.4f}
+  Avg cost/room   : ${avg_room:.5f}
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+{f"⚠️  YOU ARE AT {budget_pct}% OF YOUR MONTHLY BUDGET — consider topping up soon." if budget_pct >= 80 else "✅  Usage is within normal range."}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOW TO ADD CREDITS TO YOUR CLAUDE API ACCOUNT
+
+1. Go to: https://console.anthropic.com/settings/billing
+2. Sign in with your Anthropic account credentials.
+3. Click "Add Credits" or "Manage Plan".
+4. Enter the amount you want to add (minimum $5).
+5. Complete payment — credits are available immediately.
+
+If you want to set a spending limit or enable auto-reload:
+  Console → Settings → Billing → Spending Limits
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+View live dashboard: https://claimetapp.com/dev-hub/ai-resources/
+
+— Claimet App (automated report)
+"""
+
+    try:
+        msg = EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[NOTIFY_EMAIL],
+        )
+        msg.send()
+        logger.info(f"Weekly AI cost report sent to {NOTIFY_EMAIL}")
+    except Exception as e:
+        logger.error(f"Weekly AI cost report email failed: {e}", exc_info=True)
+
+
+@shared_task
+def check_ai_budget_alert():
+    """
+    Runs every hour. Sends a one-time alert email when monthly spend
+    crosses AI_LOW_BALANCE_THRESHOLD (default 80%) of AI_MONTHLY_BUDGET_USD.
+    Uses Django cache to avoid spamming — alert fires at most once per day.
+    """
+    from django.db.models import Sum
+    from django.core.cache import cache
+    from docsAppR.models import AIUsageLog
+
+    monthly_budget    = getattr(settings, 'AI_MONTHLY_BUDGET_USD', 50.0)
+    alert_threshold   = getattr(settings, 'AI_LOW_BALANCE_THRESHOLD', 0.80)
+    if not monthly_budget:
+        return
+
+    now         = timezone.now()
+    month_start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    month_cost  = float(
+        AIUsageLog.objects.filter(created_at__gte=month_start)
+        .aggregate(t=Sum('cost_usd'))['t'] or 0
+    )
+    fraction = month_cost / monthly_budget
+
+    if fraction < alert_threshold:
+        return  # All good, nothing to do
+
+    cache_key = f'ai_budget_alert_sent_{now.strftime("%Y%m%d")}'
+    if cache.get(cache_key):
+        return  # Already alerted today
+
+    pct = round(fraction * 100, 1)
+    subject = f'[Claimet] ⚠️ AI Credits at {pct}% — Top up your Claude account'
+    body = f"""Hi Joe,
+
+Your Claimet AI budget is at {pct}% for this month.
+
+  Spent this month : ${month_cost:.2f}
+  Monthly budget   : ${monthly_budget:.2f}
+  Remaining        : ${monthly_budget - month_cost:.2f}
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+HOW TO TOP UP YOUR CLAUDE API CREDITS
+
+1. Go to: https://console.anthropic.com/settings/billing
+2. Sign in with your Anthropic account.
+3. Click "Add Credits" — credits are available immediately after payment.
+4. Recommended: enable "Auto-reload" so claims never fail mid-run.
+
+If a claim fails because credits ran out, the rooms will show as "error" status.
+You can re-run them individually from the CPS Report session page after topping up.
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Live dashboard: https://claimetapp.com/dev-hub/ai-resources/
+
+— Claimet App
+"""
+    try:
+        msg = EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=[NOTIFY_EMAIL],
+        )
+        msg.send()
+        cache.set(cache_key, True, 60 * 60 * 20)  # suppress for 20 hours
+        logger.info(f"AI budget alert sent — {pct}% of budget used")
+    except Exception as e:
+        logger.error(f"AI budget alert email failed: {e}", exc_info=True)

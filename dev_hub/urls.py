@@ -22,4 +22,8 @@ urlpatterns = [
 
     # Coverage
     path('module/<int:module_id>/coverage/',     views.coverage_update, name='coverage_update'),
+
+    # AI Resources & cost tracking
+    path('ai-resources/',                        views.ai_resources,    name='ai_resources'),
+    path('api/ai-usage/data/',                   views.ai_usage_data,   name='ai_usage_data'),
 ]

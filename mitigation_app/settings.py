@@ -253,6 +253,12 @@ from celery.schedules import crontab
 # ── Dev Hub notification email ────────────────────────────────────────────
 NOTIFY_EMAIL = os.getenv('NOTIFY_EMAIL', 'wsbjoe9@gmail.com')
 
+# ── AI cost management ─────────────────────────────────────────────────────
+# Monthly spend threshold in USD — alert email goes to NOTIFY_EMAIL when crossed
+AI_MONTHLY_BUDGET_USD   = float(os.getenv('AI_MONTHLY_BUDGET_USD', '50.0'))
+# Fraction of budget that triggers a low-balance warning (0.8 = 80%)
+AI_LOW_BALANCE_THRESHOLD = float(os.getenv('AI_LOW_BALANCE_THRESHOLD', '0.80'))
+
 CELERY_BEAT_SCHEDULE = {
     'renew-onedrive-subscriptions': {
         'task': 'docsAppR.tasks.renew_subscriptions_task',
@@ -271,6 +277,16 @@ CELERY_BEAT_SCHEDULE = {
     'dev-hub-weekly-report': {
         'task': 'dev_hub.tasks.send_weekly_progress_report',
         'schedule': crontab(hour=8, minute=0, day_of_week=1),
+    },
+    # ── AI: weekly cost report — Monday 8:05 AM (5 min after progress report)
+    'ai-weekly-cost-report': {
+        'task': 'dev_hub.tasks.send_weekly_ai_cost_report',
+        'schedule': crontab(hour=8, minute=5, day_of_week=1),
+    },
+    # ── AI: low-balance check — every hour
+    'ai-budget-alert-check': {
+        'task': 'dev_hub.tasks.check_ai_budget_alert',
+        'schedule': crontab(minute=0),  # top of every hour
     },
 }
 
