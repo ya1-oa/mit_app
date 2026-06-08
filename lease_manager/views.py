@@ -880,7 +880,7 @@ def lease_send_package(request, lease_id):
 
     if not to_emails:
         messages.error(request, 'At least one To recipient is required.')
-        return redirect('lease_send_package', lease_id=lease_id)
+        return redirect('lease_manager:lease_send_package', lease_id=lease_id)
 
     if not subject:
         subject = f'ALE Lease Package — {client.pOwner}'

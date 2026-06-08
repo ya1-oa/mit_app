@@ -746,10 +746,10 @@
                                         </div>
                                         <div class="document-actions">
                                             {% if doc.file_path %}
-                                            <a href="{% url 'view_lease_document' doc.id %}" class="btn btn-sm btn-outline-info" target="_blank" title="View PDF">
+                                            <a href="{% url 'lease_manager:view_lease_document' doc.id %}" class="btn btn-sm btn-outline-info" target="_blank" title="View PDF">
                                                 <i class="fas fa-eye"></i>
                                             </a>
-                                            <a href="{% url 'download_lease_document' doc.id %}" class="btn btn-sm btn-outline-primary" title="Download PDF">
+                                            <a href="{% url 'lease_manager:download_lease_document' doc.id %}" class="btn btn-sm btn-outline-primary" title="Download PDF">
                                                 <i class="fas fa-download"></i>
                                             </a>
                                             {% else %}
@@ -1046,7 +1046,7 @@
     function loadClientLeases(clientId) {
         const container = document.getElementById('client-leases-' + clientId);
 
-        fetch(`{% url 'get_leases_by_client' 0 %}`.replace('0', clientId))
+        fetch(`{% url 'lease_manager:get_leases_by_client' 0 %}`.replace('0', clientId))
             .then(response => response.json())
             .then(data => {
                 if (data.success && data.leases.length > 0) {
