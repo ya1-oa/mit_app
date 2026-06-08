@@ -215,6 +215,12 @@ def _build_lease_context(lease, overrides=None, preview=False):
     end       = _parse_date(overrides.get('lease_end_date'))       or lease.lease_end_date
     agreement = _parse_date(overrides.get('lease_agreement_date')) or lease.lease_agreement_date or start
 
+    # Special notes: user-entered only. An explicit '' override stays empty;
+    # an absent key falls back to whatever the user previously saved.
+    notes = overrides.get('special_notes')
+    if notes is None:
+        notes = lease.special_notes or ''
+
     # Patch the override-able landlord keys
     landlord['default_rent_amount']      = float(rent or 0)
     landlord['default_security_deposit'] = float(deposit or 0)
@@ -223,6 +229,7 @@ def _build_lease_context(lease, overrides=None, preview=False):
     landlord['exclude_inspection_fee']   = excl_if
     landlord['term_start_date']          = start
     landlord['term_end_date']            = end
+    landlord['lease_special_notes']      = notes
 
     return {
         'client':                    lease.client,
@@ -692,6 +699,9 @@ def lease_update_terms(request, lease_id):
     lease.is_renewal               = _bool(data.get('is_renewal'),               lease.is_renewal)
     lease.exclude_security_deposit = _bool(data.get('exclude_security_deposit'), lease.exclude_security_deposit)
     lease.exclude_inspection_fee   = _bool(data.get('exclude_inspection_fee'),   lease.exclude_inspection_fee)
+    # Special notes — user-entered only; an empty box clears it.
+    if 'special_notes' in data:
+        lease.special_notes = (data.get('special_notes') or '').strip()
     lease.last_modified_by = request.user
     lease.save()
 

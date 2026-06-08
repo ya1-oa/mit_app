@@ -185,6 +185,14 @@
       <label class="form-check-label fw-semibold" for="edit-exclude-if">Exclude inspection fee</label>
     </div>
   </div>
+
+  <div class="field mt-3">
+    <label class="fld-label" for="edit-special-notes">Special Notes
+      <span class="text-muted" style="text-transform:none; font-weight:400; letter-spacing:0;">— optional; leave blank for none (nothing is ever added automatically)</span>
+    </label>
+    <textarea class="form-control form-control-sm" id="edit-special-notes" rows="2"
+              placeholder="Type any special notes for this lease…">{{ lease.special_notes }}</textarea>
+  </div>
   </fieldset>
 
   <div class="save-bar">
@@ -481,6 +489,7 @@ function gatherOverrides() {
     is_renewal:               document.getElementById('edit-renewal').checked,
     exclude_security_deposit: document.getElementById('edit-exclude-sd').checked,
     exclude_inspection_fee:   document.getElementById('edit-exclude-if').checked,
+    special_notes:            document.getElementById('edit-special-notes').value,
   };
 }
 
@@ -587,7 +596,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderPreviews({});
 
   if (!TERMS_LOCKED) {
-    ['edit-rent','edit-deposit','edit-agreement-date','edit-start-date','edit-end-date'].forEach(id => {
+    ['edit-rent','edit-deposit','edit-agreement-date','edit-start-date','edit-end-date','edit-special-notes'].forEach(id => {
       document.getElementById(id).addEventListener('input', onTermChanged);
     });
     ['edit-renewal','edit-exclude-sd','edit-exclude-if'].forEach(id => {

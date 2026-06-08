@@ -134,20 +134,6 @@ def _ale_to_lease_fields(client):
         except (ValueError, TypeError):
             return default
 
-    # ── Build lessee summary for special_notes (lessee has no Lease fields) ─
-    lessee_parts = []
-    if client.ale_lessee_name:
-        lessee_parts.append(f'Lessee: {client.ale_lessee_name}')
-    if client.ale_lessee_phone:
-        lessee_parts.append(f'Phone: {client.ale_lessee_phone}')
-    if client.ale_lessee_email:
-        lessee_parts.append(f'Email: {client.ale_lessee_email}')
-    if client.ale_lessee_home_address:
-        lessee_parts.append(f'Home Address: {client.ale_lessee_home_address}')
-    if client.ale_lessee_city_state_zip:
-        lessee_parts.append(client.ale_lessee_city_state_zip)
-    lessee_summary = ' | '.join(lessee_parts)
-
     return {
         # ── Lessor (landlord) ─────────────────────────────────────────────
         'lessor_name':             client.ale_lessor_name           or '',
@@ -201,8 +187,8 @@ def _ale_to_lease_fields(client):
             (' ' + client.ale_lessee_city_state_zip if client.ale_lessee_city_state_zip else '')
         ).strip(),
 
-        # Keep the summary in special_notes too (backwards compat)
-        'special_notes': lessee_summary,
+        # NOTE: special_notes is deliberately NOT set here. It must only ever
+        # contain text the user explicitly enters — never auto-generated.
     }
 
 
