@@ -4,6 +4,7 @@ lease_manager/signature_views.py
 New views for the plug-and-play lease generation + custom e-signature system.
 Imported and registered in urls.py alongside the original views.
 """
+import copy
 import datetime as dt
 import hashlib
 import json
@@ -202,6 +203,46 @@ def _parse_date(val):
     return None
 
 
+# Descriptive (non-term) fields that should always reflect the claim's CURRENT
+# ALE data — parties, company, contacts, property. The term/financial fields
+# (rent, deposit, months, the dates, renewal/exclude flags, special_notes) are
+# deliberately NOT in this list: they stay on the lease so each lease keeps its
+# own independent terms.
+_DESCRIPTIVE_LEASE_FIELDS = [
+    'lessor_name', 'lessor_address', 'lessor_city', 'lessor_state', 'lessor_zip',
+    'lessor_phone', 'lessor_email', 'lessor_contact_person_1',
+    'lessor_contact_phone', 'lessor_contact_email',
+    'property_address', 'property_city', 'property_state', 'property_zip', 'bedrooms',
+    'real_estate_company', 'company_mailing_address', 'company_city', 'company_state',
+    'company_zip', 'company_contact_person', 'company_phone', 'company_email',
+    'broker_name', 'broker_phone', 'broker_email',
+    'lessee_name', 'lessee_email', 'lessee_phone', 'lessee_address',
+]
+
+
+def _sync_descriptive_from_claim(lease, save=False):
+    """
+    Refresh the lease's descriptive (non-term) fields from the claim's current
+    ALE data, so updating party/company/contact info on the claim flows through
+    to the lease and its documents. Term fields are left untouched.
+
+    save=False → mutate in memory only (used for rendering / live preview).
+    save=True  → persist the changed fields (used when (re)generating PDFs).
+    """
+    # Never alter a finalised lease — an executed document must stay as signed.
+    if lease.status in ('signed', 'cancelled', 'completed'):
+        return lease
+    claim = _ale_to_lease_fields(lease.client)
+    changed = []
+    for f in _DESCRIPTIVE_LEASE_FIELDS:
+        if f in claim and getattr(lease, f) != claim[f]:
+            setattr(lease, f, claim[f])
+            changed.append(f)
+    if save and changed:
+        lease.save(update_fields=changed)
+    return lease
+
+
 def _build_lease_context(lease, overrides=None, preview=False):
     """
     Build the full template context for a lease, optionally applying live
@@ -211,7 +252,14 @@ def _build_lease_context(lease, overrides=None, preview=False):
     what the user sees while editing is exactly what gets generated.
     """
     overrides = overrides or {}
-    landlord  = _landlord_data_from_lease(lease)
+
+    # Descriptive info (parties, company, contacts, property) always reflects the
+    # claim's CURRENT ALE — refreshed on an in-memory copy so it never silently
+    # rewrites the stored lease here. The term fields below still come from the
+    # lease itself, keeping each lease's terms independent.
+    live = copy.copy(lease)
+    _sync_descriptive_from_claim(live, save=False)
+    landlord = _landlord_data_from_lease(live)
 
     # Effective scalar values (override → lease)
     rent       = _dec(overrides.get('monthly_rent'),     lease.monthly_rent)
@@ -353,6 +401,10 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
     client_slug = client.pOwner.replace(' ', '_')
     lease_dir   = os.path.join(settings.MEDIA_ROOT, 'lease_documents', client_slug)
     os.makedirs(lease_dir, exist_ok=True)
+
+    # Pull current party/company/contact info from the claim and persist it, so
+    # the generated documents (and the detail page) reflect the latest claim data.
+    _sync_descriptive_from_claim(lease, save=True)
 
     # Same context the live preview uses → preview matches the PDF exactly.
     context_base = _build_lease_context(lease, overrides=None, preview=False)
