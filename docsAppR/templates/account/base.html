@@ -369,7 +369,7 @@
         <li><a href="{% url 'scope_checklist' %}" class="{% if '/scope-checklist' in request.path %}active{% endif %}">
             <i class="fas fa-clipboard-list"></i> Scope
         </a></li>
-        <li><a href="{% url 'lease_manager' %}"  class="{% if '/lease-manager' in request.path %}active{% endif %}">
+        <li><a href="{% url 'lease_manager:lease_manager' %}"  class="{% if '/lease-manager' in request.path %}active{% endif %}">
             <i class="fas fa-file-contract"></i> Leases
         </a></li>
         <li><a href="{% url 'emails' %}"         class="{% if '/emails' in request.path %}active{% endif %}">
@@ -471,7 +471,7 @@
     <a href="{% url 'claim_list' %}"        class="{% if '/claims' in request.path and 'push-rooms' not in request.path and 'excel-hub' not in request.path %}active{% endif %}"><i class="fas fa-folder-open"></i> Claims Manager</a>
     <a href="{% url 'excel_hub' %}"         class="{% if 'excel-hub' in request.path %}active{% endif %}"><i class="fas fa-file-excel"></i> Excel Hub</a>
     <a href="{% url 'scope_checklist' %}"   class="{% if '/scope-checklist' in request.path %}active{% endif %}"><i class="fas fa-clipboard-list"></i> Scope Checklist</a>
-    <a href="{% url 'lease_manager' %}"     class="{% if '/lease-manager' in request.path %}active{% endif %}"><i class="fas fa-file-contract"></i> Lease Manager</a>
+    <a href="{% url 'lease_manager:lease_manager' %}"     class="{% if '/lease-manager' in request.path %}active{% endif %}"><i class="fas fa-file-contract"></i> Lease Manager</a>
     <a href="{% url 'emails' %}"            class="{% if '/emails' in request.path %}active{% endif %}"><i class="fas fa-envelope"></i> Email Manager</a>
 
     <div class="drawer-section">Labels & Media</div>

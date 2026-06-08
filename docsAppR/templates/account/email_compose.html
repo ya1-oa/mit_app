@@ -224,7 +224,7 @@
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
             <li class="breadcrumb-item"><a href="{% url 'emails' %}">Email</a></li>
-            {% if lease %}<li class="breadcrumb-item"><a href="{% url 'lease_manager' %}">Leases</a></li>{% endif %}
+            {% if lease %}<li class="breadcrumb-item"><a href="{% url 'lease_manager:lease_manager' %}">Leases</a></li>{% endif %}
             <li class="breadcrumb-item active">Compose</li>
         </ol>
     </nav>

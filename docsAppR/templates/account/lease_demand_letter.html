@@ -7,7 +7,7 @@
     <nav aria-label="breadcrumb">
         <ol class="breadcrumb">
             <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
-            <li class="breadcrumb-item"><a href="{% url 'lease_manager' %}">Lease Manager</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'lease_manager:lease_manager' %}">Lease Manager</a></li>
             <li class="breadcrumb-item active">Demand Letter</li>
         </ol>
     </nav>
@@ -210,7 +210,7 @@
             <button type="submit" class="btn-generate">
                 <i class="fas fa-envelope"></i> Generate Letter &amp; Compose Email
             </button>
-            <a href="{% url 'lease_manager' %}" class="btn btn-outline-secondary">
+            <a href="{% url 'lease_manager:lease_manager' %}" class="btn btn-outline-secondary">
                 <i class="fas fa-arrow-left me-1"></i> Back
             </a>
         </div>

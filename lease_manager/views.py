@@ -916,7 +916,7 @@ def lease_send_package(request, lease_id):
         else:
             messages.error(request, f'Failed to send: {error}')
 
-    return redirect('lease_manager')
+    return redirect('lease_manager:lease_manager')
 
 
 # ============================================================================
