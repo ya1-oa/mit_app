@@ -4,87 +4,90 @@
 {% block title %}Lease — {{ lease.client.pOwner }}{% endblock %}
 
 {% block content %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css"/>
 <style>
-  /* ── Lease detail page ── */
+  /* ── Hero ── */
   .lease-hero {
     background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
-    border-radius: 1rem;
-    color: #fff;
-    padding: 2rem 2.5rem;
-    margin-bottom: 1.5rem;
-    position: relative;
-    overflow: hidden;
-  }
-  .lease-hero::before {
-    content: '';
-    position: absolute; inset: 0;
-    background: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 40L40 0H20L0 20M40 40V20L20 40' fill='%23ffffff' fill-opacity='0.03'/%3E%3C/svg%3E");
+    border-radius: 1rem; color: #fff; padding: 1.5rem 2rem;
+    margin-bottom: 1rem; position: relative; overflow: hidden;
   }
   .status-pill {
     display: inline-flex; align-items: center; gap: .4rem;
-    padding: .35rem .9rem; border-radius: 99px; font-size: .8rem; font-weight: 600;
+    padding: .3rem .8rem; border-radius: 99px; font-size: .75rem; font-weight: 600;
     text-transform: uppercase; letter-spacing: .04em;
   }
-  /* Signature status cards */
-  .sig-card {
-    border-radius: .75rem; padding: 1.25rem 1.5rem;
-    display: flex; align-items: center; gap: 1rem;
-    border: 2px solid transparent; transition: border-color .2s;
+  /* ── Live edit toolbar ── */
+  .edit-toolbar {
+    position: sticky; top: 0; z-index: 1020;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: .9rem;
+    box-shadow: 0 4px 18px rgba(15,23,42,.08); padding: 1rem 1.25rem; margin-bottom: 1.25rem;
   }
+  .edit-toolbar .field { display: flex; flex-direction: column; gap: .2rem; }
+  .edit-toolbar label.fld-label {
+    font-size: .68rem; text-transform: uppercase; letter-spacing: .05em;
+    color: #64748b; font-weight: 700; margin: 0;
+  }
+  .edit-toolbar input.form-control, .edit-toolbar input.form-control-sm { font-weight: 600; }
+  .toolbar-grid {
+    display: grid; gap: .75rem 1rem;
+    grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
+    align-items: end;
+  }
+  .save-bar { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; margin-top: .85rem; padding-top: .85rem; border-top: 1px dashed #e2e8f0; }
+  .save-state { font-size: .82rem; font-weight: 600; }
+  .save-state.dirty { color: #b45309; }
+  .save-state.saved { color: #15803d; }
+  .save-state.saving { color: #2563eb; }
+  /* ── Document preview grid ── */
+  .doc-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.1rem; margin-bottom: 1.5rem; }
+  @media (max-width: 991px) { .doc-grid { grid-template-columns: 1fr; } }
+  .doc-pane { border: 1px solid #e2e8f0; border-radius: .9rem; overflow: hidden; background: #fff; box-shadow: 0 2px 10px rgba(15,23,42,.05); display: flex; flex-direction: column; }
+  .doc-pane-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .65rem 1rem; background: #f8fafc; border-bottom: 1px solid #e2e8f0;
+  }
+  .doc-pane-title { font-size: .85rem; font-weight: 700; color: #1e293b; display: flex; align-items: center; gap: .45rem; }
+  .doc-pane-frame { position: relative; background: #f1f5f9; }
+  .doc-pane-frame iframe { width: 100%; height: 600px; border: 0; background: #fff; display: block; }
+  .doc-pane-frame.tall iframe { height: 900px; }
+  .frame-loader {
+    position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+    background: rgba(248,250,252,.85); font-size: .85rem; color: #64748b; gap: .5rem;
+  }
+  .frame-loader.d-none { display: none; }
+  /* ── Misc (signatures / activity / info cards reused) ── */
+  .sig-card { border-radius: .75rem; padding: 1rem 1.25rem; display: flex; align-items: center; gap: 1rem; border: 2px solid transparent; }
   .sig-card.pending  { background: #fefce8; border-color: #fde047; }
   .sig-card.viewed   { background: #eff6ff; border-color: #60a5fa; }
   .sig-card.signed   { background: #f0fdf4; border-color: #4ade80; }
   .sig-card.declined { background: #fef2f2; border-color: #f87171; }
   .sig-card.expired  { background: #f9fafb; border-color: #d1d5db; }
-  .sig-avatar {
-    width: 3rem; height: 3rem; border-radius: 50%;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.4rem; flex-shrink: 0;
-  }
-  .sig-avatar.pending  { background: #fef9c3; }
-  .sig-avatar.viewed   { background: #dbeafe; }
-  .sig-avatar.signed   { background: #dcfce7; }
-  .sig-avatar.declined { background: #fee2e2; }
-  /* Signature thumb */
-  .sig-thumb {
-    max-height: 48px; max-width: 180px;
-    border: 1px solid #e5e7eb; border-radius: .375rem;
-    background: #fff; padding: 2px;
-  }
-  /* Activity feed */
-  .activity-dot {
-    width: .65rem; height: .65rem; border-radius: 50%;
-    background: #60a5fa; flex-shrink: 0; margin-top: .35rem;
-  }
-  /* Info grid */
-  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-  @media (max-width: 768px) { .info-grid { grid-template-columns: 1fr; } }
-  .info-card {
-    background: #f8fafc; border: 1px solid #e2e8f0;
-    border-radius: .75rem; padding: 1.25rem;
-  }
-  .info-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; font-weight: 600; }
-  .info-value { font-size: .95rem; color: #1e293b; font-weight: 500; margin-top: .15rem; }
-  /* Send signature modal */
-  .signer-row { display: flex; align-items: center; gap .75rem; padding: .75rem; border-radius: .5rem; background: #f8fafc; margin-bottom: .5rem; }
-  .signer-check { width: 1.15rem; height: 1.15rem; flex-shrink: 0; }
+  .sig-avatar { width: 2.6rem; height: 2.6rem; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 1.2rem; flex-shrink: 0; background:#e2e8f0; }
+  .sig-thumb { max-height: 44px; max-width: 160px; border: 1px solid #e5e7eb; border-radius: .375rem; background: #fff; padding: 2px; }
+  .activity-dot { width: .6rem; height: .6rem; border-radius: 50%; background: #60a5fa; flex-shrink: 0; margin-top: .35rem; }
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: .75rem; }
+  .info-card { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .6rem; padding: .85rem 1rem; }
+  .info-label { font-size: .68rem; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; font-weight: 700; }
+  .info-value { font-size: .92rem; color: #1e293b; font-weight: 600; margin-top: .1rem; }
+  .locked-banner { background:#fef2f2; border:1px solid #fecaca; color:#991b1b; border-radius:.6rem; padding:.6rem .9rem; font-size:.82rem; font-weight:600; }
 </style>
 
-{# ── Breadcrumb ─────────────────────────────────────────────────────────── #}
+{# ── Breadcrumb ── #}
 <nav aria-label="breadcrumb" class="mb-3">
-  <ol class="breadcrumb">
+  <ol class="breadcrumb mb-0">
     <li class="breadcrumb-item"><a href="{% url 'lease_manager:lease_manager' %}">Lease Manager</a></li>
     <li class="breadcrumb-item active">{{ lease.client.pOwner }}</li>
   </ol>
 </nav>
 
-{# ── Hero banner ────────────────────────────────────────────────────────── #}
-<div class="lease-hero">
+{# ── Hero ── #}
+<div class="lease-hero" id="tour-hero">
   <div class="d-flex justify-content-between align-items-start flex-wrap gap-3" style="position:relative;z-index:1;">
     <div>
       <div class="d-flex align-items-center gap-2 mb-1">
         <span class="fs-5 fw-bold">{{ lease.client.pOwner }}</span>
-        <span class="status-pill bg-{{ lease.get_status_color }} bg-opacity-20 border border-{{ lease.get_status_color }} text-{{ lease.get_status_color }}">
+        <span class="status-pill bg-{{ lease.get_status_color }} bg-opacity-25 border border-{{ lease.get_status_color }} text-light">
           {{ lease.get_status_display }}
         </span>
       </div>
@@ -92,14 +95,17 @@
         {{ lease.property_address }}{% if lease.property_city %}, {{ lease.property_city }}{% endif %}{% if lease.property_state %} {{ lease.property_state }}{% endif %}{% if lease.property_zip %} {{ lease.property_zip }}{% endif %}
       </div>
       <div class="mt-2 d-flex gap-3 flex-wrap" style="font-size:.85rem;">
-        <span><i class="bi bi-calendar3"></i> {{ lease.lease_start_date|default:"TBD" }} → {{ lease.lease_end_date|default:"TBD" }}</span>
-        <span><i class="bi bi-currency-dollar"></i> ${{ lease.monthly_rent|intcomma }}/mo</span>
+        <span><i class="bi bi-calendar3"></i> <span id="hero-dates">{{ lease.lease_start_date|default:"TBD" }} → {{ lease.lease_end_date|default:"TBD" }}</span></span>
+        <span><i class="bi bi-currency-dollar"></i> $<span id="hero-rent">{{ lease.monthly_rent|floatformat:0|intcomma }}</span>/mo</span>
         <span><i class="bi bi-house-door"></i> {{ lease.bedrooms }} bed{{ lease.bedrooms|pluralize }}</span>
       </div>
     </div>
-    <div class="d-flex gap-2 flex-wrap">
+    <div class="d-flex gap-2 flex-wrap align-items-start">
+      <button class="btn btn-outline-light btn-sm" onclick="startLeaseTour()" title="Take a quick tour of this page">
+        <i class="bi bi-question-circle me-1"></i> Guide
+      </button>
       {% if can_send %}
-      <button class="btn btn-primary" onclick="openSendModal()">
+      <button class="btn btn-primary" id="tour-send" onclick="openSendModal()">
         <i class="bi bi-pen me-1"></i> Send for Signature
       </button>
       {% endif %}
@@ -117,114 +123,158 @@
 </div>
 {% endfor %}
 
-<div class="row g-4">
+{# ── LIVE EDIT TOOLBAR ── #}
+<div class="edit-toolbar" id="tour-toolbar">
+  {% if terms_locked %}
+  <div class="locked-banner mb-2">
+    <i class="bi bi-lock-fill me-1"></i> This lease is finalised — terms are locked and can no longer be edited.
+  </div>
+  {% endif %}
+  <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+    <h6 class="mb-0 fw-bold"><i class="bi bi-sliders text-primary me-2"></i>Lease Terms — edit &amp; preview live</h6>
+    <span class="text-muted" style="font-size:.78rem;">Change a value to see all 4 documents update instantly. Other fields come from the claim's ALE data.</span>
+  </div>
 
-  {# ── Left column ─────────────────────────────────────────────────────── #}
+  <fieldset id="edit-fields" {% if terms_locked %}disabled{% endif %}>
+  <div class="toolbar-grid">
+    <div class="field">
+      <label class="fld-label" for="edit-rent">Monthly Rent ($)</label>
+      <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="edit-rent" value="{{ lease.monthly_rent|floatformat:2 }}">
+    </div>
+    <div class="field">
+      <label class="fld-label" for="edit-deposit">Security Deposit ($)</label>
+      <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="edit-deposit" value="{{ lease.security_deposit|floatformat:2 }}">
+    </div>
+    <div class="field">
+      <label class="fld-label" for="edit-agreement-date">Agreement Date</label>
+      <input type="date" class="form-control form-control-sm" id="edit-agreement-date" value="{{ lease.lease_agreement_date|date:'Y-m-d' }}">
+    </div>
+    <div class="field">
+      <label class="fld-label" for="edit-start-date">Start Date</label>
+      <input type="date" class="form-control form-control-sm" id="edit-start-date" value="{{ lease.lease_start_date|date:'Y-m-d' }}">
+    </div>
+    <div class="field">
+      <label class="fld-label" for="edit-end-date">End Date</label>
+      <input type="date" class="form-control form-control-sm" id="edit-end-date" value="{{ lease.lease_end_date|date:'Y-m-d' }}">
+    </div>
+  </div>
+
+  <div class="d-flex gap-4 flex-wrap mt-3">
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="edit-renewal" {% if lease.is_renewal %}checked{% endif %}>
+      <label class="form-check-label fw-semibold" for="edit-renewal">Renewal lease</label>
+    </div>
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="edit-exclude-sd" {% if lease.exclude_security_deposit %}checked{% endif %}>
+      <label class="form-check-label fw-semibold" for="edit-exclude-sd">Exclude security deposit</label>
+    </div>
+    <div class="form-check form-switch">
+      <input class="form-check-input" type="checkbox" id="edit-exclude-if" {% if lease.exclude_inspection_fee %}checked{% endif %}>
+      <label class="form-check-label fw-semibold" for="edit-exclude-if">Exclude inspection fee</label>
+    </div>
+  </div>
+  </fieldset>
+
+  <div class="save-bar">
+    <button class="btn btn-success" id="save-terms-btn" onclick="saveTerms()" {% if terms_locked %}disabled{% endif %}>
+      <span id="save-spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+      <i class="bi bi-check2-circle me-1"></i> Save &amp; Regenerate
+    </button>
+    <span class="save-state" id="save-state"></span>
+    <span class="text-muted ms-auto" style="font-size:.75rem;"><i class="bi bi-info-circle me-1"></i>Saving regenerates the downloadable PDFs.</span>
+  </div>
+</div>
+
+{# ── 4 DOCUMENT PREVIEWS (always visible, live) ── #}
+<div class="doc-grid" id="tour-previews">
+  <div class="doc-pane">
+    <div class="doc-pane-head">
+      <span class="doc-pane-title"><i class="bi bi-file-earmark-text text-primary"></i> Engagement Agreement</span>
+      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+    </div>
+    <div class="doc-pane-frame">
+      <div class="frame-loader" id="loader-frame-engagement"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
+      <iframe id="frame-engagement" title="Engagement Agreement"></iframe>
+    </div>
+  </div>
+  <div class="doc-pane">
+    <div class="doc-pane-head">
+      <span class="doc-pane-title"><i class="bi bi-file-earmark-ruled text-success"></i> Term Sheet</span>
+      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+    </div>
+    <div class="doc-pane-frame">
+      <div class="frame-loader" id="loader-frame-term"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
+      <iframe id="frame-term" title="Term Sheet"></iframe>
+    </div>
+  </div>
+  <div class="doc-pane">
+    <div class="doc-pane-head">
+      <span class="doc-pane-title"><i class="bi bi-file-earmark-text text-warning"></i> Month-to-Month Lease</span>
+      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+    </div>
+    <div class="doc-pane-frame">
+      <div class="frame-loader" id="loader-frame-lease"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
+      <iframe id="frame-lease" title="Month to Month Lease"></iframe>
+    </div>
+  </div>
+  <div class="doc-pane">
+    <div class="doc-pane-head">
+      <span class="doc-pane-title"><i class="bi bi-file-earmark-spreadsheet text-info"></i> Input Sheet</span>
+      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+    </div>
+    <div class="doc-pane-frame">
+      <div class="frame-loader" id="loader-frame-input"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
+      <iframe id="frame-input" title="Input Sheet"></iframe>
+    </div>
+  </div>
+</div>
+
+<div class="row g-4">
+  {# ── Left column: signatures + read-only terms ── #}
   <div class="col-lg-7">
 
-    {# Signatures Status Section #}
+    {# Signatures Status #}
     <div class="card border-0 shadow-sm mb-4">
-      <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+      <div class="card-header bg-white border-bottom-0 pt-3 pb-0 px-4">
         <div class="d-flex justify-content-between align-items-center">
           <h5 class="mb-0 fw-semibold"><i class="bi bi-pen-fill text-primary me-2"></i>Signatures Status</h5>
-          {% if all_signed %}
-            <span class="badge bg-success">All Signed</span>
-          {% else %}
-            <span class="badge bg-warning text-dark">{{ sig_requests|length }} signer{{ sig_requests|length|pluralize }}</span>
-          {% endif %}
+          {% if all_signed %}<span class="badge bg-success">All Signed</span>
+          {% else %}<span class="badge bg-warning text-dark">{{ sig_requests|length }} signer{{ sig_requests|length|pluralize }}</span>{% endif %}
         </div>
       </div>
       <div class="card-body p-4">
         {% if sig_requests %}
           {% for sr in sig_requests %}
           <div class="sig-card {{ sr.status }} mb-3">
-            <div class="sig-avatar {{ sr.status }}">
-              {% if sr.status == 'signed' %}✅
-              {% elif sr.status == 'declined' %}❌
-              {% elif sr.status == 'viewed' %}👁
-              {% elif sr.status == 'expired' %}⌛
-              {% else %}⏳{% endif %}
+            <div class="sig-avatar">
+              {% if sr.status == 'signed' %}✅{% elif sr.status == 'declined' %}❌{% elif sr.status == 'viewed' %}👁{% elif sr.status == 'expired' %}⌛{% else %}⏳{% endif %}
             </div>
             <div class="flex-grow-1">
               <div class="fw-semibold" style="font-size:.9rem;">{{ sr.signer_name }}</div>
-              <div class="text-muted" style="font-size:.8rem;">
-                {{ sr.get_signer_role_display }} &bull; {{ sr.signer_email }}
-              </div>
-              {% if sr.signed_at %}
-              <div class="text-success" style="font-size:.75rem; margin-top:.25rem;">
-                <i class="bi bi-check-circle-fill"></i> Signed {{ sr.signed_at|date:"M d, Y g:i A" }}
-              </div>
-              {% elif sr.declined_at %}
-              <div class="text-danger" style="font-size:.75rem; margin-top:.25rem;">
-                <i class="bi bi-x-circle-fill"></i> Declined {{ sr.declined_at|date:"M d, Y g:i A" }}
-              </div>
-              {% elif sr.viewed_at %}
-              <div class="text-info" style="font-size:.75rem; margin-top:.25rem;">
-                <i class="bi bi-eye-fill"></i> Viewed {{ sr.viewed_at|date:"M d, Y g:i A" }} — awaiting signature
-              </div>
-              {% else %}
-              <div class="text-warning" style="font-size:.75rem; margin-top:.25rem;">
-                <i class="bi bi-clock"></i> Email sent {{ sr.sent_at|date:"M d, Y" }} — not yet opened
-              </div>
-              {% endif %}
+              <div class="text-muted" style="font-size:.8rem;">{{ sr.get_signer_role_display }} &bull; {{ sr.signer_email }}</div>
+              {% if sr.signed_at %}<div class="text-success" style="font-size:.75rem;margin-top:.25rem;"><i class="bi bi-check-circle-fill"></i> Signed {{ sr.signed_at|date:"M d, Y g:i A" }}</div>
+              {% elif sr.declined_at %}<div class="text-danger" style="font-size:.75rem;margin-top:.25rem;"><i class="bi bi-x-circle-fill"></i> Declined {{ sr.declined_at|date:"M d, Y g:i A" }}</div>
+              {% elif sr.viewed_at %}<div class="text-info" style="font-size:.75rem;margin-top:.25rem;"><i class="bi bi-eye-fill"></i> Viewed {{ sr.viewed_at|date:"M d, Y g:i A" }}</div>
+              {% else %}<div class="text-warning" style="font-size:.75rem;margin-top:.25rem;"><i class="bi bi-clock"></i> Sent {{ sr.sent_at|date:"M d, Y" }} — not yet opened</div>{% endif %}
             </div>
-            {% if sr.signature_image %}
-            <div>
-              <img src="{{ sr.signature_image }}" class="sig-thumb" alt="Signature">
-            </div>
-            {% endif %}
+            {% if sr.signature_image %}<div><img src="{{ sr.signature_image }}" class="sig-thumb" alt="Signature"></div>{% endif %}
           </div>
           {% endfor %}
         {% else %}
-          <div class="text-center py-4 text-muted">
-            <i class="bi bi-pen" style="font-size:2rem; opacity:.3; display:block; margin-bottom:.5rem;"></i>
-            No signature requests sent yet.<br>
-            <small>Click "Send for Signature" above to get started.</small>
+          <div class="text-center py-3 text-muted">
+            <i class="bi bi-pen" style="font-size:1.8rem;opacity:.3;display:block;margin-bottom:.4rem;"></i>
+            No signature requests sent yet.<br><small>Use “Send for Signature” when you're ready.</small>
           </div>
         {% endif %}
       </div>
     </div>
 
-    {# Lease Terms #}
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
-        <h5 class="mb-0 fw-semibold"><i class="bi bi-file-text text-primary me-2"></i>Lease Terms</h5>
+    {# Read-only term summary (source values from ALE) #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-bottom-0 pt-3 pb-0 px-4">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-people text-primary me-2"></i>Parties &amp; Property</h5>
       </div>
       <div class="card-body p-4">
-        <div class="info-grid">
-          <div class="info-card">
-            <div class="info-label">Property Address</div>
-            <div class="info-value">{{ lease.property_address }}</div>
-            {% if lease.property_city %}<div class="text-muted small">{{ lease.property_city }}, {{ lease.property_state }} {{ lease.property_zip }}</div>{% endif %}
-          </div>
-          <div class="info-card">
-            <div class="info-label">Bedrooms</div>
-            <div class="info-value">{{ lease.bedrooms }}</div>
-          </div>
-          <div class="info-card">
-            <div class="info-label">Monthly Rent</div>
-            <div class="info-value">${{ lease.monthly_rent|intcomma }}</div>
-          </div>
-          <div class="info-card">
-            <div class="info-label">Lease Term</div>
-            <div class="info-value">{{ lease.rental_months }} months</div>
-            <div class="text-muted small">{{ lease.lease_start_date|default:"TBD" }} → {{ lease.lease_end_date|default:"TBD" }}</div>
-          </div>
-          {% if not lease.exclude_security_deposit %}
-          <div class="info-card">
-            <div class="info-label">Security Deposit</div>
-            <div class="info-value">${{ lease.security_deposit|intcomma }}</div>
-          </div>
-          {% endif %}
-          <div class="info-card">
-            <div class="info-label">Late Fee</div>
-            <div class="info-value">${{ lease.late_fee }} after day {{ lease.late_fee_start_day }}</div>
-          </div>
-        </div>
-
-        <hr class="my-3">
-
-        {# Tenant / Landlord / RE Company side-by-side #}
         <div class="row g-3">
           <div class="col-md-4">
             <div class="info-label mb-1">Tenant (Lessee)</div>
@@ -238,98 +288,72 @@
             <div class="text-muted small">{{ lease.lessor_email|default:"" }}</div>
             <div class="text-muted small">{{ lease.lessor_phone|default:"" }}</div>
           </div>
-          {% if lease.real_estate_company %}
           <div class="col-md-4">
             <div class="info-label mb-1">Real Estate Company</div>
-            <div class="fw-semibold">{{ lease.real_estate_company }}</div>
+            <div class="fw-semibold">{{ lease.real_estate_company|default:"—" }}</div>
             <div class="text-muted small">{{ lease.company_email|default:"" }}</div>
             <div class="text-muted small">{{ lease.company_phone|default:"" }}</div>
           </div>
-          {% endif %}
         </div>
-
-        {% if lease.special_notes %}
-        <div class="mt-3 p-3 bg-amber-50 rounded" style="background:#fefce8; border-left:3px solid #fbbf24;">
-          <div class="info-label mb-1">Special Notes</div>
-          <div style="font-size:.875rem; white-space: pre-line;">{{ lease.special_notes }}</div>
-        </div>
-        {% endif %}
-
         <div class="mt-3 text-muted" style="font-size:.75rem;">
-          To update any of these values, edit the ALE fields on the <a href="/claims/{{ client.id }}/">claim record</a> and re-generate.
+          <i class="bi bi-info-circle me-1"></i>Party &amp; address details come from the claim's ALE data —
+          <a href="/claims/{{ client.id }}/">edit them in Claims Manager</a> and regenerate.
         </div>
       </div>
     </div>
 
-    {# Documents #}
-    <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
-        <h5 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Documents</h5>
+  </div>
+
+  {# ── Right column: actions + activity ── #}
+  <div class="col-lg-5">
+    <div class="card border-0 shadow-sm mb-4" id="tour-actions">
+      <div class="card-header bg-white border-bottom-0 pt-3 pb-0 px-4">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-lightning-charge text-primary me-2"></i>Actions</h5>
+      </div>
+      <div class="card-body p-3 d-grid gap-2">
+        {% if can_send %}
+        <button class="btn btn-primary" onclick="openSendModal()"><i class="bi bi-send me-2"></i>Send for Signature</button>
+        {% endif %}
+        <button class="btn btn-outline-warning" id="regen-btn" onclick="regenDocuments()">
+          <span id="regen-spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+          <i class="bi bi-arrow-clockwise me-2"></i>Regenerate Documents
+        </button>
+        <div id="regen-result" class="alert d-none py-2 px-3" style="font-size:.82rem;"></div>
+        <a href="{% url 'lease_manager:demand_letter_compose' lease.id %}" class="btn btn-outline-secondary"><i class="bi bi-envelope-open me-2"></i>Compose Demand Letter</a>
+        <a href="{% url 'lease_manager:lease_send_package' lease.id %}" class="btn btn-outline-secondary"><i class="bi bi-box-arrow-up me-2"></i>Send Document Package</a>
+        <a href="/claims/{{ client.id }}/" class="btn btn-outline-secondary"><i class="bi bi-pencil me-2"></i>Edit ALE in Claims Manager</a>
+        <hr class="my-1">
+        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete()"><i class="bi bi-trash me-2"></i>Delete This Lease</button>
+      </div>
+    </div>
+
+    {# Documents (saved PDFs) #}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-white border-bottom-0 pt-3 pb-0 px-4">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Saved PDFs</h5>
       </div>
       <div class="card-body p-4">
         {% if docs %}
         <div class="list-group list-group-flush">
           {% for doc in docs %}
           <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-            <span><i class="bi bi-file-earmark me-2 text-muted"></i>{{ doc.document_name }}</span>
+            <span style="font-size:.85rem;"><i class="bi bi-file-earmark me-2 text-muted"></i>{{ doc.document_name }}</span>
             <div>
-              <a href="{% url 'lease_manager:view_lease_document' doc.id %}" class="btn btn-sm btn-outline-secondary me-1" target="_blank">
-                <i class="bi bi-eye"></i>
-              </a>
-              <a href="{% url 'lease_manager:download_lease_document' doc.id %}" class="btn btn-sm btn-outline-primary">
-                <i class="bi bi-download"></i>
-              </a>
+              <a href="{% url 'lease_manager:view_lease_document' doc.id %}" class="btn btn-sm btn-outline-secondary me-1" target="_blank"><i class="bi bi-eye"></i></a>
+              <a href="{% url 'lease_manager:download_lease_document' doc.id %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download"></i></a>
             </div>
           </div>
           {% endfor %}
         </div>
         {% else %}
-        <p class="text-muted mb-0">No documents generated yet.</p>
+        <p class="text-muted mb-0 small">No PDFs generated yet — edit terms and click Save.</p>
         {% endif %}
       </div>
     </div>
 
-  </div>{# /left col #}
-
-  {# ── Right column ─────────────────────────────────────────────────────── #}
-  <div class="col-lg-5">
-
-    {# Quick actions #}
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-body p-3 d-grid gap-2">
-        {% if can_send %}
-        <button class="btn btn-primary" onclick="openSendModal()">
-          <i class="bi bi-send me-2"></i>Send for Signature
-        </button>
-        {% endif %}
-
-        {# Regenerate button — always available #}
-        <button class="btn btn-outline-warning" id="regen-btn" onclick="regenDocuments()">
-          <span id="regen-spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
-          <i class="bi bi-arrow-clockwise me-2"></i>Regenerate Documents
-        </button>
-        <div id="regen-result" class="alert d-none py-2 px-3" style="font-size:.82rem;"></div>
-
-        <a href="{% url 'lease_manager:demand_letter_compose' lease.id %}" class="btn btn-outline-secondary">
-          <i class="bi bi-envelope-open me-2"></i>Compose Demand Letter
-        </a>
-        <a href="{% url 'lease_manager:lease_send_package' lease.id %}" class="btn btn-outline-secondary">
-          <i class="bi bi-box-arrow-up me-2"></i>Send Document Package
-        </a>
-        <a href="/claims/{{ client.id }}/" class="btn btn-outline-secondary">
-          <i class="bi bi-pencil me-2"></i>Edit ALE in Claims Manager
-        </a>
-
-        <hr class="my-1">
-        <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete()">
-          <i class="bi bi-trash me-2"></i>Delete This Lease
-        </button>
-      </div>
-    </div>
-
-    {# Activity feed #}
+    {# Activity #}
     <div class="card border-0 shadow-sm">
-      <div class="card-header bg-white border-bottom-0 pt-4 pb-2 px-4">
+      <div class="card-header bg-white border-bottom-0 pt-3 pb-2 px-4">
         <h5 class="mb-0 fw-semibold"><i class="bi bi-clock-history text-primary me-2"></i>Activity</h5>
       </div>
       <div class="card-body px-4 pt-2 pb-4">
@@ -339,22 +363,19 @@
           <div class="d-flex gap-3">
             <div class="activity-dot mt-1"></div>
             <div>
-              <div style="font-size:.85rem;">{{ act.description }}</div>
-              <div class="text-muted" style="font-size:.75rem;">{{ act.created_at|date:"M d, Y g:i A" }}{% if act.performed_by %} &bull; {{ act.performed_by.get_full_name|default:act.performed_by.email }}{% endif %}</div>
+              <div style="font-size:.83rem;">{{ act.description }}</div>
+              <div class="text-muted" style="font-size:.73rem;">{{ act.created_at|date:"M d, Y g:i A" }}{% if act.performed_by %} &bull; {{ act.performed_by.get_full_name|default:act.performed_by.email }}{% endif %}</div>
             </div>
           </div>
           {% endfor %}
         </div>
-        {% else %}
-        <p class="text-muted mb-0 small">No activity yet.</p>
-        {% endif %}
+        {% else %}<p class="text-muted mb-0 small">No activity yet.</p>{% endif %}
       </div>
     </div>
-
   </div>
 </div>
 
-{# ── Send for Signature Modal ───────────────────────────────────────────── #}
+{# ── Send for Signature Modal ── #}
 <div class="modal fade" id="sendSigModal" tabindex="-1" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
     <div class="modal-content">
@@ -363,58 +384,44 @@
         <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
       </div>
       <div class="modal-body px-4">
-        <p class="text-muted small mb-3">
-          Each checked party will receive an email with a secure, one-time signing link. Links expire in 7 days.
-        </p>
-
+        <p class="text-muted small mb-3">Each checked party gets an email with a secure, one-time signing link. Links expire in 7 days.</p>
         <div id="signer-rows">
-          {# Tenant #}
           {% if lease.lessee_name or lease.lessee_email %}
-          <div class="signer-row mb-2 p-3 rounded" style="background:#f8fafc; border:1px solid #e2e8f0;">
+          <div class="mb-2 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
             <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
-              <input class="form-check-input" type="checkbox" id="chk-tenant" checked style="width:2.5em; height:1.25em;">
+              <input class="form-check-input" type="checkbox" id="chk-tenant" checked style="width:2.5em;height:1.25em;">
               <div class="flex-grow-1">
-                <label class="form-check-label fw-semibold d-block" for="chk-tenant">
-                  <i class="bi bi-person me-1 text-primary"></i>Tenant / Lessee
-                </label>
+                <label class="form-check-label fw-semibold d-block" for="chk-tenant"><i class="bi bi-person me-1 text-primary"></i>Tenant / Lessee</label>
                 <div class="row g-1 mt-1">
-                  <div class="col-6"><input class="form-control form-control-sm" id="tenant-name"  value="{{ lease.lessee_name|default:'' }}" placeholder="Name"></div>
+                  <div class="col-6"><input class="form-control form-control-sm" id="tenant-name" value="{{ lease.lessee_name|default:'' }}" placeholder="Name"></div>
                   <div class="col-6"><input class="form-control form-control-sm" id="tenant-email" value="{{ lease.lessee_email|default:'' }}" placeholder="Email"></div>
                 </div>
               </div>
             </div>
           </div>
           {% endif %}
-
-          {# Landlord #}
           {% if lease.lessor_name or lease.lessor_email %}
-          <div class="signer-row mb-2 p-3 rounded" style="background:#f8fafc; border:1px solid #e2e8f0;">
+          <div class="mb-2 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
             <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
-              <input class="form-check-input" type="checkbox" id="chk-landlord" checked style="width:2.5em; height:1.25em;">
+              <input class="form-check-input" type="checkbox" id="chk-landlord" checked style="width:2.5em;height:1.25em;">
               <div class="flex-grow-1">
-                <label class="form-check-label fw-semibold d-block" for="chk-landlord">
-                  <i class="bi bi-building me-1 text-warning"></i>Landlord / Lessor
-                </label>
+                <label class="form-check-label fw-semibold d-block" for="chk-landlord"><i class="bi bi-building me-1 text-warning"></i>Landlord / Lessor</label>
                 <div class="row g-1 mt-1">
-                  <div class="col-6"><input class="form-control form-control-sm" id="landlord-name"  value="{{ lease.lessor_name|default:'' }}" placeholder="Name"></div>
+                  <div class="col-6"><input class="form-control form-control-sm" id="landlord-name" value="{{ lease.lessor_name|default:'' }}" placeholder="Name"></div>
                   <div class="col-6"><input class="form-control form-control-sm" id="landlord-email" value="{{ lease.lessor_email|default:'' }}" placeholder="Email"></div>
                 </div>
               </div>
             </div>
           </div>
           {% endif %}
-
-          {# RE Company #}
           {% if lease.real_estate_company or lease.company_email %}
-          <div class="signer-row mb-2 p-3 rounded" style="background:#f8fafc; border:1px solid #e2e8f0;">
+          <div class="mb-2 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
             <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
-              <input class="form-check-input" type="checkbox" id="chk-re" style="width:2.5em; height:1.25em;">
+              <input class="form-check-input" type="checkbox" id="chk-re" style="width:2.5em;height:1.25em;">
               <div class="flex-grow-1">
-                <label class="form-check-label fw-semibold d-block" for="chk-re">
-                  <i class="bi bi-briefcase me-1 text-success"></i>Real Estate Company
-                </label>
+                <label class="form-check-label fw-semibold d-block" for="chk-re"><i class="bi bi-briefcase me-1 text-success"></i>Real Estate Company</label>
                 <div class="row g-1 mt-1">
-                  <div class="col-6"><input class="form-control form-control-sm" id="re-name"  value="{{ lease.real_estate_company|default:'' }}" placeholder="Contact Name"></div>
+                  <div class="col-6"><input class="form-control form-control-sm" id="re-name" value="{{ lease.real_estate_company|default:'' }}" placeholder="Contact Name"></div>
                   <div class="col-6"><input class="form-control form-control-sm" id="re-email" value="{{ lease.company_email|default:'' }}" placeholder="Email"></div>
                 </div>
               </div>
@@ -422,7 +429,6 @@
           </div>
           {% endif %}
         </div>
-
         <div id="sig-send-error" class="alert alert-danger d-none mt-2"></div>
       </div>
       <div class="modal-footer border-0">
@@ -436,58 +442,184 @@
   </div>
 </div>
 
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
 <script>
-function openSendModal() {
-  const m = new bootstrap.Modal(document.getElementById('sendSigModal'));
-  m.show();
+const CSRF             = '{{ csrf_token }}';
+const LIVE_PREVIEW_URL = '{% url "lease_manager:lease_live_preview" lease.id %}';
+const UPDATE_TERMS_URL = '{% url "lease_manager:lease_update_terms" lease.id %}';
+const TERMS_LOCKED     = {% if terms_locked %}true{% else %}false{% endif %};
+
+const FRAME_MAP = {
+  engagement_agreement:  'frame-engagement',
+  term_sheet:            'frame-term',
+  month_to_month_rental: 'frame-lease',
+  input_sheet:           'frame-input',
+};
+
+function gatherOverrides() {
+  return {
+    monthly_rent:             document.getElementById('edit-rent').value,
+    security_deposit:         document.getElementById('edit-deposit').value,
+    lease_agreement_date:     document.getElementById('edit-agreement-date').value,
+    lease_start_date:         document.getElementById('edit-start-date').value,
+    lease_end_date:           document.getElementById('edit-end-date').value,
+    is_renewal:               document.getElementById('edit-renewal').checked,
+    exclude_security_deposit: document.getElementById('edit-exclude-sd').checked,
+    exclude_inspection_fee:   document.getElementById('edit-exclude-if').checked,
+  };
 }
 
-async function regenDocuments() {
-  const btn     = document.getElementById('regen-btn');
-  const spinner = document.getElementById('regen-spinner');
-  const result  = document.getElementById('regen-result');
-  result.className = 'alert d-none py-2 px-3';
+function setLoaders(show) {
+  Object.values(FRAME_MAP).forEach(id => {
+    const el = document.getElementById('loader-' + id);
+    if (el) el.classList.toggle('d-none', !show);
+  });
+}
 
-  btn.disabled = true;
-  spinner.classList.remove('d-none');
-
+async function renderPreviews(overrides) {
+  setLoaders(true);
   try {
-    const res = await fetch('{% url "lease_manager:regenerate_documents" lease.id %}', {
+    const res = await fetch(LIVE_PREVIEW_URL, {
       method: 'POST',
-      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify(overrides || {}),
     });
+    const data = await res.json();
+    if (data.success) {
+      for (const [key, frameId] of Object.entries(FRAME_MAP)) {
+        const f = document.getElementById(frameId);
+        if (f) f.srcdoc = data.documents[key] || '<p style="font-family:sans-serif;padding:1rem;color:#888">No content.</p>';
+      }
+    }
+  } catch (e) {
+    console.error('preview failed', e);
+  } finally {
+    setLoaders(false);
+  }
+}
+
+let previewTimer = null;
+function onTermChanged() {
+  markDirty();
+  clearTimeout(previewTimer);
+  previewTimer = setTimeout(() => renderPreviews(gatherOverrides()), 550);
+}
+
+function markDirty() {
+  const s = document.getElementById('save-state');
+  s.className = 'save-state dirty';
+  s.innerHTML = '<i class="bi bi-pencil-fill me-1"></i>Unsaved changes';
+}
+
+async function saveTerms() {
+  const btn = document.getElementById('save-terms-btn');
+  const spinner = document.getElementById('save-spinner');
+  const state = document.getElementById('save-state');
+  btn.disabled = true; spinner.classList.remove('d-none');
+  state.className = 'save-state saving'; state.innerHTML = '<i class="bi bi-arrow-repeat me-1"></i>Saving &amp; regenerating…';
+  try {
+    const res = await fetch(UPDATE_TERMS_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify(gatherOverrides()),
+    });
+    const data = await res.json();
+    if (data.success) {
+      state.className = 'save-state saved';
+      state.innerHTML = '<i class="bi bi-check-circle-fill me-1"></i>' + (data.message || 'Saved');
+      // Reflect new figures in the hero, then refresh so PDFs/activity update.
+      document.getElementById('hero-rent').textContent = Number(data.monthly_rent).toLocaleString();
+      setTimeout(() => location.reload(), 1000);
+    } else {
+      state.className = 'save-state dirty';
+      state.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || 'Save failed');
+    }
+  } catch (e) {
+    state.className = 'save-state dirty';
+    state.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>Network error';
+  } finally {
+    btn.disabled = false; spinner.classList.add('d-none');
+  }
+}
+
+function toggleTall(btn) {
+  const frame = btn.closest('.doc-pane').querySelector('.doc-pane-frame');
+  frame.classList.toggle('tall');
+  btn.querySelector('i').classList.toggle('bi-arrows-expand');
+  btn.querySelector('i').classList.toggle('bi-arrows-collapse');
+}
+
+/* ── driver.js guided tour ── */
+function startLeaseTour() {
+  if (!window.driver || !window.driver.js) { return; }
+  const driver = window.driver.js.driver;
+  const tour = driver({
+    showProgress: true,
+    steps: [
+      { element: '#tour-hero',     popover: { title: '📄 Manage Lease', description: 'Everything for this lease lives on one page. Here\'s the property, dates, rent and current status.' } },
+      { element: '#tour-toolbar',  popover: { title: '✏️ Edit terms live', description: 'Change the rent, deposit, dates, or the renewal / exclude toggles. The 4 documents below re-render instantly — no saving needed to preview.' } },
+      { element: '#tour-previews', popover: { title: '👀 All 4 documents', description: 'Engagement Agreement, Term Sheet, Month-to-Month Lease and Input Sheet — always on display and updating as you edit. Use the expand icon to enlarge any one.' } },
+      { element: '#save-terms-btn',popover: { title: '💾 Save & Regenerate', description: 'Happy with it? Save to store the terms and rebuild the downloadable PDFs to match.' } },
+      { element: '#tour-send',     popover: { title: '✍️ Send for Signature', description: 'Email a secure signing link to the tenant, landlord and real-estate company.' } },
+      { element: '#tour-actions',  popover: { title: '⚡ Everything else', description: 'Regenerate, compose a demand letter, send the document package, edit the ALE data, or delete the lease.' } },
+    ],
+  });
+  tour.drive();
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+  // Initial render of the 4 documents from the saved values.
+  renderPreviews({});
+
+  if (!TERMS_LOCKED) {
+    ['edit-rent','edit-deposit','edit-agreement-date','edit-start-date','edit-end-date'].forEach(id => {
+      document.getElementById(id).addEventListener('input', onTermChanged);
+    });
+    ['edit-renewal','edit-exclude-sd','edit-exclude-if'].forEach(id => {
+      document.getElementById(id).addEventListener('change', onTermChanged);
+    });
+  }
+
+  // Auto-launch the tour on first visit.
+  if (!localStorage.getItem('leaseTourSeen')) {
+    setTimeout(startLeaseTour, 900);
+    localStorage.setItem('leaseTourSeen', '1');
+  }
+});
+
+/* ── existing actions ── */
+function openSendModal() { new bootstrap.Modal(document.getElementById('sendSigModal')).show(); }
+
+async function regenDocuments() {
+  const btn = document.getElementById('regen-btn');
+  const spinner = document.getElementById('regen-spinner');
+  const result = document.getElementById('regen-result');
+  result.className = 'alert d-none py-2 px-3';
+  btn.disabled = true; spinner.classList.remove('d-none');
+  try {
+    const res = await fetch('{% url "lease_manager:regenerate_documents" lease.id %}', { method: 'POST', headers: { 'X-CSRFToken': CSRF } });
     const data = await res.json();
     result.classList.remove('d-none');
     if (data.success) {
       result.classList.add('alert-success');
       result.innerHTML = '<i class="bi bi-check-circle me-1"></i>' + data.message;
-      setTimeout(() => location.reload(), 1500);
+      setTimeout(() => location.reload(), 1300);
     } else {
       result.classList.add('alert-warning');
       result.innerHTML = '<i class="bi bi-exclamation-triangle me-1"></i>' + (data.error || data.message);
     }
-  } catch(e) {
-    result.classList.remove('d-none');
-    result.classList.add('alert-danger');
+  } catch (e) {
+    result.classList.remove('d-none'); result.classList.add('alert-danger');
     result.textContent = 'Network error — please try again.';
-  } finally {
-    btn.disabled = false;
-    spinner.classList.add('d-none');
-  }
+  } finally { btn.disabled = false; spinner.classList.add('d-none'); }
 }
 
 async function confirmDelete() {
   if (!confirm('Delete this lease and all its documents? This cannot be undone.')) return;
   try {
-    const res = await fetch('{% url "lease_manager:delete_lease" lease.id %}', {
-      method: 'POST',
-      headers: { 'X-CSRFToken': '{{ csrf_token }}' },
-    });
-    // delete view does a redirect — just follow the Location
+    const res = await fetch('{% url "lease_manager:delete_lease" lease.id %}', { method: 'POST', headers: { 'X-CSRFToken': CSRF } });
     window.location.href = res.url || '/lease-manager/';
-  } catch(e) {
-    alert('Error deleting lease. Please try again.');
-  }
+  } catch (e) { alert('Error deleting lease. Please try again.'); }
 }
 
 async function submitSendForSignature() {
@@ -495,41 +627,31 @@ async function submitSendForSignature() {
   const spinner = document.getElementById('send-sig-spinner');
   const errEl = document.getElementById('sig-send-error');
   errEl.classList.add('d-none');
-
   const signers = [];
-
   if (document.getElementById('chk-tenant')?.checked) {
-    const name  = document.getElementById('tenant-name')?.value.trim();
+    const name = document.getElementById('tenant-name')?.value.trim();
     const email = document.getElementById('tenant-email')?.value.trim();
     if (name && email) signers.push({ role: 'tenant', name, email });
   }
   if (document.getElementById('chk-landlord')?.checked) {
-    const name  = document.getElementById('landlord-name')?.value.trim();
+    const name = document.getElementById('landlord-name')?.value.trim();
     const email = document.getElementById('landlord-email')?.value.trim();
     if (name && email) signers.push({ role: 'landlord', name, email });
   }
   if (document.getElementById('chk-re')?.checked) {
-    const name  = document.getElementById('re-name')?.value.trim();
+    const name = document.getElementById('re-name')?.value.trim();
     const email = document.getElementById('re-email')?.value.trim();
     if (name && email) signers.push({ role: 're_company', name, email });
   }
-
   if (!signers.length) {
     errEl.textContent = 'Please check at least one signer with a name and email.';
-    errEl.classList.remove('d-none');
-    return;
+    errEl.classList.remove('d-none'); return;
   }
-
-  btn.disabled = true;
-  spinner.classList.remove('d-none');
-
+  btn.disabled = true; spinner.classList.remove('d-none');
   try {
     const res = await fetch('{% url "lease_manager:send_for_signature" lease.id %}', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-CSRFToken': '{{ csrf_token }}',
-      },
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
       body: JSON.stringify({ signers }),
     });
     const data = await res.json();
@@ -543,10 +665,7 @@ async function submitSendForSignature() {
   } catch (e) {
     errEl.textContent = 'Network error. Please try again.';
     errEl.classList.remove('d-none');
-  } finally {
-    btn.disabled = false;
-    spinner.classList.add('d-none');
-  }
+  } finally { btn.disabled = false; spinner.classList.add('d-none'); }
 }
 </script>
 {% endblock %}

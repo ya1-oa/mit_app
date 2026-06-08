@@ -11,6 +11,7 @@ import logging
 import os
 import re
 from datetime import timedelta
+from decimal import Decimal, InvalidOperation
 
 from django.conf import settings
 from django.contrib import messages
@@ -155,6 +156,163 @@ def _landlord_data_from_lease(lease):
     }
 
 
+# ── Shared value coercion / parsing ──────────────────────────────────────────
+
+def _dec(val, default):
+    """Coerce val to Decimal; fall back to default on blank/invalid."""
+    if val in (None, ''):
+        return default
+    try:
+        return Decimal(str(val))
+    except (InvalidOperation, ValueError, TypeError):
+        return default
+
+
+def _bool(val, default):
+    """Coerce a form/JSON value to bool; None → default."""
+    if val is None:
+        return default
+    if isinstance(val, bool):
+        return val
+    return str(val).strip().lower() in ('1', 'true', 'yes', 'on')
+
+
+def _parse_date(val):
+    """Parse 'YYYY-MM-DD' (or a few common formats) → date, else None."""
+    if not val:
+        return None
+    if hasattr(val, 'year') and not hasattr(val, 'hour'):   # already a date
+        return val
+    s = str(val).strip()
+    for fmt in ('%Y-%m-%d', '%m/%d/%Y', '%m-%d-%Y', '%Y/%m/%d'):
+        try:
+            return dt.datetime.strptime(s, fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _build_lease_context(lease, overrides=None, preview=False):
+    """
+    Build the full template context for a lease, optionally applying live
+    overrides (rent / deposit / dates / flags) WITHOUT writing to the DB.
+
+    The same context feeds both the live HTML preview and the final PDF, so
+    what the user sees while editing is exactly what gets generated.
+    """
+    overrides = overrides or {}
+    landlord  = _landlord_data_from_lease(lease)
+
+    # Effective scalar values (override → lease)
+    rent       = _dec(overrides.get('monthly_rent'),     lease.monthly_rent)
+    deposit    = _dec(overrides.get('security_deposit'), lease.security_deposit)
+    is_renewal = _bool(overrides.get('is_renewal'),                lease.is_renewal)
+    excl_sd    = _bool(overrides.get('exclude_security_deposit'),  lease.exclude_security_deposit)
+    excl_if    = _bool(overrides.get('exclude_inspection_fee'),    lease.exclude_inspection_fee)
+
+    # Effective dates (override → lease)
+    start     = _parse_date(overrides.get('lease_start_date'))     or lease.lease_start_date
+    end       = _parse_date(overrides.get('lease_end_date'))       or lease.lease_end_date
+    agreement = _parse_date(overrides.get('lease_agreement_date')) or lease.lease_agreement_date or start
+
+    # Patch the override-able landlord keys
+    landlord['default_rent_amount']      = float(rent or 0)
+    landlord['default_security_deposit'] = float(deposit or 0)
+    landlord['is_renewal']               = is_renewal
+    landlord['exclude_security_deposit'] = excl_sd
+    landlord['exclude_inspection_fee']   = excl_if
+    landlord['term_start_date']          = start
+    landlord['term_end_date']            = end
+
+    return {
+        'client':                    lease.client,
+        'preview':                   preview,
+        'today':                     dt.datetime.now().strftime('%B %d, %Y'),
+        'formatted_agreement_date':  _fmt_agreement_date(agreement),
+        'lease_agreement_date':      str(agreement or ''),
+        'formatted_start_date':      _fmt_date(start),
+        'formatted_end_date':        _fmt_date(end),
+        'term_start_date':           str(start or ''),
+        'term_end_date':             str(end or ''),
+        'is_renewal':                is_renewal,
+        'exclude_security_deposit':  excl_sd,
+        'exclude_inspection_fee':    excl_if,
+        'landlord':                  landlord,
+    }
+
+
+def _resolve_doc_template(doc_name, uploaded_map):
+    """
+    Resolve a document's template content, preferring the admin-uploaded
+    Document.file (if present on disk) and falling back to the bundled static
+    repo template. Returns (content_or_None, source, doc_obj).
+    """
+    doc_obj = uploaded_map.get(doc_name)
+    if doc_obj and doc_obj.file:
+        try:
+            up_path = doc_obj.file.path
+            if os.path.exists(up_path):
+                with open(up_path, 'r', encoding='utf-8') as f:
+                    return f.read(), 'uploaded', doc_obj
+        except (ValueError, OSError):
+            pass
+    static_rel = STATIC_DOC_TEMPLATES.get(doc_name)
+    if static_rel:
+        static_path = os.path.join(settings.BASE_DIR, 'docsAppR', 'templates', static_rel)
+        if os.path.exists(static_path):
+            with open(static_path, 'r', encoding='utf-8') as f:
+                return f.read(), 'static', doc_obj
+    return None, None, doc_obj
+
+
+# Maps canonical Document name → the JSON/template key used by the live preview.
+DOC_PREVIEW_KEYS = {
+    'Engagement Agreement':  'engagement_agreement',
+    'Term Sheet':            'term_sheet',
+    'Month to Month Rental': 'month_to_month_rental',
+}
+
+
+def _render_all_lease_html(lease, overrides=None, preview=True):
+    """
+    Render all 4 lease documents to HTML strings (no PDF, no DB writes).
+    Used by the live-preview endpoint and the initial detail page render.
+    Returns: {engagement_agreement, term_sheet, month_to_month_rental, input_sheet}
+    """
+    from docsAppR.models import Document
+
+    ctx_dict = _build_lease_context(lease, overrides=overrides, preview=preview)
+    uploaded = {d.name: d for d in Document.objects.filter(name__in=DOCUMENT_NAMES)}
+
+    def _err(label, msg):
+        return (f'<div style="padding:2rem;font-family:sans-serif;color:#b91c1c;">'
+                f'<strong>Could not render {label}.</strong><br>{msg}</div>')
+
+    out = {}
+    for doc_name in DOCUMENT_NAMES:
+        key = DOC_PREVIEW_KEYS[doc_name]
+        content, _source, doc_obj = _resolve_doc_template(doc_name, uploaded)
+        if content is None:
+            out[key] = _err(doc_name, 'No template available.')
+            continue
+        try:
+            out[key] = Template(content).render(Context({**ctx_dict, 'document': doc_obj}))
+        except Exception as exc:   # noqa: BLE001
+            out[key] = _err(doc_name, str(exc))
+
+    # Input Sheet (static template only)
+    input_path = os.path.join(
+        settings.BASE_DIR, 'docsAppR', 'templates', 'account', 'lease_input_sheet.html'
+    )
+    try:
+        with open(input_path, 'r', encoding='utf-8') as f:
+            out['input_sheet'] = Template(f.read()).render(Context({**ctx_dict}))
+    except Exception as exc:        # noqa: BLE001
+        out['input_sheet'] = _err('Input Sheet', str(exc))
+
+    return out
+
+
 def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
     """
     Generate all lease documents (Engagement Agreement, Term Sheet,
@@ -177,69 +335,23 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
     lease_dir   = os.path.join(settings.MEDIA_ROOT, 'lease_documents', client_slug)
     os.makedirs(lease_dir, exist_ok=True)
 
-    landlord_data = _landlord_data_from_lease(lease)
-    today_str     = dt.datetime.now().strftime('%B %d, %Y')
-
-    # Build agreement date context
-    agreement_date = lease.lease_agreement_date or lease.lease_start_date
-    context_base = {
-        'client':                    client,
-        'preview':                   False,
-        'today':                     today_str,
-        'formatted_agreement_date':  _fmt_agreement_date(agreement_date),
-        'lease_agreement_date':      str(agreement_date or ''),
-        'formatted_start_date':      _fmt_date(lease.lease_start_date),
-        'formatted_end_date':        _fmt_date(lease.lease_end_date),
-        'term_start_date':           str(lease.lease_start_date or ''),
-        'term_end_date':             str(lease.lease_end_date   or ''),
-        'is_renewal':                lease.is_renewal,
-        'exclude_security_deposit':  lease.exclude_security_deposit,
-        'exclude_inspection_fee':    lease.exclude_inspection_fee,
-        'landlord':                  landlord_data,
-    }
+    # Same context the live preview uses → preview matches the PDF exactly.
+    context_base = _build_lease_context(lease, overrides=None, preview=False)
 
     results = []
 
     # ── Main documents ────────────────────────────────────────────────────────
-    # For each canonical lease document we resolve the template content in this
-    # priority order:
-    #   1. The admin-uploaded Document.file (if the record exists AND the file is
-    #      present on disk) — preserves any server-side customisations.
-    #   2. The bundled static repo template (always present, version-controlled)
-    #      — guarantees generation never fails just because the media volume
-    #      lost the uploaded files.
+    # Each template is resolved preferring the admin-uploaded Document.file and
+    # falling back to the bundled static repo template (see _resolve_doc_template),
+    # so generation never fails just because the media volume lost the uploads.
     # We iterate the canonical DOCUMENT_NAMES (not the DB rows) so generation
     # works even on a fresh database with zero Document records.
     uploaded = {d.name: d for d in Document.objects.filter(name__in=DOCUMENT_NAMES)}
 
     for doc_name in DOCUMENT_NAMES:
-        result   = {'doc_name': doc_name, 'success': False, 'error': ''}
-        doc_obj  = uploaded.get(doc_name)
-        source   = None
-        template_content = None
+        result = {'doc_name': doc_name, 'success': False, 'error': ''}
         try:
-            # 1. Prefer the admin-uploaded template, if it physically exists.
-            if doc_obj and doc_obj.file:
-                try:
-                    up_path = doc_obj.file.path
-                    if os.path.exists(up_path):
-                        with open(up_path, 'r', encoding='utf-8') as f:
-                            template_content = f.read()
-                        source = 'uploaded'
-                except (ValueError, OSError):
-                    template_content = None
-
-            # 2. Fall back to the bundled static template.
-            if template_content is None:
-                static_rel  = STATIC_DOC_TEMPLATES.get(doc_name)
-                static_path = (
-                    os.path.join(settings.BASE_DIR, 'docsAppR', 'templates', static_rel)
-                    if static_rel else None
-                )
-                if static_path and os.path.exists(static_path):
-                    with open(static_path, 'r', encoding='utf-8') as f:
-                        template_content = f.read()
-                    source = 'static'
+            template_content, source, doc_obj = _resolve_doc_template(doc_name, uploaded)
 
             if template_content is None:
                 result['error'] = (
@@ -509,8 +621,105 @@ def lease_detail(request, lease_id):
         'contacts':     contacts,
         'all_signed':   all_signed,
         'can_send': lease.status not in ('signed', 'cancelled', 'completed'),
+        # Terms are locked once the lease is finalised — editing them after
+        # signing would invalidate the executed document.
+        'terms_locked': lease.status in ('signed', 'cancelled', 'completed'),
     }
     return render(request, 'lease_manager/lease_detail.html', context)
+
+
+# ============================================================================
+# LIVE PREVIEW + EDIT TERMS  (streamlined plug-n-play editor)
+# ============================================================================
+
+@login_required
+@require_POST
+def lease_live_preview(request, lease_id):
+    """
+    POST JSON of override values (monthly_rent, security_deposit,
+    lease_agreement_date, lease_start_date, lease_end_date, is_renewal,
+    exclude_security_deposit, exclude_inspection_fee).
+
+    Renders all 4 documents to HTML with those overrides applied — WITHOUT
+    saving anything — and returns them for live in-page preview.
+    """
+    lease = get_object_or_404(Lease, id=lease_id)
+    try:
+        overrides = json.loads(request.body or '{}')
+    except (json.JSONDecodeError, ValueError):
+        overrides = {}
+
+    documents = _render_all_lease_html(lease, overrides=overrides, preview=True)
+    return JsonResponse({'success': True, 'documents': documents})
+
+
+@login_required
+@require_POST
+def lease_update_terms(request, lease_id):
+    """
+    POST JSON: persist the editable lease terms, then regenerate the PDFs so
+    the saved documents match. Returns the recomputed display values.
+    """
+    lease = get_object_or_404(Lease, id=lease_id)
+
+    if lease.status in ('signed', 'cancelled', 'completed'):
+        return JsonResponse(
+            {'error': 'This lease is finalised and can no longer be edited.'},
+            status=400,
+        )
+
+    try:
+        data = json.loads(request.body or '{}')
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid request body'}, status=400)
+
+    # Apply the editable fields (only the ones present in the payload)
+    if 'monthly_rent' in data:
+        lease.monthly_rent = _dec(data.get('monthly_rent'), lease.monthly_rent)
+    if 'security_deposit' in data:
+        lease.security_deposit = _dec(data.get('security_deposit'), lease.security_deposit)
+
+    start = _parse_date(data.get('lease_start_date'))
+    if start:
+        lease.lease_start_date = start
+    end = _parse_date(data.get('lease_end_date'))
+    if end:
+        lease.lease_end_date = end
+    agreement = _parse_date(data.get('lease_agreement_date'))
+    if agreement:
+        lease.lease_agreement_date = agreement
+
+    lease.is_renewal               = _bool(data.get('is_renewal'),               lease.is_renewal)
+    lease.exclude_security_deposit = _bool(data.get('exclude_security_deposit'), lease.exclude_security_deposit)
+    lease.exclude_inspection_fee   = _bool(data.get('exclude_inspection_fee'),   lease.exclude_inspection_fee)
+    lease.last_modified_by = request.user
+    lease.save()
+
+    # Regenerate PDFs so the downloadable/sendable docs reflect the new terms.
+    base_url = request.build_absolute_uri('/')
+    results  = generate_lease_pdfs(lease, base_url=base_url)
+    ok_count = sum(1 for r in results if r.get('success'))
+
+    LeaseActivity.objects.create(
+        lease=lease,
+        activity_type='generated',
+        description=(
+            f'Lease terms updated — rent ${lease.monthly_rent}, '
+            f'deposit ${lease.security_deposit}, '
+            f'{lease.lease_start_date} → {lease.lease_end_date}'
+            f'{" (renewal)" if lease.is_renewal else ""}. '
+            f'{ok_count} document(s) regenerated.'
+        ),
+        performed_by=request.user,
+    )
+
+    return JsonResponse({
+        'success':          True,
+        'ok_count':         ok_count,
+        'monthly_rent':     float(lease.monthly_rent),
+        'security_deposit': float(lease.security_deposit),
+        'message':          f'Saved — {ok_count} document(s) regenerated.',
+    })
 
 
 # ============================================================================

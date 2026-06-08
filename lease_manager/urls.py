@@ -55,6 +55,14 @@ urlpatterns = [
     path('lease/<uuid:lease_id>/',
          sv.lease_detail, name='lease_detail'),
 
+    # Live document preview (POST overrides → rendered HTML, no save)
+    path('lease/<uuid:lease_id>/live-preview/',
+         sv.lease_live_preview, name='lease_live_preview'),
+
+    # Persist edited terms + regenerate PDFs
+    path('lease/<uuid:lease_id>/update-terms/',
+         sv.lease_update_terms, name='lease_update_terms'),
+
     # Send for signature (POST JSON)
     path('lease/<uuid:lease_id>/send-for-signature/',
          sv.send_for_signature, name='send_for_signature'),
