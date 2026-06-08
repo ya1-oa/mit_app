@@ -2316,3 +2316,107 @@ class TaskItem(models.Model):
             'in_progress': '#f59e0b', 'review': '#8b5cf6',
             'done':        '#10b981', 'cancelled': '#ef4444',
         }.get(self.status, '#94a3b8')
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Usage Tracking
+# Records every call to the Anthropic Claude API so we can track cost per
+# operation, per session, per room, and all-time across the whole platform.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Pricing per million tokens (update if Anthropic changes rates)
+_CLAUDE_PRICING = {
+    # model-key: (input $/MTok, output $/MTok)
+    'claude-haiku-4-5-20251001':    (1.00,  5.00),
+    'claude-haiku-3-5':             (0.80,  4.00),
+    'claude-sonnet-4-5-20251001':   (3.00, 15.00),
+    'claude-sonnet-4-5':            (3.00, 15.00),
+    'claude-opus-4-5':             (15.00, 75.00),
+    'default':                      (3.00, 15.00),
+}
+
+
+def _calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    pricing = _CLAUDE_PRICING.get(model) or _CLAUDE_PRICING['default']
+    input_cost  = (input_tokens  / 1_000_000) * pricing[0]
+    output_cost = (output_tokens / 1_000_000) * pricing[1]
+    return round(input_cost + output_cost, 8)
+
+
+class AIUsageLog(models.Model):
+    """One record per Claude API call across the entire platform."""
+
+    OPERATION_CHOICES = [
+        ('cps_room',       'CPS – Room Analysis'),
+        ('equipment',      'Equipment Checker'),
+        ('sensor',         'Sensor Renamer'),
+        ('encircle',       'Encircle Sync'),
+        ('other',          'Other'),
+    ]
+
+    created_at      = models.DateTimeField(auto_now_add=True, db_index=True)
+    operation       = models.CharField(max_length=50, choices=OPERATION_CHOICES, default='other', db_index=True)
+
+    # Loose FK references — stored as plain ints so deleting a session doesn't
+    # cascade-delete cost history.
+    cps_session_id  = models.IntegerField(null=True, blank=True, db_index=True)
+    cps_room_id     = models.IntegerField(null=True, blank=True)
+
+    model           = models.CharField(max_length=100, default='claude-haiku-4-5-20251001')
+    input_tokens    = models.PositiveIntegerField(default=0)
+    output_tokens   = models.PositiveIntegerField(default=0)
+    images_count    = models.PositiveSmallIntegerField(default=0)
+    cost_usd        = models.DecimalField(max_digits=12, decimal_places=8, default=0)
+    success         = models.BooleanField(default=True)
+    error_message   = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'AI Usage Log'
+        verbose_name_plural = 'AI Usage Logs'
+
+    def __str__(self):
+        return f"{self.operation} | {self.created_at:%Y-%m-%d %H:%M} | ${self.cost_usd:.4f}"
+
+    def save(self, *args, **kwargs):
+        # Auto-calculate cost whenever tokens change
+        self.cost_usd = _calc_cost(self.model, self.input_tokens, self.output_tokens)
+        super().save(*args, **kwargs)
+
+    # ── Class-level helpers used by the AI resources dashboard ───────────────
+
+    @classmethod
+    def total_cost(cls):
+        from django.db.models import Sum
+        r = cls.objects.aggregate(t=Sum('cost_usd'))
+        return float(r['t'] or 0)
+
+    @classmethod
+    def total_tokens(cls):
+        from django.db.models import Sum
+        r = cls.objects.aggregate(i=Sum('input_tokens'), o=Sum('output_tokens'))
+        return int(r['i'] or 0) + int(r['o'] or 0)
+
+    @classmethod
+    def cost_for_session(cls, session_id):
+        from django.db.models import Sum
+        r = cls.objects.filter(cps_session_id=session_id).aggregate(t=Sum('cost_usd'))
+        return float(r['t'] or 0)
+
+    @classmethod
+    def log_call(cls, *, operation='other', model, input_tokens, output_tokens,
+                 images_count=0, cps_session_id=None, cps_room_id=None,
+                 success=True, error_message=''):
+        """Convenience factory. Call this right after every Claude API response."""
+        return cls.objects.create(
+            operation=operation,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            images_count=images_count,
+            cps_session_id=cps_session_id,
+            cps_room_id=cps_room_id,
+            success=success,
+            error_message=error_message,
+        )

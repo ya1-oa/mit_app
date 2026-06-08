@@ -78,6 +78,51 @@ _IMAGE_CONTENT_TYPES = {'image/jpeg', 'image/jpg', 'image/png'}
 
 _IMAGES_PER_BATCH = 20
 
+# ─────────────────────────────────────────────────────────────────────────────
+# Structural item filter
+# Items whose description matches any of these terms are flagged structural=True.
+# They are NOT personal property and should not appear in a PPR claim line — but
+# we auto-collapse them so an adjuster can still review before deleting.
+# Keep lowercase; matching is case-insensitive substring.
+# ─────────────────────────────────────────────────────────────────────────────
+STRUCTURAL_TERMS: frozenset[str] = frozenset({
+    # Walls & ceilings
+    'wall', 'ceiling', 'drywall', 'sheetrock', 'plaster', 'stucco', 'crown molding',
+    'baseboard', 'trim', 'wainscoting', 'chair rail',
+    # Floors
+    'floor', 'flooring', 'hardwood floor', 'laminate floor', 'tile floor',
+    'carpet', 'subfloor', 'underlayment',
+    # Doors & windows
+    'door', 'window', 'window frame', 'window sill', 'window pane', 'windowsill',
+    'sliding door', 'french door', 'exterior door', 'garage door', 'garage door opener',
+    'door frame', 'door casing', 'door knob', 'door handle', 'deadbolt',
+    # Stairs & structural elements
+    'stair', 'staircase', 'stairway', 'railing', 'banister', 'baluster',
+    'beam', 'support beam', 'column', 'pillar', 'post', 'support pillar',
+    # Plumbing fixtures
+    'toilet', 'bathtub', 'tub', 'shower', 'shower pan', 'shower surround',
+    'sink', 'vanity sink', 'pedestal sink', 'kitchen sink', 'utility sink',
+    'faucet', 'showerhead', 'shower head', 'drain',
+    # Built-in cabinetry & shelving
+    'cabinet', 'kitchen cabinet', 'bathroom cabinet', 'built-in cabinet',
+    'built-in shelf', 'built-in shelving', 'closet shelf', 'closet rod',
+    'linen closet', 'medicine cabinet',
+    # Roofing & exterior
+    'roof', 'roofing', 'shingle', 'gutter', 'downspout', 'soffit', 'fascia',
+    'siding', 'brick', 'insulation',
+    # HVAC & fixed systems
+    'thermostat', 'hvac', 'furnace', 'ductwork', 'vent', 'register',
+    'ceiling fan', 'exhaust fan', 'attic fan', 'whole house fan',
+    # Electrical fixtures
+    'light fixture', 'light switch', 'outlet', 'electrical outlet',
+    'recessed light', 'recessed lighting', 'chandelier base',
+    # Countertops (attached to house)
+    'countertop', 'granite countertop', 'quartz countertop', 'counter',
+    # Misc attached
+    'fireplace', 'mantle', 'mantel', 'hearth', 'chimney',
+    'garage', 'driveway', 'fence', 'deck', 'porch', 'patio',
+})
+
 
 def fetch_all_claim_media(encircle_claim_id: str) -> list[dict]:
     """Fetch all media for a claim once. Pass the result to filter_room_images for each room."""
@@ -179,24 +224,34 @@ def _make_fallback_items(room_name: str) -> list[dict]:
     ]
 
 
-def _call_claude_with_images(client, image_content_blocks: list, room_name: str) -> dict:
-    """Send one batch of image blocks to Claude and return the raw parsed result."""
+_CPS_MODEL = "claude-haiku-4-5-20251001"
+
+
+def _call_claude_with_images(client, image_content_blocks: list, room_name: str) -> tuple[dict, dict]:
+    """
+    Send one batch of image blocks to Claude and return (parsed_result, usage).
+    usage = {'input_tokens': int, 'output_tokens': int}
+    """
     content = list(image_content_blocks) + [{
         "type": "text",
         "text": _USER_PROMPT.format(room_name=room_name),
     }]
     response = client.messages.create(
-        model="claude-haiku-4-5-20251001",
+        model=_CPS_MODEL,
         max_tokens=8192,
         system=_SYSTEM_PROMPT,
         messages=[{"role": "user", "content": content}],
     )
+    usage = {
+        'input_tokens':  getattr(response.usage, 'input_tokens', 0),
+        'output_tokens': getattr(response.usage, 'output_tokens', 0),
+    }
     raw = response.content[0].text.strip()
     if raw.startswith("```"):
         raw = raw.split("```")[1]
         if raw.startswith("json"):
             raw = raw[4:]
-    return json.loads(raw.strip())
+    return json.loads(raw.strip()), usage
 
 
 def _clean_items(items: list, start_order: int = 0) -> list:
@@ -226,6 +281,18 @@ def _clean_items(items: list, start_order: int = 0) -> list:
             "order": start_order + i,
         })
     return clean
+
+
+def flag_structural_items(items: list[dict]) -> list[dict]:
+    """
+    Walk a cleaned item list and set structural=True on any item whose
+    description contains a known structural/building term.
+    Mutates the dicts in-place and returns the same list.
+    """
+    for item in items:
+        desc_lower = item.get('description', '').lower()
+        item['structural'] = any(term in desc_lower for term in STRUCTURAL_TERMS)
+    return items
 
 
 def analyze_room_for_cps(
@@ -301,6 +368,8 @@ def analyze_room_for_cps(
     summaries: list[str] = []
     images_used = 0
     last_error = None
+    total_input_tokens  = 0
+    total_output_tokens = 0
 
     total_batches = math.ceil(len(image_blocks) / _IMAGES_PER_BATCH)
 
@@ -312,7 +381,9 @@ def analyze_room_for_cps(
             time.sleep(2)
 
         try:
-            parsed = _call_claude_with_images(client, batch, room_name)
+            parsed, usage = _call_claude_with_images(client, batch, room_name)
+            total_input_tokens  += usage.get('input_tokens', 0)
+            total_output_tokens += usage.get('output_tokens', 0)
             batch_items = _clean_items(parsed.get("items", []), start_order=len(all_items))
             all_items.extend(batch_items)
             confidences.append(parsed.get("confidence", "medium"))
@@ -327,6 +398,9 @@ def analyze_room_for_cps(
             logger.error(f"CPS AI error for '{room_name}' batch {batch_num}: {e}", exc_info=True)
             last_error = str(e)
 
+    # Flag structural items (walls, floors, fixtures, etc.)
+    flag_structural_items(all_items)
+
     if not all_items and last_error:
         return {
             "success": False,
@@ -334,6 +408,8 @@ def analyze_room_for_cps(
             "confidence": "none",
             "room_summary": "",
             "images_used": images_used,
+            "input_tokens": total_input_tokens,
+            "output_tokens": total_output_tokens,
             "error": last_error,
         }
 
@@ -346,5 +422,7 @@ def analyze_room_for_cps(
         "confidence": final_confidence,
         "room_summary": " | ".join(summaries),
         "images_used": images_used,
+        "input_tokens": total_input_tokens,
+        "output_tokens": total_output_tokens,
         "error": last_error,
     }

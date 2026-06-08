@@ -110,6 +110,9 @@ class CPSReportItem(models.Model):
     depreciation_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     notes = models.TextField(blank=True)
     ai_suggested = models.BooleanField(default=True)
+    # Flagged by the structural-item filter in ai_analyzer — permanently attached
+    # to the building (walls, floors, fixtures, etc.) rather than personal property.
+    structural = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['order']
@@ -165,4 +168,5 @@ class CPSReportItem(models.Model):
             'acv_total': float(self.acv_total) if self.acv_total else None,
             'notes': self.notes,
             'ai_suggested': self.ai_suggested,
+            'structural': self.structural,
         }

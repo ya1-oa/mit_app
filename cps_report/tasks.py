@@ -67,6 +67,28 @@ def process_cps_session_task(self, session_id):
                 if result_secondary.get('room_summary'):
                     summaries.append(f"[secondary] {result_secondary['room_summary']}")
 
+            # Log AI usage for cost tracking
+            total_input  = result_primary.get('input_tokens', 0)
+            total_output = result_primary.get('output_tokens', 0)
+            if has_secondary:
+                total_input  += result_secondary.get('input_tokens', 0)
+                total_output += result_secondary.get('output_tokens', 0)
+            try:
+                from docsAppR.models import AIUsageLog
+                AIUsageLog.log_call(
+                    operation='cps_room',
+                    model='claude-haiku-4-5-20251001',
+                    input_tokens=total_input,
+                    output_tokens=total_output,
+                    images_count=total_images,
+                    cps_session_id=session.id,
+                    cps_room_id=room.id,
+                    success=bool(result_primary.get('success') or all_items),
+                    error_message=result_primary.get('error', '') or '',
+                )
+            except Exception as log_err:
+                logger.warning(f"CPS usage log failed for room {room.id}: {log_err}")
+
             room.items.all().delete()
             for order, item_dict in enumerate(all_items):
                 age_years = max(0, min(5, int(item_dict.get('age_years', 0) or 0)))
@@ -93,6 +115,7 @@ def process_cps_session_task(self, session_id):
                     depreciation_pct=max(0, min(80, float(item_dict.get('depreciation_pct', 0) or 0))),
                     notes=str(item_dict.get('notes', ''))[:500],
                     ai_suggested=True,
+                    structural=bool(item_dict.get('structural', False)),
                 )
 
             room.images_used = total_images

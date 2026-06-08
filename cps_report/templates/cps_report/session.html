@@ -65,6 +65,49 @@
   .sig-status-bar.unsigned { background: #fef9c3; border-top: 1px solid #fde047; color: #854d0e; }
   .sig-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
   .sig-panel .progress { height: 8px; border-radius: 4px; }
+  /* Pulse animation for unsigned (clock) badges */
+  @keyframes pulse-clock {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(234,179,8,.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(234,179,8,0); }
+  }
+  .sig-badge-unsigned {
+    animation: pulse-clock 1.8s ease-in-out infinite;
+    font-size: .82rem !important;
+    padding: .35rem .65rem !important;
+  }
+  .sig-badge-signed {
+    font-size: .82rem !important;
+    padding: .35rem .65rem !important;
+    cursor: default;
+  }
+  /* Structural items collapsible section */
+  .structural-section {
+    border: 2px solid #f59e0b;
+    border-radius: 0 0 6px 6px;
+    margin-top: -1px;
+    overflow: hidden;
+  }
+  .structural-section summary {
+    background: linear-gradient(90deg, #fffbeb, #fef3c7);
+    padding: .5rem 1rem;
+    cursor: pointer;
+    font-size: .82rem;
+    font-weight: 600;
+    color: #92400e;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    user-select: none;
+  }
+  .structural-section summary::-webkit-details-marker { display: none; }
+  @keyframes glow-amber {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.3); }
+    50%       { box-shadow: 0 0 8px 3px rgba(245,158,11,.25); }
+  }
+  .structural-section { animation: glow-amber 2.5s ease-in-out infinite; }
+  .structural-table th { background: #78350f !important; color: #fef3c7 !important; font-size: .76rem; }
+  .structural-table td { font-size: .80rem; background: #fffbeb; }
 </style>
 {% endblock %}
 
@@ -158,13 +201,13 @@
     </div>
   </div>
 
-  <!-- Signature Status Panel -->
-  <div class="sig-panel mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
+  <!-- Signatures Status Section -->
+  <div class="sig-panel mb-3" id="sig-panel">
+    <div class="d-flex justify-content-between align-items-center mb-1">
       <div>
-        <i class="fas fa-signature me-2 text-primary"></i>
-        <strong>Client Signatures</strong>
-        <span class="text-muted small ms-2">{{ rooms|length }} room{{ rooms|length|pluralize }} total</span>
+        <i class="fas fa-file-signature me-2 text-primary"></i>
+        <strong>Signatures Status Section</strong>
+        <span class="text-muted small ms-2">{{ rooms|length }} room{{ rooms|length|pluralize }}</span>
       </div>
       <div class="d-flex gap-2">
         <button class="btn btn-outline-primary btn-sm" onclick="copyShareLink(this)" title="Copy client signature link">
@@ -175,19 +218,24 @@
         </button>
       </div>
     </div>
-    <div class="row g-2" id="sig-badges">
+    <p class="text-muted small mb-2" style="font-size:.78rem;">
+      <i class="fas fa-clock text-warning me-1"></i><strong>Clock</strong> = awaiting signature &nbsp;·&nbsp;
+      <i class="fas fa-pen text-success me-1"></i><strong>Pen</strong> = signed — hover a signed room to see who signed and when.
+    </p>
+    <div class="d-flex flex-wrap gap-2" id="sig-badges">
       {% for room in rooms %}
-      <div class="col-auto">
         {% if room.signature_name %}
-        <span class="badge bg-success py-1 px-2" title="Signed by {{ room.signature_name }} on {{ room.signed_at|date:'M d, Y g:i A' }}">
-          <i class="fas fa-check me-1"></i>{{ room.room_number }} {{ room.room_name }}
+        <span class="badge bg-success sig-badge-signed"
+              title="✍️ Signed by {{ room.signature_name }} on {{ room.signed_at|date:'M d, Y \a\t g:i A' }}"
+              data-bs-toggle="tooltip" data-bs-placement="top"
+              data-bs-title="Signed by {{ room.signature_name }} — {{ room.signed_at|date:'M d, Y g:i A' }}">
+          <i class="fas fa-pen me-1"></i>{{ room.room_number }} {{ room.room_name }}
         </span>
         {% else %}
-        <span class="badge bg-warning text-dark py-1 px-2">
+        <span class="badge bg-warning text-dark sig-badge-unsigned">
           <i class="fas fa-clock me-1"></i>{{ room.room_number }} {{ room.room_name }}
         </span>
         {% endif %}
-      </div>
       {% endfor %}
     </div>
   </div>
@@ -287,7 +335,7 @@
         </thead>
         <tbody id="tbody-{{ room.id }}">
           {% for item in room.items.all %}
-          <tr class="item-row" data-item-id="{{ item.id }}" draggable="true">
+          <tr class="item-row" data-item-id="{{ item.id }}" draggable="true"{% if item.structural %} data-structural="true"{% endif %}>
             <td class="text-center"><span class="drag-handle">⣿</span></td>
             <td class="item-num"></td>
             <td class="editable-cell" contenteditable="true">{{ item.description }}</td>
@@ -332,6 +380,9 @@
         </tfoot>
       </table>
     </div>
+
+    <!-- Structural items section (populated by JS from data-structural attrs on rows) -->
+    <div id="structural-section-{{ room.id }}"></div>
 
     <!-- Per-room signature status bar -->
     {% if room.signature_name %}
@@ -390,6 +441,116 @@
 {% block extra_js %}
 <script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
 <script>
+// ── Bootstrap tooltips (for signed badges) ─────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+    new bootstrap.Tooltip(el);
+  });
+});
+
+// ── Structural items: move flagged rows into a collapsed section ───────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
+    const roomId = tbody.id.replace('tbody-', '');
+    const structRows = [];
+
+    tbody.querySelectorAll('tr.item-row[data-structural="true"]').forEach(tr => {
+      const notesRow = tr.nextElementSibling?.classList.contains('notes-row')
+                       ? tr.nextElementSibling : null;
+      structRows.push({ tr, notesRow });
+    });
+
+    if (!structRows.length) return;
+
+    // Build the collapsible section
+    const wrapper = document.getElementById(`structural-section-${roomId}`);
+    if (!wrapper) return;
+
+    const details = document.createElement('details');
+    details.className = 'structural-section';
+    details.innerHTML = `
+      <summary>
+        <i class="fas fa-hard-hat me-1"></i>
+        ${structRows.length} Structural / Fixed Item${structRows.length > 1 ? 's' : ''} — AI flagged these as part of the building, not personal property.
+        <span class="ms-auto text-muted" style="font-weight:400;font-size:.76rem;">Click to review</span>
+      </summary>
+      <div style="padding:.5rem;">
+        <table class="table table-sm structural-table mb-0">
+          <thead>
+            <tr>
+              <th>#</th><th>Description</th><th>Brand</th><th>QTY</th>
+              <th class="text-end">Repl. Value</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="struct-tbody-${roomId}"></tbody>
+        </table>
+        <p class="text-muted small mt-2 mb-0" style="font-size:.74rem;">
+          <i class="fas fa-info-circle me-1"></i>These items are <strong>not</strong> included in the room total.
+          Delete them or move them to confirm they are not personal property.
+        </p>
+      </div>`;
+
+    const structTbody = details.querySelector(`#struct-tbody-${roomId}`);
+    structRows.forEach(({ tr, notesRow }, i) => {
+      // Create a simplified read-only row for the structural table
+      const cells = tr.querySelectorAll('td');
+      const miniRow = document.createElement('tr');
+      miniRow.innerHTML = `
+        <td class="text-muted">${i + 1}</td>
+        <td>${cells[2]?.textContent.trim() || ''}</td>
+        <td>${cells[3]?.textContent.trim() || ''}</td>
+        <td>${cells[5]?.textContent.trim() || ''}</td>
+        <td class="text-end">${cells[10]?.textContent.trim() || ''}</td>
+        <td>
+          <button class="btn btn-link btn-sm p-0 text-danger" title="Remove" onclick="this.closest('tr').remove()">
+            <i class="fas fa-times"></i>
+          </button>
+        </td>`;
+      structTbody.appendChild(miniRow);
+
+      // Hide the original rows from the main table (don't delete — save still captures them)
+      tr.style.display = 'none';
+      if (notesRow) notesRow.style.display = 'none';
+    });
+
+    wrapper.appendChild(details);
+  });
+});
+
+// ── Signature demo animation (runs during the tour step for the sig panel) ─
+function runSigDemo() {
+  const badges = document.querySelectorAll('#sig-badges .badge');
+  if (!badges.length) return;
+
+  // Find first unsigned badge, or just use first badge
+  let demoIdx = 0;
+  badges.forEach((b, i) => { if (b.classList.contains('bg-warning') && demoIdx === 0) demoIdx = i; });
+  const badge = badges[demoIdx];
+  const origHTML  = badge.innerHTML;
+  const origClass = badge.className;
+
+  // Step 1: flash → signed (green)
+  badge.className = 'badge bg-success sig-badge-signed';
+  badge.innerHTML = '<i class="fas fa-pen me-1"></i>' + badge.textContent.trim();
+  badge.title = '✍️ Signed by John Smith — Jun 7, 2026 at 2:14 PM (demo)';
+  badge.style.transition = 'all .4s';
+
+  // Also show a visible tooltip-style callout next to it
+  const tip = document.createElement('span');
+  tip.style.cssText = 'font-size:.72rem;color:#065f46;font-weight:600;margin-left:6px;animation:fadeIn .3s;';
+  tip.textContent = '← Signed by John Smith · Jun 7, 2026';
+  badge.insertAdjacentElement('afterend', tip);
+
+  // Step 2: revert to unsigned after 3 s
+  setTimeout(() => {
+    badge.className = origClass;
+    badge.innerHTML = origHTML;
+    badge.title = '';
+    tip.remove();
+  }, 3200);
+}
+
+// ── Welcome modal ────────────────────────────────────────────────────────────
 const SESSION_DISABLE_KEY = 'cps_session_disable_welcome';
 let sessionDriver = null;
 
@@ -402,94 +563,201 @@ function closeSessionWelcome(permanently) {
   }
 }
 
+// ── Session tour (comprehensive) ─────────────────────────────────────────────
 function launchSessionTour() {
+  // Pre-target first item row for steps that reference cells
+  const firstItemRow = document.querySelector('tr.item-row:not([style*="none"])');
+  const firstItemCells = firstItemRow ? firstItemRow.querySelectorAll('td') : [];
+
   sessionDriver = window.driver.js.driver({
     showProgress: true,
     animate: true,
     overlayColor: 'rgba(0,0,0,0.72)',
     smoothScroll: true,
-    allowClose: false,
+    allowClose: true,
     steps: [
+
+      // ── Step 1: Welcome ─────────────────────────────────────────────────
       {
         popover: {
-          title: '📄 Your Completed CPS Report',
-          description: 'This is the full Schedule of Loss for this claim. All items have been AI-priced. You can review, edit any value inline, then export or share for signature.',
+          title: '📄 Your Completed PPR Report',
+          description: 'This is the full Schedule of Loss for this claim. Every room has been analyzed by AI and each item has been priced at today\'s replacement cost.<br><br>You can <strong>edit any value inline</strong>, reorder items, export, and send to your client for signature — all from this page.',
           side: 'over', align: 'center',
           nextBtnText: 'Show me around →',
         },
       },
+
+      // ── Step 2: Grand total ──────────────────────────────────────────────
       {
         element: '#grand-total-banner',
         popover: {
-          title: '💰 Total Replacement Value',
-          description: 'This is the claim\'s bottom line — the total replacement cost across all rooms and all items. It updates automatically any time you edit a quantity or price.',
+          title: '💰 Grand Total Replacement Value',
+          description: 'This is the claim\'s bottom line — the total replacement cost across <strong>all rooms and all items</strong>.<br><br>It recalculates automatically any time you edit a quantity or price anywhere on the page.',
           side: 'bottom', align: 'center',
           nextBtnText: 'Next →',
         },
       },
+
+      // ── Step 3: Export buttons ───────────────────────────────────────────
       {
         element: '.col-md-4.text-end',
         popover: {
-          title: '📤 Export & Share Options',
-          description: 'Four actions are available from the header:<br><br><strong>Summary</strong> — a condensed totals view.<br><strong>PDF</strong> — download a formatted report.<br><strong>Excel</strong> — export the full data sheet.<br><strong>Share Link</strong> — copy a link for your client to digitally sign.',
+          title: '📤 Export & Share — 4 Options',
+          description: '<strong>Summary</strong> — a condensed view of each room\'s totals. Great for a quick review before submitting.<br><br><strong>PDF</strong> — download the complete formatted PPR Report, ready to attach to a claim file.<br><br><strong>Excel</strong> — download a full spreadsheet of all rooms and items.<br><br><strong>Share Link</strong> — sends your client a unique link to review and digitally sign each room. <em>No login required on their end.</em>',
           side: 'bottom', align: 'end',
           nextBtnText: 'Next →',
         },
       },
+
+      // ── Step 4: Share link (specific button) ─────────────────────────────
       {
-        element: '[onclick="copyShareLink(this)"]:first-of-type',
+        element: 'button[onclick="copyShareLink(this)"]',
         popover: {
           title: '🔗 Client Signature Link',
-          description: '<strong>Click "Share Link"</strong> to copy a unique URL to your clipboard. Send it to your insured — they can open it on any device and sign each room\'s items directly. No login required.',
-          side: 'bottom', align: 'center',
-          nextBtnText: 'Next →',
-        },
-      },
-      {
-        element: '.sig-panel',
-        popover: {
-          title: '✍️ Signature Status Panel',
-          description: 'Every room is listed here. <span class="badge bg-success">Green badges</span> mean the room has been signed. <span class="badge bg-warning text-dark">Yellow badges</span> are still waiting. Hover a signed badge to see who signed and when.',
+          description: 'Click <strong>Share Link</strong> to copy a unique URL to your clipboard.<br><br>Send it to your insured by text or email. They open it on any device — phone, tablet, computer — and type their name to sign each room. <strong>No account or login required.</strong>',
           side: 'bottom', align: 'start',
           nextBtnText: 'Next →',
         },
       },
+
+      // ── Step 5: Signatures Status Section (with live demo) ───────────────
+      {
+        element: '#sig-panel',
+        popover: {
+          title: '✍️ Signatures Status Section',
+          description: 'Every room in the report is shown here as a badge.<br><br><span style="display:inline-block;background:#fef08a;color:#78350f;padding:2px 8px;border-radius:99px;font-size:.78rem;"><i class="fas fa-clock" style="margin-right:4px;"></i>Clock badge</span> = awaiting signature<br><br><span style="display:inline-block;background:#4ade80;color:#14532d;padding:2px 8px;border-radius:99px;font-size:.78rem;"><i class="fas fa-pen" style="margin-right:4px;"></i>Pen badge</span> = signed — hover it to see who and when.<br><br>Watch a live demo as we move to the next step →',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'See demo →',
+        },
+        onNextClick: () => {
+          runSigDemo();
+          sessionDriver.moveNext();
+        },
+      },
+
+      // ── Step 6: (stays on sig panel while demo plays) ───────────────────
+      {
+        element: '#sig-panel',
+        popover: {
+          title: '✅ Signature Status — Live Demo',
+          description: 'A room just went green above — that\'s what a <strong>signed room</strong> looks like, with the name and date visible. After 3 seconds it reverts to show an <strong>unsigned room</strong> with the pulsing clock badge.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Got it →',
+        },
+      },
+
+      // ── Step 7: Item table overview ───────────────────────────────────────
       {
         element: '.item-table:first-of-type',
         popover: {
-          title: '✏️ Inline Editing',
-          description: '<strong>Click any highlighted cell</strong> to edit it directly — descriptions, quantities, ages, and replacement values. The room total and grand total update instantly. Click <strong>Save</strong> when done.',
+          title: '📋 Item Table — Overview',
+          description: 'Each room has its own table of priced items. The AI has filled in descriptions, brands, quantities, and replacement values from the photos.<br><br><strong>Every cell you see highlighted in yellow when hovered is editable.</strong> Click once to edit, click away (or press Tab) to save.',
           side: 'top', align: 'start',
+          nextBtnText: 'Walk me through a row →',
+        },
+      },
+
+      // ── Step 8: Left side of item row ─────────────────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:nth-child(1)',
+        popover: {
+          title: '⣿ Drag Handle — Left Side',
+          description: 'The <strong>⣿ grip icon</strong> on the far left lets you drag-and-drop the row to reorder items within the room. Just grab and drag up or down — item numbers update automatically.',
+          side: 'right', align: 'center',
           nextBtnText: 'Next →',
         },
       },
+
+      // ── Step 9: Description + brand ───────────────────────────────────────
       {
-        element: '.item-row:first-of-type',
+        element: 'tr.item-row:first-of-type td:nth-child(3)',
         popover: {
-          title: '🔀 Reorder & Move Items',
-          description: 'Grab the <strong>⣿ grip icon</strong> on the left of any row and drag it up or down to reorder items within the room. Numbers update automatically and stay sequential across the whole report.<br><br>Click the <i class="fas fa-share" style="color:#667eea"></i> <strong>move icon</strong> to send an item to a completely different room. The Save button will highlight amber on any room that needs saving.',
-          side: 'right', align: 'start',
+          title: '📝 Description & Brand',
+          description: '<strong>Click the Description cell</strong> to edit the item name. Below it is the Brand — click that too. Use insurance-standard descriptions like "55-inch LED Smart TV" rather than just "TV".',
+          side: 'bottom', align: 'start',
           nextBtnText: 'Next →',
         },
       },
+
+      // ── Step 10: Qty + Age ────────────────────────────────────────────────
       {
-        element: 'a[href*="export-pdf"]',
+        element: 'tr.item-row:first-of-type td:nth-child(6)',
         popover: {
-          title: '📕 Download the PDF',
-          description: '<strong>Click here to download a formatted PDF</strong> of the complete report. The PDF is ready to submit to the insurance carrier or share with your team.',
+          title: '🔢 Quantity & Age',
+          description: '<strong>QTY</strong> — how many of this item. Click and type a number.<br><br><strong>Age Y / Age M</strong> — the item\'s age in years and months. The AI estimates this from wear and style visible in photos. You can correct it here.',
           side: 'bottom', align: 'center',
           nextBtnText: 'Next →',
         },
       },
+
+      // ── Step 11: Replacement value ────────────────────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:nth-child(11)',
+        popover: {
+          title: '💵 Replacement Value',
+          description: 'This is the <strong>most important column</strong> — today\'s retail replacement cost per item. The room total and grand total both derive from this.<br><br>If the AI\'s estimate is off, click and type the correct value. The totals update instantly.',
+          side: 'left', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 12: Action icons (right side of row) ─────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:last-child',
+        popover: {
+          title: '↗ Move & Delete — Right Side',
+          description: 'Two action icons on the far right of every row:<br><br><i class="fas fa-share" style="color:#667eea"></i> <strong>Share/Move icon</strong> — click to move this item to a different room. A menu appears with all rooms in the report.<br><br><i class="fas fa-times" style="color:#ef4444"></i> <strong>Delete icon</strong> — permanently removes this item from the room.',
+          side: 'left', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 13: Save button ──────────────────────────────────────────────
+      {
+        element: 'button[onclick^="saveRoom"]',
+        popover: {
+          title: '💾 Save Button — Important!',
+          description: 'After editing any items in a room, click <strong>Save</strong> to persist your changes.<br><br>When a room has <strong>unsaved edits</strong>, the Save button turns <span style="background:#fef3c7;border:1px solid #f59e0b;padding:2px 8px;border-radius:4px;font-size:.82rem;color:#92400e;"><i class="fas fa-exclamation-triangle"></i> Save</span> amber as a visual reminder.<br><br>After saving, it returns to green and shows "Saved ✓".',
+          side: 'bottom', align: 'end',
+          nextBtnText: 'Next →',
+        },
+        onNextClick: () => {
+          // Flash the save button amber to demonstrate the unsaved state
+          const saveBtn = document.querySelector('button[onclick^="saveRoom"]');
+          if (saveBtn) {
+            saveBtn.classList.add('save-dirty');
+            saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save';
+            setTimeout(() => {
+              saveBtn.classList.remove('save-dirty');
+              saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+            }, 2500);
+          }
+          sessionDriver.moveNext();
+        },
+      },
+
+      // ── Step 14: PDF download ──────────────────────────────────────────────
+      {
+        element: 'a[href*="export-pdf"]',
+        popover: {
+          title: '📕 Download PDF Report',
+          description: 'Click here to download the <strong>complete PPR Report as a PDF</strong>. The document is formatted and print-ready — one room per page, with totals, depreciation columns, and signature lines.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 15: Excel download ────────────────────────────────────────────
       {
         element: 'a[href*="export/"]:not([href*="pdf"])',
         popover: {
-          title: '📗 Export to Excel',
-          description: '<strong>Click here to download the Excel file.</strong> The spreadsheet includes all rooms and items with full pricing columns — useful for further editing, importing into other systems, or re-running a future session.',
+          title: '📗 Download Excel Report',
+          description: 'Click here to download the <strong>Excel spreadsheet</strong>. The file includes all rooms and items with full pricing columns — useful for further editing, importing into other systems, or re-sending to an adjuster.',
           side: 'bottom', align: 'center',
           nextBtnText: 'Finish tour ✓',
         },
       },
+
     ],
     onDestroyStarted: () => {
       sessionDriver.destroy();
