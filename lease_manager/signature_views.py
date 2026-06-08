@@ -41,6 +41,16 @@ DOCUMENT_TYPE_MAP = {
 
 DOCUMENT_NAMES = list(DOCUMENT_TYPE_MAP.keys())
 
+# Bundled static template fallbacks (version-controlled, always present on disk).
+# Used when an admin-uploaded Document.file is missing from the media volume —
+# this makes lease generation resilient to media-volume loss / fresh databases.
+# Paths are relative to docsAppR/templates/.
+STATIC_DOC_TEMPLATES = {
+    'Engagement Agreement':  'account/short_term.html',
+    'Term Sheet':            'account/term_sheet.html',
+    'Month to Month Rental': 'account/lease.html',
+}
+
 
 def _fmt_date(date_val):
     """Format a date or date-string as 'Month D, YYYY'."""
@@ -190,49 +200,79 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
 
     results = []
 
-    # ── Main documents from Document model templates ──────────────────────────
-    doc_templates = Document.objects.filter(name__in=DOCUMENT_NAMES)
-    found_names   = set(doc_templates.values_list('name', flat=True))
+    # ── Main documents ────────────────────────────────────────────────────────
+    # For each canonical lease document we resolve the template content in this
+    # priority order:
+    #   1. The admin-uploaded Document.file (if the record exists AND the file is
+    #      present on disk) — preserves any server-side customisations.
+    #   2. The bundled static repo template (always present, version-controlled)
+    #      — guarantees generation never fails just because the media volume
+    #      lost the uploaded files.
+    # We iterate the canonical DOCUMENT_NAMES (not the DB rows) so generation
+    # works even on a fresh database with zero Document records.
+    uploaded = {d.name: d for d in Document.objects.filter(name__in=DOCUMENT_NAMES)}
 
-    if not doc_templates.exists():
-        logger.warning('No Document template records found in DB for lease generation.')
-
-    for doc_obj in doc_templates:
-        result = {'doc_name': doc_obj.name, 'success': False, 'error': ''}
+    for doc_name in DOCUMENT_NAMES:
+        result   = {'doc_name': doc_name, 'success': False, 'error': ''}
+        doc_obj  = uploaded.get(doc_name)
+        source   = None
+        template_content = None
         try:
-            if not doc_obj.file:
-                result['error'] = 'No template file attached to Document record'
+            # 1. Prefer the admin-uploaded template, if it physically exists.
+            if doc_obj and doc_obj.file:
+                try:
+                    up_path = doc_obj.file.path
+                    if os.path.exists(up_path):
+                        with open(up_path, 'r', encoding='utf-8') as f:
+                            template_content = f.read()
+                        source = 'uploaded'
+                except (ValueError, OSError):
+                    template_content = None
+
+            # 2. Fall back to the bundled static template.
+            if template_content is None:
+                static_rel  = STATIC_DOC_TEMPLATES.get(doc_name)
+                static_path = (
+                    os.path.join(settings.BASE_DIR, 'docsAppR', 'templates', static_rel)
+                    if static_rel else None
+                )
+                if static_path and os.path.exists(static_path):
+                    with open(static_path, 'r', encoding='utf-8') as f:
+                        template_content = f.read()
+                    source = 'static'
+
+            if template_content is None:
+                result['error'] = (
+                    f'No template available for "{doc_name}" '
+                    f'(uploaded file missing and no static fallback found)'
+                )
                 results.append(result)
                 continue
 
-            template_path = doc_obj.file.path
-            if not os.path.exists(template_path):
-                result['error'] = f'Template file missing: {template_path}'
-                results.append(result)
-                continue
-
-            with open(template_path, 'r', encoding='utf-8') as f:
-                template_content = f.read()
-
-            ctx = Context({**context_base, 'document': doc_obj})
+            ctx       = Context({**context_base, 'document': doc_obj})
             html_str  = Template(template_content).render(ctx)
             pdf_bytes = WeasyHTML(string=html_str, base_url=base_url).write_pdf()
 
-            filename  = f"{doc_obj.name.replace(' ', '_')}_{client_slug}.pdf"
+            filename  = f"{doc_name.replace(' ', '_')}_{client_slug}.pdf"
             abs_path  = os.path.join(lease_dir, filename)
             rel_path  = f"lease_documents/{client_slug}/{filename}"
 
             with open(abs_path, 'wb') as f:
                 f.write(pdf_bytes)
 
-            doc_type = DOCUMENT_TYPE_MAP.get(doc_obj.name, 'engagement_agreement')
-            _upsert_lease_document(lease, doc_type, f"{doc_obj.name} - {client.pOwner}", rel_path)
+            doc_type = DOCUMENT_TYPE_MAP.get(doc_name, 'engagement_agreement')
+            _upsert_lease_document(lease, doc_type, f"{doc_name} - {client.pOwner}", rel_path)
 
-            result.update({'success': True, 'file_path': rel_path, 'doc_type': doc_type})
-            logger.info('Generated %s → %s', doc_obj.name, abs_path)
+            result.update({
+                'success':   True,
+                'file_path': rel_path,
+                'doc_type':  doc_type,
+                'source':    source,
+            })
+            logger.info('Generated %s (%s template) → %s', doc_name, source, abs_path)
 
         except Exception as exc:
-            logger.error('PDF generation failed for %s: %s', doc_obj.name, exc)
+            logger.error('PDF generation failed for %s: %s', doc_name, exc)
             result['error'] = str(exc)
 
         results.append(result)
@@ -353,8 +393,7 @@ def quick_generate_lease(request, client_id):
     if ok_count == 0 and results:
         messages.warning(
             request,
-            f'Lease record created but document templates were not found in the database. '
-            f'You can regenerate documents once the templates are loaded. '
+            f'Lease record created but no documents could be generated. '
             f'Error: {results[0].get("error", "unknown")}'
         )
     else:
@@ -394,8 +433,8 @@ def regenerate_documents(request, lease_id):
     if not results:
         return JsonResponse({
             'success': False,
-            'error': 'No Document template records found. '
-                     'Please ensure the 3 lease templates are uploaded in Admin → Documents.',
+            'error': 'No documents could be generated — no lease templates are available '
+                     '(neither uploaded nor bundled). Contact support.',
         })
 
     return JsonResponse({
