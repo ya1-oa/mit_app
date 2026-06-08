@@ -175,6 +175,7 @@ def _ale_to_lease_fields(client):
         'lease_end_date':   client.ale_rental_end_date,
         'rental_months':    _int(client.ale_rental_months, 12),
         'monthly_rent':     client.ale_rental_amount_per_month or 0,
+        'security_deposit': client.ale_rental_security_deposit or 0,
 
         # ── Real estate company ───────────────────────────────────────────
         'real_estate_company':     client.ale_re_company_name     or '',

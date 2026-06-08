@@ -695,6 +695,23 @@ def lease_update_terms(request, lease_id):
     lease.last_modified_by = request.user
     lease.save()
 
+    # ── Mirror the edited terms back to the Client's ALE data ────────────────
+    # The Client model is the source of truth for leasing data, so the fields
+    # that have an ALE home are written back. (Agreement date and the
+    # renewal / exclude toggles are lease-document options with no ALE field,
+    # so they live on the Lease only.)
+    client = lease.client
+    client.ale_rental_amount_per_month = lease.monthly_rent
+    client.ale_rental_security_deposit = lease.security_deposit
+    client.ale_rental_start_date       = lease.lease_start_date
+    client.ale_rental_end_date         = lease.lease_end_date
+    client.save(update_fields=[
+        'ale_rental_amount_per_month',
+        'ale_rental_security_deposit',
+        'ale_rental_start_date',
+        'ale_rental_end_date',
+    ])
+
     # Regenerate PDFs so the downloadable/sendable docs reflect the new terms.
     base_url = request.build_absolute_uri('/')
     results  = generate_lease_pdfs(lease, base_url=base_url)
