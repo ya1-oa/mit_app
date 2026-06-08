@@ -168,6 +168,16 @@ def _dec(val, default):
         return default
 
 
+def _int_or(val, default):
+    """Coerce val to int; fall back to default on blank/invalid."""
+    if val in (None, ''):
+        return default
+    try:
+        return int(float(str(val).strip().split()[0]))
+    except (ValueError, TypeError, IndexError):
+        return default
+
+
 def _bool(val, default):
     """Coerce a form/JSON value to bool; None → default."""
     if val is None:
@@ -206,6 +216,7 @@ def _build_lease_context(lease, overrides=None, preview=False):
     # Effective scalar values (override → lease)
     rent       = _dec(overrides.get('monthly_rent'),     lease.monthly_rent)
     deposit    = _dec(overrides.get('security_deposit'), lease.security_deposit)
+    months     = _int_or(overrides.get('rental_months'), lease.rental_months)
     is_renewal = _bool(overrides.get('is_renewal'),                lease.is_renewal)
     excl_sd    = _bool(overrides.get('exclude_security_deposit'),  lease.exclude_security_deposit)
     excl_if    = _bool(overrides.get('exclude_inspection_fee'),    lease.exclude_inspection_fee)
@@ -230,6 +241,7 @@ def _build_lease_context(lease, overrides=None, preview=False):
     landlord['term_start_date']          = start
     landlord['term_end_date']            = end
     landlord['lease_special_notes']      = notes
+    landlord['rental_months']            = months
 
     return {
         'client':                    lease.client,
@@ -457,18 +469,25 @@ def quick_generate_lease(request, client_id):
 
     client = get_object_or_404(Client, id=client_id)
 
-    # Don't create duplicates
+    # By default, don't create duplicates — jump to the existing lease. But a
+    # "New Lease / Renewal" action passes force=1 to deliberately create another
+    # lease for the same claim (e.g. a 3-month renewal with its own terms).
+    force_new = bool(request.POST.get('force') or request.GET.get('new'))
     existing = (
         Lease.objects.filter(client=client)
         .exclude(status='cancelled')
         .order_by('-created_at')
         .first()
     )
-    if existing:
+    if existing and not force_new:
         messages.info(request, f'Existing lease found for {client.pOwner}.')
         return redirect('lease_manager:lease_detail', lease_id=str(existing.id))
 
     ale_fields = _ale_to_lease_fields(client)
+    # An additional lease for a claim that already has one is, by default, a
+    # renewal — pre-tick the flag (the user can still toggle it on the page).
+    if existing:
+        ale_fields['is_renewal'] = True
     lease = Lease.objects.create(
         client=client,
         status='generated',
@@ -685,6 +704,8 @@ def lease_update_terms(request, lease_id):
         lease.monthly_rent = _dec(data.get('monthly_rent'), lease.monthly_rent)
     if 'security_deposit' in data:
         lease.security_deposit = _dec(data.get('security_deposit'), lease.security_deposit)
+    if 'rental_months' in data:
+        lease.rental_months = _int_or(data.get('rental_months'), lease.rental_months)
 
     start = _parse_date(data.get('lease_start_date'))
     if start:
@@ -706,21 +727,32 @@ def lease_update_terms(request, lease_id):
     lease.save()
 
     # ── Mirror the edited terms back to the Client's ALE data ────────────────
-    # The Client model is the source of truth for leasing data, so the fields
-    # that have an ALE home are written back. (Agreement date and the
-    # renewal / exclude toggles are lease-document options with no ALE field,
-    # so they live on the Lease only.)
+    # Only sync when this is the claim's ONLY active lease. Once a claim has more
+    # than one lease (e.g. a 3-month renewal alongside the original 12-month
+    # lease), the ALE has no single source of truth — so each lease stays fully
+    # independent and we do NOT write back. That keeps a short renewal from
+    # clobbering the original lease's term.
     client = lease.client
-    client.ale_rental_amount_per_month = lease.monthly_rent
-    client.ale_rental_security_deposit = lease.security_deposit
-    client.ale_rental_start_date       = lease.lease_start_date
-    client.ale_rental_end_date         = lease.lease_end_date
-    client.save(update_fields=[
-        'ale_rental_amount_per_month',
-        'ale_rental_security_deposit',
-        'ale_rental_start_date',
-        'ale_rental_end_date',
-    ])
+    other_active = (
+        Lease.objects.filter(client=client)
+        .exclude(status='cancelled')
+        .exclude(id=lease.id)
+        .exists()
+    )
+    synced = not other_active
+    if synced:
+        client.ale_rental_amount_per_month = lease.monthly_rent
+        client.ale_rental_security_deposit = lease.security_deposit
+        client.ale_rental_months           = str(lease.rental_months)
+        client.ale_rental_start_date       = lease.lease_start_date
+        client.ale_rental_end_date         = lease.lease_end_date
+        client.save(update_fields=[
+            'ale_rental_amount_per_month',
+            'ale_rental_security_deposit',
+            'ale_rental_months',
+            'ale_rental_start_date',
+            'ale_rental_end_date',
+        ])
 
     # Regenerate PDFs so the downloadable/sendable docs reflect the new terms.
     base_url = request.build_absolute_uri('/')
@@ -732,10 +764,11 @@ def lease_update_terms(request, lease_id):
         activity_type='generated',
         description=(
             f'Lease terms updated — rent ${lease.monthly_rent}, '
-            f'deposit ${lease.security_deposit}, '
+            f'deposit ${lease.security_deposit}, {lease.rental_months} month(s), '
             f'{lease.lease_start_date} → {lease.lease_end_date}'
             f'{" (renewal)" if lease.is_renewal else ""}. '
             f'{ok_count} document(s) regenerated.'
+            + ('' if synced else ' Terms kept independent (claim has multiple leases).')
         ),
         performed_by=request.user,
     )
@@ -745,7 +778,12 @@ def lease_update_terms(request, lease_id):
         'ok_count':         ok_count,
         'monthly_rent':     float(lease.monthly_rent),
         'security_deposit': float(lease.security_deposit),
-        'message':          f'Saved — {ok_count} document(s) regenerated.',
+        'rental_months':    lease.rental_months,
+        'synced_to_claim':  synced,
+        'message':          (
+            f'Saved — {ok_count} document(s) regenerated.'
+            + ('' if synced else ' (Independent terms — not synced to the claim, since it has multiple leases.)')
+        ),
     })
 
 

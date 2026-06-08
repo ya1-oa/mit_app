@@ -158,6 +158,10 @@
       <input type="number" step="0.01" min="0" class="form-control form-control-sm" id="edit-deposit" value="{{ lease.security_deposit|floatformat:2 }}">
     </div>
     <div class="field">
+      <label class="fld-label" for="edit-months"># of Months</label>
+      <input type="number" step="1" min="1" class="form-control form-control-sm" id="edit-months" value="{{ lease.rental_months }}">
+    </div>
+    <div class="field">
       <label class="fld-label" for="edit-agreement-date">Agreement Date</label>
       <input type="date" class="form-control form-control-sm" id="edit-agreement-date" value="{{ lease.lease_agreement_date|date:'Y-m-d' }}">
     </div>
@@ -343,6 +347,15 @@
         <a href="{% url 'lease_manager:lease_send_package' lease.id %}" class="btn btn-outline-secondary"><i class="bi bi-box-arrow-up me-2"></i>Send Document Package</a>
         <a href="/claims/{{ client.id }}/" class="btn btn-outline-secondary"><i class="bi bi-pencil me-2"></i>Edit ALE in Claims Manager</a>
         <hr class="my-1">
+        <form method="post" action="{% url 'lease_manager:quick_generate_lease' client.id %}" class="d-grid m-0"
+              onsubmit="return confirm('Create a SECOND lease for this claim? It starts from the claim’s data but you can give it its own term (e.g. a 3-month renewal) without affecting this one.');">
+          {% csrf_token %}
+          <input type="hidden" name="force" value="1">
+          <button type="submit" class="btn btn-outline-success">
+            <i class="bi bi-plus-circle me-2"></i>New Lease / Renewal for this Claim
+          </button>
+        </form>
+        <hr class="my-1">
         <button class="btn btn-outline-danger btn-sm" onclick="confirmDelete()"><i class="bi bi-trash me-2"></i>Delete This Lease</button>
       </div>
     </div>
@@ -483,6 +496,7 @@ function gatherOverrides() {
   return {
     monthly_rent:             document.getElementById('edit-rent').value,
     security_deposit:         document.getElementById('edit-deposit').value,
+    rental_months:            document.getElementById('edit-months').value,
     lease_agreement_date:     document.getElementById('edit-agreement-date').value,
     lease_start_date:         document.getElementById('edit-start-date').value,
     lease_end_date:           document.getElementById('edit-end-date').value,
@@ -596,7 +610,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderPreviews({});
 
   if (!TERMS_LOCKED) {
-    ['edit-rent','edit-deposit','edit-agreement-date','edit-start-date','edit-end-date','edit-special-notes'].forEach(id => {
+    ['edit-rent','edit-deposit','edit-months','edit-agreement-date','edit-start-date','edit-end-date','edit-special-notes'].forEach(id => {
       document.getElementById(id).addEventListener('input', onTermChanged);
     });
     ['edit-renewal','edit-exclude-sd','edit-exclude-if'].forEach(id => {
