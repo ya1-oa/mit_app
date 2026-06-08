@@ -779,19 +779,18 @@ def lease_update_terms(request, lease_id):
     lease.save()
 
     # ── Mirror the edited terms back to the Client's ALE data ────────────────
-    # Only sync when this is the claim's ONLY active lease. Once a claim has more
-    # than one lease (e.g. a 3-month renewal alongside the original 12-month
-    # lease), the ALE has no single source of truth — so each lease stays fully
-    # independent and we do NOT write back. That keeps a short renewal from
-    # clobbering the original lease's term.
+    # Only the ORIGINAL lease (the claim's oldest active lease) syncs its terms
+    # back to the claim. Renewals keep their own independent terms and never
+    # write back — so a 3-month renewal can't clobber the original's term, and
+    # editing the original still keeps the claim's ALE in sync.
     client = lease.client
-    other_active = (
+    original = (
         Lease.objects.filter(client=client)
         .exclude(status='cancelled')
-        .exclude(id=lease.id)
-        .exists()
+        .order_by('created_at')
+        .first()
     )
-    synced = not other_active
+    synced = original is not None and original.id == lease.id
     if synced:
         client.ale_rental_amount_per_month = lease.monthly_rent
         client.ale_rental_security_deposit = lease.security_deposit
@@ -820,7 +819,7 @@ def lease_update_terms(request, lease_id):
             f'{lease.lease_start_date} → {lease.lease_end_date}'
             f'{" (renewal)" if lease.is_renewal else ""}. '
             f'{ok_count} document(s) regenerated.'
-            + ('' if synced else ' Terms kept independent (claim has multiple leases).')
+            + ('' if synced else ' Renewal — terms kept independent (not synced to the claim).')
         ),
         performed_by=request.user,
     )
@@ -834,7 +833,7 @@ def lease_update_terms(request, lease_id):
         'synced_to_claim':  synced,
         'message':          (
             f'Saved — {ok_count} document(s) regenerated.'
-            + ('' if synced else ' (Independent terms — not synced to the claim, since it has multiple leases.)')
+            + ('' if synced else ' (Renewal — independent terms, not synced to the claim.)')
         ),
     })
 
