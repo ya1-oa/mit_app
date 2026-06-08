@@ -187,7 +187,16 @@ def _ale_to_lease_fields(client):
         'broker_phone': client.ale_re_owner_broker_phone or '',
         'broker_email': client.ale_re_owner_broker_email or '',
 
-        # ── Lessee summary (Lease model has no dedicated lessee fields) ───
+        # ── Lessee (tenant) — now dedicated model fields ──────────────────
+        'lessee_name':    client.ale_lessee_name           or client.pOwner or '',
+        'lessee_email':   client.ale_lessee_email          or client.cEmail  or '',
+        'lessee_phone':   client.ale_lessee_phone          or '',
+        'lessee_address': (
+            (client.ale_lessee_home_address or '') +
+            (' ' + client.ale_lessee_city_state_zip if client.ale_lessee_city_state_zip else '')
+        ).strip(),
+
+        # Keep the summary in special_notes too (backwards compat)
         'special_notes': lessee_summary,
     }
 

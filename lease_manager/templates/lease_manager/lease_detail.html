@@ -1,0 +1,491 @@
+{% extends "account/base.html" %}
+{% load humanize %}
+
+{% block title %}Lease — {{ lease.client.pOwner }}{% endblock %}
+
+{% block content %}
+<style>
+  /* ── Lease detail page ── */
+  .lease-hero {
+    background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+    border-radius: 1rem;
+    color: #fff;
+    padding: 2rem 2.5rem;
+    margin-bottom: 1.5rem;
+    position: relative;
+    overflow: hidden;
+  }
+  .lease-hero::before {
+    content: '';
+    position: absolute; inset: 0;
+    background: url("data:image/svg+xml,%3Csvg width='40' height='40' viewBox='0 0 40 40' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M0 40L40 0H20L0 20M40 40V20L20 40' fill='%23ffffff' fill-opacity='0.03'/%3E%3C/svg%3E");
+  }
+  .status-pill {
+    display: inline-flex; align-items: center; gap: .4rem;
+    padding: .35rem .9rem; border-radius: 99px; font-size: .8rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .04em;
+  }
+  /* Signature status cards */
+  .sig-card {
+    border-radius: .75rem; padding: 1.25rem 1.5rem;
+    display: flex; align-items: center; gap: 1rem;
+    border: 2px solid transparent; transition: border-color .2s;
+  }
+  .sig-card.pending  { background: #fefce8; border-color: #fde047; }
+  .sig-card.viewed   { background: #eff6ff; border-color: #60a5fa; }
+  .sig-card.signed   { background: #f0fdf4; border-color: #4ade80; }
+  .sig-card.declined { background: #fef2f2; border-color: #f87171; }
+  .sig-card.expired  { background: #f9fafb; border-color: #d1d5db; }
+  .sig-avatar {
+    width: 3rem; height: 3rem; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 1.4rem; flex-shrink: 0;
+  }
+  .sig-avatar.pending  { background: #fef9c3; }
+  .sig-avatar.viewed   { background: #dbeafe; }
+  .sig-avatar.signed   { background: #dcfce7; }
+  .sig-avatar.declined { background: #fee2e2; }
+  /* Signature thumb */
+  .sig-thumb {
+    max-height: 48px; max-width: 180px;
+    border: 1px solid #e5e7eb; border-radius: .375rem;
+    background: #fff; padding: 2px;
+  }
+  /* Activity feed */
+  .activity-dot {
+    width: .65rem; height: .65rem; border-radius: 50%;
+    background: #60a5fa; flex-shrink: 0; margin-top: .35rem;
+  }
+  /* Info grid */
+  .info-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  @media (max-width: 768px) { .info-grid { grid-template-columns: 1fr; } }
+  .info-card {
+    background: #f8fafc; border: 1px solid #e2e8f0;
+    border-radius: .75rem; padding: 1.25rem;
+  }
+  .info-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; color: #94a3b8; font-weight: 600; }
+  .info-value { font-size: .95rem; color: #1e293b; font-weight: 500; margin-top: .15rem; }
+  /* Send signature modal */
+  .signer-row { display: flex; align-items: center; gap .75rem; padding: .75rem; border-radius: .5rem; background: #f8fafc; margin-bottom: .5rem; }
+  .signer-check { width: 1.15rem; height: 1.15rem; flex-shrink: 0; }
+</style>
+
+{# ── Breadcrumb ─────────────────────────────────────────────────────────── #}
+<nav aria-label="breadcrumb" class="mb-3">
+  <ol class="breadcrumb">
+    <li class="breadcrumb-item"><a href="{% url 'lease_manager:lease_manager' %}">Lease Manager</a></li>
+    <li class="breadcrumb-item active">{{ lease.client.pOwner }}</li>
+  </ol>
+</nav>
+
+{# ── Hero banner ────────────────────────────────────────────────────────── #}
+<div class="lease-hero">
+  <div class="d-flex justify-content-between align-items-start flex-wrap gap-3" style="position:relative;z-index:1;">
+    <div>
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <span class="fs-5 fw-bold">{{ lease.client.pOwner }}</span>
+        <span class="status-pill bg-{{ lease.get_status_color }} bg-opacity-20 border border-{{ lease.get_status_color }} text-{{ lease.get_status_color }}">
+          {{ lease.get_status_display }}
+        </span>
+      </div>
+      <div class="text-white-50 small">
+        {{ lease.property_address }}{% if lease.property_city %}, {{ lease.property_city }}{% endif %}{% if lease.property_state %} {{ lease.property_state }}{% endif %}{% if lease.property_zip %} {{ lease.property_zip }}{% endif %}
+      </div>
+      <div class="mt-2 d-flex gap-3 flex-wrap" style="font-size:.85rem;">
+        <span><i class="bi bi-calendar3"></i> {{ lease.lease_start_date|default:"TBD" }} → {{ lease.lease_end_date|default:"TBD" }}</span>
+        <span><i class="bi bi-currency-dollar"></i> ${{ lease.monthly_rent|intcomma }}/mo</span>
+        <span><i class="bi bi-house-door"></i> {{ lease.bedrooms }} bed{{ lease.bedrooms|pluralize }}</span>
+      </div>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      {% if can_send %}
+      <button class="btn btn-primary" onclick="openSendModal()">
+        <i class="bi bi-pen me-1"></i> Send for Signature
+      </button>
+      {% endif %}
+      <a href="{% url 'lease_manager:lease_send_package' lease.id %}" class="btn btn-outline-light btn-sm">
+        <i class="bi bi-envelope me-1"></i> Email Package
+      </a>
+    </div>
+  </div>
+</div>
+
+{# Django messages #}
+{% for msg in messages %}
+<div class="alert alert-{{ msg.tags }} alert-dismissible fade show" role="alert">
+  {{ msg }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+</div>
+{% endfor %}
+
+<div class="row g-4">
+
+  {# ── Left column ─────────────────────────────────────────────────────── #}
+  <div class="col-lg-7">
+
+    {# Signatures Status Section #}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+        <div class="d-flex justify-content-between align-items-center">
+          <h5 class="mb-0 fw-semibold"><i class="bi bi-pen-fill text-primary me-2"></i>Signatures Status</h5>
+          {% if all_signed %}
+            <span class="badge bg-success">All Signed</span>
+          {% else %}
+            <span class="badge bg-warning text-dark">{{ sig_requests|length }} signer{{ sig_requests|length|pluralize }}</span>
+          {% endif %}
+        </div>
+      </div>
+      <div class="card-body p-4">
+        {% if sig_requests %}
+          {% for sr in sig_requests %}
+          <div class="sig-card {{ sr.status }} mb-3">
+            <div class="sig-avatar {{ sr.status }}">
+              {% if sr.status == 'signed' %}✅
+              {% elif sr.status == 'declined' %}❌
+              {% elif sr.status == 'viewed' %}👁
+              {% elif sr.status == 'expired' %}⌛
+              {% else %}⏳{% endif %}
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-semibold" style="font-size:.9rem;">{{ sr.signer_name }}</div>
+              <div class="text-muted" style="font-size:.8rem;">
+                {{ sr.get_signer_role_display }} &bull; {{ sr.signer_email }}
+              </div>
+              {% if sr.signed_at %}
+              <div class="text-success" style="font-size:.75rem; margin-top:.25rem;">
+                <i class="bi bi-check-circle-fill"></i> Signed {{ sr.signed_at|date:"M d, Y g:i A" }}
+              </div>
+              {% elif sr.declined_at %}
+              <div class="text-danger" style="font-size:.75rem; margin-top:.25rem;">
+                <i class="bi bi-x-circle-fill"></i> Declined {{ sr.declined_at|date:"M d, Y g:i A" }}
+              </div>
+              {% elif sr.viewed_at %}
+              <div class="text-info" style="font-size:.75rem; margin-top:.25rem;">
+                <i class="bi bi-eye-fill"></i> Viewed {{ sr.viewed_at|date:"M d, Y g:i A" }} — awaiting signature
+              </div>
+              {% else %}
+              <div class="text-warning" style="font-size:.75rem; margin-top:.25rem;">
+                <i class="bi bi-clock"></i> Email sent {{ sr.sent_at|date:"M d, Y" }} — not yet opened
+              </div>
+              {% endif %}
+            </div>
+            {% if sr.signature_image %}
+            <div>
+              <img src="{{ sr.signature_image }}" class="sig-thumb" alt="Signature">
+            </div>
+            {% endif %}
+          </div>
+          {% endfor %}
+        {% else %}
+          <div class="text-center py-4 text-muted">
+            <i class="bi bi-pen" style="font-size:2rem; opacity:.3; display:block; margin-bottom:.5rem;"></i>
+            No signature requests sent yet.<br>
+            <small>Click "Send for Signature" above to get started.</small>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# Lease Terms #}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-file-text text-primary me-2"></i>Lease Terms</h5>
+      </div>
+      <div class="card-body p-4">
+        <div class="info-grid">
+          <div class="info-card">
+            <div class="info-label">Property Address</div>
+            <div class="info-value">{{ lease.property_address }}</div>
+            {% if lease.property_city %}<div class="text-muted small">{{ lease.property_city }}, {{ lease.property_state }} {{ lease.property_zip }}</div>{% endif %}
+          </div>
+          <div class="info-card">
+            <div class="info-label">Bedrooms</div>
+            <div class="info-value">{{ lease.bedrooms }}</div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Monthly Rent</div>
+            <div class="info-value">${{ lease.monthly_rent|intcomma }}</div>
+          </div>
+          <div class="info-card">
+            <div class="info-label">Lease Term</div>
+            <div class="info-value">{{ lease.rental_months }} months</div>
+            <div class="text-muted small">{{ lease.lease_start_date|default:"TBD" }} → {{ lease.lease_end_date|default:"TBD" }}</div>
+          </div>
+          {% if not lease.exclude_security_deposit %}
+          <div class="info-card">
+            <div class="info-label">Security Deposit</div>
+            <div class="info-value">${{ lease.security_deposit|intcomma }}</div>
+          </div>
+          {% endif %}
+          <div class="info-card">
+            <div class="info-label">Late Fee</div>
+            <div class="info-value">${{ lease.late_fee }} after day {{ lease.late_fee_start_day }}</div>
+          </div>
+        </div>
+
+        <hr class="my-3">
+
+        {# Tenant / Landlord / RE Company side-by-side #}
+        <div class="row g-3">
+          <div class="col-md-4">
+            <div class="info-label mb-1">Tenant (Lessee)</div>
+            <div class="fw-semibold">{{ lease.lessee_name|default:"—" }}</div>
+            <div class="text-muted small">{{ lease.lessee_email|default:"" }}</div>
+            <div class="text-muted small">{{ lease.lessee_phone|default:"" }}</div>
+          </div>
+          <div class="col-md-4">
+            <div class="info-label mb-1">Landlord (Lessor)</div>
+            <div class="fw-semibold">{{ lease.lessor_name|default:"—" }}</div>
+            <div class="text-muted small">{{ lease.lessor_email|default:"" }}</div>
+            <div class="text-muted small">{{ lease.lessor_phone|default:"" }}</div>
+          </div>
+          {% if lease.real_estate_company %}
+          <div class="col-md-4">
+            <div class="info-label mb-1">Real Estate Company</div>
+            <div class="fw-semibold">{{ lease.real_estate_company }}</div>
+            <div class="text-muted small">{{ lease.company_email|default:"" }}</div>
+            <div class="text-muted small">{{ lease.company_phone|default:"" }}</div>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if lease.special_notes %}
+        <div class="mt-3 p-3 bg-amber-50 rounded" style="background:#fefce8; border-left:3px solid #fbbf24;">
+          <div class="info-label mb-1">Special Notes</div>
+          <div style="font-size:.875rem; white-space: pre-line;">{{ lease.special_notes }}</div>
+        </div>
+        {% endif %}
+
+        <div class="mt-3 text-muted" style="font-size:.75rem;">
+          To update any of these values, edit the ALE fields on the <a href="/claims/{{ client.id }}/">claim record</a> and re-generate.
+        </div>
+      </div>
+    </div>
+
+    {# Documents #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-bottom-0 pt-4 pb-0 px-4">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Documents</h5>
+      </div>
+      <div class="card-body p-4">
+        {% if docs %}
+        <div class="list-group list-group-flush">
+          {% for doc in docs %}
+          <div class="list-group-item d-flex justify-content-between align-items-center px-0">
+            <span><i class="bi bi-file-earmark me-2 text-muted"></i>{{ doc.document_name }}</span>
+            <div>
+              <a href="{% url 'lease_manager:view_lease_document' doc.id %}" class="btn btn-sm btn-outline-secondary me-1" target="_blank">
+                <i class="bi bi-eye"></i>
+              </a>
+              <a href="{% url 'lease_manager:download_lease_document' doc.id %}" class="btn btn-sm btn-outline-primary">
+                <i class="bi bi-download"></i>
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0">No documents generated yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>{# /left col #}
+
+  {# ── Right column ─────────────────────────────────────────────────────── #}
+  <div class="col-lg-5">
+
+    {# Quick actions #}
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-body p-3 d-grid gap-2">
+        {% if can_send %}
+        <button class="btn btn-primary" onclick="openSendModal()">
+          <i class="bi bi-send me-2"></i>Send for Signature
+        </button>
+        {% endif %}
+        <a href="{% url 'lease_manager:demand_letter_compose' lease.id %}" class="btn btn-outline-secondary">
+          <i class="bi bi-envelope-open me-2"></i>Compose Demand Letter
+        </a>
+        <a href="{% url 'lease_manager:lease_send_package' lease.id %}" class="btn btn-outline-secondary">
+          <i class="bi bi-box-arrow-up me-2"></i>Send Document Package
+        </a>
+        <a href="/claims/{{ client.id }}/" class="btn btn-outline-secondary">
+          <i class="bi bi-pencil me-2"></i>Edit ALE in Claims Manager
+        </a>
+      </div>
+    </div>
+
+    {# Activity feed #}
+    <div class="card border-0 shadow-sm">
+      <div class="card-header bg-white border-bottom-0 pt-4 pb-2 px-4">
+        <h5 class="mb-0 fw-semibold"><i class="bi bi-clock-history text-primary me-2"></i>Activity</h5>
+      </div>
+      <div class="card-body px-4 pt-2 pb-4">
+        {% if activities %}
+        <div class="d-flex flex-column gap-3">
+          {% for act in activities %}
+          <div class="d-flex gap-3">
+            <div class="activity-dot mt-1"></div>
+            <div>
+              <div style="font-size:.85rem;">{{ act.description }}</div>
+              <div class="text-muted" style="font-size:.75rem;">{{ act.created_at|date:"M d, Y g:i A" }}{% if act.performed_by %} &bull; {{ act.performed_by.get_full_name|default:act.performed_by.email }}{% endif %}</div>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% else %}
+        <p class="text-muted mb-0 small">No activity yet.</p>
+        {% endif %}
+      </div>
+    </div>
+
+  </div>
+</div>
+
+{# ── Send for Signature Modal ───────────────────────────────────────────── #}
+<div class="modal fade" id="sendSigModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header border-0 pb-0">
+        <h5 class="modal-title fw-semibold"><i class="bi bi-pen-fill text-primary me-2"></i>Send for Signature</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body px-4">
+        <p class="text-muted small mb-3">
+          Each checked party will receive an email with a secure, one-time signing link. Links expire in 7 days.
+        </p>
+
+        <div id="signer-rows">
+          {# Tenant #}
+          {% if lease.lessee_name or lease.lessee_email %}
+          <div class="signer-row mb-2 p-3 rounded" style="background:#f8fafc; border:1px solid #e2e8f0;">
+            <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
+              <input class="form-check-input" type="checkbox" id="chk-tenant" checked style="width:2.5em; height:1.25em;">
+              <div class="flex-grow-1">
+                <label class="form-check-label fw-semibold d-block" for="chk-tenant">
+                  <i class="bi bi-person me-1 text-primary"></i>Tenant / Lessee
+                </label>
+                <div class="row g-1 mt-1">
+                  <div class="col-6"><input class="form-control form-control-sm" id="tenant-name"  value="{{ lease.lessee_name|default:'' }}" placeholder="Name"></div>
+                  <div class="col-6"><input class="form-control form-control-sm" id="tenant-email" value="{{ lease.lessee_email|default:'' }}" placeholder="Email"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
+          {# Landlord #}
+          {% if lease.lessor_name or lease.lessor_email %}
+          <div class="signer-row mb-2 p-3 rounded" style="background:#f8fafc; border:1px solid #e2e8f0;">
+            <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
+              <input class="form-check-input" type="checkbox" id="chk-landlord" checked style="width:2.5em; height:1.25em;">
+              <div class="flex-grow-1">
+                <label class="form-check-label fw-semibold d-block" for="chk-landlord">
+                  <i class="bi bi-building me-1 text-warning"></i>Landlord / Lessor
+                </label>
+                <div class="row g-1 mt-1">
+                  <div class="col-6"><input class="form-control form-control-sm" id="landlord-name"  value="{{ lease.lessor_name|default:'' }}" placeholder="Name"></div>
+                  <div class="col-6"><input class="form-control form-control-sm" id="landlord-email" value="{{ lease.lessor_email|default:'' }}" placeholder="Email"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+
+          {# RE Company #}
+          {% if lease.real_estate_company or lease.company_email %}
+          <div class="signer-row mb-2 p-3 rounded" style="background:#f8fafc; border:1px solid #e2e8f0;">
+            <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
+              <input class="form-check-input" type="checkbox" id="chk-re" style="width:2.5em; height:1.25em;">
+              <div class="flex-grow-1">
+                <label class="form-check-label fw-semibold d-block" for="chk-re">
+                  <i class="bi bi-briefcase me-1 text-success"></i>Real Estate Company
+                </label>
+                <div class="row g-1 mt-1">
+                  <div class="col-6"><input class="form-control form-control-sm" id="re-name"  value="{{ lease.real_estate_company|default:'' }}" placeholder="Contact Name"></div>
+                  <div class="col-6"><input class="form-control form-control-sm" id="re-email" value="{{ lease.company_email|default:'' }}" placeholder="Email"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        <div id="sig-send-error" class="alert alert-danger d-none mt-2"></div>
+      </div>
+      <div class="modal-footer border-0">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="send-sig-btn" onclick="submitSendForSignature()">
+          <span id="send-sig-spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+          <i class="bi bi-send me-1"></i> Send Emails
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+function openSendModal() {
+  const m = new bootstrap.Modal(document.getElementById('sendSigModal'));
+  m.show();
+}
+
+async function submitSendForSignature() {
+  const btn = document.getElementById('send-sig-btn');
+  const spinner = document.getElementById('send-sig-spinner');
+  const errEl = document.getElementById('sig-send-error');
+  errEl.classList.add('d-none');
+
+  const signers = [];
+
+  if (document.getElementById('chk-tenant')?.checked) {
+    const name  = document.getElementById('tenant-name')?.value.trim();
+    const email = document.getElementById('tenant-email')?.value.trim();
+    if (name && email) signers.push({ role: 'tenant', name, email });
+  }
+  if (document.getElementById('chk-landlord')?.checked) {
+    const name  = document.getElementById('landlord-name')?.value.trim();
+    const email = document.getElementById('landlord-email')?.value.trim();
+    if (name && email) signers.push({ role: 'landlord', name, email });
+  }
+  if (document.getElementById('chk-re')?.checked) {
+    const name  = document.getElementById('re-name')?.value.trim();
+    const email = document.getElementById('re-email')?.value.trim();
+    if (name && email) signers.push({ role: 're_company', name, email });
+  }
+
+  if (!signers.length) {
+    errEl.textContent = 'Please check at least one signer with a name and email.';
+    errEl.classList.remove('d-none');
+    return;
+  }
+
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+
+  try {
+    const res = await fetch('{% url "lease_manager:send_for_signature" lease.id %}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': '{{ csrf_token }}',
+      },
+      body: JSON.stringify({ signers }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      bootstrap.Modal.getInstance(document.getElementById('sendSigModal')).hide();
+      location.reload();
+    } else {
+      errEl.textContent = data.error || 'Something went wrong.';
+      errEl.classList.remove('d-none');
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error. Please try again.';
+    errEl.classList.remove('d-none');
+  } finally {
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+  }
+}
+</script>
+{% endblock %}

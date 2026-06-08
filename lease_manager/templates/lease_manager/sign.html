@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Lease — {{ lease.property_address }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <style>
+    :root {
+      --brand: #2563eb;
+      --brand-dark: #1d4ed8;
+    }
+    body { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    /* Header */
+    .sign-header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #fff; padding: 1.5rem 2rem; display: flex; align-items: center; gap: 1rem;
+    }
+    .sign-header .logo-mark {
+      width: 2.5rem; height: 2.5rem; background: var(--brand);
+      border-radius: .5rem; display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 1.1rem; flex-shrink: 0;
+    }
+
+    /* Document summary card */
+    .doc-summary {
+      background: #fff; border-radius: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      padding: 2rem; margin-bottom: 1.5rem;
+    }
+    .doc-field { margin-bottom: .6rem; }
+    .doc-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; font-weight: 600; }
+    .doc-value { font-size: .95rem; color: #1e293b; font-weight: 500; }
+
+    /* Signature area */
+    .sig-area {
+      background: #fff; border-radius: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      padding: 2rem; margin-bottom: 1.5rem;
+    }
+    .canvas-wrapper {
+      position: relative;
+      border: 2px dashed #cbd5e1; border-radius: .75rem;
+      background: #fff; overflow: hidden;
+      cursor: crosshair; transition: border-color .2s;
+    }
+    .canvas-wrapper:hover, .canvas-wrapper.active { border-color: var(--brand); }
+    .canvas-wrapper .placeholder-text {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #cbd5e1; font-size: 1rem; pointer-events: none; transition: opacity .2s;
+    }
+    canvas#sig-canvas { display: block; width: 100%; height: 200px; touch-action: none; }
+
+    /* Role badge */
+    .role-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: #eff6ff; color: var(--brand); border: 1px solid #bfdbfe;
+      border-radius: 99px; padding: .3rem .85rem; font-size: .8rem; font-weight: 600;
+    }
+
+    /* Sign button */
+    .btn-sign {
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+      color: #fff; border: none; border-radius: .75rem; padding: .9rem 2rem;
+      font-size: 1rem; font-weight: 600; width: 100%; letter-spacing: .02em;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 4px 15px rgba(37,99,235,.35);
+    }
+    .btn-sign:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,.45); color: #fff; }
+    .btn-sign:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* Legal text */
+    .legal-box {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .75rem;
+      padding: 1rem 1.25rem; font-size: .78rem; color: #64748b; margin-bottom: 1.25rem;
+    }
+
+    /* Decline link */
+    .decline-btn { color: #ef4444; font-size: .8rem; text-decoration: none; cursor: pointer; }
+    .decline-btn:hover { text-decoration: underline; }
+
+    /* Error alert */
+    #sign-error { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="sign-header">
+  <div class="logo-mark">C</div>
+  <div>
+    <div class="fw-bold" style="font-size:1.05rem;">Claimet — Electronic Signature</div>
+    <div style="font-size:.8rem; opacity:.65;">Secure &bull; ESIGN Act Compliant &bull; Legally Binding</div>
+  </div>
+</div>
+
+<div class="container" style="max-width: 680px; padding: 2rem 1rem;">
+
+  {# Your role #}
+  <div class="mb-4 text-center">
+    <div class="role-badge">
+      <i class="bi bi-person-fill"></i>
+      Signing as: {{ sig_req.get_signer_role_display }}
+    </div>
+    <div class="mt-2 text-muted" style="font-size:.85rem;">
+      Hi <strong>{{ sig_req.signer_name }}</strong> — please review the details below and sign.
+    </div>
+  </div>
+
+  {# Document summary #}
+  <div class="doc-summary">
+    <h5 class="fw-semibold mb-3"><i class="bi bi-file-earmark-text text-primary me-2"></i>Lease Agreement Summary</h5>
+    <div class="row g-3">
+      <div class="col-6">
+        <div class="doc-label">Property Address</div>
+        <div class="doc-value">{{ lease.property_address }}</div>
+        {% if lease.property_city %}
+        <div style="font-size:.8rem; color:#64748b;">{{ lease.property_city }}, {{ lease.property_state }} {{ lease.property_zip }}</div>
+        {% endif %}
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Bedrooms</div>
+        <div class="doc-value">{{ lease.bedrooms }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Monthly Rent</div>
+        <div class="doc-value">${{ lease.monthly_rent }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Lease Term</div>
+        <div class="doc-value">{{ lease.rental_months }} months</div>
+        <div style="font-size:.8rem; color:#64748b;">{{ lease.lease_start_date|default:"TBD" }} → {{ lease.lease_end_date|default:"TBD" }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Tenant</div>
+        <div class="doc-value">{{ lease.lessee_name|default:client.pOwner }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Landlord</div>
+        <div class="doc-value">{{ lease.lessor_name|default:"—" }}</div>
+      </div>
+      {% if lease.real_estate_company %}
+      <div class="col-12">
+        <div class="doc-label">Real Estate Company</div>
+        <div class="doc-value">{{ lease.real_estate_company }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Signature area #}
+  <div class="sig-area">
+    <h5 class="fw-semibold mb-1"><i class="bi bi-vector-pen text-primary me-2"></i>Your Signature</h5>
+    <p class="text-muted mb-3" style="font-size:.85rem;">Draw your signature in the box below using your mouse, stylus, or finger.</p>
+
+    <div class="canvas-wrapper mb-3" id="canvas-wrapper">
+      <canvas id="sig-canvas"></canvas>
+      <div class="placeholder-text" id="canvas-placeholder">
+        <span><i class="bi bi-pen me-2"></i>Sign here</span>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2 mb-4">
+      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSignature()">
+        <i class="bi bi-arrow-counterclockwise me-1"></i>Clear
+      </button>
+    </div>
+
+    {# Typed name confirmation #}
+    <div class="mb-4">
+      <label class="form-label fw-semibold" for="typed-name">
+        Type your full legal name to confirm identity
+      </label>
+      <input type="text" class="form-control" id="typed-name"
+             placeholder="e.g. Jane Smith"
+             autocomplete="name" spellcheck="false">
+      <div class="form-text">Must match: <strong>{{ sig_req.signer_name }}</strong></div>
+    </div>
+
+    {# Legal consent #}
+    <div class="legal-box mb-4">
+      <p class="mb-2">
+        <strong>Electronic Signature Consent</strong><br>
+        By checking the box below and clicking "Sign Document," you agree that your electronic signature
+        is the legal equivalent of your handwritten signature on this lease agreement. This consent is
+        governed by the Electronic Signatures in Global and National Commerce Act (ESIGN) and the Uniform
+        Electronic Transactions Act (UETA).
+      </p>
+      <p class="mb-0" style="color:#94a3b8;">
+        Your signature, IP address, and a timestamp will be recorded as part of the legal signing record.
+      </p>
+    </div>
+
+    <div class="form-check mb-4">
+      <input class="form-check-input" type="checkbox" id="agree-esign" style="width:1.15em; height:1.15em;">
+      <label class="form-check-label" for="agree-esign" style="font-size:.9rem;">
+        I understand and agree to sign this lease electronically
+      </label>
+    </div>
+
+    <div id="sign-error" class="alert alert-danger mb-3" role="alert"></div>
+
+    <button class="btn-sign" id="sign-btn" onclick="submitSignature()">
+      <span id="sign-spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+      <i class="bi bi-check-circle-fill me-2"></i>Sign Document
+    </button>
+
+    <div class="text-center mt-3">
+      <a class="decline-btn" onclick="declineSignature()">
+        <i class="bi bi-x-circle me-1"></i>I decline to sign this document
+      </a>
+    </div>
+  </div>
+
+  <div class="text-center text-muted" style="font-size:.72rem; padding-bottom:2rem;">
+    This signing link is unique to you and expires {{ sig_req.expires_at|date:"F j, Y" }}.
+    &bull; Powered by Claimet
+  </div>
+
+</div>{# /container #}
+
+{# Decline confirmation modal #}
+<div class="modal fade" id="declineModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-body text-center p-4">
+        <div style="font-size:2.5rem; margin-bottom:.75rem;">⚠️</div>
+        <h5 class="fw-semibold">Decline to sign?</h5>
+        <p class="text-muted mb-4" style="font-size:.85rem;">
+          If you decline, the lease manager will be notified. You can still sign later if you change your mind.
+        </p>
+        <div class="d-grid gap-2">
+          <button class="btn btn-danger" onclick="confirmDecline()">Yes, I Decline</button>
+          <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Go Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Signature pad setup ──────────────────────────────────────────────────────
+const canvas  = document.getElementById('sig-canvas');
+const wrapper = document.getElementById('canvas-wrapper');
+const placeholder = document.getElementById('canvas-placeholder');
+
+function resizeCanvas() {
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  const w = canvas.offsetWidth;
+  const h = 200;
+  canvas.width  = w * ratio;
+  canvas.height = h * ratio;
+  canvas.getContext('2d').scale(ratio, ratio);
+  canvas.style.height = h + 'px';
+  pad.clear();
+}
+
+const pad = new SignaturePad(canvas, {
+  backgroundColor: 'rgb(255,255,255)',
+  penColor: '#1e293b',
+  minWidth: 1.5,
+  maxWidth: 3.5,
+});
+
+pad.addEventListener('beginStroke', () => {
+  wrapper.classList.add('active');
+  placeholder.style.opacity = '0';
+});
+pad.addEventListener('endStroke', () => {
+  if (pad.isEmpty()) placeholder.style.opacity = '1';
+});
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function clearSignature() {
+  pad.clear();
+  placeholder.style.opacity = '1';
+  wrapper.classList.remove('active');
+}
+
+// ── Sign submit ──────────────────────────────────────────────────────────────
+async function submitSignature() {
+  const errEl   = document.getElementById('sign-error');
+  const btn     = document.getElementById('sign-btn');
+  const spinner = document.getElementById('sign-spinner');
+  errEl.style.display = 'none';
+
+  if (pad.isEmpty()) {
+    errEl.textContent = 'Please draw your signature above.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const typedName = document.getElementById('typed-name').value.trim();
+  if (!typedName) {
+    errEl.textContent = 'Please type your full legal name.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  const agreed = document.getElementById('agree-esign').checked;
+  if (!agreed) {
+    errEl.textContent = 'Please check the consent box to proceed.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+
+  const sigImage = pad.toDataURL('image/png');
+
+  try {
+    const res = await fetch('{% url "lease_manager:sign_submit" sig_req.token %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signature_image: sigImage,
+        typed_name:      typedName,
+        agreed:          true,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      window.location.href = data.redirect;
+    } else {
+      errEl.textContent = data.error || 'Something went wrong. Please try again.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      spinner.classList.add('d-none');
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error. Please check your connection and try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+  }
+}
+
+// ── Decline ──────────────────────────────────────────────────────────────────
+function declineSignature() {
+  new bootstrap.Modal(document.getElementById('declineModal')).show();
+}
+
+async function confirmDecline() {
+  try {
+    const res = await fetch('{% url "lease_manager:sign_decline" sig_req.token %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data.redirect) window.location.href = data.redirect;
+  } catch (e) {
+    alert('Error recording your decline. Please try again.');
+  }
+}
+</script>
+</body>
+</html>

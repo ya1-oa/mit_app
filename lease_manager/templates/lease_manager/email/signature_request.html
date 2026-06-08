@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin:0; padding:0; background:#f1f5f9; font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0">
+    <tr>
+      <td align="center" style="padding:2rem 1rem;">
+        <table width="100%" style="max-width:580px; background:#fff; border-radius:12px; overflow:hidden; box-shadow:0 2px 16px rgba(0,0,0,.08);">
+
+          {# Header #}
+          <tr>
+            <td style="background:linear-gradient(135deg,#1e293b 0%,#0f172a 100%); padding:2rem 2rem 1.5rem; text-align:center;">
+              <div style="display:inline-block; background:#2563eb; border-radius:8px; width:44px; height:44px; line-height:44px; font-size:1.2rem; font-weight:900; color:#fff; margin-bottom:.75rem;">C</div>
+              <div style="color:#fff; font-size:1.1rem; font-weight:700; margin-bottom:.25rem;">Action Required: Please Sign</div>
+              <div style="color:rgba(255,255,255,.6); font-size:.8rem;">Electronic Signature Request from Claimet</div>
+            </td>
+          </tr>
+
+          {# Body #}
+          <tr>
+            <td style="padding:2rem 2rem 1.5rem;">
+
+              <p style="color:#1e293b; margin:0 0 1rem;">Hi <strong>{{ sig_req.signer_name }}</strong>,</p>
+              <p style="color:#475569; margin:0 0 1.5rem;">
+                You have a lease agreement to review and sign. Please click the button below to view the document and add your electronic signature.
+              </p>
+
+              {# Lease details box #}
+              <table width="100%" style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:8px; padding:0; margin-bottom:1.5rem; overflow:hidden;">
+                <tr>
+                  <td style="padding:1rem 1.25rem;">
+                    <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; font-weight:600; margin-bottom:.25rem;">Property Address</div>
+                    <div style="color:#1e293b; font-weight:600; margin-bottom:.75rem;">{{ lease.property_address }}{% if lease.property_city %}, {{ lease.property_city }}{% endif %}{% if lease.property_state %} {{ lease.property_state }}{% endif %}</div>
+
+                    <div style="display:grid; grid-template-columns:1fr 1fr; gap:1rem;">
+                      <div>
+                        <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; font-weight:600; margin-bottom:.2rem;">Your Role</div>
+                        <div style="color:#1e293b; font-weight:500;">{{ sig_req.get_signer_role_display }}</div>
+                      </div>
+                      <div>
+                        <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; font-weight:600; margin-bottom:.2rem;">Monthly Rent</div>
+                        <div style="color:#1e293b; font-weight:500;">${{ lease.monthly_rent }}</div>
+                      </div>
+                      <div>
+                        <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; font-weight:600; margin-bottom:.2rem;">Lease Start</div>
+                        <div style="color:#1e293b; font-weight:500;">{{ lease.lease_start_date|default:"TBD" }}</div>
+                      </div>
+                      <div>
+                        <div style="font-size:.7rem; text-transform:uppercase; letter-spacing:.06em; color:#94a3b8; font-weight:600; margin-bottom:.2rem;">Lease End</div>
+                        <div style="color:#1e293b; font-weight:500;">{{ lease.lease_end_date|default:"TBD" }}</div>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              </table>
+
+              {# CTA Button #}
+              <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:1.5rem;">
+                <tr>
+                  <td align="center">
+                    <a href="{{ signing_url }}"
+                       style="display:inline-block; background:linear-gradient(135deg,#2563eb,#1d4ed8); color:#fff; text-decoration:none; border-radius:10px; padding:1rem 2.5rem; font-size:1rem; font-weight:700; letter-spacing:.02em; box-shadow:0 4px 14px rgba(37,99,235,.35);">
+                      ✍️ Sign Document Now
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              {# Expiry notice #}
+              <div style="background:#fefce8; border:1px solid #fde047; border-radius:8px; padding:.875rem 1rem; margin-bottom:1.25rem; font-size:.82rem; color:#854d0e;">
+                <strong>⏰ Link expires {{ sig_req.expires_at|date:"F j, Y" }}.</strong>
+                After this date the link will no longer work and you will need to request a new one.
+              </div>
+
+              {# Fallback URL #}
+              <p style="font-size:.78rem; color:#94a3b8; margin:0 0 1rem;">
+                Button not working? Copy and paste this link into your browser:<br>
+                <span style="color:#2563eb; word-break:break-all;">{{ signing_url }}</span>
+              </p>
+
+              <p style="font-size:.78rem; color:#94a3b8; margin:0;">
+                If you did not expect this email or believe it was sent in error, please contact us at <a href="mailto:wsbjoe9@gmail.com" style="color:#2563eb;">wsbjoe9@gmail.com</a>.
+              </p>
+
+            </td>
+          </tr>
+
+          {# Footer #}
+          <tr>
+            <td style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:1rem 2rem; text-align:center; font-size:.72rem; color:#94a3b8;">
+              <p style="margin:0 0 .25rem;">This is a legally binding electronic signature request under the ESIGN Act.</p>
+              <p style="margin:0;">— The Claimet Team &bull; claimetapp.com</p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

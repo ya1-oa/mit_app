@@ -1481,6 +1481,12 @@ class Lease(models.Model):
     broker_phone = models.CharField(max_length=50, blank=True)
     broker_email = models.EmailField(blank=True)
 
+    # ===== LESSEE (TENANT) INFORMATION =====
+    lessee_name    = models.CharField(max_length=255, blank=True, verbose_name="Tenant Name")
+    lessee_email   = models.EmailField(blank=True, verbose_name="Tenant Email")
+    lessee_phone   = models.CharField(max_length=50, blank=True, verbose_name="Tenant Phone")
+    lessee_address = models.CharField(max_length=500, blank=True, verbose_name="Tenant Home Address")
+
     # ===== SPECIAL NOTES =====
     special_notes = models.TextField(blank=True)
 
@@ -1805,6 +1811,95 @@ class LeaseStageCompletion(models.Model):
     def __str__(self):
         status = "Completed" if self.is_completed else "Pending"
         return f"{self.lease.client.pOwner} - {self.get_stage_display()}: {status}"
+
+
+# ==================== E-Signature System ====================
+
+class LeaseSignatureRequest(models.Model):
+    """
+    One record per signer per lease. Stores the secure token emailed to the
+    signer and captures their drawn signature + full ESIGN Act audit trail.
+    """
+    ROLE_CHOICES = [
+        ('tenant',     'Tenant / Lessee'),
+        ('landlord',   'Landlord / Lessor'),
+        ('re_company', 'Real Estate Company'),
+    ]
+    STATUS_CHOICES = [
+        ('pending',  'Pending'),
+        ('viewed',   'Viewed'),
+        ('signed',   'Signed'),
+        ('declined', 'Declined'),
+        ('expired',  'Expired'),
+    ]
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lease       = models.ForeignKey(
+        Lease, on_delete=models.CASCADE, related_name='signature_requests'
+    )
+    signer_role  = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    signer_name  = models.CharField(max_length=255)
+    signer_email = models.EmailField()
+
+    # Unique token embedded in the signing URL — never reused
+    token  = models.UUIDField(unique=True, default=uuid.uuid4)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    # ── Signature capture ────────────────────────────────────────────────────
+    # Base64 PNG data URL of the drawn signature (stored in DB; no file needed)
+    signature_image = models.TextField(blank=True)
+    # Name they typed — must match signer_name to confirm intent
+    typed_name      = models.CharField(max_length=255, blank=True)
+
+    # ── ESIGN Act / UETA audit trail ─────────────────────────────────────────
+    ip_address    = models.GenericIPAddressField(null=True, blank=True)
+    user_agent    = models.TextField(blank=True)
+    # SHA-256 of key lease fields at signing time — proves document not altered
+    document_hash = models.CharField(max_length=64, blank=True)
+    # Explicit e-sign consent checkbox
+    agreed_to_esign = models.BooleanField(default=False)
+
+    # ── Timestamps ───────────────────────────────────────────────────────────
+    sent_at     = models.DateTimeField(auto_now_add=True)
+    viewed_at   = models.DateTimeField(null=True, blank=True)
+    signed_at   = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
+    expires_at  = models.DateTimeField()  # set to sent_at + 7 days on creation
+
+    class Meta:
+        ordering = ['signer_role', '-sent_at']
+        verbose_name = 'Lease Signature Request'
+        verbose_name_plural = 'Lease Signature Requests'
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['lease', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_signer_role_display()} — {self.signer_name} ({self.status})"
+
+    @property
+    def is_expired_flag(self):
+        from django.utils import timezone as tz
+        return self.status == 'pending' and self.expires_at < tz.now()
+
+    def get_status_color(self):
+        return {
+            'pending':  'warning',
+            'viewed':   'info',
+            'signed':   'success',
+            'declined': 'danger',
+            'expired':  'secondary',
+        }.get(self.status, 'secondary')
+
+    def get_status_icon(self):
+        return {
+            'pending':  '⏳',
+            'viewed':   '👁️',
+            'signed':   '✅',
+            'declined': '❌',
+            'expired':  '⌛',
+        }.get(self.status, '⏳')
 
 
 # ==================== Email Parsing Models ====================
