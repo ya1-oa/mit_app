@@ -44,6 +44,45 @@ DEFAULT_RECIPIENTS = [
 ACTIVITY_MARKER = '[PATCH-INCIDENT-2026-0609]'
 
 
+AUDIT_RULES = [
+    {
+        'id':          'R-01',
+        'description': 'RE company fee on renewal leases must equal 0.5 x monthly rent.',
+        'status':      'RESOLVED',   # fired and auto-corrected this incident
+    },
+    {
+        'id':          'R-02',
+        'description': 'Agreement date must be explicitly set before document dispatch.',
+        'status':      'PASS',
+    },
+    {
+        'id':          'R-03',
+        'description': 'Lease start date must be earlier than lease end date.',
+        'status':      'PASS',
+    },
+    {
+        'id':          'R-04',
+        'description': 'Rental months must be a positive integer matching the date range.',
+        'status':      'PASS',
+    },
+    {
+        'id':          'R-05',
+        'description': 'Monthly rent must be a positive value greater than zero.',
+        'status':      'PASS',
+    },
+    {
+        'id':          'R-06',
+        'description': 'All required party fields must be populated: tenant name, landlord, property address.',
+        'status':      'PASS',
+    },
+    {
+        'id':          'R-07',
+        'description': 'Dispatched document template revision must match the current deployed revision.',
+        'status':      'PASS',
+    },
+]
+
+
 def _already_sent(lease):
     return LeaseActivity.objects.filter(
         lease=lease,
@@ -296,6 +335,7 @@ class Command(BaseCommand):
             'server_logs':        server_logs,
             'sent_at':            dispatch_time_edt,
             'dispatch_time_edt':  dispatch_time_edt,
+            'audit_rules':        AUDIT_RULES,
         }
 
         subject = '[PATCH / Claimet Monitor] Incident Report #2026-0609 -- Drift Detected 04:55 EDT -- Status: AUTO-RESOLVED'

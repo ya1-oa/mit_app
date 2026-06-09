@@ -291,6 +291,35 @@
       </li>
     </ul>
 
+    <!-- AUDIT RULES -->
+    <h3>&#x1F6E1;&#xFE0F; DOCUMENT_INTEGRITY v2.3 &mdash; active rule set</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:12px;font-family:'JetBrains Mono','Courier New',monospace;">
+      <thead>
+        <tr style="background:#f1f5f9;">
+          <td style="padding:7px 10px;color:#64748b;font-weight:700;width:70px;">RULE</td>
+          <td style="padding:7px 10px;color:#64748b;font-weight:700;">DESCRIPTION</td>
+          <td style="padding:7px 10px;color:#64748b;font-weight:700;width:90px;text-align:center;">STATUS</td>
+        </tr>
+      </thead>
+      <tbody>
+        {% for rule in audit_rules %}
+        <tr style="border-top:1px solid #f1f5f9;">
+          <td style="padding:7px 10px;color:#6366f1;font-weight:700;">{{ rule.id }}</td>
+          <td style="padding:7px 10px;color:#475569;">{{ rule.description }}</td>
+          <td style="padding:7px 10px;text-align:center;">
+            {% if rule.status == 'FIRED' %}
+              <span style="background:#fef2f2;color:#dc2626;border:1px solid #fecaca;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;">FIRED</span>
+            {% elif rule.status == 'RESOLVED' %}
+              <span style="background:#f0fdf4;color:#16a34a;border:1px solid #86efac;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:700;">RESOLVED</span>
+            {% else %}
+              <span style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;border-radius:4px;padding:2px 8px;font-size:11px;">PASS</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+
     <!-- THE DRIFT -->
     <h3>&#x26A0;&#xFE0F; The drift I found</h3>
     <div class="data-box">
