@@ -112,9 +112,16 @@ def _ale_to_lease_fields(client):
     - Special notes: lessee info summary (Lease has no dedicated lessee fields)
 
     NOT mappable (no corresponding ALE field on Client):
-    - security_deposit, rent_due_day, late_fee, late_fee_start_day,
-      eviction_day, nsf_fee, max_occupants, parking_spaces, parking_fee,
-      inspection_fee  — these stay at Lease model defaults.
+    - eviction_day, max_occupants, parking_spaces, parking_fee
+      — these stay at Lease model defaults.
+
+    Defaults applied when ALE field is blank:
+    - security_deposit  → ale_rental_amount_per_month (1 month's rent)
+    - late_fee          → $50
+    - late_fee_start_day → 5
+    - nsf_fee           → $35
+    - rent_due_day      → 1
+    - inspection_fee    → $300
     """
     # ── Parse compound address strings ────────────────────────────────────
     lessor_mail_city, lessor_mail_state, lessor_mail_zip = _parse_city_state_zip(
@@ -162,8 +169,17 @@ def _ale_to_lease_fields(client):
         'lease_agreement_date': client.ale_lease_agreement_date,
         'rental_months':        _int(client.ale_rental_months, 12),
         'monthly_rent':         client.ale_rental_amount_per_month or 0,
-        'security_deposit':     client.ale_rental_security_deposit or 0,
-        'inspection_fee':       client.ale_inspection_fee or 300,
+        # Security deposit defaults to one month's rent when not set
+        'security_deposit': (
+            client.ale_rental_security_deposit
+            if client.ale_rental_security_deposit is not None
+            else (client.ale_rental_amount_per_month or 0)
+        ),
+        'inspection_fee':        client.ale_inspection_fee or 300,
+        'rent_due_day':          client.ale_rent_due_day or 1,
+        'late_fee':              client.ale_late_fee or 50,
+        'late_fee_start_day':    client.ale_late_fee_start_day or 5,
+        'nsf_fee':               client.ale_nsf_fee or 35,
 
         # ── Real estate company ───────────────────────────────────────────
         'real_estate_company':     client.ale_re_company_name     or '',

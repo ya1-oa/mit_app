@@ -558,6 +558,7 @@ def create_claim_step3(request):
                 'ale_rental_amount_per_month', 'ale_rental_security_deposit',
                 'ale_rental_start_date', 'ale_rental_end_date',
                 'ale_lease_agreement_date', 'ale_inspection_fee',
+                'ale_late_fee', 'ale_late_fee_start_day', 'ale_nsf_fee', 'ale_rent_due_day',
                 'ale_lessor_name', 'ale_lessor_contact_person', 'ale_lessor_phone',
                 'ale_lessor_leased_address', 'ale_lessor_city_zip', 'ale_lessor_email',
                 'ale_lessor_mailing_address', 'ale_lessor_mailing_city_zip',

@@ -225,6 +225,10 @@ class Client(models.Model):
     ale_rental_security_deposit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Security Deposit")
     ale_lease_agreement_date = models.DateField(null=True, blank=True, help_text="Lease Agreement Date (date lease is signed/effective)")
     ale_inspection_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Final Inspection & Cleanup Fee")
+    ale_late_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Late Fee Amount (default $50)")
+    ale_late_fee_start_day = models.PositiveIntegerField(null=True, blank=True, help_text="Day of month late fee kicks in (default 5)")
+    ale_nsf_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="NSF / Returned Check Fee (default $35)")
+    ale_rent_due_day = models.PositiveIntegerField(null=True, blank=True, help_text="Day of month rent is due (default 1)")
 
     # LESSOR INFO (Landlord/Property Owner renting to customer)
     ale_lessor_name = models.CharField(max_length=255, blank=True, help_text="Lessor Legal Name")
