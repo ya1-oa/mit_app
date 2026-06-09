@@ -527,6 +527,9 @@ def lease_manager(request):
 
     status_filter = request.GET.get('status', '')
     client_filter = request.GET.get('client', '')
+    type_filter   = request.GET.get('type', '')    # 'original' | 'renewal' | ''
+    active_filter = request.GET.get('active', '')  # 'active' | 'expired' | ''
+    search_q      = request.GET.get('q', '')
     date_filter   = request.GET.get('date_range', '30')
 
     try:
@@ -548,7 +551,23 @@ def lease_manager(request):
     if client_filter:
         leases_query = leases_query.filter(client__id=client_filter)
 
-    all_leases = leases_query.order_by('-created_at')[:100]
+    # Active / expired date filtering at DB level
+    if active_filter == 'active':
+        leases_query = leases_query.filter(
+            lease_start_date__lte=today, lease_end_date__gte=today
+        ).exclude(status__in=['completed', 'cancelled'])
+    elif active_filter == 'expired':
+        leases_query = leases_query.filter(
+            lease_end_date__lt=today
+        ).exclude(status__in=['completed', 'cancelled'])
+
+    all_leases = list(leases_query.order_by('-created_at'))
+
+    # Type filter (original vs renewal) — Python-level because is_original is a property
+    if type_filter == 'original':
+        all_leases = [l for l in all_leases if l.is_original]
+    elif type_filter == 'renewal':
+        all_leases = [l for l in all_leases if not l.is_original]
 
     recent_activity = LeaseActivity.objects.select_related(
         'lease', 'lease__client', 'performed_by'
@@ -625,7 +644,10 @@ def lease_manager(request):
         'status_choices':       Lease.LEASE_STATUS_CHOICES,
         'current_status_filter': status_filter,
         'current_client_filter': client_filter,
+        'current_type_filter':  type_filter,
+        'current_active_filter': active_filter,
         'current_date_filter':  date_filter,
+        'search_q':             search_q,
         'total_monthly_rent':   total_monthly_rent,
         'today':                today,
     }
