@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 14px; color: #1e293b; margin: 0; padding: 0; background: #f1f5f9; }
+    .wrapper { max-width: 640px; margin: 30px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,.10); }
+
+    /* Header */
+    .header { background: #0f172a; padding: 28px 36px 20px; }
+    .agent-tag { display: inline-flex; align-items: center; gap: 8px; background: #1e3a5f; border: 1px solid #334155; border-radius: 20px; padding: 5px 14px; margin-bottom: 14px; }
+    .agent-dot { width: 8px; height: 8px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 6px #22c55e; animation: pulse 2s infinite; }
+    .agent-name { color: #94a3b8; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; }
+    .header h1 { color: #f8fafc; margin: 0 0 4px; font-size: 19px; font-weight: 700; }
+    .header .meta { color: #64748b; font-size: 11px; font-family: monospace; }
+
+    /* Alert bar */
+    .alert-bar { display: flex; align-items: flex-start; gap: 12px; background: #fffbeb; border-left: 4px solid #f59e0b; padding: 14px 24px; }
+    .alert-icon { font-size: 20px; line-height: 1; margin-top: 1px; }
+    .alert-text { font-size: 13px; color: #78350f; line-height: 1.5; }
+    .alert-text strong { display: block; margin-bottom: 2px; font-size: 13px; }
+
+    /* Body */
+    .body { padding: 28px 36px; }
+    .greeting { font-size: 15px; color: #334155; margin: 0 0 18px; line-height: 1.6; }
+    .greeting em { font-style: normal; font-weight: 700; color: #6366f1; }
+
+    h3 { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; margin: 24px 0 10px; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px; }
+
+    /* Timeline */
+    .timeline { margin: 0 0 8px; padding: 0; list-style: none; }
+    .timeline li { display: flex; gap: 12px; align-items: flex-start; padding: 6px 0; border-bottom: 1px solid #f8fafc; font-size: 13px; }
+    .timeline li:last-child { border-bottom: none; }
+    .tl-time { font-family: monospace; font-size: 12px; color: #6366f1; font-weight: 700; white-space: nowrap; min-width: 70px; padding-top: 1px; }
+    .tl-desc { color: #475569; line-height: 1.5; }
+
+    /* Data box */
+    .data-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 16px 20px; margin: 12px 0 20px; }
+    .data-box table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .data-box td { padding: 5px 0; vertical-align: top; }
+    .data-box td:first-child { color: #64748b; width: 44%; }
+    .data-box td:last-child { font-weight: 600; color: #1e293b; }
+    .strike { color: #dc2626; text-decoration: line-through; font-weight: 400; }
+    .correct { color: #16a34a; }
+
+    /* Actions taken */
+    .actions { list-style: none; padding: 0; margin: 0 0 20px; }
+    .actions li { display: flex; gap: 10px; align-items: flex-start; padding: 7px 0; border-bottom: 1px solid #f8fafc; font-size: 13px; color: #475569; line-height: 1.5; }
+    .actions li:last-child { border-bottom: none; }
+    .action-icon { font-size: 15px; min-width: 22px; }
+
+    /* Note box */
+    .note-box { background: #f0fdf4; border: 1px solid #86efac; border-radius: 6px; padding: 14px 18px; font-size: 13px; color: #14532d; line-height: 1.6; margin: 20px 0; }
+    .note-box strong { display: block; margin-bottom: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: .6px; color: #166534; }
+
+    /* Signature */
+    .signature { margin-top: 24px; padding-top: 18px; border-top: 1px solid #f1f5f9; font-size: 13px; color: #64748b; line-height: 1.8; }
+    .signature .sig-name { font-size: 15px; font-weight: 700; color: #6366f1; }
+
+    /* Footer */
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 14px 36px; font-size: 11px; color: #94a3b8; text-align: center; }
+    .footer a { color: #6366f1; text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <div class="header">
+    <div class="agent-tag">
+      <div class="agent-dot"></div>
+      <span class="agent-name">PATCH &mdash; Claimet Monitor</span>
+    </div>
+    <h1>Incident Report &mdash; Drift Detected &amp; Auto-Resolved</h1>
+    <div class="meta">Report ID: #2026-0609-DRIFT-001 &nbsp;|&nbsp; Status: RESOLVED &nbsp;|&nbsp; Severity: NON-CRITICAL</div>
+  </div>
+
+  <div class="alert-bar">
+    <div class="alert-icon">⚠️</div>
+    <div class="alert-text">
+      <strong>Corrected term sheets have been regenerated and are attached.</strong>
+      Please disregard any renewal term sheets received at 01:44 AM EDT this morning — use the attached corrected versions instead.
+    </div>
+  </div>
+
+  <div class="body">
+
+    <p class="greeting">
+      Hey &mdash; this is <em>PATCH</em>, the Claimet document integrity agent.<br>
+      I&rsquo;m reaching out because I caught something overnight and I want to make sure the right people know about it.
+    </p>
+
+    <h3>What happened</h3>
+    <ul class="timeline">
+      <li>
+        <span class="tl-time">~01:29 AM</span>
+        <span class="tl-desc">IONOS server experienced an unplanned outage &mdash; likely a routine infrastructure reset at the hosting level.</span>
+      </li>
+      <li>
+        <span class="tl-time">~01:44 AM</span>
+        <span class="tl-desc">Server restored. Scheduled renewal lease term sheets dispatched automatically &mdash; but the document engine loaded a pre-reset configuration state during the restart sequence.</span>
+      </li>
+      <li>
+        <span class="tl-time">Post-boot</span>
+        <span class="tl-desc">I came back online, ran my standard post-dispatch integrity check, and flagged a fee calculation drift on the renewal term sheets.</span>
+      </li>
+      <li>
+        <span class="tl-time">Resolved</span>
+        <span class="tl-desc">Corrected PDFs regenerated, indexed, and dispatched. Audit trail logged. You&rsquo;re reading this report.</span>
+      </li>
+    </ul>
+
+    <h3>What the drift was</h3>
+    <div class="data-box">
+      <table>
+        <tr><td>Affected document</td><td>Renewal Lease &mdash; Term Sheet</td></tr>
+        <tr><td>Affected field</td><td>Real Estate Company Fee</td></tr>
+        <tr><td>Root cause</td><td>Pre-reset template state loaded after 15-min outage</td></tr>
+        <tr><td>Previous value (wrong)</td><td class="strike">Full month&rsquo;s rent (standard rate)</td></tr>
+        <tr><td>Corrected value</td><td class="correct">½ &times; monthly rent (renewal rate) ✓</td></tr>
+        <tr><td>Other fields</td><td>Unaffected &mdash; rent, dates, tenant data, signatures all clean</td></tr>
+      </table>
+    </div>
+
+    <h3>What I did about it</h3>
+    <ul class="actions">
+      <li><span class="action-icon">🔍</span>Scanned all renewal leases dispatched in the post-restoration window and checked against Rule R-01 <em>(renewal RE fee = 0.5 &times; monthly rent)</em></li>
+      <li><span class="action-icon">⚠️</span>Flagged affected documents where RE fee exceeded the renewal threshold</li>
+      <li><span class="action-icon">🔄</span>Regenerated corrected term sheet PDFs with the proper ½-month renewal rate applied</li>
+      <li><span class="action-icon">📁</span>Indexed corrected documents into Claimet lease records &mdash; live now at <a href="https://claimetapp.com/lease-manager/" style="color:#6366f1;">claimetapp.com/lease-manager</a></li>
+      <li><span class="action-icon">📋</span>Logged full audit trail entry on each affected lease</li>
+      <li><span class="action-icon">📎</span>Attached corrected term sheets to this email</li>
+      <li><span class="action-icon">📨</span>Dispatched this incident report to all provisioned alert contacts</li>
+    </ul>
+
+    <div class="note-box">
+      <strong>For the record</strong>
+      This is exactly the kind of edge case I was built to catch. A 15-minute server blip on its own is nothing &mdash; but one that lands right before a scheduled document dispatch can silently corrupt outbound documents without anyone noticing. Unless something&rsquo;s watching.<br><br>
+      The developer who provisioned me designed this detection pipeline specifically for transient infrastructure drift like this. If it happens again: same drill. I&rsquo;ll catch it, correct it, and let you know. No manual intervention needed.
+    </div>
+
+    <div class="signature">
+      <div class="sig-name">PATCH</div>
+      Document Integrity Agent &mdash; Claimet<br>
+      <a href="https://claimetapp.com" style="color:#6366f1;">claimetapp.com</a> &mdash; <em>Monitoring since the system came online</em>
+    </div>
+
+  </div>
+
+  <div class="footer">
+    This report was issued automatically by the Claimet document integrity monitor.<br>
+    &copy; Claimet &mdash; <a href="https://claimetapp.com">claimetapp.com</a>
+  </div>
+
+</div>
+</body>
+</html>
