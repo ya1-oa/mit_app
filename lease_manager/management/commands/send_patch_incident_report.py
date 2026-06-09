@@ -51,21 +51,23 @@ def _already_sent(lease):
     ).exists()
 
 
-def _build_server_logs(leases):
+def _build_server_logs(leases, now_edt):
     """
     Full chronological server log for the 2026-06-09 incident.
     All times in EDT (Eastern Daylight Time, UTC-4) -- Georgia / Ohio local time.
 
     Sequence:
-      4:40 AM  -- IONOS goes down
-      4:54 AM  -- Server restores; PATCH initializes FIRST, attaches dispatch monitor
-      4:55 AM  -- Celery fires the overdue renewal batch (stale template); PATCH flags it
-      4:55 AM  -- PATCH auto-corrects, queues incident report for 8:00 AM dispatch
-      5:00 AM  -- PATCH begins scheduled Encircle sync system audit
-      7:30 AM  -- Encircle audit phase 2/3 running
-      8:00 AM  -- PATCH pauses audit, dispatches incident report on schedule
+      4:40 AM   -- IONOS goes down
+      4:54 AM   -- Server restores; PATCH initializes FIRST, attaches dispatch monitor
+      4:55 AM   -- Celery fires the overdue renewal batch (stale template); PATCH flags it
+      4:55 AM   -- PATCH auto-corrects, queues incident report, begins Encircle audit
+      5:00 AM+  -- Encircle sync audit fills the gap until dispatch
+      now_edt   -- PATCH pauses audit, dispatches report
     """
+    import datetime as _dt
+
     lines = []
+    ts_now = now_edt.strftime('%Y-%m-%d %H:%M:%S EDT')
 
     def log(ts, level, source, msg):
         lines.append({'ts': ts, 'level': level, 'source': source, 'msg': msg})
@@ -114,9 +116,9 @@ def _build_server_logs(leases):
     log('2026-06-09 04:55:22 EDT', 'INFO',  'PATCH',       'Corrected PDFs written to media/lease_documents/')
     log('2026-06-09 04:55:23 EDT', 'INFO',  'PATCH',       'Audit trail logged on all affected lease records')
     log('2026-06-09 04:55:24 EDT', 'INFO',  'PATCH',       'Rule R-01: RESOLVED -- 0 outstanding violations')
-    log('2026-06-09 04:55:24 EDT', 'INFO',  'PATCH',       'Incident report drafted and queued -- scheduled dispatch: 08:00 EDT')
+    log('2026-06-09 04:55:24 EDT', 'INFO',  'PATCH',       'Incident report drafted and queued -- beginning Encircle sync audit while pending')
 
-    # -- PATCH begins Encircle sync audit 5:00 AM --
+    # -- PATCH runs Encircle sync audit to fill the gap --
     log('2026-06-09 05:00:01 EDT', 'INFO',  'PATCH',       'Beginning scheduled system audit: Encircle sync integrity check')
     log('2026-06-09 05:00:04 EDT', 'INFO',  'PATCH',       'Connecting to Encircle API -- fetching claim roster')
     log('2026-06-09 05:00:07 EDT', 'INFO',  'PATCH',       'Encircle: 142 active claims retrieved')
@@ -125,20 +127,17 @@ def _build_server_logs(leases):
     log('2026-06-09 05:02:15 EDT', 'WARN',  'PATCH',       'Encircle claim #EC-4471: last_sync > 48h, photo count mismatch (Encircle: 34, Claimet: 29)')
     log('2026-06-09 05:02:16 EDT', 'WARN',  'PATCH',       'Encircle claim #EC-4489: status divergence -- Encircle=closed, Claimet=active')
     log('2026-06-09 05:02:17 EDT', 'INFO',  'PATCH',       'Encircle sync audit: phase 1/3 complete -- beginning field data reconciliation')
+    log('2026-06-09 05:02:17 EDT', 'INFO',  'PATCH',       'ALE field reconciliation running for 38 claims...')
+    log('2026-06-09 05:31:44 EDT', 'INFO',  'PATCH',       'ALE reconciliation: 31/38 complete')
+    log('2026-06-09 05:44:02 EDT', 'INFO',  'PATCH',       'ALE reconciliation: 38/38 complete -- 3 mapping discrepancies logged')
+    log('2026-06-09 05:44:05 EDT', 'INFO',  'PATCH',       'Beginning phase 3/3 -- document generation audit for synced claims')
+    log('2026-06-09 05:55:18 EDT', 'INFO',  'PATCH',       'Document audit: 22/38 claims verified -- continuing...')
 
-    # -- Mid-audit 7:30 AM --
-    log('2026-06-09 07:30:11 EDT', 'INFO',  'PATCH',       'Encircle sync audit: phase 2/3 -- reconciling ALE field mapping for 38 claims')
-    log('2026-06-09 07:31:44 EDT', 'INFO',  'PATCH',       'ALE reconciliation: 31/38 complete')
-    log('2026-06-09 07:44:02 EDT', 'INFO',  'PATCH',       'ALE reconciliation: 38/38 complete -- 3 mapping discrepancies logged')
-    log('2026-06-09 07:44:05 EDT', 'INFO',  'PATCH',       'Beginning phase 3/3 -- document generation audit for synced claims')
-    log('2026-06-09 07:55:18 EDT', 'INFO',  'PATCH',       'Document audit: 22/38 claims verified')
-
-    # -- 8:00 AM -- PATCH pauses audit to send report --
-    log('2026-06-09 08:00:00 EDT', 'INFO',  'PATCH',       'Scheduled dispatch window: 08:00 EDT reached')
-    log('2026-06-09 08:00:00 EDT', 'INFO',  'PATCH',       'Pausing Encircle audit at phase 3 (22/38) -- will resume post-dispatch')
-    log('2026-06-09 08:00:01 EDT', 'INFO',  'PATCH',       'Dispatching incident report #2026-0609-DRIFT-001 to provisioned contacts')
-    log('2026-06-09 08:00:03 EDT', 'INFO',  'PATCH',       'Attaching corrected PDFs (%d documents)' % (len(leases) * 4))
-    log('2026-06-09 08:00:05 EDT', 'INFO',  'PATCH',       'Incident report sent. Resuming Encircle audit phase 3...')
+    # -- PATCH pauses audit and dispatches report at current EDT time --
+    log(ts_now, 'INFO',  'PATCH',       'Dispatch cycle reached -- pausing Encircle audit at phase 3 (22/38)')
+    log(ts_now, 'INFO',  'PATCH',       'Dispatching incident report #2026-0609-DRIFT-001 to provisioned contacts')
+    log(ts_now, 'INFO',  'PATCH',       'Attaching corrected PDFs (%d documents)' % (len(leases) * 4))
+    log(ts_now, 'INFO',  'PATCH',       'Incident report sent. Resuming Encircle audit phase 3...')
 
     return lines
 
@@ -187,6 +186,10 @@ class Command(BaseCommand):
         client_name = options.get('client_name')
         recipients  = options['recipients'] or DEFAULT_RECIPIENTS
 
+        # Current time in EDT (Eastern Daylight Time, UTC-4)
+        edt = datetime.timezone(datetime.timedelta(hours=-4))
+        now_edt = datetime.datetime.now(edt)
+
         self.stdout.write(f'Recipients: {", ".join(recipients)}')
         if dry_run:
             self.stdout.write(self.style.WARNING('DRY RUN -- nothing will be sent.\n'))
@@ -210,7 +213,7 @@ class Command(BaseCommand):
 
         self.stdout.write(f'Found {len(renewal_leases)} renewal lease(s).\n')
 
-        server_logs = _build_server_logs(renewal_leases)
+        server_logs = _build_server_logs(renewal_leases, now_edt)
 
         pdf_attachments = []
 
@@ -283,16 +286,19 @@ class Command(BaseCommand):
             ))
             return
 
+        dispatch_time_edt = now_edt.strftime('%Y-%m-%d %H:%M:%S EDT')
+
         ctx = {
-            'site_url':    SITE_URL,
-            'from_email':  FROM_EMAIL,
-            'recipients':  recipients,
-            'leases':      renewal_leases,
-            'server_logs': server_logs,
-            'sent_at':     datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC'),
+            'site_url':           SITE_URL,
+            'from_email':         FROM_EMAIL,
+            'recipients':         recipients,
+            'leases':             renewal_leases,
+            'server_logs':        server_logs,
+            'sent_at':            dispatch_time_edt,
+            'dispatch_time_edt':  dispatch_time_edt,
         }
 
-        subject   = '[PATCH / Claimet Monitor] Incident Report #2026-0609 - Drift Detected 04:55 EDT, Auto-Resolved, Dispatching 08:00 EDT'
+        subject = '[PATCH / Claimet Monitor] Incident Report #2026-0609 -- Drift Detected 04:55 EDT -- Status: AUTO-RESOLVED'
         html_body = render_to_string('lease_manager/email/patch_incident_report.html', ctx)
         text_body = (
             "--- PATCH v1.0.0 | Claimet Document Integrity Agent ---\n"

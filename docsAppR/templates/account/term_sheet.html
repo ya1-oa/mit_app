@@ -204,7 +204,6 @@
         {% endif %}
         <div class="indented" style="white-space:nowrap;">
             {% if landlord.real_estate_company %}{{ landlord.real_estate_company }} Fee:{% else %}Real Estate Fee:{% endif %}
-            {% if is_renewal %}<em>(renewal rate)</em>{% endif %}
         </div>
         {% if not exclude_inspection_fee %}
         <div class="indented">Final Inspection &amp; Clean-up:</div>
@@ -218,7 +217,7 @@
         <div class="indented">&nbsp;</div>
         <div class="indented">&nbsp;</div>
         {% endif %}
-        <div class="indented">{% if is_renewal %}½ × ${{ landlord.default_rent_amount|floatformat:2 }}{% endif %}</div>
+        <div class="indented">{% if is_renewal %}${{ landlord.default_rent_amount|floatformat:2 }} × 0.5{% endif %}</div>
         {% if not exclude_inspection_fee %}
         <div class="indented">&nbsp;</div>
         {% endif %}

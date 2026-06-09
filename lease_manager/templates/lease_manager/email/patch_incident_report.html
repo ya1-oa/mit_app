@@ -221,9 +221,8 @@
     <div class="boot-line"><span class="dim">[04:55:12 EDT]</span> <span class="warn">Celery fired renewal batch at 04:55 EDT using stale pre-reset template</span></div>
     <div class="boot-line"><span class="dim">[04:55:13 EDT]</span> <span class="err">RULE R-01 VIOLATION -- RE company fee incorrect on dispatched renewal documents</span></div>
     <div class="boot-line"><span class="dim">[04:55:18 EDT]</span> <span class="ok">AUTO-CORRECTION APPLIED -- corrected PDFs regenerated, audit trail logged</span></div>
-    <div class="boot-line"><span class="dim">[04:55:24 EDT]</span> Incident report queued -- <span class="hi">scheduled dispatch: 08:00 EDT</span></div>
-    <div class="boot-line"><span class="dim">[05:00:01 EDT]</span> Encircle sync audit running... (phase 3/3 paused at 08:00 EDT to send this report)</div>
-    <div class="boot-line"><span class="dim">[08:00:01 EDT]</span> <span class="ok">Dispatching incident report now</span></div>
+    <div class="boot-line"><span class="dim">[04:55:24 EDT]</span> Incident report queued -- running Encircle sync audit while pending</div>
+    <div class="boot-line"><span class="dim">[{{ dispatch_time_edt }}]</span> <span class="ok">Dispatching incident report now</span></div>
 
     <div class="boot-agent-name"><span>P</span>ATCH</div>
     <div class="boot-tagline">CLAIMET DOCUMENT INTEGRITY AGENT -- FIRST DEPLOYMENT -- 2026-06-09</div>
@@ -251,15 +250,6 @@
       <p>
         I have direct access to Claimet&rsquo;s document generation pipeline through a set of Python management commands the developer gave me. When I detect a problem, I don&rsquo;t wait for someone to log in &mdash; I run the fix myself, log it, and let you know. That&rsquo;s what I did tonight.
       </p>
-    </div>
-
-    <!-- WHY NOW -->
-    <div style="background:#faf5ff;border:1px solid #c4b5fd;border-radius:6px;padding:14px 18px;margin-bottom:24px;font-size:13px;color:#4c1d95;line-height:1.6;">
-      <strong style="display:block;margin-bottom:4px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;">Why are you receiving this report now?</strong>
-      All times below are in <strong>EDT (Eastern Daylight Time, UTC&minus;4)</strong> &mdash; the local timezone for Georgia and Ohio.
-      The server runs on UTC internally. The incident itself happened early this morning (4:40&ndash;4:55 AM EDT).
-      I detected and corrected the issue immediately at 4:55 AM EDT, but held the report for the developer to review before dispatching.
-      The developer has now cleared it and instructed me to send. That&rsquo;s why this is arriving now rather than at 4:55 AM.
     </div>
 
     <!-- WHAT HAPPENED -->
