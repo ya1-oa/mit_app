@@ -698,15 +698,26 @@ def lease_detail(request, lease_id):
         s.status == 'signed' for s in sig_requests
     )
 
+    # All non-cancelled leases for this claim, ordered oldest → newest.
+    # Used to show an "Other Leases" switcher so users can jump between
+    # the original and any renewals without going back to the list.
+    sibling_leases = (
+        Lease.objects.filter(client=lease.client)
+        .exclude(status='cancelled')
+        .order_by('created_at')
+        .only('id', 'status', 'lease_start_date', 'lease_end_date', 'monthly_rent')
+    )
+
     context = {
-        'lease':        lease,
-        'client':       lease.client,
-        'sig_requests': sig_requests,
-        'docs':         docs,
-        'activities':   activities,
-        'contacts':     contacts,
-        'all_signed':   all_signed,
-        'can_send': lease.status not in ('signed', 'cancelled', 'completed'),
+        'lease':          lease,
+        'client':         lease.client,
+        'sig_requests':   sig_requests,
+        'docs':           docs,
+        'activities':     activities,
+        'contacts':       contacts,
+        'all_signed':     all_signed,
+        'sibling_leases': sibling_leases,
+        'can_send':    lease.status not in ('signed', 'cancelled', 'completed'),
         # Terms are locked once the lease is finalised — editing them after
         # signing would invalidate the executed document.
         'terms_locked': lease.status in ('signed', 'cancelled', 'completed'),

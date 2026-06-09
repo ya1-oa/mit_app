@@ -1562,6 +1562,45 @@ class Lease(models.Model):
         return self.lease_end_date < date.today()
 
     @property
+    def is_original(self):
+        """
+        True if this is the first/original lease for the claim (not a renewal).
+        Determined by being the oldest non-cancelled lease (by created_at).
+        Mirrors the sync-back rule in lease_update_terms so the two always agree.
+        """
+        first_id = (
+            self.__class__.objects.filter(client=self.client)
+            .exclude(status='cancelled')
+            .order_by('created_at')
+            .values_list('id', flat=True)
+            .first()
+        )
+        return first_id == self.id
+
+    @property
+    def renewal_number(self):
+        """
+        0 for the original lease; 1 for the first renewal, 2 for the second, etc.
+        Cancelled leases are ignored in the sequence.
+        """
+        ids = list(
+            self.__class__.objects.filter(client=self.client)
+            .exclude(status='cancelled')
+            .order_by('created_at')
+            .values_list('id', flat=True)
+        )
+        try:
+            return ids.index(self.id)
+        except ValueError:
+            return 0  # cancelled lease — treat as original for display
+
+    @property
+    def lease_label(self):
+        """Human-readable label: 'Original Lease', 'Renewal #1', 'Renewal #2' …"""
+        n = self.renewal_number
+        return 'Original Lease' if n == 0 else f'Renewal #{n}'
+
+    @property
     def full_property_address(self):
         """Return full formatted property address"""
         parts = [self.property_address, self.property_city, self.property_state, self.property_zip]

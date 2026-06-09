@@ -726,7 +726,15 @@
                                     <div class="dates {% if lease.is_expired %}expired{% elif lease.is_active %}active{% endif %}">
                                         <i class="fas fa-calendar"></i>
                                         {{ lease.lease_start_date|date:"M d, Y" }} - {{ lease.lease_end_date|date:"M d, Y" }}
-                                        {% if lease.is_renewal %}<span class="badge bg-info ms-2">Renewal</span>{% endif %}
+                                        {% if lease.is_original %}
+                                        <span class="badge ms-2" style="background:#10b981;color:#fff;">
+                                            <i class="fas fa-star fa-xs me-1"></i>Original
+                                        </span>
+                                        {% else %}
+                                        <span class="badge ms-2" style="background:#8b5cf6;color:#fff;">
+                                            <i class="fas fa-sync-alt fa-xs me-1"></i>{{ lease.lease_label }}
+                                        </span>
+                                        {% endif %}
                                     </div>
                                 </div>
                                 <div class="lease-meta">
@@ -1082,11 +1090,14 @@
                     data.leases.forEach(lease => {
                         const activeBadge = lease.is_active ? '<span class="active-badge active">ACTIVE</span>' :
                                            lease.is_expired ? '<span class="active-badge expired">EXPIRED</span>' : '';
+                        const typeBadge = lease.is_original
+                            ? `<span class="badge ms-1" style="background:#10b981;color:#fff;font-size:.65rem;"><i class="fas fa-star fa-xs me-1"></i>Original</span>`
+                            : `<span class="badge ms-1" style="background:#8b5cf6;color:#fff;font-size:.65rem;"><i class="fas fa-sync-alt fa-xs me-1"></i>${lease.lease_label}</span>`;
                         html += `
                             <div class="lease-card" style="margin-bottom: 10px;">
                                 <div class="lease-card-header" style="padding: 12px 15px;">
                                     <div class="lease-info">
-                                        <h4 style="font-size: 1rem;">${lease.lessor_name} ${activeBadge}</h4>
+                                        <h4 style="font-size: 1rem;">${lease.lessor_name} ${activeBadge} ${typeBadge}</h4>
                                         <div class="property" style="font-size: 0.85rem;">${lease.property_address}</div>
                                         <div class="dates" style="font-size: 0.75rem;">
                                             ${lease.lease_start_date} - ${lease.lease_end_date}
