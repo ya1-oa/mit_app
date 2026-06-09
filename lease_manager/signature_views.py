@@ -122,10 +122,8 @@ def _landlord_data_from_lease(lease):
         'term_start_date':  lease.lease_start_date,
         'term_end_date':    lease.lease_end_date,
         'rental_months':    lease.rental_months,
-        # Agreement date: each lease owns this independently.
-        # Falls back to the lease's created_at so the field is never blank
-        # (created_at = date this lease record was generated).
-        'agreement_date':   lease.lease_agreement_date or lease.created_at,
+        # Agreement date: each lease owns this independently (set on lease detail).
+        'agreement_date':   lease.lease_agreement_date,
 
         # Financials
         'default_rent_amount':        float(lease.monthly_rent      or 0),
