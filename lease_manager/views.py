@@ -774,10 +774,16 @@ def api_ale_import(request, lease_id):
     updated    = {}
     skipped    = {}
 
+    # These fields have model-level defaults (50, 35, etc.) that are
+    # indistinguishable from "never set by a user". Always sync them from ALE
+    # so the stored default never silently blocks an ALE value.
+    ALWAYS_SYNC = {'late_fee', 'nsf_fee', 'late_fee_start_day', 'rent_due_day', 'inspection_fee'}
+
     for field, value in ale_fields.items():
         current = getattr(lease, field, None)
-        # Only overwrite if field is blank/zero OR overwrite flag is set
-        if overwrite or not current or current in (0, '', None):
+        # Always sync fee defaults; otherwise only overwrite blank/zero values
+        # (or everything when overwrite flag is set).
+        if overwrite or field in ALWAYS_SYNC or not current or current in (0, '', None):
             setattr(lease, field, value)
             updated[field] = str(value) if value is not None else ''
         else:
