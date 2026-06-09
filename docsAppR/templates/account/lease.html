@@ -190,7 +190,7 @@
         <h3>{{ client.insuranceCo_Name}} Claim Number: {{ client.claimNumber}}</h3>
 
 
-     <p>THIS MONTHLY SHORT-TERM RENTAL AGREEMENT hereinafter known as the "Agreement" is made and entered into this <span class="bold">{{ document.created_at|date:"jS" }}</span> day of <span class="bold">{{ document.created_at|date:"F Y" }}</span>, by and between the Landlord and Tenant:<br>
+     <p>THIS MONTHLY SHORT-TERM RENTAL AGREEMENT hereinafter known as the "Agreement" is made and entered into this <span class="bold">{{ landlord.agreement_date|date:"jS" }}</span> day of <span class="bold">{{ landlord.agreement_date|date:"F Y" }}</span>, by and between the Landlord and Tenant:<br>
     <span class="bold">{{ landlord.full_name }}, {{ landlord.address }}, {{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</span><br>
     hereinafter known as the "Landlord", and the Tenant:<br>
     <span class="bold centered">{{ client.pOwner }}, {{ client.pAddress }}, {{ client.pCityStateZip }}</span><br>

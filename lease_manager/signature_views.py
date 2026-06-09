@@ -119,9 +119,11 @@ def _landlord_data_from_lease(lease):
         'bedrooms':         lease.bedrooms,
 
         # Term
-        'term_start_date': lease.lease_start_date,
-        'term_end_date':   lease.lease_end_date,
-        'rental_months':   lease.rental_months,
+        'term_start_date':  lease.lease_start_date,
+        'term_end_date':    lease.lease_end_date,
+        'rental_months':    lease.rental_months,
+        # Agreement date: falls back to start date so the field is never blank
+        'agreement_date':   lease.lease_agreement_date or lease.lease_start_date,
 
         # Financials
         'default_rent_amount':        float(lease.monthly_rent      or 0),
