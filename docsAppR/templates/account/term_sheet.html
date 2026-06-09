@@ -197,6 +197,8 @@
 <div class="three-columns">
     <div class="label-column">
         <div class="section-title">RENTAL TERMS</div>
+        <div class="indented">Lease Start Date</div>
+        <div class="indented">Lease End Date</div>
         <div class="indented">Months</div>
         <div class="indented">Security Deposit</div>
         <div class="indented">Subtotal</div>
@@ -205,6 +207,8 @@
     </div>
     <div class="content-column">
         <div>&nbsp;</div>
+        <div class="indented">{{ term_start_date|date:"F j, Y"|default:"—" }}</div>
+        <div class="indented">{{ term_end_date|date:"F j, Y"|default:"—" }}</div>
         <div class="indented">{{ landlord.rental_months }} Months</div>
         <div class="indented">${{ landlord.default_rent_amount|floatformat:2 }} × {{ landlord.rental_months }}</div>
         <div class="indented">&nbsp;</div>
@@ -214,6 +218,8 @@
     </div>
     <div class="numeric-column">
         <div>&nbsp;</div>
+        <div class="indented">&nbsp;</div>
+        <div class="indented">&nbsp;</div>
         <div class="indented">&nbsp;</div>
         <div class="indented"><b><u>${{ landlord.default_rent_amount|multiply:landlord.rental_months|floatformat:2|intcomma }}</u></b></div>
 
