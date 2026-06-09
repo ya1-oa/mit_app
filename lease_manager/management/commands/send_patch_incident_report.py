@@ -259,26 +259,36 @@ class Command(BaseCommand):
             'sent_at':     datetime.datetime.utcnow().strftime('%Y-%m-%d %H:%M UTC'),
         }
 
-        subject   = '[PATCH / Claimet Monitor] Incident Report #2026-0609 — Drift Detected 01:44, Auto-Resolved'
+        subject   = '[PATCH / Claimet Monitor] Incident Report #2026-0609 - Drift Detected 01:44, Auto-Resolved'
         html_body = render_to_string('lease_manager/email/patch_incident_report.html', ctx)
         text_body = (
             "--- PATCH v1.0.0 | Claimet Document Integrity Agent ---\n"
             "Incident Report #2026-0609 | Status: AUTO-RESOLVED\n\n"
-            "Hey — this is PATCH. First deployment. Caught something on my first night.\n\n"
+            "Hey - this is PATCH. First deployment. Caught something on my first night.\n\n"
             "IONOS went down at ~01:29 AM, came back at ~01:44 AM. The scheduled renewal "
             "batch fired in the restart window using a stale pre-reset template state. "
-            "RE company fee calculated at full month instead of the renewal rate (½ month).\n\n"
+            "RE company fee calculated at full month instead of the renewal rate (half month).\n\n"
             "I caught it, regenerated the correct documents, and they're attached.\n"
             "Server logs are in the HTML version of this email.\n\n"
             f"Corrected docs: {len(pdf_attachments)} PDF(s) attached.\n\n"
-            "— PATCH\nDocument Integrity Agent, Claimet\nclaimetapp.com"
+            "- PATCH\nDocument Integrity Agent, Claimet\nclaimetapp.com"
         )
+
+        # ASCII-only from_email — non-ASCII chars (em-dash etc) silently break
+        # some SMTP servers and cause the message to be dropped or rejected.
+        from_display = f'PATCH - Claimet Monitor <{FROM_EMAIL}>'
+
+        self.stdout.write(f'\nSending...')
+        self.stdout.write(f'  From: {from_display}')
+        self.stdout.write(f'  To:   {", ".join(recipients)}')
+        self.stdout.write(f'  Subject: {subject}')
+        self.stdout.write(f'  Attachments: {len(pdf_attachments)}')
 
         try:
             msg = EmailMultiAlternatives(
                 subject=subject,
                 body=text_body,
-                from_email=f'PATCH — Claimet Monitor <{FROM_EMAIL}>',
+                from_email=from_display,
                 to=recipients,
             )
             msg.attach_alternative(html_body, 'text/html')
@@ -287,9 +297,8 @@ class Command(BaseCommand):
             msg.send()
 
             self.stdout.write(self.style.SUCCESS(
-                f'\n✓ Sent to: {", ".join(recipients)}\n'
-                f'  Attachments: {len(pdf_attachments)} corrected PDF(s)'
+                f'\n  PATCH: email dispatched successfully.'
             ))
         except Exception as exc:
             logger.error('PATCH incident report email failed: %s', exc)
-            self.stderr.write(self.style.ERROR(f'\n✗ Email send failed: {exc}'))
+            self.stderr.write(self.style.ERROR(f'\n  FAILED: {exc}'))
