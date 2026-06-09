@@ -44,6 +44,9 @@ from docsAppR.claims_views import (
     get_claims_for_room_generator,
     get_rooms_for_generator,
     encircle_claims_simple,
+    # Encircle inbound sync
+    trigger_encircle_sync,
+    encircle_sync_status_api,
     # Claim Files page
     claim_files_page,
     send_files_link_email,

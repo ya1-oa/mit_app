@@ -3808,3 +3808,61 @@ def claim_templates_page(request, claim_id):
         'total_files': total_files,
         'public_url':  public_url,
     })
+
+
+# ============================================================================
+# Encircle inbound sync — manual trigger & status API
+# ============================================================================
+
+@login_required
+@require_POST
+def trigger_encircle_sync(request):
+    """
+    POST /claims/sync-encircle/
+
+    Queues an immediate Encircle → Claimet sync via Celery.
+    Returns JSON with the Celery task ID so the caller can poll for completion.
+    """
+    from .tasks import sync_encircle_claims_task
+
+    try:
+        task = sync_encircle_claims_task.delay(triggered_by='manual')
+        return JsonResponse({
+            'success': True,
+            'message': 'Encircle sync queued. It will run in the background and '
+                       'update your claims within a few minutes.',
+            'task_id': task.id,
+        })
+    except Exception as exc:
+        logger.error("trigger_encircle_sync view error: %s", exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
+
+
+@login_required
+def encircle_sync_status_api(request):
+    """
+    GET /claims/sync-encircle/status/
+
+    Returns the most recent EncircleSyncLog row as JSON.
+    Used by the dashboard's sync-status widget to poll for live updates.
+    """
+    from .models import EncircleSyncLog
+    from django.utils import timezone
+
+    log = EncircleSyncLog.objects.first()   # ordered by -started_at
+    if not log:
+        return JsonResponse({'has_log': False})
+
+    return JsonResponse({
+        'has_log':          True,
+        'log_id':           log.pk,
+        'status':           log.status,
+        'triggered_by':     log.triggered_by,
+        'started_at':       log.started_at.isoformat(),
+        'completed_at':     log.completed_at.isoformat() if log.completed_at else None,
+        'duration_seconds': log.duration_seconds,
+        'claims_processed': log.claims_processed,
+        'claims_created':   log.claims_created,
+        'claims_updated':   log.claims_updated,
+        'error_count':      log.error_count,
+    })

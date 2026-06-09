@@ -4,6 +4,7 @@ from .models import (
     CustomUser, Client, Document, DocumentCategory, Landlord,
     WorkType, Room, RoomWorkTypeValue,
     SentEmail, EmailOpenEvent, GeneratedFile, UploadedAttachment, EmailCampaign,
+    EncircleSyncLog,
 )
 
 # Register your models here.
@@ -117,3 +118,27 @@ class EmailCampaignAdmin(admin.ModelAdmin):
     @admin.display(description='Interval')
     def interval_display(self, obj):
         return f'every {obj.interval_value} {obj.interval_unit}'
+
+@admin.register(EncircleSyncLog)
+class EncircleSyncLogAdmin(admin.ModelAdmin):
+    list_display = [
+        'started_at', 'status', 'triggered_by',
+        'claims_processed', 'claims_created', 'claims_updated',
+        'error_count', 'duration_display',
+    ]
+    list_filter  = ['status', 'triggered_by']
+    readonly_fields = [
+        'started_at', 'completed_at', 'status', 'triggered_by',
+        'claims_processed', 'claims_created', 'claims_updated',
+        'error_count', 'error_details',
+    ]
+    ordering = ['-started_at']
+
+    @admin.display(description='Duration')
+    def duration_display(self, obj):
+        secs = obj.duration_seconds
+        if secs is None:
+            return '—'
+        if secs < 60:
+            return f'{secs}s'
+        return f'{secs // 60}m {secs % 60}s'

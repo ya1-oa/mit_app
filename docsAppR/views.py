@@ -4185,6 +4185,13 @@ def dashboard(request):
             'percent': round((item['completed'] / item['total']) * 100, 1) if item['total'] > 0 else 0
         }
 
+    # ── Encircle sync status (latest log row) ─────────────────────────────
+    try:
+        from docsAppR.models import EncircleSyncLog
+        encircle_sync_log = EncircleSyncLog.objects.first()
+    except Exception:
+        encircle_sync_log = None
+
     context = {
         'total_claims': total_claims,
         'avg_completion': avg_completion,
@@ -4199,6 +4206,8 @@ def dashboard(request):
         'completion_distribution_json': json.dumps(completion_distribution),
         'category_stats_json': json.dumps(category_stats),
         'items_completion_json': json.dumps(items_completion),
+        # Encircle sync
+        'encircle_sync_log': encircle_sync_log,
     }
 
     return render(request, 'account/dashboard.html', context)

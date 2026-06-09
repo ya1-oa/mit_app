@@ -3910,3 +3910,47 @@ def send_templates_link_task(self, client_id):
             exc_info=True,
         )
         raise self.retry(exc=exc, countdown=60)
+
+# ============================================================================
+# Encircle → Claimet inbound sync task
+# ============================================================================
+
+@shared_task(
+    bind=True,
+    name='docsAppR.tasks.sync_encircle_claims_task',
+    max_retries=2,
+    default_retry_delay=300,   # 5-minute back-off on retry
+    time_limit=1800,            # 30-minute hard kill (generous for large accounts)
+    soft_time_limit=1500,       # 25-minute soft limit → allows clean log write
+)
+def sync_encircle_claims_task(self, triggered_by='schedule'):
+    """
+    Pull all Encircle claims and upsert them into the local Client table.
+
+    Scheduled daily at 06:00 (America/New_York) via Celery Beat.
+    Can also be called manually from the admin or the manual-trigger API view.
+
+    Returns a summary dict suitable for the Celery result backend.
+    """
+    import logging
+    from .encircle_sync import run_encircle_sync
+
+    task_logger = logging.getLogger(__name__)
+    task_logger.info("sync_encircle_claims_task starting (triggered_by=%s)", triggered_by)
+
+    try:
+        log = run_encircle_sync(triggered_by=triggered_by)
+        result = {
+            'log_id':          log.pk,
+            'status':          log.status,
+            'claims_processed': log.claims_processed,
+            'claims_created':  log.claims_created,
+            'claims_updated':  log.claims_updated,
+            'error_count':     log.error_count,
+        }
+        task_logger.info("sync_encircle_claims_task finished: %s", result)
+        return result
+
+    except Exception as exc:
+        task_logger.error("sync_encircle_claims_task unhandled error: %s", exc, exc_info=True)
+        raise self.retry(exc=exc)

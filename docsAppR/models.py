@@ -245,14 +245,44 @@ class Client(models.Model):
     ale_re_owner_broker_phone = models.CharField(max_length=255, blank=True, help_text="Owner/Broker Phone")
     ale_re_owner_broker_email = models.CharField(max_length=255, blank=True, help_text="Owner/Broker Email")
 
-    # Encircle integration
+    # ── Encircle integration ────────────────────────────────────────────────
     encircle_claim_id = models.CharField(
         max_length=100, blank=True, null=True,
-        help_text="Encircle property claim ID (set after push to Encircle)"
+        help_text="Encircle property claim ID (set after push to Encircle)",
+        db_index=True,
     )
     encircle_synced_at = models.DateTimeField(
         null=True, blank=True,
-        help_text="Last time this claim was pushed to Encircle"
+        help_text="Last time this claim was pushed TO Encircle"
+    )
+    # Fields populated by the automated Encircle→Claimet daily sync
+    encircle_permalink_url = models.URLField(
+        max_length=500, blank=True,
+        help_text="Direct link to this claim in the Encircle web app"
+    )
+    encircle_date_created = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When this claim was first created in Encircle"
+    )
+    encircle_project_manager = models.CharField(
+        max_length=255, blank=True,
+        help_text="Project manager name as set in Encircle"
+    )
+    encircle_loss_details = models.TextField(
+        blank=True,
+        help_text="Free-text loss description from Encircle"
+    )
+    encircle_cat_code = models.CharField(
+        max_length=100, blank=True,
+        help_text="Catastrophe code from Encircle"
+    )
+    encircle_assignment_id = models.CharField(
+        max_length=255, blank=True,
+        help_text="Assignment identifier from Encircle"
+    )
+    encircle_last_synced_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Last time this claim was pulled FROM Encircle (inbound sync)"
     )
 
     completion_percent = models.IntegerField(
@@ -2555,3 +2585,62 @@ class AIUsageLog(models.Model):
             success=success,
             error_message=error_message,
         )
+
+
+# ============================================================================
+# Encircle Sync Log
+# ============================================================================
+
+class EncircleSyncLog(models.Model):
+    """
+    Audit trail for every automated Encircle→Claimet synchronisation run.
+    One row per run; the dashboard reads the most recent row.
+    """
+
+    STATUS_CHOICES = [
+        ('running',  'Running'),
+        ('success',  'Success'),
+        ('failed',   'Failed'),
+        ('partial',  'Partial (some errors)'),
+    ]
+
+    started_at       = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at     = models.DateTimeField(null=True, blank=True)
+    status           = models.CharField(max_length=20, choices=STATUS_CHOICES, default='running')
+    triggered_by     = models.CharField(
+        max_length=50, default='schedule',
+        help_text="'schedule' for Celery-beat runs, 'manual' for user-triggered runs"
+    )
+
+    # Counters
+    claims_processed = models.IntegerField(default=0)
+    claims_created   = models.IntegerField(default=0)
+    claims_updated   = models.IntegerField(default=0)
+    error_count      = models.IntegerField(default=0)
+
+    # Structured error details (list of {encircle_id, error} dicts)
+    error_details    = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ['-started_at']
+        verbose_name     = 'Encircle Sync Log'
+        verbose_name_plural = 'Encircle Sync Logs'
+
+    def __str__(self):
+        duration = ''
+        if self.completed_at:
+            secs = int((self.completed_at - self.started_at).total_seconds())
+            duration = f' ({secs}s)'
+        return (
+            f"EncircleSyncLog {self.started_at:%Y-%m-%d %H:%M} "
+            f"— {self.status}{duration} "
+            f"[{self.claims_created} created / {self.claims_updated} updated / "
+            f"{self.error_count} errors]"
+        )
+
+    @property
+    def duration_seconds(self):
+        if self.completed_at:
+            return int((self.completed_at - self.started_at).total_seconds())
+        return None
+

@@ -288,6 +288,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'dev_hub.tasks.check_ai_budget_alert',
         'schedule': crontab(minute=0),  # top of every hour
     },
+    # ── Encircle → Claimet daily inbound sync — every day at 6:00 AM ET
+    'encircle-daily-sync': {
+        'task': 'docsAppR.tasks.sync_encircle_claims_task',
+        'schedule': crontab(hour=6, minute=0),
+        'kwargs': {'triggered_by': 'schedule'},
+    },
 }
 
 # ==================== Cache Configuration ====================
