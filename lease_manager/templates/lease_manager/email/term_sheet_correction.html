@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 14px; color: #333; margin: 0; padding: 0; background: #f5f5f5; }
+    .wrapper { max-width: 620px; margin: 30px auto; background: #fff; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .header { background: #1a1a2e; padding: 24px 32px; }
+    .header h1 { color: #fff; margin: 0; font-size: 18px; font-weight: 600; }
+    .header .subtitle { color: #a0aec0; font-size: 12px; margin-top: 4px; }
+    .alert-bar { background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px 32px; font-size: 13px; color: #92400e; }
+    .alert-bar strong { display: block; margin-bottom: 2px; }
+    .body { padding: 28px 32px; }
+    .body p { line-height: 1.6; margin: 0 0 14px; }
+    .detail-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 4px; padding: 16px 20px; margin: 18px 0; }
+    .detail-box table { width: 100%; border-collapse: collapse; font-size: 13px; }
+    .detail-box td { padding: 5px 0; }
+    .detail-box td:first-child { color: #64748b; width: 45%; }
+    .detail-box td:last-child { font-weight: 600; color: #1e293b; }
+    .correction-note { background: #f0fdf4; border: 1px solid #86efac; border-radius: 4px; padding: 14px 18px; font-size: 13px; color: #14532d; margin: 18px 0; }
+    .correction-note strong { display: block; margin-bottom: 4px; }
+    .ai-badge { display: inline-block; background: #ede9fe; color: #5b21b6; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: 20px; letter-spacing: .4px; margin-bottom: 10px; }
+    .footer { background: #f8fafc; border-top: 1px solid #e2e8f0; padding: 16px 32px; font-size: 11px; color: #94a3b8; text-align: center; }
+    .footer a { color: #6366f1; text-decoration: none; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <div class="header">
+    <h1>Claimet — Corrected Term Sheet</h1>
+    <div class="subtitle">Automatic document correction notice</div>
+  </div>
+
+  <div class="alert-bar">
+    <strong>Please disregard the previously received term sheet.</strong>
+    A corrected version is attached to this email. The figures below reflect the updated amounts.
+  </div>
+
+  <div class="body">
+    <span class="ai-badge">&#x1F916; Claimet AI Monitor</span>
+
+    <p>Hi {{ recipient_name }},</p>
+
+    <p>
+      Our automated monitoring system detected a discrepancy in the term sheet sent for
+      <strong>{{ property_address }}</strong>. The previous document contained an outdated
+      inspection &amp; clean-up fee that did not reflect the standard renewal rate
+      (½ month&rsquo;s rent). No action is needed on your end — the corrected version is
+      attached.
+    </p>
+
+    <div class="detail-box">
+      <table>
+        <tr><td>Claim / Client</td><td>{{ client_name }}</td></tr>
+        <tr><td>Property</td><td>{{ property_address }}</td></tr>
+        <tr><td>Lease Term</td><td>{{ term_start }} &ndash; {{ term_end }}</td></tr>
+        <tr><td>Monthly Rent</td><td>${{ monthly_rent }}</td></tr>
+        <tr><td colspan="2" style="padding-top:8px;border-top:1px solid #e2e8f0;">&nbsp;</td></tr>
+        <tr><td>Previous Inspection Fee</td><td style="color:#dc2626;text-decoration:line-through;">${{ old_inspection_fee }}</td></tr>
+        <tr><td>Corrected Inspection Fee</td><td style="color:#16a34a;">${{ new_inspection_fee }} <small>(½ × monthly rent)</small></td></tr>
+        <tr><td>Corrected Total Due</td><td style="color:#16a34a;">${{ new_total }}</td></tr>
+      </table>
+    </div>
+
+    <div class="correction-note">
+      <strong>What changed?</strong>
+      Renewal leases use a reduced inspection &amp; clean-up fee equal to half the monthly
+      rent. The security deposit is also waived on renewals. The corrected term sheet
+      attached to this email reflects both adjustments.
+    </div>
+
+    <p>
+      The corrected PDF is attached. Please use it in place of the previous document.
+      If you have any questions, reply directly to this email or contact us at
+      <a href="mailto:{{ contact_email }}">{{ contact_email }}</a>.
+    </p>
+
+    <p>We apologise for any inconvenience.</p>
+
+    <p>— The Claimet Team</p>
+  </div>
+
+  <div class="footer">
+    This correction was issued automatically by the Claimet document integrity monitor.<br>
+    &copy; Claimet &mdash; <a href="https://claimetapp.com">claimetapp.com</a>
+  </div>
+
+</div>
+</body>
+</html>

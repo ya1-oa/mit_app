@@ -198,45 +198,41 @@
     <div class="label-column">
         <div class="section-title">RENTAL TERMS</div>
         <div class="indented">Months</div>
+        {% if not is_renewal %}
         <div class="indented">Security Deposit</div>
         <div class="indented">Subtotal</div>
+        {% endif %}
         <div class="indented" style="white-space:nowrap;">{% if landlord.real_estate_company %}{{ landlord.real_estate_company }} Fee:{% else %}Real Estate Fee:{% endif %}</div>
-        <div class="indented">Final Inspection & Clean-up:</div>
+        <div class="indented">Final Inspection &amp; Clean-up:{% if is_renewal %} <em>(renewal rate)</em>{% endif %}</div>
     </div>
     <div class="content-column">
         <div>&nbsp;</div>
         <div class="indented">{{ landlord.rental_months }} Months</div>
         <div class="indented">${{ landlord.default_rent_amount|floatformat:2 }} × {{ landlord.rental_months }}</div>
+        {% if not is_renewal %}
         <div class="indented">&nbsp;</div>
         <div class="indented">&nbsp;</div>
+        {% endif %}
         <div class="indented">&nbsp;</div>
-        <div class="indented">&nbsp;</div>
+        {% if is_renewal %}<div class="indented">½ × ${{ landlord.default_rent_amount|floatformat:2 }}</div>{% else %}<div class="indented">&nbsp;</div>{% endif %}
     </div>
     <div class="numeric-column">
         <div>&nbsp;</div>
         <div class="indented">&nbsp;</div>
-        <div class="indented"><b><u>${{ landlord.default_rent_amount|multiply:landlord.rental_months|floatformat:2|intcomma }}</u></b></div>
-
+        <div class="indented"><b><u>${{ landlord.base_rent|floatformat:2|intcomma }}</u></b></div>
+        {% if not is_renewal %}
         <div class="indented"><b><u>${{ landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
-        <div class="indented"><b><u>${{ landlord.default_rent_amount|multiply:landlord.rental_months|add:landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
-        <div class="indented"><b><u>${{ landlord.default_rent_amount|floatformat:2|intcomma }}</u></b></div>
-        <div class="indented"><b><u>${{ landlord.default_inspection_fee|floatformat:2|intcomma }}</u></b></div>
-        </div>
+        <div class="indented"><b><u>${{ landlord.base_rent|add:landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
+        {% endif %}
+        <div class="indented"><b><u>${{ landlord.re_company_fee|floatformat:2|intcomma }}</u></b></div>
+        <div class="indented"><b><u>${{ landlord.effective_inspection_fee|floatformat:2|intcomma }}</u></b></div>
     </div>
+</div>
 
-        <!-- Multi-step calculation preserved -->
-        {% with base_rent=landlord.default_rent_amount|default:0|multiply:landlord.rental_months|default:1 %}
-        {% with subtotal1=base_rent|add:landlord.default_security_deposit|default:0 %}
-        {% with subtotal2=subtotal1|add:landlord.default_inspection_fee|default:0 %}
-        {% with final_total=subtotal2|add:landlord.default_rent_amount|default:0 %}
-            <div class="total-row">
-                <div class="total-label">TOTAL AMOUNT DUE:</div>
-                <div class="total-value"><b><u>${{ final_total|floatformat:2|intcomma }}</u></b></div>
-            </div>
-        {% endwith %}
-        {% endwith %}
-        {% endwith %}
-        {% endwith %}
+        <div class="total-row">
+            <div class="total-label">TOTAL AMOUNT DUE:</div>
+            <div class="total-value"><b><u>${{ landlord.term_sheet_total|floatformat:2|intcomma }}</u></b></div>
+        </div>
 
         <div class="document-footer">
             www.dreamteamrealtyinc.com | {{ landlord.company_email|default:"juliuscartwright@gmail.com" }} | {{ landlord.company_phone|default:"(216) 990-1501" }}

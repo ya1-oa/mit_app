@@ -284,17 +284,39 @@ def _build_lease_context(lease, overrides=None, preview=False):
     if notes is None:
         notes = lease.special_notes or ''
 
+    # Renewal pricing rules:
+    #   • Inspection / clean-up fee = ½ month's rent (not the stored inspection_fee)
+    #   • Security deposit is waived (hidden on the term sheet)
+    rent_f   = float(rent or 0)
+    months_i = int(months or 0)
+    effective_inspection_fee = round(rent_f / 2, 2) if is_renewal else float(landlord['default_inspection_fee'])
+    re_company_fee           = round(rent_f, 2)   # always 1 month's rent
+    base_rent                = round(rent_f * months_i, 2)
+    security_deposit_f       = float(deposit or 0)
+
+    if is_renewal:
+        # Renewal total: (rent × months) + RE fee + ½-rent inspection fee
+        # Security deposit is waived — not included.
+        term_sheet_total = round(base_rent + re_company_fee + effective_inspection_fee, 2)
+    else:
+        # Standard total: (rent × months) + security deposit + RE fee + inspection fee
+        term_sheet_total = round(base_rent + security_deposit_f + re_company_fee + float(landlord['default_inspection_fee']), 2)
+
     # Patch the override-able landlord keys
-    landlord['default_rent_amount']      = float(rent or 0)
-    landlord['default_security_deposit'] = float(deposit or 0)
-    landlord['is_renewal']               = is_renewal
-    landlord['exclude_security_deposit'] = excl_sd
-    landlord['exclude_inspection_fee']   = excl_if
-    landlord['term_start_date']          = start
-    landlord['term_end_date']            = end
-    landlord['agreement_date']           = agreement
-    landlord['lease_special_notes']      = notes
-    landlord['rental_months']            = months
+    landlord['default_rent_amount']        = rent_f
+    landlord['default_security_deposit']   = security_deposit_f
+    landlord['is_renewal']                 = is_renewal
+    landlord['exclude_security_deposit']   = excl_sd
+    landlord['exclude_inspection_fee']     = excl_if
+    landlord['term_start_date']            = start
+    landlord['term_end_date']              = end
+    landlord['agreement_date']             = agreement
+    landlord['lease_special_notes']        = notes
+    landlord['rental_months']              = months
+    landlord['effective_inspection_fee']   = effective_inspection_fee
+    landlord['re_company_fee']             = re_company_fee
+    landlord['base_rent']                  = base_rent
+    landlord['term_sheet_total']           = term_sheet_total
 
     return {
         'client':                    lease.client,
@@ -309,6 +331,10 @@ def _build_lease_context(lease, overrides=None, preview=False):
         'is_renewal':                is_renewal,
         'exclude_security_deposit':  excl_sd,
         'exclude_inspection_fee':    excl_if,
+        'effective_inspection_fee':  effective_inspection_fee,
+        're_company_fee':            re_company_fee,
+        'base_rent':                 base_rent,
+        'term_sheet_total':          term_sheet_total,
         'landlord':                  landlord,
     }
 
