@@ -417,7 +417,7 @@
       {% endfor %}
 
       <div class="log-divider"></div>
-      <div class="log-line"><span class="log-ts">2026-06-09 01:44:30 UTC</span><span class="log-lvl-INFO">INFO &nbsp;</span><span class="log-src">PATCH</span><span class="log-msg-patch">Incident report dispatched. Standing by.</span></div>
+      <div class="log-line"><span class="log-ts">{{ dispatch_time_edt }}</span><span class="log-lvl-INFO">INFO &nbsp;</span><span class="log-src">PATCH</span><span class="log-msg-patch">Incident report dispatched. Standing by.</span></div>
     </div>
 
     <!-- CLOSING NOTE -->
@@ -443,6 +443,7 @@
   <div class="footer">
     <div class="report-id">INCIDENT #2026-0609-DRIFT-001 &nbsp;|&nbsp; AUTO-RESOLVED &nbsp;|&nbsp; PATCH v1.0.0</div>
     This report was generated and dispatched autonomously by PATCH, the Claimet document integrity agent.<br>
+    <span style="color:#4ade80;">&#x25CF;</span> &nbsp;All automated PATCH reports are queued for <strong style="color:#4ade80;">08:30 EDT delivery</strong> to ensure inbox priority.<br>
     &copy; Claimet &mdash; <a href="{{ site_url }}">{{ site_url }}</a>
   </div>
 
