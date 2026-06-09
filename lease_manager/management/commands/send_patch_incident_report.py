@@ -7,20 +7,17 @@ Regenerates corrected renewal lease documents and dispatches the PATCH
 incident report with attached PDFs and server logs.
 
 USAGE:
-    # Send to yourself first to preview:
-    python manage.py send_patch_incident_report --to you@gmail.com
-
-    # Send to multiple recipients:
-    python manage.py send_patch_incident_report --to a@gmail.com --to b@gmail.com
+    # Send Anita's corrected docs to yourself first:
+    python manage.py send_patch_incident_report --client anita --to you@gmail.com
 
     # Send to the default provisioned list:
-    python manage.py send_patch_incident_report
+    python manage.py send_patch_incident_report --client anita
 
     # Dry-run (no email sent, no PDFs generated):
-    python manage.py send_patch_incident_report --dry-run --to you@gmail.com
+    python manage.py send_patch_incident_report --client anita --dry-run --to you@gmail.com
 
     # Re-send even if already dispatched:
-    python manage.py send_patch_incident_report --force --to you@gmail.com
+    python manage.py send_patch_incident_report --client anita --force --to you@gmail.com
 """
 import datetime
 import logging
@@ -118,6 +115,16 @@ class Command(BaseCommand):
 
     def add_arguments(self, parser):
         parser.add_argument(
+            '--client',
+            dest='client_name',
+            default=None,
+            metavar='NAME',
+            help=(
+                'Filter to a specific client by name (case-insensitive substring). '
+                'Example: --client anita'
+            ),
+        )
+        parser.add_argument(
             '--to',
             dest='recipients',
             action='append',
@@ -139,24 +146,30 @@ class Command(BaseCommand):
         )
 
     def handle(self, *args, **options):
-        dry_run    = options['dry_run']
-        force      = options['force']
-        recipients = options['recipients'] or DEFAULT_RECIPIENTS
+        dry_run     = options['dry_run']
+        force       = options['force']
+        client_name = options.get('client_name')
+        recipients  = options['recipients'] or DEFAULT_RECIPIENTS
 
         self.stdout.write(f'Recipients: {", ".join(recipients)}')
         if dry_run:
             self.stdout.write(self.style.WARNING('DRY RUN — nothing will be sent.\n'))
 
-        # ── Find renewal leases ───────────────────────────────────────────────
-        renewal_leases = list(
+        # ── Find renewal leases (optionally filtered by client name) ──────────
+        qs = (
             Lease.objects.filter(is_renewal=True)
             .exclude(status='cancelled')
             .select_related('client')
             .order_by('created_at')
         )
+        if client_name:
+            qs = qs.filter(client__pOwner__icontains=client_name)
+
+        renewal_leases = list(qs)
 
         if not renewal_leases:
-            self.stdout.write(self.style.NOTICE('No renewal leases found. Nothing to do.'))
+            hint = f' matching "{client_name}"' if client_name else ''
+            self.stdout.write(self.style.NOTICE(f'No renewal leases found{hint}. Nothing to do.'))
             return
 
         self.stdout.write(f'Found {len(renewal_leases)} renewal lease(s).\n')
