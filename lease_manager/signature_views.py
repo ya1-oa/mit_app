@@ -229,8 +229,10 @@ def _sync_descriptive_from_claim(lease, save=False):
     save=False → mutate in memory only (used for rendering / live preview).
     save=True  → persist the changed fields (used when (re)generating PDFs).
     """
-    # Never alter a finalised lease — an executed document must stay as signed.
-    if lease.status in ('signed', 'cancelled', 'completed'):
+    # Only a fully-executed (signed) lease stays frozen — its document must
+    # remain exactly as signed. Every other lease, INCLUDING old ones made
+    # before this system, refreshes from the claim's current ALE.
+    if lease.status == 'signed':
         return lease
     claim = _ale_to_lease_fields(lease.client)
     changed = []
@@ -399,7 +401,13 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
 
     client      = lease.client
     client_slug = client.pOwner.replace(' ', '_')
-    lease_dir   = os.path.join(settings.MEDIA_ROOT, 'lease_documents', client_slug)
+    # IMPORTANT: each lease gets its OWN sub-folder keyed by lease id. Without
+    # this, two leases for the same claim (e.g. an original + a renewal) wrote to
+    # identical paths and overwrote each other's PDFs — so sending a renewal
+    # attached the original's documents.
+    lease_slug  = str(lease.id)
+    lease_dir   = os.path.join(settings.MEDIA_ROOT, 'lease_documents', client_slug, lease_slug)
+    rel_dir     = f"lease_documents/{client_slug}/{lease_slug}"
     os.makedirs(lease_dir, exist_ok=True)
 
     # Pull current party/company/contact info from the claim and persist it, so
@@ -436,9 +444,9 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
             html_str  = Template(template_content).render(ctx)
             pdf_bytes = WeasyHTML(string=html_str, base_url=base_url).write_pdf()
 
-            filename  = f"{doc_name.replace(' ', '_')}_{client_slug}.pdf"
+            filename  = f"{doc_name.replace(' ', '_')}.pdf"
             abs_path  = os.path.join(lease_dir, filename)
-            rel_path  = f"lease_documents/{client_slug}/{filename}"
+            rel_path  = f"{rel_dir}/{filename}"
 
             with open(abs_path, 'wb') as f:
                 f.write(pdf_bytes)
@@ -472,9 +480,9 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
             html_str = Template(content).render(ctx)
             pdf_bytes = WeasyHTML(string=html_str, base_url=base_url).write_pdf()
 
-            filename = f"Input_Sheet_{client_slug}.pdf"
+            filename = "Input_Sheet.pdf"
             abs_path = os.path.join(lease_dir, filename)
-            rel_path = f"lease_documents/{client_slug}/{filename}"
+            rel_path = f"{rel_dir}/{filename}"
             with open(abs_path, 'wb') as f:
                 f.write(pdf_bytes)
             _upsert_lease_document(lease, 'input_sheet', f"Input Sheet - {client.pOwner}", rel_path)
