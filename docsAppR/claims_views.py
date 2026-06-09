@@ -550,6 +550,40 @@ def create_claim_step3(request):
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         try:
+            # ── Save any ALE fields submitted from the optional step-3 section ──
+            ALE_FIELDS = [
+                'ale_lessee_name', 'ale_lessee_phone', 'ale_lessee_email',
+                'ale_lessee_home_address', 'ale_lessee_city_state_zip',
+                'ale_rental_bedrooms', 'ale_rental_months',
+                'ale_rental_amount_per_month', 'ale_rental_security_deposit',
+                'ale_rental_start_date', 'ale_rental_end_date',
+                'ale_lease_agreement_date', 'ale_inspection_fee',
+                'ale_lessor_name', 'ale_lessor_contact_person', 'ale_lessor_phone',
+                'ale_lessor_leased_address', 'ale_lessor_city_zip', 'ale_lessor_email',
+                'ale_lessor_mailing_address', 'ale_lessor_mailing_city_zip',
+                'ale_re_company_name', 'ale_re_contact_person', 'ale_re_phone',
+                'ale_re_mailing_address', 'ale_re_city_zip', 'ale_re_email',
+                'ale_re_owner_broker_name', 'ale_re_owner_broker_phone', 'ale_re_owner_broker_email',
+            ]
+            from django.utils.dateparse import parse_date
+            for field in ALE_FIELDS:
+                val = request.POST.get(field, '').strip()
+                if not val:
+                    continue
+                field_obj = client._meta.get_field(field)
+                ftype = field_obj.get_internal_type()
+                if ftype == 'DateField':
+                    parsed = parse_date(val)
+                    if parsed:
+                        setattr(client, field, parsed)
+                elif ftype == 'DecimalField':
+                    try:
+                        setattr(client, field, float(val))
+                    except ValueError:
+                        pass
+                else:
+                    setattr(client, field, val)
+
             client.save()
 
             # Trigger server-side background tasks

@@ -521,17 +521,19 @@ SITE_URL    = getattr(settings, 'SITE_URL', 'https://claimetapp.com')
 @require_POST
 def quick_generate_lease(request, client_id):
     """
-    One-click lease creation: reads ALE fields from the Client, creates
-    the Lease, generates all PDFs, then redirects to the detail page.
-    If a non-cancelled lease already exists, redirects to it instead.
+    Lease generation with confirmation step.
+
+    GET  → Show a read-only preview of the ALE data that will populate the
+           lease, plus a Confirm button.  No lease is created yet.
+    POST → Create the lease from ALE data, generate PDFs, redirect to detail.
+
+    Passing ?new=1 (GET) or force=1 (POST) creates a new lease even when one
+    already exists (renewal flow).
     """
     from docsAppR.models import PipelineStageAssignment, LeaseStageCompletion
 
     client = get_object_or_404(Client, id=client_id)
 
-    # By default, don't create duplicates — jump to the existing lease. But a
-    # "New Lease / Renewal" action passes force=1 to deliberately create another
-    # lease for the same claim (e.g. a 3-month renewal with its own terms).
     force_new = bool(request.POST.get('force') or request.GET.get('new'))
     existing = (
         Lease.objects.filter(client=client)
@@ -539,15 +541,28 @@ def quick_generate_lease(request, client_id):
         .order_by('-created_at')
         .first()
     )
-    if existing and not force_new:
-        messages.info(request, f'Existing lease found for {client.pOwner}.')
-        return redirect('lease_manager:lease_detail', lease_id=str(existing.id))
 
+    # ── GET: show the confirmation / preview page ─────────────────────────
+    if request.method == 'GET':
+        if existing and not force_new:
+            messages.info(request, f'Existing lease found for {client.pOwner}.')
+            return redirect('lease_manager:lease_detail', lease_id=str(existing.id))
+
+        ale_preview = _ale_to_lease_fields(client)
+        is_renewal  = bool(existing)
+        return render(request, 'lease_manager/lease_generate_confirm.html', {
+            'client':      client,
+            'ale':         ale_preview,
+            'is_renewal':  is_renewal,
+            'existing':    existing,
+            'force_new':   force_new,
+        })
+
+    # ── POST: confirmed — create the lease ───────────────────────────────
     ale_fields = _ale_to_lease_fields(client)
-    # An additional lease for a claim that already has one is, by default, a
-    # renewal — pre-tick the flag (the user can still toggle it on the page).
     if existing:
         ale_fields['is_renewal'] = True
+
     lease = Lease.objects.create(
         client=client,
         status='generated',

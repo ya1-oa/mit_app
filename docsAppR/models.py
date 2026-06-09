@@ -223,6 +223,8 @@ class Client(models.Model):
     ale_rental_end_date = models.DateField(null=True, blank=True, help_text="Rental End Date")
     ale_rental_amount_per_month = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Amount Per Month")
     ale_rental_security_deposit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Security Deposit")
+    ale_lease_agreement_date = models.DateField(null=True, blank=True, help_text="Lease Agreement Date (date lease is signed/effective)")
+    ale_inspection_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Final Inspection & Cleanup Fee")
 
     # LESSOR INFO (Landlord/Property Owner renting to customer)
     ale_lessor_name = models.CharField(max_length=255, blank=True, help_text="Lessor Legal Name")

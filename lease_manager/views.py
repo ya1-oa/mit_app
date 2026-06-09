@@ -157,11 +157,13 @@ def _ale_to_lease_fields(client):
         'bedrooms':         _int(client.ale_rental_bedrooms, 1),
 
         # ── Rental terms ──────────────────────────────────────────────────
-        'lease_start_date': client.ale_rental_start_date,
-        'lease_end_date':   client.ale_rental_end_date,
-        'rental_months':    _int(client.ale_rental_months, 12),
-        'monthly_rent':     client.ale_rental_amount_per_month or 0,
-        'security_deposit': client.ale_rental_security_deposit or 0,
+        'lease_start_date':     client.ale_rental_start_date,
+        'lease_end_date':       client.ale_rental_end_date,
+        'lease_agreement_date': client.ale_lease_agreement_date,
+        'rental_months':        _int(client.ale_rental_months, 12),
+        'monthly_rent':         client.ale_rental_amount_per_month or 0,
+        'security_deposit':     client.ale_rental_security_deposit or 0,
+        'inspection_fee':       client.ale_inspection_fee or 300,
 
         # ── Real estate company ───────────────────────────────────────────
         'real_estate_company':     client.ale_re_company_name     or '',

@@ -208,6 +208,82 @@
                         </div>
                     </div>
 
+                    <!-- ALE / Lease Details (Optional) -->
+                    <div class="card mb-4">
+                        <div class="card-header bg-light d-flex justify-content-between align-items-center"
+                             style="cursor:pointer;" onclick="toggleALE(this)">
+                            <h5 class="mb-0">
+                                <i class="fas fa-key"></i> ALE / Lease Details
+                                <span class="badge bg-secondary ms-2" style="font-size:.7rem;">Optional</span>
+                            </h5>
+                            <i class="fas fa-chevron-down" id="ale-chevron"></i>
+                        </div>
+                        <div id="ale-body" class="card-body" style="display:none;">
+                            <p class="text-muted small mb-3">
+                                <i class="fas fa-info-circle"></i>
+                                Fill in ALE data now to auto-populate leases later, or skip and fill it in the claim detail page.
+                            </p>
+
+                            <h6 class="text-uppercase text-muted small fw-bold mb-2">Lessee / Tenant</h6>
+                            <div class="row mb-3">
+                                <div class="col-md-4"><label class="form-label small">Name</label><input type="text" class="form-control form-control-sm" name="ale_lessee_name" placeholder="Tenant full name"></div>
+                                <div class="col-md-4"><label class="form-label small">Phone</label><input type="tel" class="form-control form-control-sm" name="ale_lessee_phone"></div>
+                                <div class="col-md-4"><label class="form-label small">Email</label><input type="email" class="form-control form-control-sm" name="ale_lessee_email"></div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-6"><label class="form-label small">Home Address</label><input type="text" class="form-control form-control-sm" name="ale_lessee_home_address"></div>
+                                <div class="col-md-6"><label class="form-label small">City, State, ZIP</label><input type="text" class="form-control form-control-sm" name="ale_lessee_city_state_zip" placeholder="e.g. Los Angeles, CA 90001"></div>
+                            </div>
+
+                            <h6 class="text-uppercase text-muted small fw-bold mb-2 mt-3">Rental Terms</h6>
+                            <div class="row mb-3">
+                                <div class="col-md-2"><label class="form-label small">Bedrooms</label><input type="text" class="form-control form-control-sm" name="ale_rental_bedrooms"></div>
+                                <div class="col-md-2"><label class="form-label small">Months</label><input type="text" class="form-control form-control-sm" name="ale_rental_months"></div>
+                                <div class="col-md-3"><label class="form-label small">Amount / Month</label><input type="number" step="0.01" class="form-control form-control-sm" name="ale_rental_amount_per_month"></div>
+                                <div class="col-md-3"><label class="form-label small">Security Deposit</label><input type="number" step="0.01" class="form-control form-control-sm" name="ale_rental_security_deposit"></div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-3"><label class="form-label small">Start Date</label><input type="date" class="form-control form-control-sm" name="ale_rental_start_date"></div>
+                                <div class="col-md-3"><label class="form-label small">End Date</label><input type="date" class="form-control form-control-sm" name="ale_rental_end_date"></div>
+                                <div class="col-md-3"><label class="form-label small">Agreement Date</label><input type="date" class="form-control form-control-sm" name="ale_lease_agreement_date"></div>
+                                <div class="col-md-3"><label class="form-label small">Inspection Fee</label><input type="number" step="0.01" class="form-control form-control-sm" name="ale_inspection_fee" placeholder="300.00"></div>
+                            </div>
+
+                            <h6 class="text-uppercase text-muted small fw-bold mb-2 mt-3">Lessor</h6>
+                            <div class="row mb-3">
+                                <div class="col-md-4"><label class="form-label small">Name</label><input type="text" class="form-control form-control-sm" name="ale_lessor_name"></div>
+                                <div class="col-md-4"><label class="form-label small">Contact Person</label><input type="text" class="form-control form-control-sm" name="ale_lessor_contact_person"></div>
+                                <div class="col-md-4"><label class="form-label small">Phone</label><input type="tel" class="form-control form-control-sm" name="ale_lessor_phone"></div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-5"><label class="form-label small">Leased Property Address</label><input type="text" class="form-control form-control-sm" name="ale_lessor_leased_address"></div>
+                                <div class="col-md-4"><label class="form-label small">City, ZIP</label><input type="text" class="form-control form-control-sm" name="ale_lessor_city_zip"></div>
+                                <div class="col-md-3"><label class="form-label small">Email</label><input type="email" class="form-control form-control-sm" name="ale_lessor_email"></div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-5"><label class="form-label small">Mailing Address</label><input type="text" class="form-control form-control-sm" name="ale_lessor_mailing_address"></div>
+                                <div class="col-md-4"><label class="form-label small">Mailing City, ZIP</label><input type="text" class="form-control form-control-sm" name="ale_lessor_mailing_city_zip"></div>
+                            </div>
+
+                            <h6 class="text-uppercase text-muted small fw-bold mb-2 mt-3">Real Estate Company <span class="text-muted fw-normal">(if applicable)</span></h6>
+                            <div class="row mb-3">
+                                <div class="col-md-4"><label class="form-label small">Company Name</label><input type="text" class="form-control form-control-sm" name="ale_re_company_name"></div>
+                                <div class="col-md-4"><label class="form-label small">Contact Person</label><input type="text" class="form-control form-control-sm" name="ale_re_contact_person"></div>
+                                <div class="col-md-4"><label class="form-label small">Phone</label><input type="tel" class="form-control form-control-sm" name="ale_re_phone"></div>
+                            </div>
+                            <div class="row mb-3">
+                                <div class="col-md-5"><label class="form-label small">Mailing Address</label><input type="text" class="form-control form-control-sm" name="ale_re_mailing_address"></div>
+                                <div class="col-md-4"><label class="form-label small">City, ZIP</label><input type="text" class="form-control form-control-sm" name="ale_re_city_zip"></div>
+                                <div class="col-md-3"><label class="form-label small">Email</label><input type="email" class="form-control form-control-sm" name="ale_re_email"></div>
+                            </div>
+                            <div class="row mb-0">
+                                <div class="col-md-4"><label class="form-label small">Owner/Broker Name</label><input type="text" class="form-control form-control-sm" name="ale_re_owner_broker_name"></div>
+                                <div class="col-md-4"><label class="form-label small">Owner/Broker Phone</label><input type="tel" class="form-control form-control-sm" name="ale_re_owner_broker_phone"></div>
+                                <div class="col-md-4"><label class="form-label small">Owner/Broker Email</label><input type="email" class="form-control form-control-sm" name="ale_re_owner_broker_email"></div>
+                            </div>
+                        </div>
+                    </div>
+
                     <!-- Confirmation -->
                     <div class="card border-success">
                         <div class="card-body text-center">
@@ -594,4 +670,13 @@
         </div>
     </div>
 </div>
+<script>
+function toggleALE(header) {
+    const body = document.getElementById('ale-body');
+    const icon = document.getElementById('ale-chevron');
+    const open = body.style.display !== 'none';
+    body.style.display = open ? 'none' : 'block';
+    icon.className = open ? 'fas fa-chevron-down' : 'fas fa-chevron-up';
+}
+</script>
 {% endblock %}

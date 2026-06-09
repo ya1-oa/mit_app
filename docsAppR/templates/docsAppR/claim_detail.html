@@ -668,10 +668,13 @@
                 <div class="col-md-3"><label class="form-label">Bedrooms</label><input type="text" class="form-control" name="ale_rental_bedrooms" value="{{ client.ale_rental_bedrooms }}"></div>
                 <div class="col-md-3"><label class="form-label">Months</label><input type="text" class="form-control" name="ale_rental_months" value="{{ client.ale_rental_months }}"></div>
                 <div class="col-md-3"><label class="form-label">Amount / Month</label><input type="number" step="0.01" class="form-control" name="ale_rental_amount_per_month" value="{{ client.ale_rental_amount_per_month }}"></div>
+                <div class="col-md-3"><label class="form-label">Security Deposit</label><input type="number" step="0.01" class="form-control" name="ale_rental_security_deposit" value="{{ client.ale_rental_security_deposit }}"></div>
             </div>
             <div class="row mb-3">
                 <div class="col-md-3"><label class="form-label">Start Date</label><input type="date" class="form-control" name="ale_rental_start_date" value="{{ client.ale_rental_start_date|date:'Y-m-d' }}"></div>
                 <div class="col-md-3"><label class="form-label">End Date</label><input type="date" class="form-control" name="ale_rental_end_date" value="{{ client.ale_rental_end_date|date:'Y-m-d' }}"></div>
+                <div class="col-md-3"><label class="form-label">Agreement Date</label><input type="date" class="form-control" name="ale_lease_agreement_date" value="{{ client.ale_lease_agreement_date|date:'Y-m-d' }}" title="Date the lease agreement is signed/effective"></div>
+                <div class="col-md-3"><label class="form-label">Inspection Fee</label><input type="number" step="0.01" class="form-control" name="ale_inspection_fee" value="{{ client.ale_inspection_fee }}" placeholder="300.00"></div>
             </div>
             <div class="form-section-title">Lessor</div>
             <div class="row mb-3">
