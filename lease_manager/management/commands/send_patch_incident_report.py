@@ -105,21 +105,25 @@ class Command(BaseCommand):
                     (r for r in results if r.get('doc_name') == 'Term Sheet' and r.get('success')),
                     None,
                 )
-                if ts_result:
-                    pdf_path = os.path.join(settings.MEDIA_ROOT, ts_result['file_path'])
-                    if os.path.exists(pdf_path):
-                        with open(pdf_path, 'rb') as f:
-                            pdf_bytes = f.read()
-                        safe_name = (
-                            f"Term_Sheet_Corrected_"
-                            f"{(lease.client.pOwner if lease.client else str(lease.id)).replace(' ', '_')}.pdf"
-                        )
-                        pdf_attachments.append((safe_name, pdf_bytes))
-                        self.stdout.write(self.style.SUCCESS(f'  ✓ Regenerated: {label}'))
-                    else:
-                        self.stdout.write(self.style.WARNING(f'  ⚠ PDF file missing after generation: {label}'))
+                client_slug = (lease.client.pOwner if lease.client else str(lease.id)).replace(' ', '_')
+                attached = 0
+                for result in results:
+                    if not result.get('success') or not result.get('file_path'):
+                        continue
+                    pdf_path = os.path.join(settings.MEDIA_ROOT, result['file_path'])
+                    if not os.path.exists(pdf_path):
+                        continue
+                    with open(pdf_path, 'rb') as f:
+                        pdf_bytes = f.read()
+                    doc_label = result.get('doc_name', 'Document').replace(' ', '_')
+                    safe_name = f"{doc_label}_Corrected_{client_slug}.pdf"
+                    pdf_attachments.append((safe_name, pdf_bytes))
+                    attached += 1
+
+                if attached:
+                    self.stdout.write(self.style.SUCCESS(f'  ✓ Regenerated {attached} doc(s): {label}'))
                 else:
-                    self.stdout.write(self.style.WARNING(f'  ⚠ Term Sheet generation failed for: {label}'))
+                    self.stdout.write(self.style.WARNING(f'  ⚠ No PDFs generated for: {label}'))
 
                 # Mark as processed
                 LeaseActivity.objects.create(
