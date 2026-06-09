@@ -216,12 +216,14 @@
 
   <!-- BOOT HEADER -->
   <div class="boot-header">
-    <div class="boot-line"><span class="dim">[04:55:19 EDT]</span> <span class="ok">PATCH v1.0.0 -- INITIALIZING</span></div>
-    <div class="boot-line"><span class="dim">[04:55:19 EDT]</span> Loading rule set: <span class="hi">DOCUMENT_INTEGRITY v2.3</span> (7 rules active)</div>
-    <div class="boot-line"><span class="dim">[04:55:20 EDT]</span> <span class="warn">ALERT: Post-restart drift scan triggered -- recent dispatch window contains anomalies</span></div>
-    <div class="boot-line"><span class="dim">[04:55:22 EDT]</span> <span class="err">DRIFT DETECTED -- Rule R-01 violation on renewal lease batch dispatched at 04:55 EDT</span></div>
-    <div class="boot-line"><span class="dim">[04:55:26 EDT]</span> <span class="ok">AUTO-CORRECTION APPLIED -- regenerating affected documents</span></div>
-    <div class="boot-line"><span class="dim">[04:55:33 EDT]</span> <span class="ok">Report held for developer review -- dispatching now at developer instruction</span></div>
+    <div class="boot-line"><span class="dim">[04:54:44 EDT]</span> <span class="ok">PATCH v1.0.0 -- INITIALIZING (first deployment)</span></div>
+    <div class="boot-line"><span class="dim">[04:54:45 EDT]</span> Dispatch monitor attached -- <span class="hi">watching all outbound document jobs</span></div>
+    <div class="boot-line"><span class="dim">[04:55:12 EDT]</span> <span class="warn">Celery fired renewal batch at 04:55 EDT using stale pre-reset template</span></div>
+    <div class="boot-line"><span class="dim">[04:55:13 EDT]</span> <span class="err">RULE R-01 VIOLATION -- RE company fee incorrect on dispatched renewal documents</span></div>
+    <div class="boot-line"><span class="dim">[04:55:18 EDT]</span> <span class="ok">AUTO-CORRECTION APPLIED -- corrected PDFs regenerated, audit trail logged</span></div>
+    <div class="boot-line"><span class="dim">[04:55:24 EDT]</span> Incident report queued -- <span class="hi">scheduled dispatch: 08:00 EDT</span></div>
+    <div class="boot-line"><span class="dim">[05:00:01 EDT]</span> Encircle sync audit running... (phase 3/3 paused at 08:00 EDT to send this report)</div>
+    <div class="boot-line"><span class="dim">[08:00:01 EDT]</span> <span class="ok">Dispatching incident report now</span></div>
 
     <div class="boot-agent-name"><span>P</span>ATCH</div>
     <div class="boot-tagline">CLAIMET DOCUMENT INTEGRITY AGENT -- FIRST DEPLOYMENT -- 2026-06-09</div>
