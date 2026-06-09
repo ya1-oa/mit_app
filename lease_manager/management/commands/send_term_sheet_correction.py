@@ -6,9 +6,9 @@ were generated with the old, non-halved inspection fee, and send a corrected
 term-sheet to the RE company / landlord contacts.
 
 WHAT IT CHECKS (drift detection rules):
-  Rule 1 — Renewal inspection fee should be exactly ½ × monthly_rent.
-            If the stored inspection_fee on the lease is > rent/2, the old
-            template was used and a correction is needed.
+  Rule 1 — Renewal RE company fee should be exactly ½ × monthly_rent.
+            If the term sheet was generated before this rule existed the
+            RE fee shows the full month's rent — that document needs a correction.
 
 USAGE:
   # Dry-run (prints detections, sends nothing):
@@ -64,14 +64,19 @@ def _detect_drift(lease):
         return issues   # rules below only apply to renewals
 
     rent = float(lease.monthly_rent or 0)
-    expected_inspection = round(rent / 2, 2)
-    stored_inspection   = float(lease.inspection_fee or 0)
+    expected_re_fee = round(rent / 2, 2)
 
-    # Rule 1: Renewal inspection fee must be ½ × monthly rent
-    if stored_inspection > expected_inspection:
+    # Rule 1: Renewal RE company fee should be ½ × monthly rent.
+    # The term sheet always shows re_company_fee computed at render time, but
+    # any previously-generated PDFs (before this rule) would have shown the
+    # full month's rent — flag those leases for a correction email.
+    # We detect this by checking whether the stored inspection_fee on the lease
+    # is the full-month value, as a proxy for "generated with old template".
+    stored_inspection = float(lease.inspection_fee or 0)
+    if stored_inspection > expected_re_fee:
         issues.append(
-            f'Inspection fee ${stored_inspection:.2f} should be ${expected_inspection:.2f} '
-            f'(½ × ${rent:.2f} monthly rent) for a renewal.'
+            f'RE company fee was the full month (${rent:.2f}) on previous term sheet; '
+            f'renewal rate is ${expected_re_fee:.2f} (½ × ${rent:.2f}).'
         )
 
     # Rule 2: Security deposit should be $0 / waived on renewals
@@ -101,11 +106,11 @@ def _correction_already_sent(lease):
 
 def _build_correction_context(lease):
     rent      = float(lease.monthly_rent or 0)
-    old_fee   = float(lease.inspection_fee or 0)
-    new_fee   = round(rent / 2, 2)
-    re_fee    = round(rent, 2)
+    old_re    = round(rent, 2)          # old: full month's rent
+    new_re    = round(rent / 2, 2)      # corrected: half month's rent
+    insp      = float(lease.inspection_fee or 0) if not lease.exclude_inspection_fee else 0.0
     months    = int(lease.rental_months or 0)
-    new_total = round(rent * months + re_fee + new_fee, 2)
+    new_total = round(rent * months + new_re + insp, 2)
 
     # Preferred recipient: RE company contact, then lessor, then owner fallback
     recipient_email = (
@@ -127,8 +132,8 @@ def _build_correction_context(lease):
         'term_start':       str(lease.lease_start_date or ''),
         'term_end':         str(lease.lease_end_date or ''),
         'monthly_rent':     f'{rent:,.2f}',
-        'old_inspection_fee': f'{old_fee:,.2f}',
-        'new_inspection_fee': f'{new_fee:,.2f}',
+        'old_re_fee':       f'{old_re:,.2f}',
+        'new_re_fee':       f'{new_re:,.2f}',
         'new_total':        f'{new_total:,.2f}',
         'contact_email':    FROM_EMAIL,
         'lease_url':        f'{SITE_URL}/lease-manager/lease/{lease.id}/',

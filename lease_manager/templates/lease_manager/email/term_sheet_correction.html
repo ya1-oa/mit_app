@@ -44,10 +44,9 @@
 
     <p>
       Our automated monitoring system detected a discrepancy in the term sheet sent for
-      <strong>{{ property_address }}</strong>. The previous document contained an outdated
-      inspection &amp; clean-up fee that did not reflect the standard renewal rate
-      (½ month&rsquo;s rent). No action is needed on your end — the corrected version is
-      attached.
+      <strong>{{ property_address }}</strong>. The previous document contained a full-month
+      real estate company fee where the renewal rate should be ½ month&rsquo;s rent.
+      No action is needed on your end — the corrected version is attached.
     </p>
 
     <div class="detail-box">
@@ -57,17 +56,17 @@
         <tr><td>Lease Term</td><td>{{ term_start }} &ndash; {{ term_end }}</td></tr>
         <tr><td>Monthly Rent</td><td>${{ monthly_rent }}</td></tr>
         <tr><td colspan="2" style="padding-top:8px;border-top:1px solid #e2e8f0;">&nbsp;</td></tr>
-        <tr><td>Previous Inspection Fee</td><td style="color:#dc2626;text-decoration:line-through;">${{ old_inspection_fee }}</td></tr>
-        <tr><td>Corrected Inspection Fee</td><td style="color:#16a34a;">${{ new_inspection_fee }} <small>(½ × monthly rent)</small></td></tr>
+        <tr><td>Previous RE Company Fee</td><td style="color:#dc2626;text-decoration:line-through;">${{ old_re_fee }}</td></tr>
+        <tr><td>Corrected RE Company Fee</td><td style="color:#16a34a;">${{ new_re_fee }} <small>(½ × monthly rent — renewal rate)</small></td></tr>
         <tr><td>Corrected Total Due</td><td style="color:#16a34a;">${{ new_total }}</td></tr>
       </table>
     </div>
 
     <div class="correction-note">
       <strong>What changed?</strong>
-      Renewal leases use a reduced inspection &amp; clean-up fee equal to half the monthly
-      rent. The security deposit is also waived on renewals. The corrected term sheet
-      attached to this email reflects both adjustments.
+      Renewal leases use a reduced real estate company fee equal to half the monthly
+      rent (instead of a full month). The corrected term sheet attached to this email
+      reflects the updated amount.
     </div>
 
     <p>

@@ -198,34 +198,43 @@
     <div class="label-column">
         <div class="section-title">RENTAL TERMS</div>
         <div class="indented">Months</div>
-        {% if not is_renewal %}
+        {% if not exclude_security_deposit %}
         <div class="indented">Security Deposit</div>
         <div class="indented">Subtotal</div>
         {% endif %}
-        <div class="indented" style="white-space:nowrap;">{% if landlord.real_estate_company %}{{ landlord.real_estate_company }} Fee:{% else %}Real Estate Fee:{% endif %}</div>
-        <div class="indented">Final Inspection &amp; Clean-up:{% if is_renewal %} <em>(renewal rate)</em>{% endif %}</div>
+        <div class="indented" style="white-space:nowrap;">
+            {% if landlord.real_estate_company %}{{ landlord.real_estate_company }} Fee:{% else %}Real Estate Fee:{% endif %}
+            {% if is_renewal %}<em>(renewal rate)</em>{% endif %}
+        </div>
+        {% if not exclude_inspection_fee %}
+        <div class="indented">Final Inspection &amp; Clean-up:</div>
+        {% endif %}
     </div>
     <div class="content-column">
         <div>&nbsp;</div>
         <div class="indented">{{ landlord.rental_months }} Months</div>
         <div class="indented">${{ landlord.default_rent_amount|floatformat:2 }} × {{ landlord.rental_months }}</div>
-        {% if not is_renewal %}
+        {% if not exclude_security_deposit %}
         <div class="indented">&nbsp;</div>
         <div class="indented">&nbsp;</div>
         {% endif %}
+        <div class="indented">{% if is_renewal %}½ × ${{ landlord.default_rent_amount|floatformat:2 }}{% endif %}</div>
+        {% if not exclude_inspection_fee %}
         <div class="indented">&nbsp;</div>
-        {% if is_renewal %}<div class="indented">½ × ${{ landlord.default_rent_amount|floatformat:2 }}</div>{% else %}<div class="indented">&nbsp;</div>{% endif %}
+        {% endif %}
     </div>
     <div class="numeric-column">
         <div>&nbsp;</div>
         <div class="indented">&nbsp;</div>
         <div class="indented"><b><u>${{ landlord.base_rent|floatformat:2|intcomma }}</u></b></div>
-        {% if not is_renewal %}
+        {% if not exclude_security_deposit %}
         <div class="indented"><b><u>${{ landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
         <div class="indented"><b><u>${{ landlord.base_rent|add:landlord.default_security_deposit|floatformat:2|intcomma }}</u></b></div>
         {% endif %}
         <div class="indented"><b><u>${{ landlord.re_company_fee|floatformat:2|intcomma }}</u></b></div>
-        <div class="indented"><b><u>${{ landlord.effective_inspection_fee|floatformat:2|intcomma }}</u></b></div>
+        {% if not exclude_inspection_fee %}
+        <div class="indented"><b><u>${{ landlord.default_inspection_fee|floatformat:2|intcomma }}</u></b></div>
+        {% endif %}
     </div>
 </div>
 
