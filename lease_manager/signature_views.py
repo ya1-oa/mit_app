@@ -276,7 +276,7 @@ def _build_lease_context(lease, overrides=None, preview=False):
     # Effective dates (override → lease)
     start     = _parse_date(overrides.get('lease_start_date'))     or lease.lease_start_date
     end       = _parse_date(overrides.get('lease_end_date'))       or lease.lease_end_date
-    agreement = _parse_date(overrides.get('lease_agreement_date')) or lease.lease_agreement_date or start
+    agreement = _parse_date(overrides.get('lease_agreement_date')) or lease.lease_agreement_date
 
     # Special notes: user-entered only. An explicit '' override stays empty;
     # an absent key falls back to whatever the user previously saved.
@@ -292,6 +292,7 @@ def _build_lease_context(lease, overrides=None, preview=False):
     landlord['exclude_inspection_fee']   = excl_if
     landlord['term_start_date']          = start
     landlord['term_end_date']            = end
+    landlord['agreement_date']           = agreement
     landlord['lease_special_notes']      = notes
     landlord['rental_months']            = months
 
