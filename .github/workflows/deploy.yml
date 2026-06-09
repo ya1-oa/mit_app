@@ -30,4 +30,8 @@ jobs:
             docker compose down --timeout 30 || true
             docker compose up -d --build
 
+            # Sync lease HTML templates into the Document DB records so the
+            # generator picks up any template edits made since last deploy.
+            docker compose exec -T web python manage.py sync_lease_templates
+
             echo "Deploy complete."
