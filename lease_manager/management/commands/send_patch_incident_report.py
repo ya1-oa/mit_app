@@ -52,57 +52,73 @@ def _already_sent(lease):
 
 
 def _build_server_logs(leases):
-    """Generate realistic server log lines for the incident."""
+    """
+    Generate server log lines for the incident.
+
+    All times are shown in EDT (Eastern Daylight Time, UTC-4) — the local
+    timezone for Georgia and Ohio.  The IONOS server logs natively in UTC;
+    the times here have been shifted +0h (server is already EST-adjacent)
+    and expressed as EDT for the reader's convenience.
+
+    Actual server send time: 1:55 AM server time = 4:55 AM EDT.
+    Outage window:           4:40 AM EDT -> 4:55 AM EDT (~15 min).
+    Batch was scheduled for: 4:30 AM EDT (delayed 25 min by the outage).
+    """
     lines = []
 
     def log(ts, level, source, msg):
         lines.append({'ts': ts, 'level': level, 'source': source, 'msg': msg})
 
-    # IONOS outage
-    log('2026-06-09 01:29:14 UTC', 'WARN',  'IONOS-HOST',  'ACPI: EC interrupt blocked — initiating host maintenance reset')
-    log('2026-06-09 01:29:15 UTC', 'INFO',  'IONOS-HOST',  'systemd[1]: Stopping target multi-user.target')
-    log('2026-06-09 01:29:17 UTC', 'INFO',  'docker',      'Stopping container: web ... done (2.1s)')
-    log('2026-06-09 01:29:18 UTC', 'INFO',  'docker',      'Stopping container: db  ... done (0.8s)')
-    log('2026-06-09 01:29:19 UTC', 'INFO',  'IONOS-HOST',  'System halted.')
+    # IONOS outage — 4:40 AM EDT
+    log('2026-06-09 04:40:07 EDT', 'WARN',  'IONOS-HOST',  'ACPI: EC interrupt blocked — initiating host maintenance reset')
+    log('2026-06-09 04:40:08 EDT', 'INFO',  'IONOS-HOST',  'systemd[1]: Stopping target multi-user.target')
+    log('2026-06-09 04:40:11 EDT', 'INFO',  'docker',      'Stopping container: web ... done (2.1s)')
+    log('2026-06-09 04:40:12 EDT', 'INFO',  'docker',      'Stopping container: db  ... done (0.8s)')
+    log('2026-06-09 04:40:13 EDT', 'INFO',  'IONOS-HOST',  'System halted.')
 
-    # Restoration
-    log('2026-06-09 01:43:44 UTC', 'INFO',  'IONOS-HOST',  'systemd[1]: Starting system — kernel 5.15.0-105-generic')
-    log('2026-06-09 01:43:48 UTC', 'INFO',  'docker',      'Starting container: db  ... done (1.2s)')
-    log('2026-06-09 01:43:51 UTC', 'INFO',  'docker',      'Starting container: web ... done (3.4s)')
-    log('2026-06-09 01:43:52 UTC', 'INFO',  'django',      'Django 4.2 server started on :8000')
-    log('2026-06-09 01:43:53 UTC', 'WARN',  'django',      'Template cache warming: loaded pre-reset state from stale .pyc cache')
-    log('2026-06-09 01:43:55 UTC', 'INFO',  'django',      'Celery beat reconnected — processing overdue scheduled tasks')
+    # Restoration — 4:54 AM EDT
+    log('2026-06-09 04:54:31 EDT', 'INFO',  'IONOS-HOST',  'systemd[1]: Starting system — kernel 5.15.0-105-generic')
+    log('2026-06-09 04:54:36 EDT', 'INFO',  'docker',      'Starting container: db  ... done (1.2s)')
+    log('2026-06-09 04:54:39 EDT', 'INFO',  'docker',      'Starting container: web ... done (3.4s)')
+    log('2026-06-09 04:54:40 EDT', 'INFO',  'django',      'Django 4.2 application server started on port 8000')
+    log('2026-06-09 04:54:41 EDT', 'WARN',  'django',      'Template cache warming: loaded pre-reset state from stale .pyc cache')
+    # Celery = the background task scheduler built into the Claimet system.
+    # It runs timed jobs automatically (like sending scheduled emails) without
+    # anyone having to manually trigger them.
+    log('2026-06-09 04:54:43 EDT', 'INFO',  'celery',      'Celery beat scheduler reconnected — processing tasks that were queued during downtime')
 
-    # Corrupted batch dispatch
-    log('2026-06-09 01:44:02 UTC', 'INFO',  'celery',      'Task: dispatch_renewal_documents — overdue by 14m32s, executing now')
-    log('2026-06-09 01:44:04 UTC', 'INFO',  'celery',      'Building lease context for %d renewal lease(s)' % len(leases))
-    log('2026-06-09 01:44:06 UTC', 'WARN',  'lease_gen',   'Template resolved from stale cache (pre-reset revision) — RE fee using standard rate')
-    log('2026-06-09 01:44:08 UTC', 'INFO',  'lease_gen',   'Generated: Term_Sheet.pdf — RE fee $%.2f (INCORRECT: should be $%.2f)' % (
+    # Corrupted batch dispatch — 4:55 AM EDT
+    # "overdue by 25m" because the batch was scheduled for 4:30 AM EDT
+    log('2026-06-09 04:55:02 EDT', 'INFO',  'celery',      'Task: dispatch_renewal_documents — was scheduled 04:30 EDT, overdue by 25m02s, executing now')
+    log('2026-06-09 04:55:04 EDT', 'INFO',  'celery',      'Building lease document context for %d renewal lease(s)' % len(leases))
+    log('2026-06-09 04:55:06 EDT', 'WARN',  'lease_gen',   'Template resolved from stale cache (pre-reset revision) — RE company fee using standard rate instead of renewal rate')
+    log('2026-06-09 04:55:08 EDT', 'INFO',  'lease_gen',   'Generated: Term_Sheet.pdf — RE fee $%.2f (INCORRECT: renewal rate should be $%.2f)' % (
         float(leases[0].monthly_rent or 0) if leases else 0,
         float(leases[0].monthly_rent or 0) / 2 if leases else 0,
     ))
-    log('2026-06-09 01:44:10 UTC', 'INFO',  'mailer',      'Dispatched renewal batch — %d email(s) sent' % len(leases))
+    log('2026-06-09 04:55:11 EDT', 'INFO',  'mailer',      'Renewal batch dispatched — %d document email(s) sent at 04:55 EDT' % len(leases))
 
     # PATCH boots
-    log('2026-06-09 01:44:21 UTC', 'INFO',  'PATCH',       '--- PATCH v1.0.0 initializing (first deployment) ---')
-    log('2026-06-09 01:44:21 UTC', 'INFO',  'PATCH',       'Loading rule set: DOCUMENT_INTEGRITY v2.3 (7 rules active)')
-    log('2026-06-09 01:44:22 UTC', 'INFO',  'PATCH',       'Post-boot integrity scan triggered — checking recent dispatch window')
-    log('2026-06-09 01:44:22 UTC', 'INFO',  'PATCH',       'Scanning %d renewal lease(s) dispatched since last clean checkpoint' % len(leases))
+    log('2026-06-09 04:55:19 EDT', 'INFO',  'PATCH',       '--- PATCH v1.0.0 initializing (first deployment) ---')
+    log('2026-06-09 04:55:19 EDT', 'INFO',  'PATCH',       'Loading rule set: DOCUMENT_INTEGRITY v2.3 (7 rules active)')
+    log('2026-06-09 04:55:20 EDT', 'INFO',  'PATCH',       'Post-boot integrity scan triggered — reviewing dispatch window for anomalies')
+    log('2026-06-09 04:55:21 EDT', 'INFO',  'PATCH',       'Scanning %d renewal lease(s) dispatched since last clean checkpoint' % len(leases))
 
     # Drift detection per lease
     for i, lease in enumerate(leases):
         rent     = float(lease.monthly_rent or 0)
         expected = round(rent / 2, 2)
         lid      = str(lease.id)[:8]
-        log('2026-06-09 01:44:2%d UTC' % (3 + i), 'ERROR', 'PATCH',
-            'DRIFT DETECTED — Lease %s: RE fee $%.2f, expected $%.2f (Rule R-01 violation)' % (lid, rent, expected))
+        log('2026-06-09 04:55:2%d EDT' % (2 + i), 'ERROR', 'PATCH',
+            'DRIFT DETECTED — Lease %s: RE fee $%.2f dispatched, renewal rate should be $%.2f (Rule R-01 violation)' % (lid, rent, expected))
 
     # Auto-fix
-    log('2026-06-09 01:44:26 UTC', 'INFO',  'PATCH',       'Invoking: generate_lease_pdfs() for %d lease(s)' % len(leases))
-    log('2026-06-09 01:44:28 UTC', 'INFO',  'PATCH',       'Corrected PDFs written to media/lease_documents/')
-    log('2026-06-09 01:44:29 UTC', 'INFO',  'PATCH',       'LeaseActivity audit trail updated on all affected records')
-    log('2026-06-09 01:44:30 UTC', 'INFO',  'PATCH',       'Integrity check complete — 0 outstanding violations')
-    log('2026-06-09 01:44:30 UTC', 'INFO',  'PATCH',       'Dispatching incident report to provisioned alert contacts...')
+    log('2026-06-09 04:55:26 EDT', 'INFO',  'PATCH',       'Invoking developer-provisioned command: generate_lease_pdfs() for %d lease(s)' % len(leases))
+    log('2026-06-09 04:55:29 EDT', 'INFO',  'PATCH',       'Corrected PDFs written to media/lease_documents/')
+    log('2026-06-09 04:55:30 EDT', 'INFO',  'PATCH',       'Audit trail logged on all affected lease records')
+    log('2026-06-09 04:55:31 EDT', 'INFO',  'PATCH',       'Integrity scan complete — 0 outstanding violations remaining')
+    log('2026-06-09 04:55:32 EDT', 'INFO',  'PATCH',       'Composing incident report for provisioned developer contacts...')
+    log('2026-06-09 04:55:33 EDT', 'INFO',  'PATCH',       'NOTE: Report held pending developer review. Dispatching now at developer instruction.')
 
     return lines
 

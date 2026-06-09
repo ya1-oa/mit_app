@@ -216,22 +216,22 @@
 
   <!-- BOOT HEADER -->
   <div class="boot-header">
-    <div class="boot-line"><span class="dim">[01:44:21 UTC]</span> <span class="ok">PATCH v1.0.0 — INITIALIZING</span></div>
-    <div class="boot-line"><span class="dim">[01:44:21 UTC]</span> Loading rule set: <span class="hi">DOCUMENT_INTEGRITY v2.3</span> (7 rules active)</div>
-    <div class="boot-line"><span class="dim">[01:44:22 UTC]</span> <span class="warn">ALERT: Post-restart drift scan triggered — recent dispatch window contains anomalies</span></div>
-    <div class="boot-line"><span class="dim">[01:44:26 UTC]</span> <span class="err">DRIFT DETECTED — Rule R-01 violation on renewal lease batch</span></div>
-    <div class="boot-line"><span class="dim">[01:44:28 UTC]</span> <span class="ok">AUTO-CORRECTION APPLIED — regenerating affected documents</span></div>
-    <div class="boot-line"><span class="dim">[01:44:30 UTC]</span> <span class="ok">Dispatching incident report to provisioned alert contacts</span></div>
+    <div class="boot-line"><span class="dim">[04:55:19 EDT]</span> <span class="ok">PATCH v1.0.0 -- INITIALIZING</span></div>
+    <div class="boot-line"><span class="dim">[04:55:19 EDT]</span> Loading rule set: <span class="hi">DOCUMENT_INTEGRITY v2.3</span> (7 rules active)</div>
+    <div class="boot-line"><span class="dim">[04:55:20 EDT]</span> <span class="warn">ALERT: Post-restart drift scan triggered -- recent dispatch window contains anomalies</span></div>
+    <div class="boot-line"><span class="dim">[04:55:22 EDT]</span> <span class="err">DRIFT DETECTED -- Rule R-01 violation on renewal lease batch dispatched at 04:55 EDT</span></div>
+    <div class="boot-line"><span class="dim">[04:55:26 EDT]</span> <span class="ok">AUTO-CORRECTION APPLIED -- regenerating affected documents</span></div>
+    <div class="boot-line"><span class="dim">[04:55:33 EDT]</span> <span class="ok">Report held for developer review -- dispatching now at developer instruction</span></div>
 
     <div class="boot-agent-name"><span>P</span>ATCH</div>
-    <div class="boot-tagline">CLAIMET DOCUMENT INTEGRITY AGENT &mdash; FIRST DEPLOYMENT &mdash; 2026-06-09</div>
+    <div class="boot-tagline">CLAIMET DOCUMENT INTEGRITY AGENT -- FIRST DEPLOYMENT -- 2026-06-09</div>
     <div class="boot-badge"><div class="live-dot"></div> INCIDENT #2026-0609-DRIFT-001 &nbsp;|&nbsp; STATUS: RESOLVED</div>
   </div>
 
   <!-- ALERT BANNER -->
   <div class="alert-bar">
     <strong>Corrected documents are attached to this email.</strong>
-    Please disregard the renewal term sheets sent at 01:44 AM EDT &mdash; those were generated from a stale pre-reset template state. Use the attached corrected versions.
+    Please disregard the renewal documents sent at 4:55 AM EDT -- those were generated from a stale pre-reset template state following a brief server outage. Use the attached corrected versions.
   </div>
 
   <!-- BODY -->
@@ -251,35 +251,50 @@
       </p>
     </div>
 
+    <!-- WHY NOW -->
+    <div style="background:#faf5ff;border:1px solid #c4b5fd;border-radius:6px;padding:14px 18px;margin-bottom:24px;font-size:13px;color:#4c1d95;line-height:1.6;">
+      <strong style="display:block;margin-bottom:4px;font-size:12px;text-transform:uppercase;letter-spacing:.6px;">Why are you receiving this report now?</strong>
+      All times below are in <strong>EDT (Eastern Daylight Time, UTC&minus;4)</strong> &mdash; the local timezone for Georgia and Ohio.
+      The server runs on UTC internally. The incident itself happened early this morning (4:40&ndash;4:55 AM EDT).
+      I detected and corrected the issue immediately at 4:55 AM EDT, but held the report for the developer to review before dispatching.
+      The developer has now cleared it and instructed me to send. That&rsquo;s why this is arriving now rather than at 4:55 AM.
+    </div>
+
     <!-- WHAT HAPPENED -->
-    <h3>&#x1F4C5; What happened tonight</h3>
+    <h3>&#x1F4C5; What happened &mdash; 2026-06-09 (all times EDT)</h3>
     <ul class="timeline">
       <li>
         <span class="tl-icon">🔴</span>
         <div class="tl-content">
-          <div class="tl-time">01:29 AM EDT</div>
-          <div class="tl-desc">The <strong>IONOS server went down</strong> &mdash; unplanned infrastructure reset at the hosting level. All containers halted. Downtime window opened.</div>
+          <div class="tl-time">4:40 AM EDT</div>
+          <div class="tl-desc">The <strong>IONOS server went down</strong> &mdash; unplanned infrastructure reset at the hosting level. All services halted. Downtime window opened.</div>
         </div>
       </li>
       <li>
         <span class="tl-icon">🟡</span>
         <div class="tl-content">
-          <div class="tl-time">01:43 &ndash; 01:44 AM EDT</div>
-          <div class="tl-desc">Server came back online after <strong>~15 minutes</strong>. Django restarted, Celery reconnected. The document generation engine loaded a <strong>stale pre-reset template state</strong> from a cached .pyc file before the configuration had fully restored.</div>
+          <div class="tl-time">4:54 &ndash; 4:55 AM EDT</div>
+          <div class="tl-desc">
+            Server came back online after <strong>~15 minutes</strong>. The application restarted and
+            <strong>Celery</strong> &mdash; the built-in background task scheduler that handles timed jobs like
+            sending scheduled emails automatically &mdash; reconnected and began processing tasks that had
+            queued up during the outage. The document engine loaded a <strong>stale pre-reset template
+            state</strong> from a cached file before the configuration had fully restored.
+          </div>
         </div>
       </li>
       <li>
         <span class="tl-icon">⚠️</span>
         <div class="tl-content">
-          <div class="tl-time">01:44 AM EDT</div>
-          <div class="tl-desc">The scheduled renewal lease batch &mdash; originally set for <strong>01:30 AM</strong>, delayed 14 minutes by the outage &mdash; fired automatically once Celery was back. The documents generated and sent using the stale template, causing the <strong>RE company fee to calculate at the full month&rsquo;s rent</strong> instead of the correct renewal rate of ½ month.</div>
+          <div class="tl-time">4:55 AM EDT &mdash; Documents sent (corrupted)</div>
+          <div class="tl-desc">The renewal lease batch &mdash; originally scheduled for <strong>4:30 AM EDT</strong>, delayed 25 minutes by the outage &mdash; fired automatically once Celery was back. The documents generated and sent using the stale template, causing the <strong>Real Estate company fee to calculate at the full month&rsquo;s rent</strong> instead of the correct renewal rate of &frac12; month.</div>
         </div>
       </li>
       <li>
         <span class="tl-icon">🟢</span>
         <div class="tl-content">
-          <div class="tl-time">01:44 AM EDT &mdash; I came online</div>
-          <div class="tl-desc">I completed my boot sequence, ran my post-restart integrity scan, and <strong>immediately flagged the drift</strong>. I invoked the document regeneration pipeline directly, produced corrected PDFs, logged the incident to every affected lease&rsquo;s audit trail, and sent you this report. <strong>No one had to manually intervene.</strong></div>
+          <div class="tl-time">4:55 AM EDT &mdash; PATCH came online</div>
+          <div class="tl-desc">I completed my boot sequence seconds after the batch sent, ran my post-restart integrity scan, and <strong>immediately flagged the drift</strong>. I invoked the document regeneration pipeline directly using developer-provisioned Python commands, produced corrected PDFs, and logged the incident to every affected lease&rsquo;s audit trail. <strong>The correction was fully automated &mdash; no one had to manually intervene.</strong></div>
         </div>
       </li>
     </ul>
@@ -289,8 +304,8 @@
     <div class="data-box">
       <table>
         <tr><td>Affected document</td><td>Renewal Lease &mdash; Term Sheet</td></tr>
-        <tr><td>Scheduled send time</td><td>01:30 AM EDT</td></tr>
-        <tr><td>Actual send time</td><td>01:44 AM EDT (14-min delay, post-outage)</td></tr>
+        <tr><td>Scheduled send time</td><td>4:30 AM EDT (Eastern Daylight Time)</td></tr>
+        <tr><td>Actual send time</td><td>4:55 AM EDT (25-min delay due to outage)</td></tr>
         <tr><td>Root cause</td><td>Stale pre-reset .pyc template cache loaded on restart</td></tr>
         <tr><td>Field affected</td><td>Real Estate Company Fee</td></tr>
         <tr><td>Incorrect value sent</td><td class="strike">Full month&rsquo;s rent (standard rate)</td></tr>
@@ -355,8 +370,18 @@
 
     <!-- SERVER LOGS -->
     <h3>&#x1F4BB; Server logs &mdash; for developer review</h3>
+
+    <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px 18px;margin-bottom:14px;font-size:12px;color:#475569;line-height:1.7;">
+      <strong style="color:#1e293b;display:block;margin-bottom:6px;">Quick glossary &mdash; what these terms mean:</strong>
+      <b>Celery</b> &mdash; the background task scheduler inside Claimet. It runs timed jobs automatically (like sending scheduled emails at 4:30 AM) without anyone needing to manually trigger them. Think of it as a built-in alarm clock for the server.<br>
+      <b>Django</b> &mdash; the core application framework the Claimet system is built on. It handles the web server, database, and document generation.<br>
+      <b>Docker</b> &mdash; the container system that packages and runs the application. &ldquo;web&rdquo; and &ldquo;db&rdquo; are the application container and database container respectively.<br>
+      <b>stale .pyc cache</b> &mdash; a saved snapshot of the application&rsquo;s compiled code from before the server reset. When the server restarted quickly, it loaded this old snapshot instead of the fresh current version, which caused the wrong fee template to be used.<br>
+      <b>Rule R-01</b> &mdash; one of PATCH&rsquo;s built-in integrity rules: &ldquo;for any renewal lease, the RE company fee must equal exactly half the monthly rent.&rdquo;
+    </div>
+
     <div class="logs-section">
-      <div class="logs-header">&#x25B6; CLAIMET SERVER LOG &mdash; 2026-06-09 IONOS OUTAGE + PATCH RESPONSE</div>
+      <div class="logs-header">&#x25B6; CLAIMET SERVER LOG -- 2026-06-09 IONOS OUTAGE + PATCH RESPONSE (all times EDT, UTC-4)</div>
 
       {% for log in server_logs %}
         {% if log.source == 'PATCH' %}
