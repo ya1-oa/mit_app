@@ -1281,6 +1281,46 @@ def view_lease_document(request, document_id):
         return HttpResponse(f'Error: {exc}', status=500)
 
 
+def download_all_documents(request, lease_id):
+    """Download all generated PDFs for a lease as a single ZIP file."""
+    import io
+    import zipfile
+    lease = get_object_or_404(Lease, id=lease_id)
+    docs  = LeaseDocument.objects.filter(lease=lease).exclude(file_path='')
+
+    buf = io.BytesIO()
+    added = 0
+    with zipfile.ZipFile(buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        for doc in docs:
+            full_path = os.path.join(settings.MEDIA_ROOT, doc.file_path)
+            if os.path.exists(full_path):
+                zf.write(full_path, f'{doc.document_name}.pdf')
+                added += 1
+
+    if not added:
+        return HttpResponse(
+            '<p>No PDF files found. '
+            f'<a href="/lease-manager/lease/{lease_id}/">Go back</a> and click '
+            '"Save &amp; Regenerate" to build them first.</p>',
+            status=404, content_type='text/html',
+        )
+
+    buf.seek(0)
+    client_slug = (lease.client.pOwner if lease.client else str(lease_id)).replace(' ', '_')
+    filename    = f'Lease_Documents_{client_slug}.zip'
+
+    LeaseActivity.objects.create(
+        lease=lease,
+        activity_type='downloaded',
+        description=f'Downloaded all {added} document(s) as ZIP',
+        performed_by=request.user if request.user.is_authenticated else None,
+    )
+
+    resp = HttpResponse(buf.read(), content_type='application/zip')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp
+
+
 def add_lease_note(request):
     if request.method != 'POST':
         return JsonResponse({'error': 'Method not allowed'}, status=405)

@@ -18,8 +18,9 @@ urlpatterns = [
     path('generate-pdf/',             views.generate_document_from_html, name='generate_pdf'),
 
     # ── Document download / view ─────────────────────────────────────────────
-    path('download/<uuid:document_id>/', views.download_lease_document, name='download_lease_document'),
-    path('view/<uuid:document_id>/',     views.view_lease_document,     name='view_lease_document'),
+    path('download/<uuid:document_id>/', views.download_lease_document,  name='download_lease_document'),
+    path('view/<uuid:document_id>/',     views.view_lease_document,      name='view_lease_document'),
+    path('lease/<uuid:lease_id>/download-all/', views.download_all_documents, name='download_all_documents'),
 
     # ── ALE check + demand letter ────────────────────────────────────────────
     path('api/client/<int:client_id>/ale-check/',

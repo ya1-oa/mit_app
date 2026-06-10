@@ -371,25 +371,45 @@
     </div>
 
     {# Documents (saved PDFs) #}
-    <div class="card border-0 shadow-sm mb-4">
-      <div class="card-header bg-white border-bottom-0 pt-3 pb-0 px-4">
-        <h5 class="mb-0 fw-semibold"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>Saved PDFs</h5>
+    <div class="card border-0 shadow-sm mb-4" id="tour-saved-pdfs" style="border-left:3px solid #2563eb !important;">
+      <div class="card-header pt-3 pb-2 px-4" style="background:linear-gradient(135deg,#eff6ff,#fff);border-bottom:1px solid #dbeafe;">
+        <div class="d-flex align-items-center justify-content-between">
+          <h5 class="mb-0 fw-bold" style="color:#1e40af;"><i class="bi bi-file-earmark-arrow-down me-2"></i>Download Documents</h5>
+          {% if docs %}
+          <span class="badge" style="background:#2563eb;font-size:.72rem;">{{ docs|length }} PDF{{ docs|length|pluralize }}</span>
+          {% endif %}
+        </div>
+        <div class="text-muted mt-1" style="font-size:.75rem;"><i class="bi bi-info-circle me-1"></i>Save terms above first to generate or refresh these files.</div>
       </div>
-      <div class="card-body p-4">
+      <div class="card-body p-3">
         {% if docs %}
-        <div class="list-group list-group-flush">
+        <div class="d-flex flex-column gap-2">
           {% for doc in docs %}
-          <div class="list-group-item d-flex justify-content-between align-items-center px-0">
-            <span style="font-size:.85rem;"><i class="bi bi-file-earmark me-2 text-muted"></i>{{ doc.document_name }}</span>
-            <div>
-              <a href="{% url 'lease_manager:view_lease_document' doc.id %}" class="btn btn-sm btn-outline-secondary me-1" target="_blank"><i class="bi bi-eye"></i></a>
-              <a href="{% url 'lease_manager:download_lease_document' doc.id %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-download"></i></a>
+          <div class="p-2 rounded d-flex justify-content-between align-items-center" style="background:#f8fafc;border:1px solid #e2e8f0;">
+            <span style="font-size:.83rem;font-weight:600;color:#1e293b;"><i class="bi bi-file-earmark-pdf text-danger me-2"></i>{{ doc.document_name }}</span>
+            <div class="d-flex gap-1">
+              <a href="{% url 'lease_manager:view_lease_document' doc.id %}" class="btn btn-sm btn-outline-secondary" target="_blank" title="Open in browser tab">
+                <i class="bi bi-eye me-1"></i>View
+              </a>
+              <a href="{% url 'lease_manager:download_lease_document' doc.id %}" class="btn btn-sm btn-primary" title="Save PDF to your computer">
+                <i class="bi bi-download me-1"></i>Download
+              </a>
             </div>
           </div>
           {% endfor %}
+          {% if docs|length > 1 %}
+          <div class="mt-1 pt-2 border-top d-grid">
+            <a href="{% url 'lease_manager:download_all_documents' lease.id %}" class="btn btn-success btn-sm">
+              <i class="bi bi-file-zip me-1"></i>Download All as ZIP
+            </a>
+          </div>
+          {% endif %}
         </div>
         {% else %}
-        <p class="text-muted mb-0 small">No PDFs generated yet — edit terms and click Save.</p>
+        <div class="text-center py-3">
+          <i class="bi bi-file-earmark-x text-muted" style="font-size:2rem;"></i>
+          <p class="text-muted mb-0 mt-2 small">No PDFs yet. Edit your terms above and click <strong>Save &amp; Regenerate</strong> to build them.</p>
+        </div>
         {% endif %}
       </div>
     </div>
@@ -647,17 +667,120 @@ function toggleTall(btn) {
 function startLeaseTour() {
   if (!window.driver || !window.driver.js) { return; }
   const driver = window.driver.js.driver;
-  const tour = driver({
-    showProgress: true,
-    steps: [
-      { element: '#tour-hero',     popover: { title: '📄 Manage Lease', description: 'Everything for this lease lives on one page. Here\'s the property, dates, rent and current status.' } },
-      { element: '#tour-toolbar',  popover: { title: '✏️ Edit terms live', description: 'Change the rent, deposit, dates, or the renewal / exclude toggles. The 4 documents below re-render instantly — no saving needed to preview.' } },
-      { element: '#tour-previews', popover: { title: '👀 All 4 documents', description: 'Engagement Agreement, Term Sheet, Month-to-Month Lease and Input Sheet — always on display and updating as you edit. Use the expand icon to enlarge any one.' } },
-      { element: '#save-terms-btn',popover: { title: '💾 Save & Regenerate', description: 'Happy with it? Save to store the terms and rebuild the downloadable PDFs to match.' } },
-      { element: '#tour-send',     popover: { title: '✍️ Send for Signature', description: 'Email a secure signing link to the tenant, landlord and real-estate company.' } },
-      { element: '#tour-actions',  popover: { title: '⚡ Everything else', description: 'Regenerate, compose a demand letter, send the document package, edit the ALE data, or delete the lease.' } },
-    ],
-  });
+
+  const steps = [
+    {
+      element: '#tour-hero',
+      popover: {
+        title: '📋 Lease Overview',
+        description: `This header shows the core identity of this lease record.<br><br>
+          <b>Client name</b> — the ALE/insurance claim holder this lease belongs to.<br>
+          <b>Original Lease / Renewal #N</b> — whether this is the first lease or a subsequent renewal for the same claim. Each renewal is a separate record with its own terms and documents.<br>
+          <b>Status badge</b> (Draft, Active, Completed, Cancelled) — the current lifecycle stage. A lease stays in Draft until you send it for signature.<br>
+          <b>Dates &amp; rent</b> — the lease start/end window and the monthly rent, updated live whenever you edit the toolbar below.`,
+        side: 'bottom',
+      },
+    },
+    {
+      element: '#tour-toolbar',
+      popover: {
+        title: '✏️ Edit Lease Terms (Live Preview)',
+        description: `Every field here feeds directly into the 4 lease documents below — they re-render as you type. <b>Nothing is saved yet</b> while you're editing.<br><br>
+          <b>Monthly Rent</b> — dollar amount per month. Drives the Term Sheet total and the RE company fee calculation.<br>
+          <b>Security Deposit</b> — amount held. Appears on the Term Sheet unless excluded.<br>
+          <b>Rental Months</b> — length of the lease. Multiplied by monthly rent to produce the base total.<br>
+          <b>Agreement / Start / End Dates</b> — dates that print on the documents.<br>
+          <b>Special Notes</b> — free-text that appears on the documents verbatim.<br><br>
+          <b>Checkboxes:</b><br>
+          • <b>Is Renewal</b> — when checked, the RE company fee on the Term Sheet is automatically halved (0.5 × monthly rent instead of the full month).<br>
+          • <b>Exclude Security Deposit</b> — removes the deposit row from the Term Sheet entirely.<br>
+          • <b>Exclude Inspection Fee</b> — removes the inspection/cleanup row from the Term Sheet entirely.`,
+        side: 'bottom',
+      },
+    },
+    {
+      element: '#tour-previews',
+      popover: {
+        title: '👁 Live Document Previews',
+        description: `These are live HTML renderings of your 4 lease documents. They update the moment you change any field above — no saving required to see what the final document will look like.<br><br>
+          <b>Engagement Agreement</b> — the contract between the real estate company and the landlord authorising the company to manage the placement.<br>
+          <b>Term Sheet</b> — the financial summary: rent, deposit, RE fee, inspection fee, and the total amount due.<br>
+          <b>Month-to-Month Rental</b> — the actual lease agreement signed by the tenant and landlord.<br>
+          <b>Input Sheet</b> — an internal data reference sheet with all claim and party details.<br><br>
+          Click the <b>⛶ expand icon</b> in the top-right of any panel to make that document taller for a closer read.`,
+        side: 'left',
+      },
+    },
+    {
+      element: '#save-terms-btn',
+      popover: {
+        title: '💾 Save & Regenerate PDFs',
+        description: `When the previews look correct, click this button.<br><br>
+          This does two things in one step:<br>
+          1. <b>Saves the terms</b> to the database (rent, dates, deposit, toggles, notes).<br>
+          2. <b>Regenerates all 4 PDFs</b> so they match what you see in the previews.<br><br>
+          <b>Important:</b> the downloadable PDF files are only updated when you save. If you change a field and don't save, the preview updates but the PDF files stay as they were. Always save before downloading or sending.`,
+        side: 'top',
+      },
+    },
+    {
+      element: '#tour-saved-pdfs',
+      popover: {
+        title: '⬇️ Download Your Documents — Start Here',
+        description: `After saving, all 4 PDF files appear in this panel. This is where you get the actual files to share, print, or email.<br><br>
+          <b>View</b> — opens the PDF in a new browser tab so you can read it before downloading. Does not save a file to your computer.<br>
+          <b>Download</b> — saves the PDF directly to your computer's Downloads folder. Use this to attach documents to emails or share with clients.<br><br>
+          <b>Download All as ZIP</b> — grabs all 4 documents in a single zip file. The fastest way to get everything at once.<br><br>
+          If the panel says "No PDFs yet", go back to the toolbar above, verify your terms, and click <b>Save &amp; Regenerate</b> first.`,
+        side: 'left',
+      },
+    },
+    {
+      element: '#tour-actions',
+      popover: {
+        title: '⚡ Actions Panel',
+        description: `Every operation for this lease is here:<br><br>
+          <b>Send for Signature</b> — emails a secure, one-time signing link to the tenant, landlord, and/or RE company. Each person gets their own link. Links expire after 7 days. Only appears when the lease has valid contacts set.<br>
+          <b>Regenerate Documents</b> — rebuilds the PDFs from the currently saved terms without changing any values. Use this if a document template was updated after you last saved.<br>
+          <b>Compose Demand Letter</b> — opens a letter composer pre-filled with this lease's party and property data.<br>
+          <b>Send Document Package</b> — bundles and emails the lease documents to the relevant parties in one step.<br>
+          <b>Edit ALE in Claims Manager</b> — party names, addresses, and company details come from the claim's ALE record. Go here to change them, then regenerate.<br>
+          <b>New Lease / Renewal for this Claim</b> — creates a second lease record for the same claim (e.g. a 3-month renewal) without overwriting this one.<br>
+          <b>Delete This Lease</b> — permanently removes this lease and all its generated PDFs. This cannot be undone.`,
+        side: 'left',
+      },
+    },
+    {
+      element: '#tour-btn',
+      popover: {
+        title: '❓ Reopen This Guide Anytime',
+        description: `Click this button at any time to restart this walkthrough from the beginning.<br><br>
+          <b>Quick recap of the workflow:</b><br>
+          1. Edit terms in the toolbar → previews update live<br>
+          2. Click <b>Save &amp; Regenerate</b> when ready<br>
+          3. <b>Download</b> the PDFs from the panel on the right<br>
+          4. Optionally <b>Send for Signature</b> to collect digital signatures`,
+        side: 'left',
+      },
+    },
+  ];
+
+  // Only include the Send for Signature step if the button is rendered (can_send=True)
+  const sendEl = document.getElementById('tour-send');
+  if (sendEl) {
+    steps.splice(5, 0, {
+      element: '#tour-send',
+      popover: {
+        title: '✍️ Send for Signature',
+        description: `Click this to open the signature dialog. You choose which parties receive a signing link — tenant, landlord, and/or real estate company.<br><br>
+          Each selected party gets an email with a <b>unique, secure link</b> that opens the documents for them to review and sign digitally. You can track who has viewed, signed, or declined in the Activity feed below.<br><br>
+          Signing links expire after <b>7 days</b>. If a link expires before someone signs, you can resend from the Actions panel.`,
+        side: 'bottom',
+      },
+    });
+  }
+
+  const tour = driver({ showProgress: true, steps });
   tour.drive();
 }
 
