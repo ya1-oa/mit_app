@@ -224,7 +224,7 @@
   <div class="doc-pane">
     <div class="doc-pane-head">
       <span class="doc-pane-title"><i class="bi bi-file-earmark-text text-primary"></i> Engagement Agreement</span>
-      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+      <button class="btn btn-sm btn-outline-secondary px-2 py-1" onclick="toggleTall(this)" title="Expand / Collapse" style="font-size:.75rem;"><i class="bi bi-arrows-expand me-1"></i>Expand</button>
     </div>
     <div class="doc-pane-frame">
       <div class="frame-loader" id="loader-frame-engagement"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
@@ -234,7 +234,7 @@
   <div class="doc-pane">
     <div class="doc-pane-head">
       <span class="doc-pane-title"><i class="bi bi-file-earmark-ruled text-success"></i> Term Sheet</span>
-      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+      <button class="btn btn-sm btn-outline-secondary px-2 py-1" onclick="toggleTall(this)" title="Expand / Collapse" style="font-size:.75rem;"><i class="bi bi-arrows-expand me-1"></i>Expand</button>
     </div>
     <div class="doc-pane-frame">
       <div class="frame-loader" id="loader-frame-term"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
@@ -244,7 +244,7 @@
   <div class="doc-pane">
     <div class="doc-pane-head">
       <span class="doc-pane-title"><i class="bi bi-file-earmark-text text-warning"></i> Month-to-Month Lease</span>
-      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+      <button class="btn btn-sm btn-outline-secondary px-2 py-1" onclick="toggleTall(this)" title="Expand / Collapse" style="font-size:.75rem;"><i class="bi bi-arrows-expand me-1"></i>Expand</button>
     </div>
     <div class="doc-pane-frame">
       <div class="frame-loader" id="loader-frame-lease"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
@@ -254,7 +254,7 @@
   <div class="doc-pane">
     <div class="doc-pane-head">
       <span class="doc-pane-title"><i class="bi bi-file-earmark-spreadsheet text-info"></i> Input Sheet</span>
-      <button class="btn btn-sm btn-link text-muted p-0" onclick="toggleTall(this)" title="Expand"><i class="bi bi-arrows-expand"></i></button>
+      <button class="btn btn-sm btn-outline-secondary px-2 py-1" onclick="toggleTall(this)" title="Expand / Collapse" style="font-size:.75rem;"><i class="bi bi-arrows-expand me-1"></i>Expand</button>
     </div>
     <div class="doc-pane-frame">
       <div class="frame-loader" id="loader-frame-input"><span class="spinner-border spinner-border-sm"></span> Rendering…</div>
@@ -658,9 +658,10 @@ async function saveTerms() {
 
 function toggleTall(btn) {
   const frame = btn.closest('.doc-pane').querySelector('.doc-pane-frame');
-  frame.classList.toggle('tall');
-  btn.querySelector('i').classList.toggle('bi-arrows-expand');
-  btn.querySelector('i').classList.toggle('bi-arrows-collapse');
+  const expanded = frame.classList.toggle('tall');
+  const icon = btn.querySelector('i');
+  icon.className = expanded ? 'bi bi-arrows-collapse me-1' : 'bi bi-arrows-expand me-1';
+  btn.lastChild.textContent = expanded ? 'Collapse' : 'Expand';
 }
 
 /* ── driver.js guided tour ── */
