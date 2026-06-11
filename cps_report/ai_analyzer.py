@@ -1,5 +1,5 @@
 """
-AI-powered room content analysis for CPS Schedule of Loss reports.
+AI-powered room content analysis for PPR Schedule of Loss reports.
 Uses Claude vision to identify items, estimate replacement values, and assign ages.
 """
 from __future__ import annotations
@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 _SYSTEM_PROMPT = """DIRECTIVE: You are a professional mitigation claim inspector. You review images and determine the replacement value of items in a client's home for insurance purposes.
 
 You produce insurance-standard schedule of loss line items suitable for invoicing insurance companies.
+Respond ONLY with valid JSON — no markdown, no explanation."""
+
+_SYSTEM_PROMPT_PREMIUM = """DIRECTIVE: You are a professional mitigation claim inspector specializing in high-end and luxury property claims. You review images and determine the premium replacement value of items in a client's home for insurance purposes.
+
+You produce insurance-standard schedule of loss line items suitable for invoicing insurance companies. All pricing must reflect premium/high-end retail — do not reference or use budget or discount retailers.
 Respond ONLY with valid JSON — no markdown, no explanation."""
 
 _USER_PROMPT = """ACTION: Review the following photos of room "{room_name}" and give me the replacement value of each item shown.
@@ -71,6 +76,65 @@ Return JSON in this exact format:
   ],
   "confidence": "high|medium|low",
   "room_summary": "brief description of room and notable contents"
+}}"""
+
+_USER_PROMPT_PREMIUM = """ACTION: Review the following photos of room "{room_name}" and give me the PREMIUM replacement value of each item shown.
+
+CONTEXT:
+- Price every item at PREMIUM / HIGH-END retail. Reflect what it would cost to replace the item with an equivalent quality product purchased from a high-end or specialty retailer.
+- DO NOT reference or cite budget or discount retailers. Specifically excluded: Walmart, Target, Amazon Basics, Dollar General, Dollar Tree, Five Below, Family Dollar, Costco house brands, Sam's Club house brands, or any discount/off-brand source.
+- Reference premium and specialty retailers when applicable: Restoration Hardware (RH), Williams-Sonoma, Pottery Barn, Pottery Barn Kids, West Elm, Crate & Barrel, CB2, Arhaus, Room & Board, Design Within Reach, Sur La Table, Viking, Sub-Zero/Wolf dealer, Apple Store, Best Buy Magnolia, Nordstrom, Bloomingdale's, Macy's (premium lines), Anthropologie, Frontgate, Grandin Road, Z Gallerie, Peloton, or equivalent upscale specialty sources.
+- Replacement price = what it would cost to buy an equivalent quality item new today at an upscale or specialty retailer.
+- Do NOT price any structural or permanently fixed building components. This explicitly includes: windows, window frames, window sills, stairs, railings, floorboards, hardwood/tile/carpet flooring, beams, support pillars, columns, walls, ceilings, roofing, baseboards, crown molding, built-in shelving, and any item that would remain in the property when a tenant moves out. If it stays with the building, exclude it entirely.
+- This is for a mitigation claim — provide replacement cost of ALL items photographed. If there are multiple items, price them separately. If its a flower pot we would price the pot and flowers separately.
+- Use industry-standard format suitable for invoicing insurance companies.
+- Avoid duplicates: if the same item appears in multiple photos, list it once.
+- Estimate the age of each item based on visible wear, style, and condition.
+- For furniture, price at mid-to-upper RH / Pottery Barn / Arhaus tier unless brand is clearly identifiable as higher end.
+- For electronics, price at Apple / Samsung premium / Sonos / Bose tier.
+- For kitchen items, price at Sur La Table / Williams-Sonoma / All-Clad / Le Creuset tier.
+- For bedding and linens, price at Pottery Barn / RH / Frette / Sferra tier.
+
+For each item provide:
+- description: clear insurance-standard item description (e.g. "Queen Size Upholstered Platform Bed - Linen - High-End")
+- brand: brand/manufacturer if visible, otherwise ""
+- condition: "Good", "Fair", or "Poor"
+- qty: quantity (integer)
+- model_number: if visible on item, otherwise ""
+- serial_number: if visible on item, otherwise ""
+- retailer: the premium/specialty retailer where an equivalent replacement would be purchased (e.g. "Restoration Hardware", "Williams-Sonoma", "Best Buy Magnolia", "Apple Store", "Sur La Table")
+- replacement_source: "Online" or "Retail"
+- purchase_price_each: estimated original purchase price in USD at premium tier (number only)
+- age_years: estimated age in years — inspect wear, style, technology generation (0–5 maximum per policy, vary between items)
+- age_months: additional months beyond age_years (0–11)
+- replacement_value_each: today's premium retail replacement cost in USD (number only)
+- depreciation_category: one of — Clothing, Electronics, Furniture, Appliances, Bedding/Linens, Books/Media, Decor/Art, Toys/Games, Tools/Hardware, Kitchen/Cookware, Jewelry/Accessories, Sporting Goods, Musical Instruments, Other
+- depreciation_pct: depreciation percentage based on age and condition (0–80, proportional — 5 yr old furniture ~30%, 10 yr old electronics ~70%)
+- notes: any relevant insurance notes (brand visible, serial noted, heavy wear, premium grade confirmed, etc.)
+
+Return JSON in this exact format:
+{{
+  "items": [
+    {{
+      "description": "65-inch OLED 4K Smart TV",
+      "brand": "LG",
+      "condition": "Good",
+      "qty": 1,
+      "model_number": "",
+      "serial_number": "",
+      "retailer": "Best Buy Magnolia",
+      "replacement_source": "Retail",
+      "purchase_price_each": 2200,
+      "age_years": 2,
+      "age_months": 0,
+      "replacement_value_each": 2499,
+      "depreciation_category": "Electronics",
+      "depreciation_pct": 30,
+      "notes": "LG OLED visible — priced at premium Magnolia tier"
+    }}
+  ],
+  "confidence": "high|medium|low",
+  "room_summary": "brief description of room and notable premium contents"
 }}"""
 
 
@@ -227,19 +291,32 @@ def _make_fallback_items(room_name: str) -> list[dict]:
 _CPS_MODEL = "claude-haiku-4-5-20251001"
 
 
-def _call_claude_with_images(client, image_content_blocks: list, room_name: str) -> tuple[dict, dict]:
+def _call_claude_with_images(
+    client,
+    image_content_blocks: list,
+    room_name: str,
+    pricing_mode: str = 'normal',
+) -> tuple[dict, dict]:
     """
     Send one batch of image blocks to Claude and return (parsed_result, usage).
     usage = {'input_tokens': int, 'output_tokens': int}
+    pricing_mode: 'normal' or 'premium'
     """
+    if pricing_mode == 'premium':
+        system_prompt = _SYSTEM_PROMPT_PREMIUM
+        user_prompt = _USER_PROMPT_PREMIUM
+    else:
+        system_prompt = _SYSTEM_PROMPT
+        user_prompt = _USER_PROMPT
+
     content = list(image_content_blocks) + [{
         "type": "text",
-        "text": _USER_PROMPT.format(room_name=room_name),
+        "text": user_prompt.format(room_name=room_name),
     }]
     response = client.messages.create(
         model=_CPS_MODEL,
         max_tokens=8192,
-        system=_SYSTEM_PROMPT,
+        system=system_prompt,
         messages=[{"role": "user", "content": content}],
     )
     usage = {
@@ -295,16 +372,19 @@ def flag_structural_items(items: list[dict]) -> list[dict]:
     return items
 
 
-def analyze_room_for_cps(
+def analyze_room_for_ppr(
     room_name: str,
     room_number: str,
     prefetched_media: list[dict],
     image_urls: list[str] | None = None,
+    pricing_mode: str = 'normal',
 ) -> dict:
     """
-    Analyze a room using Claude vision and return structured schedule of loss items.
+    Analyze a room using Claude vision and return structured PPR schedule of loss items.
     Pass prefetched_media (from fetch_all_claim_media) and the room_number (e.g. "406")
     to filter images for this room.
+
+    pricing_mode: 'normal' (default) or 'premium' (high-end retailers, no budget pricing)
 
     Returns:
         {
@@ -360,7 +440,11 @@ def analyze_room_for_cps(
             "error": "Could not download any images",
         }
 
-    logger.info(f"Analyzing {len(image_blocks)} images for '{room_name}' in {math.ceil(len(image_blocks) / _IMAGES_PER_BATCH)} batch(es)")
+    mode_label = "PREMIUM" if pricing_mode == 'premium' else "normal"
+    logger.info(
+        f"PPR AI analyzing {len(image_blocks)} images for '{room_name}' "
+        f"[{mode_label}] in {math.ceil(len(image_blocks) / _IMAGES_PER_BATCH)} batch(es)"
+    )
 
     client = anthropic.Anthropic(api_key=api_key)
     all_items: list[dict] = []
@@ -376,12 +460,12 @@ def analyze_room_for_cps(
     for batch_start in range(0, len(image_blocks), _IMAGES_PER_BATCH):
         batch = image_blocks[batch_start:batch_start + _IMAGES_PER_BATCH]
         batch_num = batch_start // _IMAGES_PER_BATCH + 1
-        logger.info(f"CPS AI batch {batch_num}/{total_batches} for '{room_name}' ({len(batch)} images)")
+        logger.info(f"PPR AI batch {batch_num}/{total_batches} for '{room_name}' ({len(batch)} images)")
         if batch_num > 1:
             time.sleep(2)
 
         try:
-            parsed, usage = _call_claude_with_images(client, batch, room_name)
+            parsed, usage = _call_claude_with_images(client, batch, room_name, pricing_mode=pricing_mode)
             total_input_tokens  += usage.get('input_tokens', 0)
             total_output_tokens += usage.get('output_tokens', 0)
             batch_items = _clean_items(parsed.get("items", []), start_order=len(all_items))
@@ -392,10 +476,10 @@ def analyze_room_for_cps(
             images_used += len(batch)
 
         except json.JSONDecodeError as e:
-            logger.error(f"CPS AI JSON parse error for '{room_name}' batch {batch_num}: {e}")
+            logger.error(f"PPR AI JSON parse error for '{room_name}' batch {batch_num}: {e}")
             last_error = "AI returned invalid JSON on one batch"
         except Exception as e:
-            logger.error(f"CPS AI error for '{room_name}' batch {batch_num}: {e}", exc_info=True)
+            logger.error(f"PPR AI error for '{room_name}' batch {batch_num}: {e}", exc_info=True)
             last_error = str(e)
 
     # Flag structural items (walls, floors, fixtures, etc.)
@@ -426,3 +510,7 @@ def analyze_room_for_cps(
         "output_tokens": total_output_tokens,
         "error": last_error,
     }
+
+
+# Backward-compat alias
+analyze_room_for_cps = analyze_room_for_ppr

@@ -1,8 +1,8 @@
 {% extends "account/base.html" %}
 {% load static %}
 
-{% block title %}CPS Schedule of Loss{% endblock %}
-{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss Report{% endblock %}
+{% block title %}PPR Schedule of Loss{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> PPR Schedule of Loss Report{% endblock %}
 
 {% block extra_css %}
 <!-- Driver.js spotlight tour library -->
@@ -145,8 +145,24 @@
           </div>
         </div>
         <div class="card-footer py-2">
+          <div class="mb-2">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="small fw-semibold text-muted" style="white-space:nowrap">Pricing Mode:</span>
+              <div class="btn-group btn-group-sm w-100" role="group" id="pricing-mode-group">
+                <input type="radio" class="btn-check" name="pricing-mode" id="mode-normal" value="normal" checked>
+                <label class="btn btn-outline-secondary" for="mode-normal">
+                  <i class="fas fa-tag me-1"></i> Normal
+                </label>
+                <input type="radio" class="btn-check" name="pricing-mode" id="mode-premium" value="premium">
+                <label class="btn btn-outline-warning" for="mode-premium">
+                  <i class="fas fa-star me-1"></i> Premium
+                </label>
+              </div>
+            </div>
+            <div id="pricing-mode-hint" class="text-muted" style="font-size:.72rem; line-height:1.3; min-height:1.2em;"></div>
+          </div>
           <button id="btn-start" class="btn btn-primary btn-sm w-100" disabled>
-            <i class="fas fa-play me-1"></i> Find CPS Rooms &amp; Start Report
+            <i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report
           </button>
         </div>
       </div>
@@ -165,7 +181,7 @@
       <!-- Rooms panel (shown after start) -->
       <div id="rooms-panel" class="card shadow-sm mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span><i class="fas fa-door-open me-1"></i> CPS Rooms
+          <span><i class="fas fa-door-open me-1"></i> PPR Rooms
             <span id="session-title" class="text-muted ms-2 small"></span>
           </span>
           <div class="d-flex align-items-center gap-2">
@@ -290,8 +306,8 @@
     <div class="wc-header">
       <button class="wc-x" onclick="closeTourModal(false)" title="Close">×</button>
       <div class="wc-icon">📋</div>
-      <h2>CPS Schedule of Loss</h2>
-      <p>Automated CPS replacement value reports</p>
+      <h2>PPR Schedule of Loss</h2>
+      <p>Automated PPR replacement value reports</p>
     </div>
     <div class="wc-body">
       <ul class="wc-steps">
@@ -301,7 +317,7 @@
         </li>
         <li>
           <div class="step-num">2</div>
-          <span><strong>Click "Find CPS Rooms & Start Report"</strong> — This app will find all rooms automatically</span>
+          <span><strong>Click "Find PPR Rooms & Start Report"</strong> — This app will find all PPR rooms automatically</span>
         </li>
         <li>
           <div class="step-num">3</div>
@@ -411,8 +427,8 @@ function launchTour() {
     steps: [
       {
         popover: {
-          title: '👋 Welcome to CPS Schedule of Loss',
-          description: 'This is your AI-powered pricing system. In a few minutes you\'ll have a complete Schedule of Loss with replacement values for every CPS room. Let\'s walk through it step by step.',
+          title: '👋 Welcome to PPR Schedule of Loss',
+          description: 'This is your AI-powered pricing system. In a few minutes you\'ll have a complete Schedule of Loss with replacement values for every PPR room. Let\'s walk through it step by step.',
           side: 'over', align: 'center',
           nextBtnText: 'Let\'s go →',
         },
@@ -439,7 +455,7 @@ function launchTour() {
         element: '#btn-start',
         popover: {
           title: '🚀 Step 3 — Launch the Report',
-          description: 'Once a claim is selected, this button activates. <strong>Click "Find CPS Rooms & Start Report"</strong> — the system finds all CPS rooms in Encircle automatically and starts the AI analysis.',
+          description: 'Once a claim is selected, this button activates. <strong>Click "Find PPR Rooms & Start Report"</strong> — the system finds all PPR rooms in Encircle automatically and starts the AI analysis.',
           side: 'top', align: 'center',
           nextBtnText: 'Next →',
         },
@@ -500,6 +516,19 @@ document.addEventListener('DOMContentLoaded', () => {
   if (!localStorage.getItem(DISABLE_KEY)) {
     document.getElementById('welcome-overlay').classList.add('show');
   }
+
+  // Pricing mode hint
+  const hintEl = document.getElementById('pricing-mode-hint');
+  const HINTS = {
+    normal:  'Standard retail pricing — Amazon, IKEA, Home Depot, etc.',
+    premium: 'High-end pricing — RH, Williams-Sonoma, Apple, Magnolia. No budget retailers.',
+  };
+  function updateHint() {
+    const mode = document.querySelector('input[name="pricing-mode"]:checked')?.value ?? 'normal';
+    if (hintEl) hintEl.textContent = HINTS[mode] || '';
+  }
+  document.querySelectorAll('input[name="pricing-mode"]').forEach(r => r.addEventListener('change', updateHint));
+  updateHint();
 });
 </script>
 <script>
@@ -622,14 +651,18 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Finding CPS rooms &amp; launching…';
+    const pricingMode = document.querySelector('input[name="pricing-mode"]:checked')?.value ?? 'normal';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Finding PPR rooms &amp; launching…';
 
     try {
-      const data = await post('{% url "cps_api_start" %}', { encircle_claim_id: selectedClientId });
+      const data = await post('{% url "cps_api_start" %}', {
+        encircle_claim_id: selectedClientId,
+        pricing_mode: pricingMode,
+      });
       if (data.error) {
         showError(data.error);
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-play me-1"></i> Find CPS Rooms & Start Report';
+        btn.innerHTML = '<i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report';
         return;
       }
 
@@ -639,7 +672,7 @@ document.addEventListener('DOMContentLoaded', () => {
     } catch (e) {
       showError('Request failed: ' + e);
       btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-play me-1"></i> Find CPS Rooms & Start Report';
+      btn.innerHTML = '<i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report';
     }
   });
 

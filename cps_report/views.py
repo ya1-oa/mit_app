@@ -1,5 +1,5 @@
 """
-CPS Schedule of Loss Report views.
+PPR Schedule of Loss Report views.
 """
 import json
 import logging
@@ -155,6 +155,10 @@ def api_start_session(request):
         if not encircle_claim_id:
             return JsonResponse({'error': 'encircle_claim_id required'}, status=400)
 
+        pricing_mode = str(data.get('pricing_mode') or 'normal').strip()
+        if pricing_mode not in ('normal', 'premium'):
+            pricing_mode = 'normal'
+
         # Find existing Client by encircle_claim_id, or create a minimal stub
         # so CPSReportSession has an FK to attach to.
         client = Client.objects.filter(encircle_claim_id=encircle_claim_id).first()
@@ -210,6 +214,7 @@ def api_start_session(request):
             claim_number=client.claimNumber or '',
             insured_name=client.pOwner or '',
             encircle_structure_id=structure_id,
+            pricing_mode=pricing_mode,
             status='pending',
         )
 
@@ -301,12 +306,13 @@ def api_process_room(request):
         room.status = 'processing'
         room.save(update_fields=['status'])
 
-        from .ai_analyzer import analyze_room_for_cps, fetch_all_claim_media
+        from .ai_analyzer import analyze_room_for_ppr, fetch_all_claim_media
         all_claim_media = fetch_all_claim_media(session.encircle_claim_id)
-        result = analyze_room_for_cps(
+        result = analyze_room_for_ppr(
             room_name=f"{room.room_number} {room.room_name}",
             room_number=room.room_number,
             prefetched_media=all_claim_media,
+            pricing_mode=session.pricing_mode or 'normal',
         )
 
         room.images_used = result.get('images_used', 0)

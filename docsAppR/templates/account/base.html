@@ -397,7 +397,7 @@
             <i class="fas fa-clipboard-check"></i> Equipment
         </a></li>
         <li><a href="{% url 'cps_report_home' %}" class="{% if '/cps-report' in request.path %}active{% endif %}">
-            <i class="fas fa-file-invoice-dollar"></i> CPS Report
+            <i class="fas fa-file-invoice-dollar"></i> PPR Report
         </a></li>
         <li><a href="{% url 'claim_media_downloader' %}" class="{% if '/claim-images' in request.path %}active{% endif %}">
             <i class="fas fa-images"></i> Claim Images
@@ -483,7 +483,7 @@
     <div class="drawer-section">AI Tools</div>
     <a href="{% url 'sensor_image_renamer' %}" class="{% if '/sensor-renamer' in request.path %}active{% endif %}"><i class="fas fa-microscope"></i> Sensor Renamer</a>
     <a href="{% url 'equipment_checker' %}" class="{% if '/equipment-checker' in request.path %}active{% endif %}"><i class="fas fa-clipboard-check"></i> Equipment Checker</a>
-    <a href="{% url 'cps_report_home' %}" class="{% if '/cps-report' in request.path %}active{% endif %}"><i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss</a>
+    <a href="{% url 'cps_report_home' %}" class="{% if '/cps-report' in request.path %}active{% endif %}"><i class="fas fa-file-invoice-dollar"></i> PPR Schedule of Loss</a>
 
     <div class="drawer-section">Encircle</div>
     <a href="{% url 'encircle_dashboard' %}" class="{% if '/encircle' in request.path %}active{% endif %}"><i class="fas fa-circle-nodes"></i> Encircle Dashboard</a>

@@ -11,6 +11,11 @@ class CPSReportSession(models.Model):
         ('error', 'Error'),
     ]
 
+    PRICING_MODE_CHOICES = [
+        ('normal',  'Normal Pricing'),
+        ('premium', 'Premium / High-End Pricing'),
+    ]
+
     client = models.ForeignKey(
         'docsAppR.Client',
         on_delete=models.CASCADE,
@@ -23,6 +28,7 @@ class CPSReportSession(models.Model):
     loss_type = models.CharField(max_length=100, blank=True)
     loss_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    pricing_mode = models.CharField(max_length=16, choices=PRICING_MODE_CHOICES, default='normal')
     celery_task_id = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     share_token = models.UUIDField(default=uuid.uuid4, unique=True)
@@ -33,7 +39,7 @@ class CPSReportSession(models.Model):
         ordering = ['-updated_at']
 
     def __str__(self):
-        return f"CPS Report — {self.client.pOwner} ({self.updated_at:%Y-%m-%d})"
+        return f"PPR Schedule of Loss — {self.client.pOwner} ({self.updated_at:%Y-%m-%d})"
 
     def total_replacement_value(self):
         total = 0

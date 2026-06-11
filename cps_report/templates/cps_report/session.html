@@ -1,8 +1,8 @@
 {% extends "account/base.html" %}
 {% load static humanize %}
 
-{% block title %}CPS Report — {{ session.insured_name }}{% endblock %}
-{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Report — {{ session.insured_name }}{% endblock %}
+{% block title %}PPR Report — {{ session.insured_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> PPR Report — {{ session.insured_name }}{% endblock %}
 
 {% block extra_css %}
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
@@ -122,7 +122,7 @@
     <div style="background:linear-gradient(135deg,#059669,#1e40af);padding:28px 36px 20px;text-align:center;color:#fff;position:relative;">
       <button onclick="closeSessionWelcome(false)" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.25);border:none;color:#fff;font-size:22px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
       <div style="font-size:40px;margin-bottom:10px;">📄</div>
-      <h2 style="font-size:20px;font-weight:800;margin:0 0 6px;">CPS Report — {{ session.insured_name|truncatechars:30 }}</h2>
+      <h2 style="font-size:20px;font-weight:800;margin:0 0 6px;">PPR Report — {{ session.insured_name|truncatechars:30 }}</h2>
       <p style="opacity:.85;font-size:13px;margin:0;">Your completed Schedule of Loss report</p>
     </div>
     <!-- Body -->

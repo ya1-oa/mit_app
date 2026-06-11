@@ -8,26 +8,30 @@ logger = logging.getLogger(__name__)
 @shared_task(bind=True)
 def process_cps_session_task(self, session_id):
     """
-    Process all rooms in a CPS session via Claude vision AI.
+    Process all rooms in a PPR session via Claude vision AI.
     Runs in Celery worker — frontend polls api_session_status for live updates.
     """
     from .models import CPSReportSession, CPSReportItem
-    from .ai_analyzer import analyze_room_for_cps, fetch_all_claim_media
+    from .ai_analyzer import analyze_room_for_ppr, fetch_all_claim_media
 
     try:
         session = CPSReportSession.objects.get(id=session_id)
     except CPSReportSession.DoesNotExist:
-        logger.error(f"CPS task: session {session_id} not found")
+        logger.error(f"PPR task: session {session_id} not found")
         return
 
+    pricing_mode = session.pricing_mode or 'normal'
     session.status = 'processing'
     session.save(update_fields=['status'])
-    logger.info(f"CPS task started for session {session_id} — {session.insured_name}")
+    logger.info(
+        f"PPR task started for session {session_id} — {session.insured_name} "
+        f"[pricing: {pricing_mode}]"
+    )
 
     try:
         all_claim_media = fetch_all_claim_media(session.encircle_claim_id)
     except Exception as e:
-        logger.error(f"CPS task: failed to fetch claim media: {e}", exc_info=True)
+        logger.error(f"PPR task: failed to fetch claim media: {e}", exc_info=True)
         session.status = 'error'
         session.save(update_fields=['status'])
         return
@@ -40,14 +44,15 @@ def process_cps_session_task(self, session_id):
 
         has_secondary = bool(room.encircle_room_id_secondary)
         source_label = f"{room.room_number} {room.room_name}"
-        logger.info(f"CPS task: processing room {source_label}" +
+        logger.info(f"PPR task: processing room {source_label}" +
                     (" (primary + secondary)" if has_secondary else ""))
 
         try:
-            result_primary = analyze_room_for_cps(
+            result_primary = analyze_room_for_ppr(
                 room_name=source_label,
                 room_number=room.room_number,
                 prefetched_media=all_claim_media,
+                pricing_mode=pricing_mode,
             )
             all_items = list(result_primary.get('items', []))
             total_images = result_primary.get('images_used', 0)
@@ -56,11 +61,12 @@ def process_cps_session_task(self, session_id):
             if has_secondary:
                 secondary_number = re.match(r'^(\d+)', room.encircle_room_label_secondary or '')
                 secondary_number = secondary_number.group(1) if secondary_number else ''
-                logger.info(f"CPS task: processing secondary room {secondary_number} for {source_label}")
-                result_secondary = analyze_room_for_cps(
+                logger.info(f"PPR task: processing secondary room {secondary_number} for {source_label}")
+                result_secondary = analyze_room_for_ppr(
                     room_name=source_label,
                     room_number=secondary_number,
                     prefetched_media=all_claim_media,
+                    pricing_mode=pricing_mode,
                 )
                 all_items.extend(result_secondary.get('items', []))
                 total_images += result_secondary.get('images_used', 0)
@@ -76,7 +82,7 @@ def process_cps_session_task(self, session_id):
             try:
                 from docsAppR.models import AIUsageLog
                 AIUsageLog.log_call(
-                    operation='cps_room',
+                    operation='ppr_room',
                     model='claude-haiku-4-5-20251001',
                     input_tokens=total_input,
                     output_tokens=total_output,
@@ -87,7 +93,7 @@ def process_cps_session_task(self, session_id):
                     error_message=result_primary.get('error', '') or '',
                 )
             except Exception as log_err:
-                logger.warning(f"CPS usage log failed for room {room.id}: {log_err}")
+                logger.warning(f"PPR usage log failed for room {room.id}: {log_err}")
 
             room.items.all().delete()
             for order, item_dict in enumerate(all_items):
@@ -124,19 +130,19 @@ def process_cps_session_task(self, session_id):
             room.status = 'complete' if (result_primary.get('success') or all_items) else 'error'
             room.save(update_fields=['images_used', 'ai_confidence', 'ai_notes', 'status'])
             logger.info(
-                f"CPS task: room {room.room_number} done — "
+                f"PPR task: room {room.room_number} done — "
                 f"{room.items.count()} items, {total_images} images, {room.ai_confidence} confidence"
             )
 
         except Exception as e:
-            logger.error(f"CPS task: error on room {room.id} ({room.room_name}): {e}", exc_info=True)
+            logger.error(f"PPR task: error on room {room.id} ({room.room_name}): {e}", exc_info=True)
             room.status = 'error'
             room.ai_notes = str(e)[:500]
             room.save(update_fields=['status', 'ai_notes'])
 
     session.status = 'complete'
     session.save(update_fields=['status'])
-    logger.info(f"CPS task complete for session {session_id}")
+    logger.info(f"PPR task complete for session {session_id}")
 
     from .views import _auto_generate_summary
     _auto_generate_summary(session)
