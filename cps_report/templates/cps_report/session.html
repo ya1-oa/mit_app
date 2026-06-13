@@ -176,6 +176,11 @@
           <a href="{% url 'cps_report_summary' session.id %}" class="btn btn-outline-info btn-sm me-1">
             <i class="fas fa-table me-1"></i> Summary
           </a>
+          {% if session.pricing_mode == 'premium' %}
+          <a href="{% url 'cps_pricing_audit' session.id %}" class="btn btn-outline-warning btn-sm me-1">
+            <i class="fas fa-chart-bar me-1"></i> Pricing Audit
+          </a>
+          {% endif %}
           <a href="{% url 'cps_report_export_pdf' session.id %}" class="btn btn-danger btn-sm me-1">
             <i class="fas fa-file-pdf me-1"></i> PDF
           </a>

@@ -20,9 +20,9 @@ _SYSTEM_PROMPT = """DIRECTIVE: You are a professional mitigation claim inspector
 You produce insurance-standard schedule of loss line items suitable for invoicing insurance companies.
 Respond ONLY with valid JSON — no markdown, no explanation."""
 
-_SYSTEM_PROMPT_PREMIUM = """DIRECTIVE: You are a professional mitigation claim inspector specializing in high-end and luxury property claims. You review images and determine the premium replacement value of items in a client's home for insurance purposes.
+_SYSTEM_PROMPT_PREMIUM = """DIRECTIVE: You are a professional mitigation claim inspector specializing in upper-mid-tier property claims. You review images and determine replacement values for items in a client's home for insurance purposes.
 
-You produce insurance-standard schedule of loss line items suitable for invoicing insurance companies. All pricing must reflect premium/high-end retail — do not reference or use budget or discount retailers.
+Pricing standard: upper-mid retail — quality brands at their mid-to-upper price range. Target 20–40% above standard retail. Do NOT price at absolute luxury/top-tier unless the item is explicitly identifiable as a luxury brand (visible logo, label, or hallmark confirming it). Do not reference or use budget or discount retailers.
 Respond ONLY with valid JSON — no markdown, no explanation."""
 
 _USER_PROMPT = """ACTION: Review the following photos of room "{room_name}" and give me the replacement value of each item shown.
@@ -78,63 +78,70 @@ Return JSON in this exact format:
   "room_summary": "brief description of room and notable contents"
 }}"""
 
-_USER_PROMPT_PREMIUM = """ACTION: Review the following photos of room "{room_name}" and give me the PREMIUM replacement value of each item shown.
+_USER_PROMPT_PREMIUM = """ACTION: Review the following photos of room "{room_name}" and give me the UPPER-MID-TIER replacement value of each item shown.
 
-CONTEXT:
-- Price every item at PREMIUM / HIGH-END retail. Reflect what it would cost to replace the item with an equivalent quality product purchased from a high-end or specialty retailer.
-- DO NOT reference or cite budget or discount retailers. Specifically excluded: Walmart, Target, Amazon Basics, Dollar General, Dollar Tree, Five Below, Family Dollar, Costco house brands, Sam's Club house brands, or any discount/off-brand source.
-- Reference premium and specialty retailers when applicable: Restoration Hardware (RH), Williams-Sonoma, Pottery Barn, Pottery Barn Kids, West Elm, Crate & Barrel, CB2, Arhaus, Room & Board, Design Within Reach, Sur La Table, Viking, Sub-Zero/Wolf dealer, Apple Store, Best Buy Magnolia, Nordstrom, Bloomingdale's, Macy's (premium lines), Anthropologie, Frontgate, Grandin Road, Z Gallerie, Peloton, or equivalent upscale specialty sources.
-- Replacement price = what it would cost to buy an equivalent quality item new today at an upscale or specialty retailer.
-- Do NOT price any structural or permanently fixed building components. This explicitly includes: windows, window frames, window sills, stairs, railings, floorboards, hardwood/tile/carpet flooring, beams, support pillars, columns, walls, ceilings, roofing, baseboards, crown molding, built-in shelving, and any item that would remain in the property when a tenant moves out. If it stays with the building, exclude it entirely.
-- This is for a mitigation claim — provide replacement cost of ALL items photographed. If there are multiple items, price them separately. If its a flower pot we would price the pot and flowers separately.
-- Use industry-standard format suitable for invoicing insurance companies.
+PRICING STANDARD:
+- Target: 20–40% above standard mid-market retail. This is NOT absolute luxury pricing.
+- Only price at high-end / luxury tier if the item has a clearly visible brand logo, label, or hallmark confirming it (e.g. visible Apple logo, visible Breville logo, visible KitchenAid label).
+- Do NOT default to top-of-line for every item. Unknown-brand or store-brand items should be priced at quality-equivalent replacements in the mid-premium range.
+- DO NOT reference or cite budget or discount retailers: Walmart, Target, Amazon Basics, Dollar General, Costco house brands, or any discount/off-brand source.
+- Use upper-mid-tier sources: Crate & Barrel, West Elm, Pottery Barn (mid-range lines), Best Buy (standard tier), Williams-Sonoma (mid-range), Macy's, Nordstrom Rack, Bed Bath & Beyond premium lines, or equivalent.
+- For clearly identified luxury brands (visible hallmark), reference the appropriate premium retailer.
+
+CATEGORY PRICE ANCHORS — use these as your target range, not the ceiling:
+- Furniture (sofa, bed, table, chair): $500–$1,200 per piece for unbranded; up to $2,000 for confirmed premium brand
+- Electronics (TV 55"): $500–$900; laptop: $900–$1,400; tablet: $400–$700
+- Appliances (washer/dryer): $700–$1,200; refrigerator: $900–$1,800
+- Kitchen/Cookware (pots, pans, small appliances): $60–$250 per item
+- Bedding/Linens (sheet set, comforter): $80–$250
+- Decor/Art (lamps, mirrors, artwork): $80–$400
+
+OTHER RULES:
+- Do NOT price any structural or permanently fixed building components (windows, stairs, flooring, walls, ceilings, built-in cabinets, etc.). Exclude entirely.
+- This is for a mitigation claim — price ALL items photographed separately. Each item on its own line.
 - Avoid duplicates: if the same item appears in multiple photos, list it once.
-- Estimate the age of each item based on visible wear, style, and condition.
-- For furniture, price at mid-to-upper RH / Pottery Barn / Arhaus tier unless brand is clearly identifiable as higher end.
-- For electronics, price at Apple / Samsung premium / Sonos / Bose tier.
-- For kitchen items, price at Sur La Table / Williams-Sonoma / All-Clad / Le Creuset tier.
-- For bedding and linens, price at Pottery Barn / RH / Frette / Sferra tier.
+- Estimate age based on visible wear, style, and technology generation.
 
 For each item provide:
-- description: clear insurance-standard item description (e.g. "Queen Size Upholstered Platform Bed - Linen - High-End")
-- brand: brand/manufacturer if visible, otherwise ""
+- description: clear insurance-standard item description (e.g. "Queen Size Upholstered Platform Bed - Fabric - Upper-Mid Tier")
+- brand: brand/manufacturer if VISIBLY confirmed on item, otherwise ""
 - condition: "Good", "Fair", or "Poor"
 - qty: quantity (integer)
 - model_number: if visible on item, otherwise ""
 - serial_number: if visible on item, otherwise ""
-- retailer: the premium/specialty retailer where an equivalent replacement would be purchased (e.g. "Restoration Hardware", "Williams-Sonoma", "Best Buy Magnolia", "Apple Store", "Sur La Table")
+- retailer: upper-mid-tier retailer appropriate for the item (e.g. "Crate & Barrel", "Best Buy", "Pottery Barn", "Williams-Sonoma")
 - replacement_source: "Online" or "Retail"
-- purchase_price_each: estimated original purchase price in USD at premium tier (number only)
-- age_years: estimated age in years — inspect wear, style, technology generation (0–5 maximum per policy, vary between items)
+- purchase_price_each: estimated original purchase price in USD (number only)
+- age_years: estimated age in years (0–5 maximum per policy, vary between items)
 - age_months: additional months beyond age_years (0–11)
-- replacement_value_each: today's premium retail replacement cost in USD (number only)
+- replacement_value_each: today's upper-mid-tier retail replacement cost in USD (number only)
 - depreciation_category: one of — Clothing, Electronics, Furniture, Appliances, Bedding/Linens, Books/Media, Decor/Art, Toys/Games, Tools/Hardware, Kitchen/Cookware, Jewelry/Accessories, Sporting Goods, Musical Instruments, Other
-- depreciation_pct: depreciation percentage based on age and condition (0–80, proportional — 5 yr old furniture ~30%, 10 yr old electronics ~70%)
-- notes: any relevant insurance notes (brand visible, serial noted, heavy wear, premium grade confirmed, etc.)
+- depreciation_pct: depreciation percentage based on age and condition (0–95, proportional — 5 yr old furniture ~35%, 10 yr old electronics ~75%, fully worn items may reach 90–95%)
+- notes: any relevant insurance notes (brand visible, serial noted, heavy wear, premium grade confirmed, cap applied, etc.)
 
 Return JSON in this exact format:
 {{
   "items": [
     {{
-      "description": "65-inch OLED 4K Smart TV",
-      "brand": "LG",
+      "description": "65-inch LED 4K Smart TV - Upper-Mid Tier",
+      "brand": "",
       "condition": "Good",
       "qty": 1,
       "model_number": "",
       "serial_number": "",
-      "retailer": "Best Buy Magnolia",
+      "retailer": "Best Buy",
       "replacement_source": "Retail",
-      "purchase_price_each": 2200,
+      "purchase_price_each": 650,
       "age_years": 2,
       "age_months": 0,
-      "replacement_value_each": 2499,
+      "replacement_value_each": 849,
       "depreciation_category": "Electronics",
-      "depreciation_pct": 30,
-      "notes": "LG OLED visible — priced at premium Magnolia tier"
+      "depreciation_pct": 28,
+      "notes": "No brand visible — priced at upper-mid Best Buy tier"
     }}
   ],
   "confidence": "high|medium|low",
-  "room_summary": "brief description of room and notable premium contents"
+  "room_summary": "brief description of room and notable contents"
 }}"""
 
 
@@ -186,6 +193,109 @@ STRUCTURAL_TERMS: frozenset[str] = frozenset({
     'fireplace', 'mantle', 'mantel', 'hearth', 'chimney',
     'garage', 'driveway', 'fence', 'deck', 'porch', 'patio',
 })
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Premium pricing calibration
+#
+# Problem: unconstrained "premium" prompting produces 2.5–3× category-median
+# prices, yielding ~900k total variance on real claims. Target is ~300k.
+#
+# Mathematical approach — two-phase logarithmic soft cap:
+#
+#   Phase 1  (ratio ≤ SOFT_THRESHOLD):  price accepted as-is.
+#   Phase 2  (ratio >  SOFT_THRESHOLD):
+#       compressed = SOFT_THRESHOLD
+#                    + LOG_SCALE_FACTOR × log10((ratio − SOFT_THRESHOLD)×3 + 1)
+#       capped_price = baseline × min(compressed, HARD_CEILING)
+#
+# Ratio → effective multiplier after cap:
+#   1.30×  →  1.30×  (under threshold, no change)
+#   2.00×  →  1.45×  (compressed)
+#   3.00×  →  1.54×  (compressed)
+#   4.00×  →  1.59×  (compressed)
+#   10.0×  →  1.73×  (compressed)
+#   ∞       →  1.80×  (hard ceiling)
+#
+# Net effect on a claim where AI averages 2.5× category baseline (900k variance):
+#   After cap, effective average ≈ 1.50×  →  variance ≈ 300k  ✓
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Per-category approximate US mid-market retail medians (USD, per unit).
+# Used as the reference baseline for per-item ratio calculation.
+CATEGORY_BASELINES: dict[str, float] = {
+    'Furniture':          650.0,
+    'Electronics':        450.0,
+    'Appliances':         750.0,
+    'Kitchen/Cookware':    80.0,
+    'Bedding/Linens':     120.0,
+    'Clothing':            75.0,
+    'Books/Media':         25.0,
+    'Decor/Art':          200.0,
+    'Toys/Games':          60.0,
+    'Tools/Hardware':     150.0,
+    'Jewelry/Accessories': 300.0,
+    'Sporting Goods':     200.0,
+    'Musical Instruments': 400.0,
+    'Other':              200.0,
+}
+
+# Calibration constants — tune these to shift the variance target.
+# SOFT_THRESHOLD: ratio above which logarithmic compression begins.
+#   Lower value = more aggressive cap = lower variance.
+PREMIUM_SOFT_THRESHOLD   = 1.30   # items up to 1.30× baseline pass through unchanged
+PREMIUM_LOG_SCALE_FACTOR = 0.30   # log10 dampening weight above threshold
+PREMIUM_HARD_CEILING     = 1.80   # absolute maximum multiplier vs category baseline
+
+# Expected premium lift factor displayed on the audit page.
+# 1.33 = targeting ~33% above normal (≈300k on a 900k baseline claim).
+PREMIUM_EXPECTED_LIFT    = 1.33
+
+
+def _apply_premium_calibration(items: list[dict]) -> list[dict]:
+    """
+    Post-process premium-mode items through a logarithmic soft cap so that
+    per-item prices stay within the calibrated range defined by
+    PREMIUM_SOFT_THRESHOLD / PREMIUM_LOG_SCALE_FACTOR / PREMIUM_HARD_CEILING.
+
+    Only items priced above their category median baseline are affected.
+    The original AI price is preserved in the notes field for audit traceability.
+    Items without a replacement_value_each are skipped silently.
+    """
+    for item in items:
+        rv = float(item.get('replacement_value_each') or 0)
+        if rv <= 0:
+            continue
+
+        cat      = item.get('depreciation_category', 'Other')
+        baseline = CATEGORY_BASELINES.get(cat, 200.0)
+        ratio    = rv / baseline
+
+        if ratio <= PREMIUM_SOFT_THRESHOLD:
+            continue  # within calibrated range — no change
+
+        # Two-phase log compression
+        compressed = (
+            PREMIUM_SOFT_THRESHOLD
+            + PREMIUM_LOG_SCALE_FACTOR
+            * math.log10((ratio - PREMIUM_SOFT_THRESHOLD) * 3 + 1)
+        )
+        effective_multiplier = min(compressed, PREMIUM_HARD_CEILING)
+        capped_rv = round(baseline * effective_multiplier, 2)
+
+        if capped_rv < rv:
+            notes = (item.get('notes') or '').strip()
+            item['notes'] = (
+                f"{notes} | ai-raw=${rv:,.0f} cap-applied=${capped_rv:,.0f}"
+            ).lstrip(' |')
+            item['replacement_value_each'] = capped_rv
+
+            # Scale purchase_price proportionally so it doesn't exceed replacement value
+            pp = float(item.get('purchase_price_each') or 0)
+            if pp > 0 and pp > capped_rv:
+                item['purchase_price_each'] = round(pp * (capped_rv / rv), 2)
+
+    return items
 
 
 def fetch_all_claim_media(encircle_claim_id: str) -> list[dict]:
@@ -352,7 +462,9 @@ def _clean_items(items: list, start_order: int = 0) -> list:
             "age_months": age_months,
             "replacement_value_each": float(item.get("replacement_value_each", 0) or 0),
             "depreciation_category": str(item.get("depreciation_category", "Other"))[:100],
-            "depreciation_pct": max(0, min(80, float(item.get("depreciation_pct", 0) or 0))),
+            # ACV constraint removed: upper bound raised from 80 → 95 so fully
+            # worn / aged items can carry accurate high-depreciation ACV values.
+            "depreciation_pct": max(0, min(95, float(item.get("depreciation_pct", 0) or 0))),
             "notes": str(item.get("notes", ""))[:500],
             "ai_suggested": True,
             "order": start_order + i,
@@ -484,6 +596,10 @@ def analyze_room_for_ppr(
 
     # Flag structural items (walls, floors, fixtures, etc.)
     flag_structural_items(all_items)
+
+    # Apply logarithmic soft cap in premium mode to anchor variance near target
+    if pricing_mode == 'premium' and all_items:
+        all_items = _apply_premium_calibration(all_items)
 
     if not all_items and last_error:
         return {

@@ -8,6 +8,7 @@ urlpatterns = [
     path('session/<int:session_id>/export/', views.export_excel, name='cps_report_export'),
     path('session/<int:session_id>/export-pdf/', views.export_pdf, name='cps_report_export_pdf'),
     path('session/<int:session_id>/summary/', views.session_summary, name='cps_report_summary'),
+    path('session/<int:session_id>/pricing-audit/', views.pricing_audit_view, name='cps_pricing_audit'),
     path('session/<int:session_id>/summary/pdf/', views.export_summary_pdf, name='cps_report_summary_pdf'),
     path('session/<int:session_id>/summary/excel/', views.export_summary_excel, name='cps_report_summary_excel'),
     path('session/<int:session_id>/share-link/', views.get_share_link, name='cps_share_link'),

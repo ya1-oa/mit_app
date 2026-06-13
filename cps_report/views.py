@@ -846,6 +846,148 @@ def api_import_excel(request):
         return JsonResponse({'error': str(e)}, status=500)
 
 
+@login_required
+def pricing_audit_view(request, session_id):
+    """
+    Pricing audit / difference report for a PPR session.
+
+    Displays per-room and total-level breakdown of:
+      - Baseline RCV  (from a companion normal-mode session, or back-estimated)
+      - Expected Premium RCV  (baseline × PREMIUM_EXPECTED_LIFT)
+      - Actual AI-Generated Premium RCV
+      - Delta / Variance  (actual − expected)
+
+    The companion normal-mode session is selected as the most recently
+    completed normal-pricing run for the same Encircle claim ID.
+    When no normal session exists, baseline is back-estimated by dividing
+    each room's premium total by PREMIUM_EXPECTED_LIFT.
+    """
+    from .ai_analyzer import (
+        PREMIUM_SOFT_THRESHOLD,
+        PREMIUM_LOG_SCALE_FACTOR,
+        PREMIUM_HARD_CEILING,
+        PREMIUM_EXPECTED_LIFT,
+        CATEGORY_BASELINES,
+    )
+
+    session = get_object_or_404(CPSReportSession, id=session_id)
+
+    # ── Find companion normal session ─────────────────────────────────────────
+    normal_session = (
+        CPSReportSession.objects
+        .filter(
+            encircle_claim_id=session.encircle_claim_id,
+            pricing_mode='normal',
+            status='complete',
+        )
+        .order_by('-updated_at')
+        .first()
+    )
+
+    # ── Build room-level index for normal session (room_number → items) ───────
+    normal_room_rcv: dict[str, float] = {}
+    if normal_session:
+        for room in normal_session.rooms.prefetch_related('items').all():
+            normal_room_rcv[room.room_number] = float(sum(
+                (float(i.replacement_value_each or 0) * (i.qty or 1))
+                for i in room.items.all()
+            ))
+
+    # ── Build per-room audit rows ─────────────────────────────────────────────
+    room_rows = []
+    total_baseline  = 0.0
+    total_expected  = 0.0
+    total_actual    = 0.0
+    cap_hit_count   = 0
+    total_items     = 0
+
+    for room in session.rooms.prefetch_related('items').order_by('order', 'room_number'):
+        items = list(room.items.all())
+        total_items += len(items)
+
+        actual_rcv = float(sum(
+            (float(i.replacement_value_each or 0) * (i.qty or 1))
+            for i in items
+        ))
+
+        # Baseline: use companion normal session if available, else back-estimate
+        if room.room_number in normal_room_rcv:
+            baseline_rcv = normal_room_rcv[room.room_number]
+            baseline_source = 'normal_session'
+        elif actual_rcv > 0:
+            baseline_rcv = round(actual_rcv / PREMIUM_EXPECTED_LIFT, 2)
+            baseline_source = 'estimated'
+        else:
+            baseline_rcv = 0.0
+            baseline_source = 'estimated'
+
+        expected_rcv = round(baseline_rcv * PREMIUM_EXPECTED_LIFT, 2)
+        delta        = round(actual_rcv - expected_rcv, 2)
+        delta_pct    = round((delta / expected_rcv * 100) if expected_rcv else 0, 1)
+
+        # Count items that hit the cap (annotated in notes)
+        capped_items = sum(1 for i in items if 'cap-applied' in (i.notes or ''))
+        cap_hit_count += capped_items
+
+        # Health signal per room
+        if abs(delta_pct) <= 10:
+            health = 'ok'
+        elif abs(delta_pct) <= 25:
+            health = 'warn'
+        else:
+            health = 'over' if delta > 0 else 'under'
+
+        room_rows.append({
+            'room_number':    room.room_number,
+            'room_name':      room.room_name,
+            'baseline_rcv':   baseline_rcv,
+            'expected_rcv':   expected_rcv,
+            'actual_rcv':     actual_rcv,
+            'delta':          delta,
+            'delta_pct':      delta_pct,
+            'capped_items':   capped_items,
+            'item_count':     len(items),
+            'health':         health,
+            'baseline_source': baseline_source,
+        })
+
+        total_baseline += baseline_rcv
+        total_expected += expected_rcv
+        total_actual   += actual_rcv
+
+    total_delta     = round(total_actual - total_expected, 2)
+    total_delta_pct = round((total_delta / total_expected * 100) if total_expected else 0, 1)
+
+    if abs(total_delta_pct) <= 10:
+        overall_health = 'ok'
+    elif abs(total_delta_pct) <= 25:
+        overall_health = 'warn'
+    else:
+        overall_health = 'over' if total_delta > 0 else 'under'
+
+    context = {
+        'session':           session,
+        'normal_session':    normal_session,
+        'room_rows':         room_rows,
+        # Totals
+        'total_baseline':    round(total_baseline, 2),
+        'total_expected':    round(total_expected, 2),
+        'total_actual':      round(total_actual, 2),
+        'total_delta':       total_delta,
+        'total_delta_pct':   total_delta_pct,
+        'overall_health':    overall_health,
+        # Calibration metadata
+        'cap_hit_count':     cap_hit_count,
+        'total_items':       total_items,
+        'soft_threshold':    PREMIUM_SOFT_THRESHOLD,
+        'log_scale_factor':  PREMIUM_LOG_SCALE_FACTOR,
+        'hard_ceiling':      PREMIUM_HARD_CEILING,
+        'expected_lift':     PREMIUM_EXPECTED_LIFT,
+        'expected_lift_pct': round((PREMIUM_EXPECTED_LIFT - 1) * 100, 1),
+    }
+    return render(request, 'cps_report/pricing_audit.html', context)
+
+
 def _auto_generate_summary(session) -> None:
     """Best-effort: pre-build summary exports so on-demand page loads instantly."""
     try:
