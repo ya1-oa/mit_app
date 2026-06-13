@@ -305,10 +305,7 @@
             <span class="cal-key">PREMIUM_SOFT_THRESHOLD</span>   = <span class="cal-val">{{ soft_threshold }}</span>   <span class="cal-comment"># items ≤ {{ soft_threshold }}× baseline pass through unchanged</span><br>
             <span class="cal-key">PREMIUM_LOG_SCALE_FACTOR</span> = <span class="cal-val">{{ log_scale_factor }}</span>   <span class="cal-comment"># log10 dampening weight above threshold</span><br>
             <span class="cal-key">PREMIUM_HARD_CEILING</span>     = <span class="cal-val">{{ hard_ceiling }}</span>   <span class="cal-comment"># absolute max multiplier vs category baseline</span><br>
-            <span class="cal-key">PREMIUM_EXPECTED_LIFT</span>    = <span class="cal-val">{{ expected_lift }}</span>   <span class="cal-comment"># target {{ expected_lift_pct }}% increase over baseline</span><br>
-            <br>
-            <span class="cal-comment"># ACV constraint status:</span><br>
-            <span class="cal-key">depreciation_pct_max</span>     = <span class="cal-val">95</span>       <span class="cal-comment"># raised from 80 — no-range constraint removed</span>
+            <span class="cal-key">PREMIUM_EXPECTED_LIFT</span>    = <span class="cal-val">{{ expected_lift }}</span>   <span class="cal-comment"># target {{ expected_lift_pct }}% increase over baseline</span>
           </div>
           <div class="text-muted small mt-3">
             <strong>Tuning guide:</strong> To lower total variance, reduce

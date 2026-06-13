@@ -370,8 +370,6 @@ def api_save_room_items(request):
                 age_years=max(0, min(5, int(item_dict.get('age_years', 0) or 0))),
                 age_months=max(0, min(11, int(item_dict.get('age_months', 0) or 0))),
                 replacement_value_each=float(item_dict.get('replacement_value_each', 0) or 0),
-                depreciation_category=str(item_dict.get('depreciation_category', 'Other'))[:100],
-                depreciation_pct=max(0, min(80, float(item_dict.get('depreciation_pct', 0) or 0))),
                 notes=str(item_dict.get('notes', ''))[:500],
                 ai_suggested=bool(item_dict.get('ai_suggested', True)),
             )
@@ -822,8 +820,6 @@ def api_import_excel(request):
                     age_years=min(5, max(0, _gi(row_idx, 16))),
                     age_months=min(11, max(0, _gi(row_idx, 17))),
                     replacement_value_each=_gf(row_idx, 18),
-                    depreciation_category=_gs(row_idx, 20),
-                    depreciation_pct=min(80, max(0, _gf(row_idx, 21))),
                     ai_suggested=False,
                 )
                 item_order += 1

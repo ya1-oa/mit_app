@@ -50,7 +50,6 @@ For each item provide:
 - age_months: additional months beyond age_years (0–11)
 - replacement_value_each: today's retail replacement cost in USD (number only)
 - depreciation_category: one of — Clothing, Electronics, Furniture, Appliances, Bedding/Linens, Books/Media, Decor/Art, Toys/Games, Tools/Hardware, Kitchen/Cookware, Jewelry/Accessories, Sporting Goods, Musical Instruments, Other
-- depreciation_pct: depreciation percentage based on age and condition (0–80, proportional — 5 yr old furniture ~30%, 10 yr old electronics ~70%)
 - notes: any relevant insurance notes (brand visible, serial noted, heavy wear, etc.)
 
 Return JSON in this exact format:
@@ -70,7 +69,6 @@ Return JSON in this exact format:
       "age_months": 0,
       "replacement_value_each": 699,
       "depreciation_category": "Electronics",
-      "depreciation_pct": 45,
       "notes": "Samsung logo visible"
     }}
   ],
@@ -116,7 +114,6 @@ For each item provide:
 - age_months: additional months beyond age_years (0–11)
 - replacement_value_each: today's upper-mid-tier retail replacement cost in USD (number only)
 - depreciation_category: one of — Clothing, Electronics, Furniture, Appliances, Bedding/Linens, Books/Media, Decor/Art, Toys/Games, Tools/Hardware, Kitchen/Cookware, Jewelry/Accessories, Sporting Goods, Musical Instruments, Other
-- depreciation_pct: depreciation percentage based on age and condition (0–95, proportional — 5 yr old furniture ~35%, 10 yr old electronics ~75%, fully worn items may reach 90–95%)
 - notes: any relevant insurance notes (brand visible, serial noted, heavy wear, premium grade confirmed, cap applied, etc.)
 
 Return JSON in this exact format:
@@ -136,7 +133,6 @@ Return JSON in this exact format:
       "age_months": 0,
       "replacement_value_each": 849,
       "depreciation_category": "Electronics",
-      "depreciation_pct": 28,
       "notes": "No brand visible — priced at upper-mid Best Buy tier"
     }}
   ],
@@ -392,7 +388,6 @@ def _make_fallback_items(room_name: str) -> list[dict]:
             "age_months": 0,
             "replacement_value_each": 0,
             "depreciation_category": "Other",
-            "depreciation_pct": 20,
             "notes": "Manual entry required — no images available",
         }
     ]
@@ -462,9 +457,6 @@ def _clean_items(items: list, start_order: int = 0) -> list:
             "age_months": age_months,
             "replacement_value_each": float(item.get("replacement_value_each", 0) or 0),
             "depreciation_category": str(item.get("depreciation_category", "Other"))[:100],
-            # ACV constraint removed: upper bound raised from 80 → 95 so fully
-            # worn / aged items can carry accurate high-depreciation ACV values.
-            "depreciation_pct": max(0, min(95, float(item.get("depreciation_pct", 0) or 0))),
             "notes": str(item.get("notes", ""))[:500],
             "ai_suggested": True,
             "order": start_order + i,

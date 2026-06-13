@@ -37,11 +37,6 @@ COLUMNS = [
     ('',                   'M',          5),
     ('Repl.\nValue',       'Each',       11),
     ('',                   'Total',      11),
-    ('Depreciation',       'Category',   13),
-    ('',                   '%',          6),
-    ('',                   'Amount',     9),
-    ('ACV',                'Each',       9),
-    ('',                   'Total',      9),
 ]
 
 NUM_COLS    = len(COLUMNS)
@@ -50,12 +45,9 @@ LAST_COL    = get_column_letter(NUM_COLS)
 # Column indices (1-based) for financial values — shift +1 due to Room column
 COL_RV_EACH  = 16
 COL_RV_TOTAL = 17
-COL_DEP_AMT  = 20
-COL_ACV_EACH = 21
-COL_ACV_TOT  = 22
 
-CURRENCY_COLS = {12, 13, 16, 17, 20, 21, 22}
-PCT_COLS      = {19}
+CURRENCY_COLS = {12, 13, 16, 17}
+PCT_COLS      = set()
 NUM_COLS_SET  = {7, 14, 15}
 
 # Colour palette
@@ -220,14 +212,10 @@ def _write_item_row(ws, row: int, item, item_num: int, room_name: str = '',
     ws.row_dimensions[row].height = 14
     fill = _fill(CLR_ALT_ROW) if alt else None
 
-    rv_each    = float(item.replacement_value_each or 0)
-    qty        = item.qty or 1
-    dep_pct    = float(item.depreciation_pct or 0)
-    rv_total   = rv_each * qty
-    dep_amount = rv_total * dep_pct / 100
-    acv_each   = rv_each * (1 - dep_pct / 100)
-    acv_total  = acv_each * qty
-    pp_each    = float(item.purchase_price_each or 0)
+    rv_each  = float(item.replacement_value_each or 0)
+    qty      = item.qty or 1
+    rv_total = rv_each * qty
+    pp_each  = float(item.purchase_price_each or 0)
 
     row_data = [
         item_num,
@@ -247,11 +235,6 @@ def _write_item_row(ws, row: int, item, item_num: int, room_name: str = '',
         item.age_months if item.age_months is not None else '',
         rv_each,
         rv_total,
-        item.depreciation_category or '',
-        dep_pct,
-        dep_amount,
-        acv_each,
-        acv_total,
     ]
 
     for col_idx, value in enumerate(row_data, start=1):
@@ -288,23 +271,13 @@ def _write_room_total_row(ws, row: int, room) -> None:
 
     items = list(room.items.all())
     if items:
-        rv_sum  = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in items)
-        dep_sum = sum(
-            float(i.replacement_value_each or 0) * (i.qty or 1) * float(i.depreciation_pct or 0) / 100
-            for i in items
-        )
-        acv_sum = rv_sum - dep_sum
-        for col_idx, value in [
-            (COL_RV_TOTAL, rv_sum),
-            (COL_DEP_AMT,  dep_sum),
-            (COL_ACV_TOT,  acv_sum),
-        ]:
-            c = ws.cell(row=row, column=col_idx, value=value)
-            c.number_format = _currency_fmt()
-            c.font          = _font(bold=True, size=9)
-            c.fill          = _fill(CLR_TOTAL_BG)
-            c.alignment     = _right()
-            c.border        = _border()
+        rv_sum = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in items)
+        c = ws.cell(row=row, column=COL_RV_TOTAL, value=rv_sum)
+        c.number_format = _currency_fmt()
+        c.font          = _font(bold=True, size=9)
+        c.fill          = _fill(CLR_TOTAL_BG)
+        c.alignment     = _right()
+        c.border        = _border()
 
 
 def _write_grand_total(ws, row: int, session) -> None:
@@ -327,23 +300,13 @@ def _write_grand_total(ws, row: int, session) -> None:
         for room in session.rooms.prefetch_related('items').all()
         for item in room.items.all()
     ]
-    rv_grand  = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in all_items)
-    dep_grand = sum(
-        float(i.replacement_value_each or 0) * (i.qty or 1) * float(i.depreciation_pct or 0) / 100
-        for i in all_items
-    )
-    acv_grand = rv_grand - dep_grand
-    for col_idx, value in [
-        (COL_RV_TOTAL, rv_grand),
-        (COL_DEP_AMT,  dep_grand),
-        (COL_ACV_TOT,  acv_grand),
-    ]:
-        c = ws.cell(row=row, column=col_idx, value=value)
-        c.number_format = _currency_fmt()
-        c.font          = _font(bold=True, color=CLR_HEADER_FG, size=10)
-        c.fill          = _fill(CLR_HEADER_BG)
-        c.alignment     = _right()
-        c.border        = _border()
+    rv_grand = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in all_items)
+    c = ws.cell(row=row, column=COL_RV_TOTAL, value=rv_grand)
+    c.number_format = _currency_fmt()
+    c.font          = _font(bold=True, color=CLR_HEADER_FG, size=10)
+    c.fill          = _fill(CLR_HEADER_BG)
+    c.alignment     = _right()
+    c.border        = _border()
 
 
 def _write_room_signature_row(ws, row: int, room, share_url: str | None = None) -> None:

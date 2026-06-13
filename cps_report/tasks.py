@@ -117,8 +117,6 @@ def process_cps_session_task(self, session_id):
                     age_years=age_years,
                     age_months=age_months,
                     replacement_value_each=float(item_dict.get('replacement_value_each', 0) or 0),
-                    depreciation_category=str(item_dict.get('depreciation_category', 'Other'))[:100],
-                    depreciation_pct=max(0, min(80, float(item_dict.get('depreciation_pct', 0) or 0))),
                     notes=str(item_dict.get('notes', ''))[:500],
                     ai_suggested=True,
                     structural=bool(item_dict.get('structural', False)),
