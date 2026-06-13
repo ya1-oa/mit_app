@@ -550,7 +550,7 @@ def analyze_room_for_ppr(
         f"[{mode_label}] in {math.ceil(len(image_blocks) / _IMAGES_PER_BATCH)} batch(es)"
     )
 
-    client = anthropic.Anthropic(api_key=api_key)
+    client = anthropic.Anthropic(api_key=api_key, timeout=180.0)
     all_items: list[dict] = []
     confidences: list[str] = []
     summaries: list[str] = []
@@ -569,6 +569,7 @@ def analyze_room_for_ppr(
             time.sleep(2)
 
         try:
+            print(f"[PPR-AI] CALLING CLAUDE — room='{room_name}' batch={batch_num}/{total_batches} images={len(batch)} mode={pricing_mode}", flush=True)
             parsed, usage = _call_claude_with_images(client, batch, room_name, pricing_mode=pricing_mode)
             total_input_tokens  += usage.get('input_tokens', 0)
             total_output_tokens += usage.get('output_tokens', 0)
@@ -578,6 +579,7 @@ def analyze_room_for_ppr(
             if parsed.get("room_summary"):
                 summaries.append(parsed["room_summary"])
             images_used += len(batch)
+            print(f"[PPR-AI] DONE — room='{room_name}' batch={batch_num}/{total_batches} items_so_far={len(all_items)} tokens_in={total_input_tokens}", flush=True)
 
         except json.JSONDecodeError as e:
             logger.error(f"PPR AI JSON parse error for '{room_name}' batch {batch_num}: {e}")
