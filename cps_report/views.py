@@ -450,6 +450,18 @@ def api_session_status(request, session_id):
     })
 
 
+def api_session_logs(request, session_id):
+    """Return live log lines written by the Celery task for this session."""
+    from django.core.cache import cache
+    key = f'ppr:live_logs:{session_id}'
+    logs = cache.get(key) or []
+    try:
+        after = int(request.GET.get('after', 0))
+    except (TypeError, ValueError):
+        after = 0
+    return JsonResponse({'logs': logs[after:], 'total': len(logs)})
+
+
 @login_required
 def api_room_items(request, room_id):
     """Return saved items for a room."""

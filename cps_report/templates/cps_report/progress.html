@@ -69,6 +69,18 @@
   .series-divider { display:flex; align-items:center; gap:10px; margin:16px 0 8px; }
   .series-divider-label { font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:#334155; padding:3px 12px; border-radius:20px; white-space:nowrap; }
   .series-divider-line { flex:1; height:1px; background:#e2e8f0; }
+
+  /* ── Live log panel ── */
+  #live-log-wrap { margin-bottom:16px; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  #live-log-header { background:#1e293b; color:#94a3b8; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:7px 14px; display:flex; align-items:center; justify-content:space-between; }
+  #live-log-header .pulse { width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; margin-right:7px; animation:pulse-dot 1.4s ease-in-out infinite; }
+  @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+  #live-log { background:#0f172a; color:#e2e8f0; font-family:monospace; font-size:.76rem; line-height:1.55; padding:10px 14px; height:160px; overflow-y:auto; }
+  #live-log .log-t { color:#64748b; margin-right:8px; }
+  #live-log .log-ok   { color:#4ade80; }
+  #live-log .log-err  { color:#f87171; }
+  #live-log .log-info { color:#e2e8f0; }
+  #live-log .log-ai   { color:#a78bfa; }
 </style>
 {% endblock %}
 
@@ -154,6 +166,15 @@
       <div id="master-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width:0%"></div>
     </div>
     <div id="status-msg"></div>
+  </div>
+
+  <!-- Live log panel -->
+  <div id="live-log-wrap">
+    <div id="live-log-header">
+      <span><span class="pulse" id="log-pulse"></span>Live Task Log</span>
+      <span id="log-count" style="color:#475569">0 events</span>
+    </div>
+    <div id="live-log"><span style="color:#475569;font-style:italic">Waiting for task to start…</span></div>
   </div>
 
   <!-- Stats row -->
@@ -297,7 +318,61 @@ window.addEventListener('load', () => {
   const SESSION_ID  = {{ session.id }};
   const TOTAL_ROOMS = {{ rooms|length }};
   const STATUS_URL  = `/cps-report/api/session/${SESSION_ID}/status/`;
+  const LOGS_URL    = `/cps-report/api/session/${SESSION_ID}/logs/`;
   const ITEMS_URL   = (roomId) => `/cps-report/api/room/${roomId}/items/`;
+
+  // ── Live log polling ────────────────────────────────────────────────────
+  let logOffset = 0;
+  let logTimer  = null;
+
+  function classifyLog(msg) {
+    const m = msg.toLowerCase();
+    if (m.startsWith('error') || m.includes('failed') || m.includes('error on'))
+      return 'log-err';
+    if (m.includes('claude') || m.includes('batch') || m.includes('sending'))
+      return 'log-ai';
+    if (m.includes('complete') || m.includes('done') || m.includes('ready'))
+      return 'log-ok';
+    return 'log-info';
+  }
+
+  function appendLogs(lines) {
+    if (!lines.length) return;
+    const box = document.getElementById('live-log');
+    const wasEmpty = box.querySelector('span[style]');
+    if (wasEmpty) box.innerHTML = '';
+    lines.forEach(entry => {
+      const cls = classifyLog(entry.msg);
+      const row = document.createElement('div');
+      row.innerHTML = `<span class="log-t">${entry.t}</span><span class="${cls}">${entry.msg}</span>`;
+      box.appendChild(row);
+    });
+    box.scrollTop = box.scrollHeight;
+    document.getElementById('log-count').textContent =
+      `${logOffset + lines.length} events`;
+    logOffset += lines.length;
+  }
+
+  async function pollLogs() {
+    try {
+      const r = await fetch(`${LOGS_URL}?after=${logOffset}`);
+      if (r.ok) {
+        const d = await r.json();
+        appendLogs(d.logs || []);
+      }
+    } catch (_) {}
+  }
+
+  function startLogPolling() {
+    pollLogs();
+    logTimer = setInterval(pollLogs, 2000);
+  }
+
+  function stopLogPolling() {
+    if (logTimer) { clearInterval(logTimer); logTimer = null; }
+    const pulse = document.getElementById('log-pulse');
+    if (pulse) pulse.style.animation = 'none';
+  }
 
   const fmtUsd = v => '$' + Number(v || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
@@ -426,6 +501,8 @@ window.addEventListener('load', () => {
     if (isDone) return;
     isDone = true;
 
+    stopLogPolling();
+
     // Stop progress bar animation
     const bar = document.getElementById('master-bar');
     bar.style.width = '100%';
@@ -462,6 +539,7 @@ window.addEventListener('load', () => {
 
   // Start polling immediately
   poll();
+  startLogPolling();
 })();
 </script>
 {% endblock %}

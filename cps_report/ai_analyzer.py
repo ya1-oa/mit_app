@@ -482,6 +482,7 @@ def analyze_room_for_ppr(
     prefetched_media: list[dict],
     image_urls: list[str] | None = None,
     pricing_mode: str = 'normal',
+    log_fn=None,
 ) -> dict:
     """
     Analyze a room using Claude vision and return structured PPR schedule of loss items.
@@ -510,11 +511,16 @@ def analyze_room_for_ppr(
             "error": "ANTHROPIC_API_KEY not configured",
         }
 
+    def _log(msg):
+        if log_fn:
+            log_fn(msg)
+
     urls = list(image_urls or [])
     if not urls:
         urls = filter_room_images(prefetched_media, room_number)
 
     if not urls:
+        _log(f"No images found for room {room_number} — using placeholder")
         return {
             "success": False,
             "items": _make_fallback_items(room_name),
@@ -524,6 +530,7 @@ def analyze_room_for_ppr(
             "error": "No images available for this room",
         }
 
+    _log(f"Found {len(urls)} images for room {room_number} — downloading…")
     image_blocks = []
     for url in urls:
         result = _image_url_to_base64(url)
@@ -535,6 +542,7 @@ def analyze_room_for_ppr(
             })
 
     if not image_blocks:
+        _log(f"Could not download any images for room {room_number}")
         return {
             "success": False,
             "items": _make_fallback_items(room_name),
@@ -543,6 +551,8 @@ def analyze_room_for_ppr(
             "images_used": 0,
             "error": "Could not download any images",
         }
+
+    _log(f"Downloaded {len(image_blocks)}/{len(urls)} images for room {room_number}")
 
     mode_label = "PREMIUM" if pricing_mode == 'premium' else "normal"
     logger.info(
@@ -570,6 +580,7 @@ def analyze_room_for_ppr(
 
         try:
             print(f"[PPR-AI] CALLING CLAUDE — room='{room_name}' batch={batch_num}/{total_batches} images={len(batch)} mode={pricing_mode}", flush=True)
+            _log(f"Sending batch {batch_num}/{total_batches} to Claude AI ({len(batch)} images)…")
             parsed, usage = _call_claude_with_images(client, batch, room_name, pricing_mode=pricing_mode)
             total_input_tokens  += usage.get('input_tokens', 0)
             total_output_tokens += usage.get('output_tokens', 0)
@@ -580,6 +591,7 @@ def analyze_room_for_ppr(
                 summaries.append(parsed["room_summary"])
             images_used += len(batch)
             print(f"[PPR-AI] DONE — room='{room_name}' batch={batch_num}/{total_batches} items_so_far={len(all_items)} tokens_in={total_input_tokens}", flush=True)
+            _log(f"Batch {batch_num}/{total_batches} done — {len(batch_items)} items found (running total: {len(all_items)})")
 
         except json.JSONDecodeError as e:
             logger.error(f"PPR AI JSON parse error for '{room_name}' batch {batch_num}: {e}")

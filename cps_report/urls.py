@@ -31,6 +31,7 @@ urlpatterns = [
     path('api/process-room/', views.api_process_room, name='cps_api_process_room'),
     path('api/save-room/', views.api_save_room_items, name='cps_api_save_room'),
     path('api/session/<int:session_id>/status/', views.api_session_status, name='cps_api_status'),
+    path('api/session/<int:session_id>/logs/', views.api_session_logs, name='cps_api_logs'),
     path('api/room/<int:room_id>/items/', views.api_room_items, name='cps_api_room_items'),
 
     # Import a previously exported Schedule of Loss Excel file

@@ -1,8 +1,23 @@
 import logging
 import re
+import time as _time
 from celery import shared_task
 
 logger = logging.getLogger(__name__)
+
+
+def _session_log(session_id, msg):
+    """Append a timestamped log line to Redis so the progress page can show it live."""
+    from django.core.cache import cache
+    key = f'ppr:live_logs:{session_id}'
+    now = _time.strftime('%H:%M:%S')
+    entry = {'t': now, 'msg': msg}
+    logs = cache.get(key) or []
+    logs.append(entry)
+    if len(logs) > 200:
+        logs = logs[-200:]
+    cache.set(key, logs, timeout=7200)
+    print(f"[PPR-LOG] {now} {msg}", flush=True)
 
 
 @shared_task(bind=True)
@@ -23,20 +38,26 @@ def process_cps_session_task(self, session_id):
     pricing_mode = session.pricing_mode or 'normal'
     session.status = 'processing'
     session.save(update_fields=['status'])
+    log = lambda msg: _session_log(session_id, msg)
     logger.info(
         f"PPR task started for session {session_id} — {session.insured_name} "
         f"[pricing: {pricing_mode}]"
     )
+    log(f"Session started — {session.insured_name} | claim {session.claim_number or session.encircle_claim_id} | mode: {pricing_mode}")
 
     try:
+        log("Connecting to Encircle and fetching claim media…")
         all_claim_media = fetch_all_claim_media(session.encircle_claim_id)
+        log(f"Fetched {len(all_claim_media)} media items from Encircle")
     except Exception as e:
         logger.error(f"PPR task: failed to fetch claim media: {e}", exc_info=True)
+        log(f"ERROR fetching claim media: {e}")
         session.status = 'error'
         session.save(update_fields=['status'])
         return
 
     rooms = list(session.rooms.order_by('order').all())
+    log(f"Processing {len(rooms)} rooms…")
 
     for room in rooms:
         room.status = 'processing'
@@ -46,6 +67,7 @@ def process_cps_session_task(self, session_id):
         source_label = f"{room.room_number} {room.room_name}"
         logger.info(f"PPR task: processing room {source_label}" +
                     (" (primary + secondary)" if has_secondary else ""))
+        log(f"Starting room: {source_label}" + (" (primary + secondary)" if has_secondary else ""))
 
         try:
             result_primary = analyze_room_for_ppr(
@@ -53,6 +75,7 @@ def process_cps_session_task(self, session_id):
                 room_number=room.room_number,
                 prefetched_media=all_claim_media,
                 pricing_mode=pricing_mode,
+                log_fn=log,
             )
             all_items = list(result_primary.get('items', []))
             total_images = result_primary.get('images_used', 0)
@@ -62,11 +85,13 @@ def process_cps_session_task(self, session_id):
                 secondary_number = re.match(r'^(\d+)', room.encircle_room_label_secondary or '')
                 secondary_number = secondary_number.group(1) if secondary_number else ''
                 logger.info(f"PPR task: processing secondary room {secondary_number} for {source_label}")
+                log(f"Processing secondary images (room {secondary_number}) for {source_label}…")
                 result_secondary = analyze_room_for_ppr(
                     room_name=source_label,
                     room_number=secondary_number,
                     prefetched_media=all_claim_media,
                     pricing_mode=pricing_mode,
+                    log_fn=log,
                 )
                 all_items.extend(result_secondary.get('items', []))
                 total_images += result_secondary.get('images_used', 0)
@@ -127,13 +152,16 @@ def process_cps_session_task(self, session_id):
             room.ai_notes = ' | '.join(s for s in summaries if s)
             room.status = 'complete' if (result_primary.get('success') or all_items) else 'error'
             room.save(update_fields=['images_used', 'ai_confidence', 'ai_notes', 'status'])
+            item_count = room.items.count()
             logger.info(
                 f"PPR task: room {room.room_number} done — "
-                f"{room.items.count()} items, {total_images} images, {room.ai_confidence} confidence"
+                f"{item_count} items, {total_images} images, {room.ai_confidence} confidence"
             )
+            log(f"Room {source_label} complete — {item_count} items, {total_images} images ({room.ai_confidence} confidence)")
 
         except Exception as e:
             logger.error(f"PPR task: error on room {room.id} ({room.room_name}): {e}", exc_info=True)
+            log(f"ERROR on room {source_label}: {e}")
             room.status = 'error'
             room.ai_notes = str(e)[:500]
             room.save(update_fields=['status', 'ai_notes'])
@@ -141,6 +169,8 @@ def process_cps_session_task(self, session_id):
     session.status = 'complete'
     session.save(update_fields=['status'])
     logger.info(f"PPR task complete for session {session_id}")
+    log("All rooms complete — generating summary report…")
 
     from .views import _auto_generate_summary
     _auto_generate_summary(session)
+    log("Done. Report ready for download.")
