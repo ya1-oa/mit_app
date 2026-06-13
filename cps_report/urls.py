@@ -12,12 +12,16 @@ urlpatterns = [
     path('session/<int:session_id>/summary/pdf/', views.export_summary_pdf, name='cps_report_summary_pdf'),
     path('session/<int:session_id>/summary/excel/', views.export_summary_excel, name='cps_report_summary_excel'),
     path('session/<int:session_id>/share-link/', views.get_share_link, name='cps_share_link'),
+    path('session/<int:session_id>/room/<int:room_id>/share-link/', views.get_room_share_link, name='cps_room_share_link'),
     path('session/<int:session_id>/clear-signatures/', views.api_clear_signatures, name='cps_clear_signatures'),
     path('session/<int:session_id>/room/<int:room_id>/clear-signature/', views.api_clear_room_signature, name='cps_clear_room_signature'),
 
     # Public client signature page (no login required)
     path('sign/<uuid:token>/', views.sign_session, name='cps_sign_session'),
     path('sign/<uuid:token>/sign-room/', views.api_sign_room, name='cps_api_sign_room'),
+    # Per-room signature links — client sees only that one room
+    path('sign/room/<uuid:token>/', views.sign_room_direct, name='cps_sign_room_direct'),
+    path('sign/room/<uuid:token>/sign-room/', views.api_sign_room_direct, name='cps_api_sign_room_direct'),
 
     # API
     path('api/clients/', views.api_search_clients, name='cps_api_clients'),

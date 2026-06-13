@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PPR Schedule of Loss — Room Sign-Off</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css">
+  <style>
+    body { background: #f1f5f9; color: #0f172a; }
+    .doc-header { background: #1e40af; color: #fff; padding: 1.5rem 2rem; border-radius: 0 0 12px 12px; margin-bottom: 2rem; }
+    .doc-header h1 { font-size: 1.4rem; font-weight: 700; margin: 0; }
+    .doc-header p { margin: .25rem 0 0; opacity: .85; font-size: .9rem; }
+    .room-badge { display: inline-block; background: rgba(255,255,255,.18); border-radius: 6px; padding: 2px 10px; font-size: .85rem; font-weight: 600; }
+    .room-card { border: 1px solid #e2e8f0; border-radius: 10px; background: #fff; margin-bottom: 2rem; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,.06); }
+    .room-card-header { background: #059669; color: #fff; padding: .6rem 1.2rem; display: flex; justify-content: space-between; align-items: center; }
+    .room-card-header h2 { font-size: 1rem; font-weight: 700; margin: 0; }
+    .room-card-header span { font-size: .85rem; opacity: .9; }
+    .item-table thead th { background: #334155; color: #fff; font-size: .78rem; white-space: nowrap; }
+    .item-table tbody td { font-size: .82rem; vertical-align: middle; }
+    .item-table tbody tr:nth-child(even) td { background: #f0fdf4; }
+    .subtotal-row td { background: #1e3a5f !important; color: #fff !important; font-weight: 700; font-size: .82rem; }
+    .sig-box { background: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 1.2rem 1.5rem; margin: 1rem 1.5rem 1.5rem; }
+    .sig-box.signed { background: #f0fdf4; border-color: #86efac; }
+    .sig-name-input { font-size: 1.1rem; border: 1px solid #94a3b8; border-radius: 6px; padding: .5rem .9rem; width: 100%; max-width: 360px; }
+    .sig-name-input:focus { outline: none; border-color: #059669; box-shadow: 0 0 0 3px rgba(5,150,105,.15); }
+    .signed-display { font-size: 1.2rem; font-weight: 700; color: #059669; font-family: Georgia, serif; }
+    .signed-meta { font-size: .78rem; color: #64748b; margin-top: .25rem; }
+    .legal-notice { font-size: .74rem; color: #94a3b8; margin-top: .5rem; }
+    .signed-banner { background: #ecfdf5; border: 1px solid #6ee7b7; border-radius: 10px; padding: 1.2rem 1.5rem; margin-bottom: 2rem; display: none; }
+  </style>
+</head>
+<body>
+{% load static %}
+{% csrf_token %}
+
+<div class="doc-header">
+  <div class="container-lg">
+    <h1><i class="fas fa-file-signature me-2"></i>PPR Schedule of Loss — Room Sign-Off</h1>
+    <p>
+      <strong>{{ session.insured_name|default:"—" }}</strong>
+      &nbsp;|&nbsp; Claim #: {{ session.claim_number|default:"—" }}
+      &nbsp;|&nbsp; <span class="room-badge"><i class="fas fa-door-open me-1"></i>{{ room.room_number }} {{ room.room_name }}</span>
+    </p>
+  </div>
+</div>
+
+<div class="container-lg pb-5">
+
+  <!-- Signed confirmation banner (shown after signing) -->
+  <div id="signed-banner" class="signed-banner">
+    <i class="fas fa-check-circle text-success me-2"></i>
+    <strong>Room signed successfully.</strong> You may now close this page.
+  </div>
+
+  <!-- Room card -->
+  <div class="room-card" id="room-card-{{ room.id }}">
+    <div class="room-card-header">
+      <h2><i class="fas fa-door-open me-2"></i>{{ room.room_number }} {{ room.room_name }}</h2>
+      <span>{{ room.items.count }} item{{ room.items.count|pluralize }}</span>
+    </div>
+
+    <!-- Items table -->
+    <div class="table-responsive">
+      <table class="table table-sm item-table mb-0">
+        <thead>
+          <tr>
+            <th style="width:30px">#</th>
+            <th>Description</th>
+            <th>Brand</th>
+            <th>Qty</th>
+            <th>Age</th>
+            <th class="text-end">RCV Each</th>
+            <th class="text-end">RCV Total</th>
+            <th>Condition</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in room.items.all %}
+          <tr>
+            <td class="text-muted">{{ forloop.counter }}</td>
+            <td>{{ item.description }}</td>
+            <td>{{ item.brand|default:"—" }}</td>
+            <td>{{ item.qty }}</td>
+            <td>{{ item.age_years|default:"0" }}y{% if item.age_months %} {{ item.age_months }}m{% endif %}</td>
+            <td class="text-end">${{ item.replacement_value_each|floatformat:2 }}</td>
+            <td class="text-end fw-semibold">${{ item.replacement_value_total|floatformat:2 }}</td>
+            <td>{{ item.condition|default:"—" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8" class="text-muted text-center py-3">No items in this room.</td></tr>
+          {% endfor %}
+          {% if room.items.count %}
+          <tr class="subtotal-row">
+            <td colspan="6" class="text-end">ROOM TOTAL</td>
+            <td class="text-end">${{ room.total_rcv|floatformat:2 }}</td>
+            <td></td>
+          </tr>
+          {% endif %}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Signature box -->
+    <div class="sig-box{% if room.signature_name %} signed{% endif %}" id="sig-box-{{ room.id }}">
+      {% if room.signature_name %}
+        <div class="d-flex align-items-center gap-2 mb-1">
+          <i class="fas fa-check-circle text-success"></i>
+          <span class="fw-semibold text-success">Room confirmed and signed</span>
+        </div>
+        <div class="signed-display">{{ room.signature_name }}</div>
+        <div class="signed-meta">
+          Signed on {{ room.signed_at|date:"F j, Y \a\t g:i A" }} —
+          Electronically signed by typed name
+        </div>
+      {% else %}
+        <p class="mb-2 fw-semibold" style="font-size:.9rem;">
+          <i class="fas fa-pen-to-square me-1 text-muted"></i>
+          Type your full legal name below to confirm the items listed above for this room:
+        </p>
+        <div class="d-flex align-items-center gap-2 flex-wrap">
+          <input type="text"
+                 class="sig-name-input"
+                 id="sig-input-{{ room.id }}"
+                 placeholder="Full legal name"
+                 autocomplete="name"
+                 maxlength="255">
+          <button class="btn btn-success btn-sm"
+                  onclick="signRoom('{{ token }}')"
+                  id="sig-btn-{{ room.id }}">
+            <i class="fas fa-signature me-1"></i> Sign Room {{ room.room_number }}
+          </button>
+        </div>
+        <p class="legal-notice">
+          By typing your name and clicking "Sign", you acknowledge that the items listed above
+          are accurate and you are providing a legally binding electronic signature under the
+          E-Sign Act (15 U.S.C. § 7001).
+        </p>
+      {% endif %}
+    </div>
+  </div>
+
+  <p class="text-muted small text-center">
+    This link is specific to <strong>{{ room.room_number }} {{ room.room_name }}</strong>.
+    Contact your service provider if you need to review other rooms.
+  </p>
+
+</div>
+
+<script>
+const ROOM_ID = {{ room.id }};
+
+async function signRoom(token) {
+  const input = document.getElementById('sig-input-' + ROOM_ID);
+  const btn   = document.getElementById('sig-btn-' + ROOM_ID);
+  const name  = input.value.trim();
+  if (!name) { input.focus(); input.style.borderColor = '#ef4444'; return; }
+  input.style.borderColor = '';
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin me-1"></i> Signing…';
+
+  try {
+    const res = await fetch('/cps-report/sign/room/' + token + '/sign-room/', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+      },
+      body: JSON.stringify({ name }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-signature me-1"></i> Sign Room';
+      alert(data.error || 'Error saving signature. Please try again.');
+      return;
+    }
+    const box = document.getElementById('sig-box-' + ROOM_ID);
+    box.classList.add('signed');
+    box.innerHTML = `
+      <div class="d-flex align-items-center gap-2 mb-1">
+        <i class="fas fa-check-circle text-success"></i>
+        <span class="fw-semibold text-success">Room confirmed and signed</span>
+      </div>
+      <div class="signed-display">${name}</div>
+      <div class="signed-meta">Signed on ${data.signed_at} — Electronically signed by typed name</div>
+    `;
+    document.getElementById('signed-banner').style.display = 'block';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-signature me-1"></i> Sign Room';
+    alert('Network error. Please check your connection and try again.');
+  }
+}
+</script>
+</body>
+</html>

@@ -55,6 +55,7 @@ class CPSReportRoom(models.Model):
         on_delete=models.CASCADE,
         related_name='rooms',
     )
+    share_token = models.UUIDField(default=uuid.uuid4, unique=True)
     room_name = models.CharField(max_length=200)
     room_number = models.CharField(max_length=20, blank=True)
     encircle_room_id = models.CharField(max_length=100, blank=True)

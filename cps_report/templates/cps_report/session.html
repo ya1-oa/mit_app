@@ -294,7 +294,7 @@
 
   <!-- Room Sections -->
   {% for room in rooms %}
-  <div class="room-section" id="room-section-{{ room.id }}">
+  <div class="room-section" id="room-section-{{ room.id }}" data-room-token="{{ room.share_token }}">
     <div class="room-header d-flex justify-content-between align-items-center">
       <span>
         {{ room.room_number }} — {{ room.room_name }}
@@ -404,8 +404,8 @@
     <div class="sig-status-bar unsigned" id="sig-bar-{{ room.id }}">
       <i class="fas fa-clock"></i>
       <span>Awaiting client signature</span>
-      <button onclick="copyShareLink(this)" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">
-        <i class="fas fa-link me-1"></i>Copy link to send
+      <button onclick="copyRoomLink(this, '{{ room.share_token }}')" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">
+        <i class="fas fa-link me-1"></i>Copy room link
       </button>
     </div>
     {% endif %}
@@ -1106,10 +1106,12 @@ async function clearRoomSignature(roomId, roomLabel) {
       // Update the per-room status bar
       const bar = document.getElementById(`sig-bar-${roomId}`);
       if (bar) {
+        const section = document.getElementById(`room-section-${roomId}`);
+        const roomToken = section ? section.dataset.roomToken : '';
         bar.className = 'sig-status-bar unsigned';
         bar.innerHTML = '<i class="fas fa-clock"></i><span>Awaiting client signature</span>'
-          + '<button onclick="copyShareLink(this)" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">'
-          + '<i class="fas fa-link me-1"></i>Copy link to send</button>';
+          + `<button onclick="copyRoomLink(this, '${roomToken}')" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">`
+          + '<i class="fas fa-link me-1"></i>Copy room link</button>';
       }
       // Update the top badge for this room
       document.querySelectorAll(`#sig-badges .badge`).forEach(badge => {
@@ -1192,8 +1194,32 @@ function copyShareLink(btn) {
       btn.classList.replace('btn-primary', 'btn-outline-primary');
     }, 2000);
   }).catch(() => {
-    // Last resort: show the URL so they can copy manually
     prompt('Copy this link to send to your client:', SHARE_URL);
+  });
+}
+
+function copyRoomLink(btn, roomToken) {
+  const url = window.location.origin + '/cps-report/sign/room/' + roomToken + '/';
+  const doCopy = () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(url);
+    }
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    return Promise.resolve();
+  };
+
+  doCopy().then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check me-1"></i> Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2000);
+  }).catch(() => {
+    prompt('Copy this room link to send to your client:', url);
   });
 }
 </script>

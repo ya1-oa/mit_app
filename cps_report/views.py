@@ -569,6 +569,57 @@ def sign_session(request, token):
     })
 
 
+def sign_room_direct(request, token):
+    """Public (no login) page where the client signs a single room via its own token."""
+    from .models import CPSReportRoom
+    room = get_object_or_404(CPSReportRoom, share_token=token)
+    return render(request, 'cps_report/sign_room.html', {
+        'session': room.session,
+        'room': room,
+        'token': str(token),
+    })
+
+
+@require_POST
+def api_sign_room_direct(request, token):
+    """Public POST — sign a single room using the room's own share token."""
+    from .models import CPSReportRoom
+    room = get_object_or_404(CPSReportRoom, share_token=token)
+    try:
+        if room.signature_name:
+            return JsonResponse({'error': 'Room already signed'}, status=400)
+        data = json.loads(request.body)
+        name = (data.get('name') or '').strip()
+        if not name:
+            return JsonResponse({'error': 'name is required'}, status=400)
+
+        x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+        ip = x_forwarded.split(',')[0].strip() if x_forwarded else request.META.get('REMOTE_ADDR')
+
+        room.signature_name = name
+        room.signed_at = timezone.now()
+        room.signer_ip = ip
+        room.save(update_fields=['signature_name', 'signed_at', 'signer_ip'])
+
+        return JsonResponse({
+            'success': True,
+            'room_id': room.id,
+            'signed_at': room.signed_at.strftime('%B %d, %Y at %I:%M %p'),
+        })
+    except Exception as e:
+        logger.error(f"api_sign_room_direct error: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def get_room_share_link(request, session_id, room_id):
+    """Return the per-room public share URL (shows only that room to the client)."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    room = get_object_or_404(CPSReportRoom, id=room_id, session=session)
+    url = request.build_absolute_uri(f'/cps-report/sign/room/{room.share_token}/')
+    return JsonResponse({'url': url})
+
+
 @require_POST
 def api_sign_room(request, token):
     """Public POST endpoint — save a typed-name signature for one room."""
