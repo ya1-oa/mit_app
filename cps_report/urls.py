@@ -13,6 +13,8 @@ urlpatterns = [
     path('session/<int:session_id>/summary/excel/', views.export_summary_excel, name='cps_report_summary_excel'),
     path('session/<int:session_id>/share-link/', views.get_share_link, name='cps_share_link'),
     path('session/<int:session_id>/room/<int:room_id>/share-link/', views.get_room_share_link, name='cps_room_share_link'),
+    path('session/<int:session_id>/cancel/', views.api_cancel_session, name='cps_cancel_session'),
+    path('session/<int:session_id>/rerun/', views.api_rerun_session, name='cps_rerun_session'),
     path('session/<int:session_id>/clear-signatures/', views.api_clear_signatures, name='cps_clear_signatures'),
     path('session/<int:session_id>/room/<int:room_id>/clear-signature/', views.api_clear_room_signature, name='cps_clear_room_signature'),
 

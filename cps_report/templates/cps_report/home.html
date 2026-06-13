@@ -280,6 +280,18 @@
                            onclick="event.stopPropagation()" title="Download Excel">
                           <i class="fas fa-file-excel me-1"></i> Excel
                         </a>
+                        {% elif s.status == 'processing' %}
+                        <button class="btn btn-outline-danger btn-sm px-2"
+                                onclick="event.stopPropagation(); cancelSession({{ s.id }}, this)"
+                                title="Cancel stuck report">
+                          <i class="fas fa-stop me-1"></i> Cancel
+                        </button>
+                        {% elif s.status == 'error' %}
+                        <button class="btn btn-outline-warning btn-sm px-2"
+                                onclick="event.stopPropagation(); rerunSession({{ s.id }}, this)"
+                                title="Re-run this report">
+                          <i class="fas fa-rotate-right me-1"></i> Re-run
+                        </button>
                         {% endif %}
                       </div>
                     </div>
@@ -842,6 +854,41 @@ async function submitImport() {
     resultDiv.innerHTML = `<div class="alert alert-danger py-2 mb-0">Network error: ${e}</div>`;
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-upload me-1"></i> Import &amp; Open Session';
+  }
+}
+
+const CSRF_TOK = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+
+async function cancelSession(sessionId, btn) {
+  if (!confirm('Cancel this stuck report? You can re-run it afterwards.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${sessionId}/cancel/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF_TOK() },
+  });
+  if ((await res.json()).success) {
+    location.reload();
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-stop me-1"></i> Cancel';
+    alert('Could not cancel. Try refreshing.');
+  }
+}
+
+async function rerunSession(sessionId, btn) {
+  if (!confirm('Re-run this report? All existing items will be cleared and re-analysed.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${sessionId}/rerun/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF_TOK() },
+  });
+  const data = await res.json();
+  if (data.success) {
+    window.location.href = data.redirect;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-rotate-right me-1"></i> Re-run';
+    alert('Could not re-run. Try refreshing.');
   }
 }
 </script>

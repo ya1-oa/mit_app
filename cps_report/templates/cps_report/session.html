@@ -190,6 +190,15 @@
           <button class="btn btn-outline-primary btn-sm me-1" onclick="copyShareLink(this)" title="Copy client signature link">
             <i class="fas fa-link me-1"></i> Share Link
           </button>
+          {% if session.status == 'processing' %}
+          <button class="btn btn-outline-danger btn-sm me-1" onclick="cancelSession()" id="cancelBtn">
+            <i class="fas fa-stop me-1"></i> Cancel Report
+          </button>
+          {% elif session.status == 'error' %}
+          <button class="btn btn-outline-warning btn-sm me-1" onclick="rerunSession()" id="rerunBtn">
+            <i class="fas fa-rotate-right me-1"></i> Re-run Report
+          </button>
+          {% endif %}
           <a href="{% url 'cps_report_home' %}" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Back
           </a>
@@ -1196,6 +1205,31 @@ function copyShareLink(btn) {
   }).catch(() => {
     prompt('Copy this link to send to your client:', SHARE_URL);
   });
+}
+
+async function cancelSession() {
+  if (!confirm('Cancel this stuck report? You can re-run it afterwards.')) return;
+  const btn = document.getElementById('cancelBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${SESSION_ID}/cancel/`, {
+    method: 'POST', headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+  });
+  if ((await res.json()).success) location.reload();
+  else { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stop me-1"></i> Cancel Report'; alert('Could not cancel.'); }
+}
+
+async function rerunSession() {
+  if (!confirm('Re-run this report? All existing items will be cleared and re-analysed by AI.')) return;
+  const btn = document.getElementById('rerunBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${SESSION_ID}/rerun/`, {
+    method: 'POST', headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+  });
+  const data = await res.json();
+  if (data.success) window.location.href = data.redirect;
+  else { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-right me-1"></i> Re-run Report'; alert('Could not re-run.'); }
 }
 
 function copyRoomLink(btn, roomToken) {

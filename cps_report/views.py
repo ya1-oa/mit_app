@@ -620,6 +620,50 @@ def get_room_share_link(request, session_id, room_id):
     return JsonResponse({'url': url})
 
 
+@login_required
+@require_POST
+def api_cancel_session(request, session_id):
+    """Cancel a stuck processing session — revoke Celery task and mark as error."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    if session.celery_task_id:
+        try:
+            from celery.app.control import Control
+            from django.conf import settings
+            import celery as _celery
+            app = _celery.current_app
+            app.control.revoke(session.celery_task_id, terminate=True, signal='SIGTERM')
+        except Exception as e:
+            logger.warning(f"Could not revoke Celery task {session.celery_task_id}: {e}")
+    session.status = 'error'
+    session.save(update_fields=['status'])
+    session.rooms.filter(status__in=['processing', 'pending']).update(status='error')
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def api_rerun_session(request, session_id):
+    """Reset a session and re-fire the Celery task to reprocess all rooms."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    # Reset rooms — clear old items so the task starts fresh
+    for room in session.rooms.all():
+        room.items.all().delete()
+        room.status = 'pending'
+        room.ai_confidence = ''
+        room.ai_notes = ''
+        room.images_used = 0
+        room.save(update_fields=['status', 'ai_confidence', 'ai_notes', 'images_used'])
+    session.status = 'pending'
+    session.save(update_fields=['status'])
+    # Re-fire the task
+    from .tasks import process_cps_session_task
+    task = process_cps_session_task.delay(session.id)
+    session.celery_task_id = task.id
+    session.status = 'processing'
+    session.save(update_fields=['celery_task_id', 'status'])
+    return JsonResponse({'success': True, 'redirect': f'/cps-report/session/{session.id}/progress/'})
+
+
 @require_POST
 def api_sign_room(request, token):
     """Public POST endpoint — save a typed-name signature for one room."""
