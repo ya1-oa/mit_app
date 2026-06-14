@@ -27,6 +27,8 @@ urlpatterns = [
          views.api_ale_check, name='api_ale_check'),
     path('lease/<uuid:lease_id>/demand-letter/',
          views.demand_letter_compose, name='demand_letter_compose'),
+    path('lease/<uuid:lease_id>/demand-letter/preview-pdf/',
+         views.demand_letter_preview_pdf, name='demand_letter_preview_pdf'),
 
     # ── ALE import / prefill ─────────────────────────────────────────────────
     path('api/lease/<uuid:lease_id>/ale-import/',

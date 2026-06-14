@@ -96,14 +96,13 @@ def generate_demand_letter_pdf(letter_data):
     ale_start  = letter_data.get('ale_start',     'TBD')
     ale_end    = letter_data.get('ale_end',       'TBD')
     total_due  = float(letter_data.get('total_due', 0))
-    deadline   = letter_data.get('deadline_str',  '')
     date_str   = letter_data.get('date_str',      '')
-    c_name     = letter_data.get('contact_name',  'Julius Cartwright')
-    c_phone    = letter_data.get('contact_phone', '(216) 990-1501')
-    c_email    = letter_data.get('contact_email', '')
+    c_name      = letter_data.get('contact_name',  'Julius Cartwright')
+    c_phone     = letter_data.get('contact_phone', '(216) 990-1501')
+    c_email     = letter_data.get('contact_email', '')
     outstanding = letter_data.get('outstanding_items', [])
-    disb_text  = letter_data.get('disbursed_text', 'other components')
-    total_fmt  = f'${total_due:,.2f}'
+    disb_text   = letter_data.get('disbursed_text', 'other components')
+    total_fmt   = f'${total_due:,.2f}'
 
     story = []
 
@@ -188,10 +187,6 @@ def generate_demand_letter_pdf(letter_data):
         story.append(items_tbl)
 
     story.append(Spacer(1, 0.1 * inch))
-
-    story.append(Paragraph(
-        f'Payment of <b>{total_fmt}</b>, payable to <b>{re_co}</b>, is demanded on or before '
-        f'<b>{deadline}</b>.', body))
 
     story.append(Paragraph(
         'If any additional documentation (W-9, invoice, or payee verification) is required to '
