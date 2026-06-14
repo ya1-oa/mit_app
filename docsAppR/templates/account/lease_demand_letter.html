@@ -61,29 +61,22 @@
     padding: 32px 36px;
     line-height: 1.55;
 }
-.letter-preview-doc .lhdr-name   { font-size:16pt; font-weight:bold; color:#1e3a5f; text-align:center; margin:0 0 4px; }
-.letter-preview-doc .lhdr-sub    { font-size:9pt; color:#4a5568; text-align:center; margin:0 0 10px; font-family:Arial,sans-serif; }
-.letter-preview-doc .lhdr-rule   { border:none; border-top:2px solid #1e3a5f; margin:0 0 12px; }
-.letter-preview-doc .ltitle      { font-size:13pt; font-weight:bold; color:#c53030; text-align:center; margin:0 0 4px; font-family:Arial,sans-serif; letter-spacing:.05em; }
-.letter-preview-doc .lsubtitle   { font-size:9pt; font-style:italic; color:#4a5568; text-align:center; margin:0 0 16px; font-family:Arial,sans-serif; }
-.letter-preview-doc .lhdr-table  { width:100%; border-collapse:collapse; margin-bottom:14px; font-size:10pt; }
-.letter-preview-doc .lhdr-table td { padding:3px 6px 3px 0; vertical-align:top; }
-.letter-preview-doc .lhdr-table .lbl { font-weight:bold; color:#1e3a5f; white-space:nowrap; padding-right:10px; }
-.letter-preview-doc .re-row td   { background:#fff5f5; padding:4px 6px; }
-.letter-preview-doc .re-row .lbl { color:#c53030; }
-.letter-preview-doc .re-row td:last-child { font-weight:bold; color:#c53030; }
-.letter-preview-doc hr.thin      { border:none; border-top:0.5px solid #e2e8f0; margin:12px 0; }
+.letter-preview-doc .lhdr-name   { font-size:13pt; font-weight:bold; color:#000; text-align:center; margin:0 0 3px; }
+.letter-preview-doc .lhdr-sub    { font-size:10pt; color:#000; text-align:center; margin:0 0 8px; }
+.letter-preview-doc .lhdr-rule   { border:none; border-top:1px solid #000; margin:0 0 14px; }
+.letter-preview-doc .ltitle      { font-size:13pt; font-weight:bold; color:#000; text-align:center; margin:0 0 2px; }
+.letter-preview-doc .lsubtitle   { font-size:10pt; font-style:italic; color:#000; text-align:center; margin:0 0 14px; }
+.letter-preview-doc .lhdr-table  { width:100%; border-collapse:collapse; margin-bottom:8px; font-size:10pt; }
+.letter-preview-doc .lhdr-table td { padding:3px 0; vertical-align:top; }
+.letter-preview-doc .lhdr-table .lbl { font-weight:bold; color:#000; white-space:nowrap; padding-right:10px; }
+.letter-preview-doc hr.thin      { border:none; border-top:0.5px solid #000; margin:12px 0; }
 .letter-preview-doc p            { margin:0 0 9px; }
-.letter-preview-doc .items-tbl   { width:100%; border-collapse:collapse; margin:10px 0; font-size:9.5pt; }
-.letter-preview-doc .items-tbl th { background:#1e3a5f; color:#fff; padding:5px 10px; text-align:left; font-family:Arial,sans-serif; font-size:9pt; }
-.letter-preview-doc .items-tbl th:last-child { text-align:right; }
-.letter-preview-doc .items-tbl td { padding:5px 10px; border-bottom:1px solid #e2e8f0; }
+.letter-preview-doc .items-tbl   { width:100%; border-collapse:collapse; margin:6px 0 10px; font-size:10pt; }
+.letter-preview-doc .items-tbl td { padding:4px 10px; border:0.5px solid #000; }
 .letter-preview-doc .items-tbl td:last-child { text-align:right; }
-.letter-preview-doc .items-tbl .total-row td { background:#c53030; color:#fff; font-weight:bold; border:none; }
-.letter-preview-doc ul.remedies  { margin:4px 0 9px; padding-left:22px; }
-.letter-preview-doc ul.remedies li { margin-bottom:4px; }
+.letter-preview-doc .items-tbl .total-row td { font-weight:bold; }
 .letter-preview-doc .sig-block   { margin-top:28px; }
-.letter-preview-doc .encl        { font-size:8pt; color:#718096; font-style:italic; text-align:center; margin-top:14px; }
+.letter-preview-doc .encl        { font-size:9pt; font-style:italic; color:#000; margin-top:14px; }
 .letter-preview-doc .placeholder { color:#94a3b8; text-align:center; padding:40px 20px; font-family:Arial,sans-serif; font-size:10pt; }
 
 .btn-generate {
@@ -413,11 +406,26 @@ function updatePreview() {
         ? disbursed.map(i => i.label + ' (' + fmtAmt(i.amount) + ')').join(', ')
         : 'other components';
 
-    const itemRows = outstanding.map((item, idx) => `
+    const itemRows = outstanding.map(item => `
         <tr>
-            <td style="background:${idx % 2 === 0 ? '#fff5f5' : '#fff'};">${item.label}</td>
-            <td style="background:${idx % 2 === 0 ? '#fff5f5' : '#fff'}; text-align:right;">${fmtAmt(item.amount)}</td>
+            <td>${item.label}</td>
+            <td>${fmtAmt(item.amount)}</td>
         </tr>`).join('');
+
+    const alePeriod = (aleStart && aleEnd) ? ` (ALE period: ${aleStart} – ${aleEnd})` : '';
+    const addrPart  = property ? `, at ${property}` : '';
+
+    const remedies = [
+        'formal complaint to the state Department of Insurance for unfair claims settlement practices;',
+        "referral to counsel for civil action, with recovery of all interest, attorneys’ fees, and costs of collection;",
+        'upon judgment, all post-judgment collection remedies available against a corporate judgment debtor, including garnishment of accounts and levy upon commercial assets;',
+        'reporting of the delinquency to commercial credit reporting agencies; and',
+        'independent recovery actions by any subcontractors, vendors, or workers whose compensation is dependent on disbursement of this claim.',
+    ];
+    const romanNumerals = ['(i)', '(ii)', '(iii)', '(iv)', '(v)'];
+    const remedyLines = remedies.map((r, i) =>
+        `<p style="margin:0 0 4px; padding-left:24px; text-indent:-24px;">${romanNumerals[i]}&nbsp;&nbsp;${r}</p>`
+    ).join('');
 
     preview.innerHTML = `
         <div class="lhdr-name">${reCo}</div>
@@ -433,72 +441,63 @@ function updatePreview() {
                 <td>${fmtDate(today)}</td>
             </tr>
             <tr>
-                <td class="lbl" style="vertical-align:top;">To:</td>
+                <td class="lbl" style="vertical-align:top;">TO:</td>
                 <td>
-                    ${insCo || '<em style="color:#94a3b8">[Insurance Company]</em>'}<br>
-                    <span style="color:#4a5568; font-size:9pt;">Attn: Claims Department / Additional Living Expense Unit</span>
+                    ${insCo || '<em>[Insurance Company]</em>'}<br>
+                    <span>Attn: Claims Department / Additional Living Expense Unit</span>
                 </td>
             </tr>
-            <tr class="re-row">
-                <td class="lbl">Re:</td>
-                <td>Insured: ${insured} &nbsp;|&nbsp; Claim #: ${claimNum || '<em>[#]</em>'} &nbsp;|&nbsp; Amount Due: ${fmtAmt(total)}</td>
+            <tr>
+                <td class="lbl">RE:</td>
+                <td>Insured: ${insured} &nbsp;|&nbsp; Claim #${claimNum || '<em>[#]</em>'} &nbsp;|&nbsp; Amount Due: ${fmtAmt(total)}</td>
             </tr>
         </table>
         <hr class="thin">
 
         <p>This letter serves as <strong>FORMAL DEMAND FOR PAYMENT</strong> of <strong>${fmtAmt(total)}</strong> owed to
-        <strong>${reCo}</strong> in connection with the above-referenced Additional Living Expense (ALE)
-        claim for your insured, ${insured}.</p>
+        <strong>${reCo}</strong> for Additional Living Expense (ALE) brokerage services rendered for
+        your insured, ${insured}${addrPart}${alePeriod}.</p>
 
-        <p>${reCo} located, procured, and executed a lease on behalf of your insured at
-        <strong>${property}</strong>, for the ALE period <strong>${aleStart}</strong> through <strong>${aleEnd}</strong>.
-        The fully executed Engagement Agreement — already in your claim file — expressly provides that the brokerage fee
-        <em>"will be provided directly by the designated Insurance Company or other third party responsible for
-        covering the insured's living expenses."</em></p>
+        <p>The fully executed Engagement Agreement — already in your claim file — expressly provides that
+        ${reCo}’s brokerage fee “will be provided directly by the designated Insurance Company or other
+        third party responsible for covering [the insured’s] living expenses.”</p>
 
-        <p>${insCo || '[Insurance Company]'} has disbursed ${disbText}. The following item(s) remain outstanding
-        and are <strong>neither disputed nor contingent</strong>:</p>
-
+        <p><strong>AMOUNT DUE (per Term Sheet / Invoice):</strong></p>
         <table class="items-tbl">
-            <thead>
-                <tr>
-                    <th>Description</th>
-                    <th style="text-align:right;">Amount</th>
-                </tr>
-            </thead>
             <tbody>${itemRows}</tbody>
             <tfoot>
                 <tr class="total-row">
-                    <td>TOTAL AMOUNT DUE</td>
-                    <td style="text-align:right;">${fmtAmt(total)}</td>
+                    <td>BALANCE DUE</td>
+                    <td>${fmtAmt(total)}</td>
                 </tr>
             </tfoot>
         </table>
+
+        ${disbursed.length ? `<p>${insCo || '[Insurance Company]'} has disbursed ${disbText}.
+        The above balance remains outstanding and is <strong>neither disputed nor contingent</strong>.</p>` : ''}
+
+        <p>Payment of <strong>${fmtAmt(total)}</strong>, payable to <strong>${reCo}</strong>, is demanded
+        <strong>immediately upon receipt of this letter</strong>.</p>
 
         <p>If any additional documentation (W-9, invoice, or payee verification) is required to process
         disbursement, please direct that request in writing to the undersigned and it will be provided
         within three (3) business days.</p>
 
-        <p>If payment is not received promptly, we may exercise any or all of the following rights:</p>
-        <ul class="remedies">
-            <li>Formal complaint to the state Department of Insurance for unfair claims settlement practices;</li>
-            <li>Referral to counsel for civil action, with recovery of all interest, attorneys' fees, and costs of collection;</li>
-            <li>Upon judgment, all post-judgment collection remedies available, including garnishment and levy upon commercial assets;</li>
-            <li>Reporting of the delinquency to commercial credit reporting agencies.</li>
-        </ul>
+        <p>Should payment not be received, we may exercise any or all of the following rights:</p>
+        ${remedyLines}
 
-        <p>We prefer to resolve this matter administratively. To arrange payment or discuss this file,
-        please contact <strong>${cName}</strong> at <strong>${cPhone}</strong> or <strong>${cEmail}</strong>.</p>
+        <p style="margin-top:9px;">${reCo} prefers to resolve this matter administratively. To arrange payment or discuss this file,
+        please contact <strong>${cName}</strong> at <strong>${cPhone}</strong>${cEmail ? ' or <strong>' + cEmail + '</strong>' : ''}.</p>
 
         <p>All rights and remedies are expressly reserved.</p>
 
         <div class="sig-block">
             <p>Sincerely,</p>
-            <div style="margin-top:28px; font-weight:bold; color:#1e3a5f;">${cName}</div>
+            <div style="margin-top:32px; font-weight:bold;">${cName}</div>
             <div>${reCo}</div>
         </div>
 
-        <hr class="thin" style="margin-top:16px;">
+        <hr class="thin" style="margin-top:18px;">
         <div class="encl">Enclosures: Engagement Agreement &nbsp;|&nbsp; Term Sheet &nbsp;|&nbsp; Monthly Short-Term Rental Agreement</div>
     `;
 }
