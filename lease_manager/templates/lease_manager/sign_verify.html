@@ -1,0 +1,366 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Verify Your Identity — {{ lease.property_address }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <style>
+    :root { --brand: #2563eb; --brand-dark: #1d4ed8; }
+    body  { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    .sign-header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #fff; padding: 1.5rem 2rem; display: flex; align-items: center; gap: 1rem;
+    }
+    .sign-header .logo-mark {
+      width: 2.5rem; height: 2.5rem; background: var(--brand);
+      border-radius: .5rem; display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 1.1rem; flex-shrink: 0;
+    }
+    .verify-card {
+      background: #fff; border-radius: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      padding: 2.5rem; margin-bottom: 1.5rem;
+    }
+    .step-indicator { display: flex; gap: .75rem; margin-bottom: 1.75rem; }
+    .step {
+      display: flex; align-items: center; gap: .5rem;
+      font-size: .82rem; font-weight: 600; color: #94a3b8;
+    }
+    .step .dot {
+      width: 1.6rem; height: 1.6rem; border-radius: 50%;
+      background: #e2e8f0; display: flex; align-items: center; justify-content: center;
+      font-size: .75rem; font-weight: 700;
+    }
+    .step.active { color: var(--brand); }
+    .step.active .dot { background: var(--brand); color: #fff; }
+    .step-sep { flex: 1; height: 2px; background: #e2e8f0; margin: auto; }
+
+    .role-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: #eff6ff; color: var(--brand); border: 1px solid #bfdbfe;
+      border-radius: 99px; padding: .3rem .85rem; font-size: .8rem; font-weight: 600;
+      margin-bottom: 1rem;
+    }
+    .doc-meta { font-size: .88rem; color: #64748b; margin-bottom: 1.5rem; }
+    .doc-meta strong { color: #1e293b; }
+
+    .verify-input {
+      border: 2px solid #e2e8f0; border-radius: .6rem; padding: .7rem 1rem;
+      font-size: 1rem; width: 100%; transition: border-color .2s;
+    }
+    .verify-input:focus { border-color: var(--brand); outline: none; }
+
+    .otp-inputs { display: flex; gap: .5rem; justify-content: center; margin: 1rem 0; }
+    .otp-digit {
+      width: 3rem; height: 3.5rem; text-align: center; font-size: 1.4rem; font-weight: 700;
+      border: 2px solid #e2e8f0; border-radius: .5rem; outline: none;
+      transition: border-color .15s;
+    }
+    .otp-digit:focus { border-color: var(--brand); }
+
+    .btn-verify {
+      background: var(--brand); color: #fff; border: none; padding: .75rem 2rem;
+      border-radius: .6rem; font-size: 1rem; font-weight: 600; cursor: pointer;
+      width: 100%; margin-top: .5rem; transition: background .15s;
+    }
+    .btn-verify:hover:not(:disabled) { background: var(--brand-dark); }
+    .btn-verify:disabled { opacity: .6; cursor: not-allowed; }
+
+    .resend-row { text-align: center; margin-top: .75rem; font-size: .85rem; color: #64748b; }
+    .resend-link { color: var(--brand); cursor: pointer; text-decoration: underline; }
+    .resend-link.disabled { color: #94a3b8; pointer-events: none; }
+
+    .alert-custom {
+      border-radius: .6rem; padding: .8rem 1rem; margin-top: 1rem;
+      font-size: .88rem; display: none;
+    }
+    .alert-err { background: #fef2f2; border: 1px solid #fecaca; color: #b91c1c; }
+    .alert-ok  { background: #f0fdf4; border: 1px solid #bbf7d0; color: #15803d; }
+
+    #step-contact { display: block; }
+    #step-code    { display: none; }
+
+    .secure-note {
+      text-align: center; font-size: .78rem; color: #94a3b8; margin-top: 1rem;
+      display: flex; align-items: center; justify-content: center; gap: .4rem;
+    }
+  </style>
+</head>
+<body>
+
+<div class="sign-header">
+  <div class="logo-mark">C</div>
+  <div>
+    <div style="font-weight:700; font-size:1rem;">ClaiMetApp — Secure Document Signing</div>
+    <div style="font-size:.8rem; color:#94a3b8;">{{ lease.property_address }}</div>
+  </div>
+</div>
+
+<div class="container" style="max-width:520px; padding:2rem 1rem;">
+
+  <div class="verify-card">
+
+    <div class="step-indicator">
+      <div class="step active" id="ind-step1">
+        <div class="dot">1</div> Verify Identity
+      </div>
+      <div class="step-sep"></div>
+      <div class="step" id="ind-step2">
+        <div class="dot">2</div> Sign Document
+      </div>
+    </div>
+
+    <div class="role-badge">
+      <i class="bi bi-person-badge"></i>
+      Signing as: {{ sig_req.get_signer_role_display }}
+    </div>
+
+    <div class="doc-meta">
+      <strong>{{ lease.property_address }}</strong><br>
+      Signer: {{ sig_req.signer_name }}
+    </div>
+
+    <!-- Step 1: Enter contact -->
+    <div id="step-contact">
+      <h5 style="font-weight:700; margin-bottom:.3rem;">Confirm your identity</h5>
+      <p style="color:#64748b; font-size:.9rem; margin-bottom:1.25rem;">
+        Enter the {% if has_phone %}email address or phone number{% else %}email address{% endif %}
+        associated with this signing request. We'll send you a one-time verification code.
+      </p>
+
+      <label style="font-size:.85rem; font-weight:600; color:#374151; display:block; margin-bottom:.4rem;">
+        {% if has_phone %}Email or Phone Number{% else %}Email Address{% endif %}
+      </label>
+      <input type="text" id="contact-input" class="verify-input"
+             placeholder="{% if has_phone %}email@example.com or (555) 123-4567{% else %}email@example.com{% endif %}"
+             autocomplete="email">
+
+      <div id="err-contact" class="alert-custom alert-err"></div>
+
+      <button class="btn-verify" id="btn-send-otp" onclick="sendOtp()">
+        <i class="bi bi-shield-lock"></i> Send Verification Code
+      </button>
+
+      <div class="secure-note">
+        <i class="bi bi-lock-fill"></i>
+        Your information is encrypted and never stored beyond this session.
+      </div>
+    </div>
+
+    <!-- Step 2: Enter code -->
+    <div id="step-code">
+      <h5 style="font-weight:700; margin-bottom:.3rem;">Enter verification code</h5>
+      <p style="color:#64748b; font-size:.9rem; margin-bottom:1.25rem;" id="code-hint">
+        We sent a 6-digit code to <strong id="hint-target"></strong>.
+        Enter it below to continue.
+      </p>
+
+      <div class="otp-inputs">
+        <input class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
+        <input class="otp-digit" maxlength="1" inputmode="numeric" pattern="[0-9]">
+      </div>
+
+      <div id="err-code" class="alert-custom alert-err"></div>
+      <div id="ok-code"  class="alert-custom alert-ok"></div>
+
+      <button class="btn-verify" id="btn-verify-otp" onclick="verifyOtp()">
+        <i class="bi bi-check-circle"></i> Verify and Continue
+      </button>
+
+      <div class="resend-row">
+        Didn't receive it?
+        <span class="resend-link disabled" id="resend-link" onclick="resendOtp()">
+          Resend code <span id="resend-timer"></span>
+        </span>
+      </div>
+      <div style="text-align:center; margin-top:.5rem;">
+        <span style="color:var(--brand); cursor:pointer; font-size:.85rem;" onclick="goBack()">
+          ← Use a different contact
+        </span>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+const TOKEN    = '{{ sig_req.token }}';
+const SEND_URL = `/lease-manager/sign/${TOKEN}/send-otp/`;
+const VFY_URL  = `/lease-manager/sign/${TOKEN}/verify-otp/`;
+
+let resendSeconds = 60;
+let resendInterval = null;
+
+function getCsrf() {
+  const m = document.cookie.match(/csrftoken=([^;]+)/);
+  return m ? m[1] : '';
+}
+
+function showErr(el, msg) {
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideMsg(el) { el.style.display = 'none'; }
+
+async function sendOtp() {
+  const contact = document.getElementById('contact-input').value.trim();
+  const errEl   = document.getElementById('err-contact');
+  hideMsg(errEl);
+
+  if (!contact) { showErr(errEl, 'Please enter your email or phone number.'); return; }
+
+  const btn = document.getElementById('btn-send-otp');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Sending…';
+
+  try {
+    const res  = await fetch(SEND_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrf()},
+      body: JSON.stringify({contact}),
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      showErr(errEl, data.error || 'Could not send code. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-shield-lock"></i> Send Verification Code';
+      return;
+    }
+
+    document.getElementById('hint-target').textContent = data.hint || contact;
+    document.getElementById('step-contact').style.display = 'none';
+    document.getElementById('step-code').style.display    = 'block';
+    document.getElementById('ind-step2').classList.add('active');
+    startResendTimer();
+    // Focus first digit
+    document.querySelectorAll('.otp-digit')[0].focus();
+
+  } catch (e) {
+    showErr(errEl, 'Network error. Please try again.');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-shield-lock"></i> Send Verification Code';
+  }
+}
+
+function startResendTimer() {
+  resendSeconds = 60;
+  updateResendTimer();
+  resendInterval = setInterval(() => {
+    resendSeconds--;
+    updateResendTimer();
+    if (resendSeconds <= 0) {
+      clearInterval(resendInterval);
+      const link = document.getElementById('resend-link');
+      link.classList.remove('disabled');
+      document.getElementById('resend-timer').textContent = '';
+    }
+  }, 1000);
+}
+
+function updateResendTimer() {
+  document.getElementById('resend-timer').textContent =
+    resendSeconds > 0 ? `(${resendSeconds}s)` : '';
+}
+
+async function resendOtp() {
+  document.getElementById('resend-link').classList.add('disabled');
+  document.querySelectorAll('.otp-digit').forEach(d => d.value = '');
+  hideMsg(document.getElementById('err-code'));
+  hideMsg(document.getElementById('ok-code'));
+  // Re-use same contact
+  const contact = document.getElementById('contact-input').value.trim();
+  try {
+    const res  = await fetch(SEND_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrf()},
+      body: JSON.stringify({contact}),
+    });
+    const data = await res.json();
+    if (data.success) {
+      showErr(document.getElementById('ok-code'), 'New code sent!');
+      document.getElementById('ok-code').style.display = 'block';
+      startResendTimer();
+    }
+  } catch (e) { /* ignore */ }
+}
+
+function goBack() {
+  document.getElementById('step-code').style.display    = 'none';
+  document.getElementById('step-contact').style.display = 'block';
+  document.getElementById('ind-step2').classList.remove('active');
+  clearInterval(resendInterval);
+  const btn = document.getElementById('btn-send-otp');
+  btn.disabled = false;
+  btn.innerHTML = '<i class="bi bi-shield-lock"></i> Send Verification Code';
+}
+
+async function verifyOtp() {
+  const digits  = [...document.querySelectorAll('.otp-digit')].map(d => d.value).join('');
+  const errEl   = document.getElementById('err-code');
+  hideMsg(errEl);
+  hideMsg(document.getElementById('ok-code'));
+
+  if (digits.length !== 6 || !/^\d{6}$/.test(digits)) {
+    showErr(errEl, 'Please enter all 6 digits.'); return;
+  }
+
+  const btn = document.getElementById('btn-verify-otp');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Verifying…';
+
+  try {
+    const res  = await fetch(VFY_URL, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrf()},
+      body: JSON.stringify({code: digits}),
+    });
+    const data = await res.json();
+
+    if (!res.ok || !data.success) {
+      showErr(errEl, data.error || 'Verification failed. Please try again.');
+      btn.disabled = false;
+      btn.innerHTML = '<i class="bi bi-check-circle"></i> Verify and Continue';
+      return;
+    }
+
+    // Success — navigate to the signing canvas
+    window.location.href = data.redirect || `/lease-manager/sign/${TOKEN}/`;
+
+  } catch (e) {
+    showErr(errEl, 'Network error. Please try again.');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-check-circle"></i> Verify and Continue';
+  }
+}
+
+// OTP input auto-advance and backspace handling
+document.querySelectorAll('.otp-digit').forEach((input, i, all) => {
+  input.addEventListener('input', e => {
+    const v = e.target.value.replace(/\D/g, '');
+    e.target.value = v.slice(-1);
+    if (v && i < all.length - 1) all[i + 1].focus();
+    // Auto-submit when all 6 entered
+    if ([...all].every(d => d.value)) verifyOtp();
+  });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Backspace' && !input.value && i > 0) all[i - 1].focus();
+    if (e.key === 'Enter') verifyOtp();
+  });
+  // Handle paste of full 6-digit code
+  input.addEventListener('paste', e => {
+    e.preventDefault();
+    const text = (e.clipboardData || window.clipboardData).getData('text').replace(/\D/g, '');
+    [...all].forEach((d, idx) => { d.value = text[idx] || ''; });
+    if (text.length >= 6) { all[5].focus(); verifyOtp(); }
+    else if (text.length > 0) all[Math.min(text.length, all.length - 1)].focus();
+  });
+});
+</script>
+</body>
+</html>

@@ -1921,6 +1921,19 @@ class LeaseSignatureRequest(models.Model):
     token  = models.UUIDField(unique=True, default=uuid.uuid4)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
 
+    # ── Contact info ─────────────────────────────────────────────────────────
+    # Optional phone so signers can verify by SMS instead of email
+    signer_phone = models.CharField(max_length=30, blank=True)
+
+    # ── OTP identity verification ─────────────────────────────────────────────
+    # Signer must verify their email or phone before the canvas is shown.
+    otp_code        = models.CharField(max_length=6, blank=True)
+    otp_sent_at     = models.DateTimeField(null=True, blank=True)
+    otp_verified_at = models.DateTimeField(null=True, blank=True)
+    otp_contact     = models.CharField(max_length=200, blank=True)  # which email/phone was used
+    otp_attempts    = models.PositiveSmallIntegerField(default=0)
+    is_otp_verified = models.BooleanField(default=False)
+
     # ── Signature capture ────────────────────────────────────────────────────
     # Base64 PNG data URL of the drawn signature (stored in DB; no file needed)
     signature_image = models.TextField(blank=True)

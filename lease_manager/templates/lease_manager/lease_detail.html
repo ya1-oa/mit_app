@@ -495,6 +495,7 @@
       <div class="modal-body px-4">
         <p class="text-muted small mb-3">Each checked party gets an email with a secure, one-time signing link. Links expire in 7 days.</p>
         <div id="signer-rows">
+          <p class="text-muted mb-2" style="font-size:.8rem;"><i class="bi bi-shield-lock me-1"></i>Each signer will verify their identity via a one-time code before signing.</p>
           {% if lease.lessee_name or lease.lessee_email %}
           <div class="mb-2 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
             <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
@@ -502,8 +503,9 @@
               <div class="flex-grow-1">
                 <label class="form-check-label fw-semibold d-block" for="chk-tenant"><i class="bi bi-person me-1 text-primary"></i>Tenant / Lessee</label>
                 <div class="row g-1 mt-1">
-                  <div class="col-6"><input class="form-control form-control-sm" id="tenant-name" value="{{ lease.lessee_name|default:'' }}" placeholder="Name"></div>
-                  <div class="col-6"><input class="form-control form-control-sm" id="tenant-email" value="{{ lease.lessee_email|default:'' }}" placeholder="Email"></div>
+                  <div class="col-5"><input class="form-control form-control-sm" id="tenant-name" value="{{ lease.lessee_name|default:'' }}" placeholder="Full Name"></div>
+                  <div class="col-4"><input class="form-control form-control-sm" id="tenant-email" type="email" value="{{ lease.lessee_email|default:'' }}" placeholder="Email"></div>
+                  <div class="col-3"><input class="form-control form-control-sm" id="tenant-phone" type="tel" value="{{ lease.lessee_phone|default:'' }}" placeholder="Phone (opt.)"></div>
                 </div>
               </div>
             </div>
@@ -516,8 +518,9 @@
               <div class="flex-grow-1">
                 <label class="form-check-label fw-semibold d-block" for="chk-landlord"><i class="bi bi-building me-1 text-warning"></i>Landlord / Lessor</label>
                 <div class="row g-1 mt-1">
-                  <div class="col-6"><input class="form-control form-control-sm" id="landlord-name" value="{{ lease.lessor_name|default:'' }}" placeholder="Name"></div>
-                  <div class="col-6"><input class="form-control form-control-sm" id="landlord-email" value="{{ lease.lessor_email|default:'' }}" placeholder="Email"></div>
+                  <div class="col-5"><input class="form-control form-control-sm" id="landlord-name" value="{{ lease.lessor_name|default:'' }}" placeholder="Full Name"></div>
+                  <div class="col-4"><input class="form-control form-control-sm" id="landlord-email" type="email" value="{{ lease.lessor_email|default:'' }}" placeholder="Email"></div>
+                  <div class="col-3"><input class="form-control form-control-sm" id="landlord-phone" type="tel" value="{{ lease.lessor_phone|default:'' }}" placeholder="Phone (opt.)"></div>
                 </div>
               </div>
             </div>
@@ -530,8 +533,9 @@
               <div class="flex-grow-1">
                 <label class="form-check-label fw-semibold d-block" for="chk-re"><i class="bi bi-briefcase me-1 text-success"></i>Real Estate Company</label>
                 <div class="row g-1 mt-1">
-                  <div class="col-6"><input class="form-control form-control-sm" id="re-name" value="{{ lease.real_estate_company|default:'' }}" placeholder="Contact Name"></div>
-                  <div class="col-6"><input class="form-control form-control-sm" id="re-email" value="{{ lease.company_email|default:'' }}" placeholder="Email"></div>
+                  <div class="col-5"><input class="form-control form-control-sm" id="re-name" value="{{ lease.real_estate_company|default:'' }}" placeholder="Contact Name"></div>
+                  <div class="col-4"><input class="form-control form-control-sm" id="re-email" type="email" value="{{ lease.company_email|default:'' }}" placeholder="Email"></div>
+                  <div class="col-3"><input class="form-control form-control-sm" id="re-phone" type="tel" value="{{ lease.company_phone|default:'' }}" placeholder="Phone (opt.)"></div>
                 </div>
               </div>
             </div>
@@ -847,19 +851,22 @@ async function submitSendForSignature() {
   errEl.classList.add('d-none');
   const signers = [];
   if (document.getElementById('chk-tenant')?.checked) {
-    const name = document.getElementById('tenant-name')?.value.trim();
+    const name  = document.getElementById('tenant-name')?.value.trim();
     const email = document.getElementById('tenant-email')?.value.trim();
-    if (name && email) signers.push({ role: 'tenant', name, email });
+    const phone = document.getElementById('tenant-phone')?.value.trim();
+    if (name && email) signers.push({ role: 'tenant', name, email, phone });
   }
   if (document.getElementById('chk-landlord')?.checked) {
-    const name = document.getElementById('landlord-name')?.value.trim();
+    const name  = document.getElementById('landlord-name')?.value.trim();
     const email = document.getElementById('landlord-email')?.value.trim();
-    if (name && email) signers.push({ role: 'landlord', name, email });
+    const phone = document.getElementById('landlord-phone')?.value.trim();
+    if (name && email) signers.push({ role: 'landlord', name, email, phone });
   }
   if (document.getElementById('chk-re')?.checked) {
-    const name = document.getElementById('re-name')?.value.trim();
+    const name  = document.getElementById('re-name')?.value.trim();
     const email = document.getElementById('re-email')?.value.trim();
-    if (name && email) signers.push({ role: 're_company', name, email });
+    const phone = document.getElementById('re-phone')?.value.trim();
+    if (name && email) signers.push({ role: 're_company', name, email, phone });
   }
   if (!signers.length) {
     errEl.textContent = 'Please check at least one signer with a name and email.';

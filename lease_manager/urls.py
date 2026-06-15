@@ -81,6 +81,11 @@ urlpatterns = [
     # ── Public signing pages (no login required) ─────────────────────────────
     path('sign/<uuid:token>/',
          sv.sign_page, name='sign_page'),
+    # OTP identity verification (called before the canvas is shown)
+    path('sign/<uuid:token>/send-otp/',
+         sv.sign_send_otp, name='sign_send_otp'),
+    path('sign/<uuid:token>/verify-otp/',
+         sv.sign_verify_otp, name='sign_verify_otp'),
     path('sign/<uuid:token>/submit/',
          sv.sign_submit, name='sign_submit'),
     path('sign/<uuid:token>/complete/',

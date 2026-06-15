@@ -11,6 +11,7 @@ import json
 import logging
 import os
 import re
+import secrets
 from datetime import timedelta
 from decimal import Decimal, InvalidOperation
 
@@ -439,6 +440,17 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
 
     # Same context the live preview uses → preview matches the PDF exactly.
     context_base = _build_lease_context(lease, overrides=None, preview=False)
+
+    # Inject per-party signature images so templates can embed them in signature blocks.
+    # Keys match LeaseSignatureRequest.signer_role: 'tenant', 'landlord', 're_company'
+    context_base['signatures'] = {
+        req.signer_role: {
+            'image':     req.signature_image,
+            'name':      req.typed_name or req.signer_name,
+            'signed_at': req.signed_at,
+        }
+        for req in lease.signature_requests.filter(status='signed')
+    }
 
     results = []
 
@@ -937,6 +949,7 @@ def send_for_signature(request, lease_id):
         role  = (s.get('role') or '').strip()
         name  = (s.get('name') or '').strip()
         email = (s.get('email') or '').strip()
+        phone = (s.get('phone') or '').strip()
         if not all([role, name, email]):
             continue
 
@@ -945,12 +958,13 @@ def send_for_signature(request, lease_id):
             signer_role=role,
             signer_name=name,
             signer_email=email,
+            signer_phone=phone,
             document_hash=document_hash,
             expires_at=expires_at,
         )
         signing_url = f"{SITE_URL}/lease-manager/sign/{sig_req.token}/"
         _send_signature_request_email(sig_req, lease, signing_url)
-        created.append({'role': role, 'name': name, 'email': email})
+        created.append({'role': role, 'name': name, 'email': email, 'phone': phone})
 
     # Advance lease status
     lease.status                 = 'sent_for_signature'
@@ -1027,6 +1041,7 @@ def sign_page(request, token):
     """
     Public page: signer visits from their email. Shows lease summary + canvas.
     No login required — access controlled by the secret token.
+    Identity is verified first via OTP before showing the signature canvas.
     """
     sig_req = get_object_or_404(LeaseSignatureRequest, token=token)
     lease   = sig_req.lease
@@ -1043,7 +1058,15 @@ def sign_page(request, token):
         return render(request, 'lease_manager/sign_expired.html',
                       {'sig_req': sig_req, 'lease': lease})
 
-    # Mark as viewed on first open
+    # Gate: identity must be verified via OTP before the signing canvas appears
+    if not sig_req.is_otp_verified:
+        return render(request, 'lease_manager/sign_verify.html', {
+            'sig_req':   sig_req,
+            'lease':     lease,
+            'has_phone': bool(sig_req.signer_phone),
+        })
+
+    # Mark as viewed on first open (only after OTP pass)
     if sig_req.status == 'pending':
         sig_req.status    = 'viewed'
         sig_req.viewed_at = timezone.now()
@@ -1067,6 +1090,10 @@ def sign_submit(request, token):
 
     if sig_req.status in ('signed', 'declined', 'expired'):
         return JsonResponse({'error': 'This request is already finalised.'}, status=400)
+
+    # OTP verification is mandatory
+    if not sig_req.is_otp_verified:
+        return JsonResponse({'error': 'Identity not verified. Please complete verification first.'}, status=403)
 
     try:
         body = json.loads(request.body)
@@ -1124,10 +1151,187 @@ def sign_submit(request, token):
 
     _notify_staff_signature(sig_req, lease)
 
+    # Regenerate PDFs so this party's signature image appears in the documents
+    try:
+        generate_lease_pdfs(lease)
+    except Exception as exc:
+        logger.error('PDF regeneration after signing failed for lease %s: %s', lease.id, exc)
+
     return JsonResponse({
         'success':  True,
         'redirect': f'/lease-manager/sign/{token}/complete/',
     })
+
+
+@csrf_exempt
+@require_POST
+def sign_send_otp(request, token):
+    """
+    AJAX POST: Signer enters their email or phone number.
+    We validate it matches what's on the signature request, then send a 6-digit OTP.
+    Body: {"contact": "email@example.com"}  or  {"contact": "+1 (555) 123-4567"}
+    """
+    sig_req = get_object_or_404(LeaseSignatureRequest, token=token)
+
+    if sig_req.status in ('signed', 'declined', 'expired'):
+        return JsonResponse({'error': 'This signing request is no longer active.'}, status=400)
+
+    if sig_req.is_otp_verified:
+        return JsonResponse({'success': True, 'already_verified': True})
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    contact = (body.get('contact') or '').strip()
+    if not contact:
+        return JsonResponse({'error': 'Please enter your email or phone number.'}, status=400)
+
+    is_email = '@' in contact
+
+    if is_email:
+        if contact.lower() != sig_req.signer_email.lower():
+            return JsonResponse(
+                {'error': 'That email does not match our records. '
+                          'Please use the address this invitation was sent to.'},
+                status=400)
+        delivery = 'email'
+    else:
+        def _digits(s):
+            return ''.join(c for c in s if c.isdigit())
+        entered_d = _digits(contact)
+        stored_d  = _digits(sig_req.signer_phone or '')
+        if not stored_d:
+            return JsonResponse(
+                {'error': 'No phone number on file. Please verify with your email address instead.'},
+                status=400)
+        # Compare last 10 digits to handle leading country code variations
+        if not entered_d or entered_d[-10:] != stored_d[-10:]:
+            return JsonResponse({'error': 'That phone number does not match our records.'}, status=400)
+        delivery = 'sms'
+
+    # Rate-limit: one OTP per 60 seconds
+    if sig_req.otp_sent_at:
+        elapsed = (timezone.now() - sig_req.otp_sent_at).total_seconds()
+        if elapsed < 60:
+            remaining = int(60 - elapsed)
+            return JsonResponse(
+                {'error': f'Please wait {remaining} second{"s" if remaining != 1 else ""} before requesting a new code.'},
+                status=429)
+
+    otp = f'{secrets.randbelow(900000) + 100000}'  # 100000–999999
+    sig_req.otp_code     = otp
+    sig_req.otp_sent_at  = timezone.now()
+    sig_req.otp_contact  = contact
+    sig_req.otp_attempts = 0
+    sig_req.save(update_fields=['otp_code', 'otp_sent_at', 'otp_contact', 'otp_attempts'])
+
+    if delivery == 'email':
+        _send_otp_email(sig_req, otp)
+        hint = f'{contact[:2]}***{contact[contact.index("@"):]}'
+        return JsonResponse({'success': True, 'method': 'email', 'hint': hint})
+    else:
+        sent = _send_otp_sms(contact, otp)
+        hint = f'***-***-{_digits(contact)[-4:]}'
+        if not sent:
+            # SMS not configured — fall back silently to email
+            _send_otp_email(sig_req, otp)
+            return JsonResponse({'success': True, 'method': 'email_fallback', 'hint': hint})
+        return JsonResponse({'success': True, 'method': 'sms', 'hint': hint})
+
+
+@csrf_exempt
+@require_POST
+def sign_verify_otp(request, token):
+    """
+    AJAX POST: Signer submits the 6-digit code. Verify and unlock the signing canvas.
+    Body: {"code": "123456"}
+    """
+    sig_req = get_object_or_404(LeaseSignatureRequest, token=token)
+
+    if sig_req.is_otp_verified:
+        return JsonResponse({'success': True, 'redirect': f'/lease-manager/sign/{token}/'})
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid request.'}, status=400)
+
+    code = (body.get('code') or '').strip()
+    if not code:
+        return JsonResponse({'error': 'Please enter the verification code.'}, status=400)
+
+    if sig_req.otp_attempts >= 5:
+        return JsonResponse(
+            {'error': 'Too many failed attempts. Please request a new code.'}, status=400)
+
+    if not sig_req.otp_sent_at or (timezone.now() - sig_req.otp_sent_at).total_seconds() > 900:
+        return JsonResponse(
+            {'error': 'Your code has expired (15 min). Please request a new one.'}, status=400)
+
+    if code != sig_req.otp_code:
+        sig_req.otp_attempts += 1
+        sig_req.save(update_fields=['otp_attempts'])
+        remaining = 5 - sig_req.otp_attempts
+        if remaining > 0:
+            return JsonResponse(
+                {'error': f'Incorrect code — {remaining} attempt{"s" if remaining != 1 else ""} left.'},
+                status=400)
+        return JsonResponse(
+            {'error': 'Too many failed attempts. Please request a new code.'}, status=400)
+
+    sig_req.is_otp_verified  = True
+    sig_req.otp_verified_at  = timezone.now()
+    sig_req.otp_attempts     = 0
+    sig_req.save(update_fields=['is_otp_verified', 'otp_verified_at', 'otp_attempts'])
+
+    return JsonResponse({'success': True, 'redirect': f'/lease-manager/sign/{token}/'})
+
+
+def _send_otp_email(sig_req, otp):
+    """Send the 6-digit OTP to the signer's email."""
+    try:
+        subject = f'Your signing verification code — {otp}'
+        body    = (
+            f'Hello {sig_req.signer_name},\n\n'
+            f'Your one-time verification code is:\n\n'
+            f'    {otp}\n\n'
+            f'This code expires in 15 minutes. Do not share it with anyone.\n\n'
+            f'If you did not request this code, please ignore this email.\n\n'
+            f'— ClaiMetApp Signing System'
+        )
+        EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=FROM_EMAIL,
+            to=[sig_req.signer_email],
+        ).send(fail_silently=True)
+    except Exception as exc:
+        logger.error('OTP email failed for %s: %s', sig_req.signer_email, exc)
+
+
+def _send_otp_sms(phone, otp):
+    """
+    Send OTP via SMS using Twilio if TWILIO_ACCOUNT_SID is configured.
+    Returns True if sent, False if Twilio is not configured.
+    """
+    account_sid = getattr(settings, 'TWILIO_ACCOUNT_SID', None)
+    auth_token  = getattr(settings, 'TWILIO_AUTH_TOKEN', None)
+    from_number = getattr(settings, 'TWILIO_FROM_NUMBER', None)
+    if not (account_sid and auth_token and from_number):
+        return False
+    try:
+        from twilio.rest import Client as TwilioClient
+        TwilioClient(account_sid, auth_token).messages.create(
+            body=f'ClaiMetApp signing code: {otp} (expires in 15 min)',
+            from_=from_number,
+            to=phone,
+        )
+        return True
+    except Exception as exc:
+        logger.error('Twilio SMS failed to %s: %s', phone, exc)
+        return False
 
 
 def sign_complete(request, token):

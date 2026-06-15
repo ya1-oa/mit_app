@@ -343,22 +343,40 @@
     <!-- Landlord Signature -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ landlord.full_name }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Landlord's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Landlord's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.landlord %}
+                    <img src="{{ signatures.landlord.image }}" style="height:42px; max-width:300px; display:block;">
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.landlord.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:36px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px;">
+                {% if signatures.landlord %}{{ signatures.landlord.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
-    
+
     <!-- Tenant Signature -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ client.pOwner }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Tenant's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Tenant's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.tenant %}
+                    <img src="{{ signatures.tenant.image }}" style="height:42px; max-width:300px; display:block;">
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.tenant.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:36px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px;">
+                {% if signatures.tenant %}{{ signatures.tenant.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
 </div>
@@ -464,25 +482,43 @@
     <h3>CERTIFICATION OF ACCURACY</h3>
     <p>The parties certify that all statements and acknowledgments above are true and accurate to the best of their knowledge.</p>
     
-    <!-- Landlord Signature -->
+    <!-- Landlord Signature (Lead Disclosure) -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ landlord.full_name }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Landlord's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px; height: 30px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px; height: 30px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Landlord's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.landlord %}
+                    <img src="{{ signatures.landlord.image }}" style="height:42px; max-width:300px; display:block;">
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.landlord.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:30px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px; height:30px;">
+                {% if signatures.landlord %}{{ signatures.landlord.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
-    
-    <!-- Tenant Signature -->
+
+    <!-- Tenant Signature (Lead Disclosure) -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ client.pOwner }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Tenant's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px; height: 30px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px; height: 30px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Tenant's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.tenant %}
+                    <img src="{{ signatures.tenant.image }}" style="height:42px; max-width:300px; display:block;">
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.tenant.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:30px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px; height:30px;">
+                {% if signatures.tenant %}{{ signatures.tenant.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
 
