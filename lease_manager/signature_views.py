@@ -752,6 +752,12 @@ def lease_detail(request, lease_id):
     activity feed, and action buttons.
     """
     lease        = get_object_or_404(Lease, id=lease_id)
+    # Refresh descriptive fields (parties / company / property) from the claim's
+    # current ALE data before rendering — the live preview and PDF paths already
+    # do this, but the detail page (and its send-for-signature modal) did not, so
+    # a lease whose stored lessee/lessor was blank showed no signer rows even
+    # though the claim has the data. A signed lease stays frozen (guarded inside).
+    _sync_descriptive_from_claim(lease, save=True)
     sig_requests = lease.signature_requests.all().order_by('signer_role')
     docs         = lease.documents.all()
     activities   = lease.activities.order_by('-created_at')[:30]

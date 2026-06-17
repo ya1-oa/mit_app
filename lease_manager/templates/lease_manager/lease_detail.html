@@ -496,21 +496,21 @@
         <p class="text-muted small mb-3">Each checked party gets an email with a secure, one-time signing link. Links expire in 7 days.</p>
         <div id="signer-rows">
           <p class="text-muted mb-2" style="font-size:.8rem;"><i class="bi bi-shield-lock me-1"></i>Each signer will verify their identity via a one-time code before signing.</p>
-          {% if lease.lessee_name or lease.lessee_email %}
+          {# Tenant / Lessee is the claim owner — always available to sign, #}
+          {# pre-filled from the lease, falling back to the claim's pOwner/email. #}
           <div class="mb-2 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
             <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
               <input class="form-check-input" type="checkbox" id="chk-tenant" checked style="width:2.5em;height:1.25em;">
               <div class="flex-grow-1">
                 <label class="form-check-label fw-semibold d-block" for="chk-tenant"><i class="bi bi-person me-1 text-primary"></i>Tenant / Lessee</label>
                 <div class="row g-1 mt-1">
-                  <div class="col-5"><input class="form-control form-control-sm" id="tenant-name" value="{{ lease.lessee_name|default:'' }}" placeholder="Full Name"></div>
-                  <div class="col-4"><input class="form-control form-control-sm" id="tenant-email" type="email" value="{{ lease.lessee_email|default:'' }}" placeholder="Email"></div>
+                  <div class="col-5"><input class="form-control form-control-sm" id="tenant-name" value="{{ lease.lessee_name|default:client.pOwner|default:'' }}" placeholder="Full Name"></div>
+                  <div class="col-4"><input class="form-control form-control-sm" id="tenant-email" type="email" value="{{ lease.lessee_email|default:client.cEmail|default:'' }}" placeholder="Email"></div>
                   <div class="col-3"><input class="form-control form-control-sm" id="tenant-phone" type="tel" value="{{ lease.lessee_phone|default:'' }}" placeholder="Phone (opt.)"></div>
                 </div>
               </div>
             </div>
           </div>
-          {% endif %}
           {% if lease.lessor_name or lease.lessor_email %}
           <div class="mb-2 p-3 rounded" style="background:#f8fafc;border:1px solid #e2e8f0;">
             <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
