@@ -248,6 +248,25 @@ def _sync_descriptive_from_claim(lease, save=False):
     return lease
 
 
+def _lease_signatures(lease):
+    """Map signer_role → signature mark for every signed request on the lease.
+
+    'type' is inferred from the stored data: a drawn signature carries a PNG
+    data URL in signature_image; a typed signature has none and is rendered as
+    the legal name in script. Used by every render path (live preview, view,
+    download) so the preview matches the final document exactly.
+    """
+    return {
+        req.signer_role: {
+            'image':     req.signature_image,
+            'name':      req.typed_name or req.signer_name,
+            'signed_at': req.signed_at,
+            'type':      'drawn' if (req.signature_image or '').startswith('data:image/') else 'typed',
+        }
+        for req in lease.signature_requests.filter(status='signed')
+    }
+
+
 def _build_lease_context(lease, overrides=None, preview=False):
     """
     Build the full template context for a lease, optionally applying live
@@ -331,6 +350,9 @@ def _build_lease_context(lease, overrides=None, preview=False):
         'base_rent':                 base_rent,
         'term_sheet_total':          term_sheet_total,
         'landlord':                  landlord,
+        # Signed signatures for every party — same data the PDF uses, so the live
+        # preview shows each signature exactly where the final document will.
+        'signatures':                _lease_signatures(lease),
     }
 
 
@@ -439,18 +461,9 @@ def generate_lease_pdfs(lease, base_url='https://claimetapp.com/'):
     _sync_descriptive_from_claim(lease, save=True)
 
     # Same context the live preview uses → preview matches the PDF exactly.
+    # _build_lease_context already injects the per-party `signatures` dict, so the
+    # signed signatures are embedded identically in the preview and the PDF.
     context_base = _build_lease_context(lease, overrides=None, preview=False)
-
-    # Inject per-party signature images so templates can embed them in signature blocks.
-    # Keys match LeaseSignatureRequest.signer_role: 'tenant', 'landlord', 're_company'
-    context_base['signatures'] = {
-        req.signer_role: {
-            'image':     req.signature_image,
-            'name':      req.typed_name or req.signer_name,
-            'signed_at': req.signed_at,
-        }
-        for req in lease.signature_requests.filter(status='signed')
-    }
 
     results = []
 
@@ -1100,14 +1113,28 @@ def sign_submit(request, token):
     except (json.JSONDecodeError, ValueError):
         return JsonResponse({'error': 'Invalid request body'}, status=400)
 
+    sig_type   = (body.get('signature_type') or '').strip().lower()
     sig_image  = (body.get('signature_image') or '').strip()
     typed_name = (body.get('typed_name') or '').strip()
     agreed     = bool(body.get('agreed', False))
 
-    if not sig_image or not sig_image.startswith('data:image/'):
-        return JsonResponse({'error': 'Please draw your signature above.'}, status=400)
+    # Signer chooses how to sign: draw a signature or type their legal name.
+    # Infer the mode if the client didn't send one explicitly.
+    if sig_type not in ('typed', 'drawn'):
+        sig_type = 'drawn' if sig_image.startswith('data:image/') else 'typed'
+
+    # A legal full name is always required — it IS the typed signature, and for a
+    # drawn signature it confirms intent/identity for the audit trail.
     if not typed_name:
-        return JsonResponse({'error': 'Please type your full name.'}, status=400)
+        return JsonResponse({'error': 'Please type your full legal name.'}, status=400)
+
+    if sig_type == 'drawn':
+        if not sig_image.startswith('data:image/'):
+            return JsonResponse({'error': 'Please draw your signature, or switch to typing your name.'}, status=400)
+    else:
+        # Typed signature: store the name only; the document renders it in script.
+        sig_image = ''
+
     if not agreed:
         return JsonResponse({'error': 'You must agree to sign electronically.'}, status=400)
 
@@ -1188,27 +1215,28 @@ def sign_send_otp(request, token):
     if not contact:
         return JsonResponse({'error': 'Please enter your email or phone number.'}, status=400)
 
+    def _digits(s):
+        return ''.join(c for c in s if c.isdigit())
+
     is_email = '@' in contact
 
+    # The signer verifies whichever email/phone they type here: we send the code
+    # to THAT contact and neither reveal nor require the value on file. Revealing
+    # the on-file address would defeat the verification, and a live-entered
+    # address (e.g. corrected at signing time) must take precedence over a stale
+    # one. The entered value is recorded on otp_contact for the audit trail.
+    # Access is still gated by possession of the unique signing link; to restrict
+    # who can sign, control link distribution or set the contact on the claim.
     if is_email:
-        if contact.lower() != sig_req.signer_email.lower():
-            return JsonResponse(
-                {'error': 'That email does not match our records. '
-                          'Please use the address this invitation was sent to.'},
-                status=400)
+        # Minimal sanity check — true validity is proven by receiving the code.
+        if '.' not in contact.split('@')[-1]:
+            return JsonResponse({'error': 'Please enter a valid email address.'}, status=400)
         delivery = 'email'
     else:
-        def _digits(s):
-            return ''.join(c for c in s if c.isdigit())
-        entered_d = _digits(contact)
-        stored_d  = _digits(sig_req.signer_phone or '')
-        if not stored_d:
+        if len(_digits(contact)) < 10:
             return JsonResponse(
-                {'error': 'No phone number on file. Please verify with your email address instead.'},
+                {'error': 'Please enter a valid phone number, or use your email address.'},
                 status=400)
-        # Compare last 10 digits to handle leading country code variations
-        if not entered_d or entered_d[-10:] != stored_d[-10:]:
-            return JsonResponse({'error': 'That phone number does not match our records.'}, status=400)
         delivery = 'sms'
 
     # Rate-limit: one OTP per 60 seconds
@@ -1227,18 +1255,19 @@ def sign_send_otp(request, token):
     sig_req.otp_attempts = 0
     sig_req.save(update_fields=['otp_code', 'otp_sent_at', 'otp_contact', 'otp_attempts'])
 
+    # Note: responses never echo the destination address — the page only tells
+    # the signer a code was sent to what they entered.
     if delivery == 'email':
-        _send_otp_email(sig_req, otp)
-        hint = f'{contact[:2]}***{contact[contact.index("@"):]}'
-        return JsonResponse({'success': True, 'method': 'email', 'hint': hint})
+        _send_otp_email(sig_req, otp, to_email=contact)
+        return JsonResponse({'success': True, 'method': 'email'})
     else:
         sent = _send_otp_sms(contact, otp)
-        hint = f'***-***-{_digits(contact)[-4:]}'
         if not sent:
-            # SMS not configured — fall back silently to email
-            _send_otp_email(sig_req, otp)
-            return JsonResponse({'success': True, 'method': 'email_fallback', 'hint': hint})
-        return JsonResponse({'success': True, 'method': 'sms', 'hint': hint})
+            # SMS not configured — fall back to email. The signer entered a
+            # phone (no entered email), so use the address on file as a last resort.
+            _send_otp_email(sig_req, otp, to_email=sig_req.signer_email)
+            return JsonResponse({'success': True, 'method': 'email_fallback'})
+        return JsonResponse({'success': True, 'method': 'sms'})
 
 
 @csrf_exempt
@@ -1289,8 +1318,16 @@ def sign_verify_otp(request, token):
     return JsonResponse({'success': True, 'redirect': f'/lease-manager/sign/{token}/'})
 
 
-def _send_otp_email(sig_req, otp):
-    """Send the 6-digit OTP to the signer's email."""
+def _send_otp_email(sig_req, otp, to_email=None):
+    """Send the 6-digit OTP to the address the signer entered.
+
+    Falls back to the address on file only when no target is supplied (e.g. the
+    signer verified by phone but SMS isn't configured).
+    """
+    target = (to_email or sig_req.signer_email or '').strip()
+    if not target:
+        logger.error('OTP email: no destination address for signature request %s', sig_req.pk)
+        return
     try:
         subject = f'Your signing verification code — {otp}'
         body    = (
@@ -1305,10 +1342,10 @@ def _send_otp_email(sig_req, otp):
             subject=subject,
             body=body,
             from_email=FROM_EMAIL,
-            to=[sig_req.signer_email],
+            to=[target],
         ).send(fail_silently=True)
     except Exception as exc:
-        logger.error('OTP email failed for %s: %s', sig_req.signer_email, exc)
+        logger.error('OTP email failed for %s: %s', target, exc)
 
 
 def _send_otp_sms(phone, otp):

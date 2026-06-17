@@ -531,11 +531,11 @@
             <div class="form-check form-switch mb-0 d-flex align-items-center gap-3">
               <input class="form-check-input" type="checkbox" id="chk-re" style="width:2.5em;height:1.25em;">
               <div class="flex-grow-1">
-                <label class="form-check-label fw-semibold d-block" for="chk-re"><i class="bi bi-briefcase me-1 text-success"></i>Real Estate Company</label>
+                <label class="form-check-label fw-semibold d-block" for="chk-re"><i class="bi bi-briefcase me-1 text-success"></i>Real Estate Company <span class="text-muted fw-normal">(signed by broker)</span></label>
                 <div class="row g-1 mt-1">
-                  <div class="col-5"><input class="form-control form-control-sm" id="re-name" value="{{ lease.real_estate_company|default:'' }}" placeholder="Contact Name"></div>
-                  <div class="col-4"><input class="form-control form-control-sm" id="re-email" type="email" value="{{ lease.company_email|default:'' }}" placeholder="Email"></div>
-                  <div class="col-3"><input class="form-control form-control-sm" id="re-phone" type="tel" value="{{ lease.company_phone|default:'' }}" placeholder="Phone (opt.)"></div>
+                  <div class="col-5"><input class="form-control form-control-sm" id="re-name" value="{{ lease.broker_name|default:'' }}" placeholder="Broker Name"></div>
+                  <div class="col-4"><input class="form-control form-control-sm" id="re-email" type="email" value="{{ lease.broker_email|default:'' }}" placeholder="Broker Email"></div>
+                  <div class="col-3"><input class="form-control form-control-sm" id="re-phone" type="tel" value="{{ lease.broker_phone|default:'' }}" placeholder="Phone (opt.)"></div>
                 </div>
               </div>
             </div>

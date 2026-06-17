@@ -1,0 +1,10 @@
+{% comment %}
+Renders a single party's signature MARK only (no caption/date — the caller lays
+those out). Expects `sig` in context (one value from the `signatures` dict):
+    sig.type   'drawn' | 'typed'
+    sig.image  base64 PNG data URL (drawn signatures only)
+    sig.name   typed/legal name
+Drawn  → the captured PNG.
+Typed  → the legal name in a script style (legally binding typed signature).
+If `sig` is falsy the caller is expected to render its own blank line instead.
+{% endcomment %}{% if sig %}{% if sig.type == 'typed' %}<span style="font-family:'Brush Script MT','Lucida Handwriting','Segoe Script',cursive,'Times New Roman',serif; font-style:italic; font-size:21px; color:#10243f;">{{ sig.name }}</span>{% else %}<img src="{{ sig.image }}" alt="signature" style="height:38px; max-width:260px; vertical-align:bottom;">{% endif %}{% endif %}

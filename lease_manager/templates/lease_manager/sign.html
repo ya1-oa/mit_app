@@ -151,29 +151,54 @@
   {# Signature area #}
   <div class="sig-area">
     <h5 class="fw-semibold mb-1"><i class="bi bi-vector-pen text-primary me-2"></i>Your Signature</h5>
-    <p class="text-muted mb-3" style="font-size:.85rem;">Draw your signature in the box below using your mouse, stylus, or finger.</p>
+    <p class="text-muted mb-3" style="font-size:.85rem;">Choose how you'd like to sign — both are legally binding.</p>
 
-    <div class="canvas-wrapper mb-3" id="canvas-wrapper">
-      <canvas id="sig-canvas"></canvas>
-      <div class="placeholder-text" id="canvas-placeholder">
-        <span><i class="bi bi-pen me-2"></i>Sign here</span>
-      </div>
-    </div>
-
-    <div class="d-flex gap-2 mb-4">
-      <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSignature()">
-        <i class="bi bi-arrow-counterclockwise me-1"></i>Clear
+    {# Mode toggle: draw vs type #}
+    <div class="btn-group w-100 mb-3" role="group" aria-label="Signature method">
+      <button type="button" class="btn btn-outline-primary active" id="mode-draw-btn" onclick="setMode('draw')">
+        <i class="bi bi-vector-pen me-1"></i>Draw signature
+      </button>
+      <button type="button" class="btn btn-outline-primary" id="mode-type-btn" onclick="setMode('type')">
+        <i class="bi bi-keyboard me-1"></i>Type signature
       </button>
     </div>
 
-    {# Typed name confirmation #}
+    {# Draw mode #}
+    <div id="draw-mode">
+      <div class="canvas-wrapper mb-3" id="canvas-wrapper">
+        <canvas id="sig-canvas"></canvas>
+        <div class="placeholder-text" id="canvas-placeholder">
+          <span><i class="bi bi-pen me-2"></i>Sign here</span>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mb-4">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSignature()">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Clear
+        </button>
+      </div>
+    </div>
+
+    {# Type mode #}
+    <div id="type-mode" style="display:none;">
+      <p class="text-muted mb-2" style="font-size:.85rem;">
+        Your typed name below will be placed on the document as your legal signature.
+      </p>
+      <div id="sig-preview" style="border:2px dashed #cbd5e1; border-radius:.75rem; min-height:90px;
+            display:flex; align-items:center; justify-content:center; padding:1rem; margin-bottom:1rem;
+            font-family:'Brush Script MT','Lucida Handwriting','Segoe Script',cursive; font-size:2rem;
+            color:#10243f;">
+        <span style="color:#cbd5e1; font-family:inherit;">Your signature</span>
+      </div>
+    </div>
+
+    {# Legal name — required for both modes #}
     <div class="mb-4">
       <label class="form-label fw-semibold" for="typed-name">
-        Type your full legal name to confirm identity
+        Type your full legal name
       </label>
       <input type="text" class="form-control" id="typed-name"
              placeholder="e.g. Jane Smith"
-             autocomplete="name" spellcheck="false">
+             autocomplete="name" spellcheck="false" oninput="updatePreview()">
       <div class="form-text">Must match: <strong>{{ sig_req.signer_name }}</strong></div>
     </div>
 
@@ -280,6 +305,35 @@ function clearSignature() {
   wrapper.classList.remove('active');
 }
 
+// ── Signature mode (draw vs type) ────────────────────────────────────────────
+let currentMode = 'draw';
+
+function setMode(mode) {
+  currentMode = mode;
+  const drawBtn = document.getElementById('mode-draw-btn');
+  const typeBtn = document.getElementById('mode-type-btn');
+  if (mode === 'draw') {
+    drawBtn.classList.add('active'); typeBtn.classList.remove('active');
+    document.getElementById('draw-mode').style.display = '';
+    document.getElementById('type-mode').style.display = 'none';
+    resizeCanvas();   // canvas had zero width while hidden — re-fit it
+  } else {
+    typeBtn.classList.add('active'); drawBtn.classList.remove('active');
+    document.getElementById('type-mode').style.display = '';
+    document.getElementById('draw-mode').style.display = 'none';
+    updatePreview();
+  }
+}
+
+function updatePreview() {
+  const name = document.getElementById('typed-name').value.trim();
+  const prev = document.getElementById('sig-preview');
+  if (!prev) return;
+  prev.innerHTML = name
+    ? '<span style="font-family:inherit;">' + name.replace(/</g, '&lt;') + '</span>'
+    : '<span style="color:#cbd5e1; font-family:inherit;">Your signature</span>';
+}
+
 // ── Sign submit ──────────────────────────────────────────────────────────────
 async function submitSignature() {
   const errEl   = document.getElementById('sign-error');
@@ -287,17 +341,21 @@ async function submitSignature() {
   const spinner = document.getElementById('sign-spinner');
   errEl.style.display = 'none';
 
-  if (pad.isEmpty()) {
-    errEl.textContent = 'Please draw your signature above.';
-    errEl.style.display = 'block';
-    return;
-  }
-
   const typedName = document.getElementById('typed-name').value.trim();
   if (!typedName) {
     errEl.textContent = 'Please type your full legal name.';
     errEl.style.display = 'block';
     return;
+  }
+
+  let sigImage = '';
+  if (currentMode === 'draw') {
+    if (pad.isEmpty()) {
+      errEl.textContent = 'Please draw your signature, or switch to “Type signature”.';
+      errEl.style.display = 'block';
+      return;
+    }
+    sigImage = pad.toDataURL('image/png');
   }
 
   const agreed = document.getElementById('agree-esign').checked;
@@ -310,13 +368,12 @@ async function submitSignature() {
   btn.disabled = true;
   spinner.classList.remove('d-none');
 
-  const sigImage = pad.toDataURL('image/png');
-
   try {
     const res = await fetch('{% url "lease_manager:sign_submit" sig_req.token %}', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
+        signature_type:  currentMode === 'draw' ? 'drawn' : 'typed',
         signature_image: sigImage,
         typed_name:      typedName,
         agreed:          true,
