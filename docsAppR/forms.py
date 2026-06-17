@@ -803,6 +803,30 @@ class OneDriveClientForm(forms.ModelForm):
             else:
                 field.widget.attrs['class'] = 'form-control'
 
+        # Owner name + property address are required: the entire claim folder
+        # structure, Excel templates, and Encircle push are keyed off
+        # "{pOwner}@{pAddress}". Without both, document generation silently
+        # falls back to a "Client_<id>" folder that the rest of the pipeline
+        # can't find. Enforce here (form-only, not on the model) so manual
+        # claim creation always has them, while the inbound Encircle sync can
+        # still create address-less Client records.
+        self.fields['pOwner'].required = True
+        self.fields['pAddress'].required = True
+        for name in ('pOwner', 'pAddress'):
+            self.fields[name].widget.attrs['required'] = 'required'
+
+    def clean_pAddress(self):
+        value = (self.cleaned_data.get('pAddress') or '').strip()
+        if not value:
+            raise ValidationError('Property address is required to create a claim.')
+        return value
+
+    def clean_pOwner(self):
+        value = (self.cleaned_data.get('pOwner') or '').strip()
+        if not value:
+            raise ValidationError('Owner name is required to create a claim.')
+        return value
+
 
 class RoomSelectionForm(forms.Form):
     """Form for selecting a source claim to load rooms from"""

@@ -97,8 +97,9 @@
                                 <h5 class="mb-3">Property Owner Information</h5>
                                 <div class="row mb-3">
                                     <div class="col-md-6">
-                                        <label class="form-label">{{ form.pOwner.label_tag }}</label>
+                                        <label class="form-label">{{ form.pOwner.label_tag }} <span class="text-danger">*</span></label>
                                         {{ form.pOwner }}
+                                        {% if form.pOwner.errors %}<div class="text-danger small mt-1">{{ form.pOwner.errors|striptags }}</div>{% endif %}
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label">{{ form.cEmail.label_tag }}</label>
@@ -107,8 +108,9 @@
                                 </div>
                                 <div class="row mb-3">
                                     <div class="col-md-8">
-                                        <label class="form-label">{{ form.pAddress.label_tag }}</label>
+                                        <label class="form-label">{{ form.pAddress.label_tag }} <span class="text-danger">*</span></label>
                                         {{ form.pAddress }}
+                                        {% if form.pAddress.errors %}<div class="text-danger small mt-1">{{ form.pAddress.errors|striptags }}</div>{% endif %}
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label">{{ form.cPhone.label_tag }}</label>

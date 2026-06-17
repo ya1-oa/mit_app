@@ -1629,12 +1629,16 @@ def create_server_folder_structure_task(self, client_id):
         import hashlib
 
         # Create folder structure using claim_folder_utils
-        structure = get_folder_structure(f"{client.pOwner}@{client.pAddress}")
+        if client.pOwner and client.pAddress:
+            client_folder_name = f"{client.pOwner}@{client.pAddress}"
+        else:
+            client_folder_name = f"Client_{client.id}" if not client.pOwner else f"{client.pOwner}@"
+        structure = get_folder_structure(client_folder_name)
         claims_root = get_claims_root()
 
         # Create main client folder
-        client_folder_name = f"{client.pOwner}@{client.pAddress}"
-        safe_folder_name = client_folder_name.replace('/', '_').replace('\\', '_').replace(':', '_')
+        import re as _re
+        safe_folder_name = _re.sub(r'[<>:"/\\|?*]', '_', client_folder_name)
         claim_folder = os.path.join(claims_root, safe_folder_name)
 
         os.makedirs(claim_folder, exist_ok=True)

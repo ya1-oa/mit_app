@@ -202,10 +202,21 @@ def upsert_client_from_encircle(encircle_data: dict) -> tuple[object, bool]:
                     fields.get('pOwner', '—'))
         return client, True
     else:
-        # Update only the fields in our map
+        # Update only the fields in our map.
+        #
+        # IMPORTANT: use a queryset .update() rather than instance.save().
+        # A per-instance save() fires the post_save signal, and
+        # regenerate_excel_files_on_update queues a 16-file LibreOffice
+        # regeneration for the client. During a full sync that fans out to
+        # one regen task PER existing Encircle claim — hundreds of tasks that
+        # saturate the Celery worker and starve real-time work (new-claim
+        # folder/template/Encircle-push tasks). .update() writes the same
+        # columns directly to the DB without triggering signals, mirroring the
+        # bypass already used in push_claim_to_encircle_task.
+        Client.objects.filter(pk=existing.pk).update(**fields)
+        # Refresh the in-memory instance so callers see the new values.
         for attr, val in fields.items():
             setattr(existing, attr, val)
-        existing.save(update_fields=list(fields.keys()))
         logger.debug("Updated Client %s from Encircle claim %s", existing.pk, enc_id)
         return existing, False
 

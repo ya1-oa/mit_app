@@ -338,6 +338,14 @@ LOGGING = {
             'formatter': 'verbose',
         },
     },
+    'root': {
+        # Catch-all: any logger without an explicit entry below (including
+        # third-party libs) emits at INFO to file + console. Without this,
+        # records propagating to the root were dropped by Python's WARNING-level
+        # "last resort" handler, so INFO logs vanished in the web process.
+        'handlers': ['file', 'console'],
+        'level': 'INFO',
+    },
     'loggers': {
         'onedrive_sync': {
             'handlers': ['file', 'console'],
@@ -345,6 +353,21 @@ LOGGING = {
             'propagate': False,
         },
         'celery': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # The application package. claims_views, tasks, encircle_sync, etc. all
+        # log under "docsAppR.*" via logging.getLogger(__name__). These were
+        # never configured, so every claim-creation and Encircle-push log line
+        # was silently discarded in the web process. Emit them explicitly.
+        'docsAppR': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Surface Django request/server errors too (e.g. 500s in views).
+        'django': {
             'handlers': ['file', 'console'],
             'level': 'INFO',
             'propagate': False,
