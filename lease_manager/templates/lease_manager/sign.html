@@ -6,7 +6,9 @@
   <title>Sign Lease — {{ lease.property_address }}</title>
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css">
   <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
   <style>
     :root {
       --brand: #2563eb;
@@ -150,11 +152,16 @@
 
   {# Signature area #}
   <div class="sig-area">
-    <h5 class="fw-semibold mb-1"><i class="bi bi-vector-pen text-primary me-2"></i>Your Signature</h5>
+    <div class="d-flex justify-content-between align-items-start mb-1">
+      <h5 class="fw-semibold mb-0"><i class="bi bi-vector-pen text-primary me-2"></i>Your Signature</h5>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="help-btn" onclick="startTour()">
+        <i class="bi bi-question-circle me-1"></i>How to sign
+      </button>
+    </div>
     <p class="text-muted mb-3" style="font-size:.85rem;">Choose how you'd like to sign — both are legally binding.</p>
 
     {# Mode toggle: draw vs type #}
-    <div class="btn-group w-100 mb-3" role="group" aria-label="Signature method">
+    <div class="btn-group w-100 mb-3" role="group" aria-label="Signature method" id="mode-toggle">
       <button type="button" class="btn btn-outline-primary active" id="mode-draw-btn" onclick="setMode('draw')">
         <i class="bi bi-vector-pen me-1"></i>Draw signature
       </button>
@@ -180,21 +187,28 @@
 
     {# Type mode #}
     <div id="type-mode" style="display:none;">
-      <p class="text-muted mb-2" style="font-size:.85rem;">
-        Your typed name below will be placed on the document as your legal signature.
-      </p>
-      <div id="sig-preview" style="border:2px dashed #cbd5e1; border-radius:.75rem; min-height:90px;
-            display:flex; align-items:center; justify-content:center; padding:1rem; margin-bottom:1rem;
+      <div class="text-uppercase fw-semibold mb-1" style="font-size:.68rem; letter-spacing:.06em; color:#94a3b8;">
+        <i class="bi bi-lock-fill me-1"></i>Signature preview — display only, you can't type here
+      </div>
+      {# Clicking the preview (a common mistake) just focuses the real input below. #}
+      <div id="sig-preview" onclick="document.getElementById('typed-name').focus()"
+           title="This is a preview, not a text box — type your name in the field below"
+           style="border:2px dashed #cbd5e1; border-radius:.75rem; min-height:90px;
+            display:flex; align-items:center; justify-content:center; padding:1rem; margin-bottom:.4rem;
+            background:#f8fafc; cursor:not-allowed; user-select:none;
             font-family:'Brush Script MT','Lucida Handwriting','Segoe Script',cursive; font-size:2rem;
             color:#10243f;">
-        <span style="color:#cbd5e1; font-family:inherit;">Your signature</span>
+        <span style="color:#cbd5e1; font-family:inherit;">Your signature appears here</span>
       </div>
+      <p class="mb-3" style="font-size:.8rem; color:#475569;">
+        <i class="bi bi-arrow-down-circle me-1 text-primary"></i><strong>Type your name in the box below</strong> — it appears above in signature style.
+      </p>
     </div>
 
     {# Legal name — required for both modes #}
-    <div class="mb-4">
+    <div class="mb-4" id="name-row">
       <label class="form-label fw-semibold" for="typed-name">
-        Type your full legal name
+        <i class="bi bi-pencil-fill me-1 text-primary"></i><span id="name-label-text">Type your full legal name here</span>
       </label>
       <input type="text" class="form-control" id="typed-name"
              placeholder="e.g. Jane Smith"
@@ -216,7 +230,7 @@
       </p>
     </div>
 
-    <div class="form-check mb-4">
+    <div class="form-check mb-4" id="consent-row">
       <input class="form-check-input" type="checkbox" id="agree-esign" style="width:1.15em; height:1.15em;">
       <label class="form-check-label" for="agree-esign" style="font-size:.9rem;">
         I understand and agree to sign this lease electronically
@@ -331,8 +345,60 @@ function updatePreview() {
   if (!prev) return;
   prev.innerHTML = name
     ? '<span style="font-family:inherit;">' + name.replace(/</g, '&lt;') + '</span>'
-    : '<span style="color:#cbd5e1; font-family:inherit;">Your signature</span>';
+    : '<span style="color:#cbd5e1; font-family:inherit;">Your signature appears here</span>';
 }
+
+// ── Guided walkthrough (driver.js) ───────────────────────────────────────────
+// Explains the whole flow — both Draw and Type — and is shown on every load so
+// no signer is left guessing. Switching modes mid-tour reveals each field as we
+// describe it (the typed "preview" box is the #1 source of confusion).
+function startTour() {
+  if (!(window.driver && window.driver.js && window.driver.js.driver)) return;
+  const driver = window.driver.js.driver;
+  // Remember where the signer was so a replay doesn't wipe an in-progress draw.
+  const startedMode  = currentMode;
+  const savedDrawing = (!pad.isEmpty()) ? pad.toData() : null;
+  const tour = driver({
+    showProgress: true,
+    allowClose: false,                    // mandatory — no overlay/ESC dismiss
+    showButtons: ['next', 'previous'],    // no close button: must step through
+    overlayColor: '#0f172a',
+    nextBtnText: 'Next →',
+    prevBtnText: '← Back',
+    doneBtnText: 'Got it — let me sign',
+    steps: [
+      { element: '#mode-toggle', popover: {
+          title: '1. Choose how to sign',
+          description: 'Pick <b>Draw signature</b> to sign with your mouse or finger, or <b>Type signature</b> to type your name. Both are equally legal.' } },
+      { element: '#canvas-wrapper', onHighlightStarted: () => setMode('draw'), popover: {
+          title: '2a. Drawing your signature',
+          description: 'In <b>Draw</b> mode, sign inside this box with your mouse, finger, or stylus. Use <b>Clear</b> to start over.' } },
+      { element: '#sig-preview', onHighlightStarted: () => setMode('type'), popover: {
+          title: '2b. This box is just a PREVIEW',
+          description: 'In <b>Type</b> mode this large box only <b>shows</b> how your signature will look. It is <b>not</b> a text field — you cannot type in here.' } },
+      { element: '#name-row', onHighlightStarted: () => setMode('type'), popover: {
+          title: '3. Type your name HERE',
+          description: 'Type your full legal name in <b>this</b> field. It appears in the preview above and is placed on the document as your signature.' } },
+      { element: '#consent-row', popover: {
+          title: '4. Agree to e-sign',
+          description: 'Check this box to confirm you agree to sign electronically.' } },
+      { element: '#sign-btn', popover: {
+          title: '5. Finish',
+          description: 'When your signature is ready, your name is filled in, and the box is checked, click <b>Sign Document</b>.' } },
+    ],
+    onDestroyed: () => {
+      // Return the signer to the mode they came from, restoring any drawing.
+      setMode(startedMode);
+      if (startedMode === 'draw' && savedDrawing) {
+        try { pad.fromData(savedDrawing); placeholder.style.opacity = '0'; } catch (e) {}
+      }
+    },
+  });
+  tour.drive();
+}
+
+// Mandatory: run the walkthrough on every page load.
+window.addEventListener('load', () => { setTimeout(startTour, 350); });
 
 // ── Sign submit ──────────────────────────────────────────────────────────────
 async function submitSignature() {
