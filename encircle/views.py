@@ -1040,6 +1040,7 @@ def generate_room_entries_from_configs(request):
                 if wt == 300:
                     basic_entries.extend([
                         "3222 . CPS DAY2 WIP OVERVIEW WIP BOXES PACKOUT PICS",
+                        "3223 . CPS DAY2 WIP ROOM CLEARED",
                         "3322 . CPS3 DAY3 STORAGE OVERVIEW STORAGE MOVE OUT PICS",
                         "3444 . CPS4 DAY4 PACKBACK OVERVIEW PACK-BACK / RESET PICS",
                     ])

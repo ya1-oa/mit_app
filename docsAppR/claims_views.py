@@ -305,7 +305,14 @@ def save_rooms(request):
 
         # ── Separate sub-template types from primary templates ─────────────────
         # 8000s/9000s/siding go to sub-claims; primary gets the rest.
-        _SUB_TEMPLATES = {'readings_8000', 'readings_9000', 'siding_10000'}
+        # The 8000s (MC readings) and 9000s (dry-chamber readings) must NEVER be
+        # part of the basic/default room list — they only exist on their own
+        # sub-claims, created when their template is explicitly selected. We also
+        # exclude the legacy 'readings' (combined 8000+9000) and 'readings default'
+        # (8000-series stabilization) so neither can leak 8000-series entries into
+        # the primary/default claim.
+        _SUB_TEMPLATES = {'readings_8000', 'readings_9000', 'siding_10000',
+                          'readings', 'readings default'}
         primary_templates = [t for t in selected_templates if t not in _SUB_TEMPLATES]
         # Work types: 700 (HMR) gets its own sub-claim handled in Step 3;
         # exclude it from the primary entry generation here.
@@ -1195,8 +1202,9 @@ def push_rooms_to_encircle(request, claim_id):
 
     POST body (JSON):
         encircle_claim_id  – target Encircle claim id (required)
-        selected_templates – list of template keys, e.g. ["basic", "readings"]
-                             Defaults to ["basic", "readings"] if omitted.
+        selected_templates – list of template keys, e.g. ["basic"]
+                             Defaults to ["basic"] if omitted (8000s/9000s only
+                             when their template is explicitly selected).
     """
     import json
     client = get_object_or_404(Client, id=claim_id)
@@ -1210,7 +1218,7 @@ def push_rooms_to_encircle(request, claim_id):
     if not encircle_claim_id:
         return JsonResponse({'success': False, 'error': 'encircle_claim_id is required'}, status=400)
 
-    selected_templates = body.get('selected_templates') or ['basic', 'readings']
+    selected_templates = body.get('selected_templates') or ['basic']
 
     try:
         task = push_rooms_to_encircle_task.delay(

@@ -3158,7 +3158,8 @@ def build_room_entries(room_names, configs, selected_templates=None, selected_wo
         room_names:          ordered list of room name strings
         configs:             dict  {room_name: {work_type_id: value_type, ...}}
         selected_templates:  list of 'basic', 'readings', 'readings default'
-                             Defaults to ['basic', 'readings'].
+                             Defaults to ['basic'] — 8000s/9000s readings are
+                             only generated when their template is selected.
         selected_work_types: optional list of int work type IDs to include in
                              the 'basic' template (100-700). If None, all are included.
 
@@ -3166,7 +3167,9 @@ def build_room_entries(room_names, configs, selected_templates=None, selected_wo
         list[str]  – entries ready to POST as room names to Encircle
     """
     if not selected_templates:
-        selected_templates = ['basic', 'readings']
+        # 8000s/9000s readings are NOT part of the default room list — they are
+        # only generated when their template is explicitly selected.
+        selected_templates = ['basic']
 
     # Value types that should NOT appear as a prefix in Encircle room names.
     # DAMAGED is tracked in labels but hidden from room name strings so it
@@ -3383,13 +3386,15 @@ def push_rooms_to_encircle_task(self, client_id, encircle_claim_id, selected_tem
         client_id:         UUID/int of the local Client record.
         encircle_claim_id: The target Encircle claim id (string).
         selected_templates: list of template keys — same as push_claim_to_encircle_task.
-                            Defaults to ['basic', 'readings'].
+                            Defaults to ['basic'].
     """
     from .models import Client, Room
     from .encircle_client import EncircleAPIClient
 
     if not selected_templates:
-        selected_templates = ['basic', 'readings']
+        # 8000s/9000s readings are NOT part of the default room list — they are
+        # only generated when their template is explicitly selected.
+        selected_templates = ['basic']
 
     try:
         client = Client.objects.get(id=client_id)
