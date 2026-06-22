@@ -17,6 +17,16 @@
 
 {% block content %}
 
+<!-- ── Quick links ────────────────────────────────────────────────────────── -->
+<div class="d-flex flex-wrap gap-2 mb-3 justify-content-end">
+    <a href="{% url 'dev_hub:weekly_report_list' %}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-journal-text me-1"></i>Weekly Progress Reports
+    </a>
+    <a href="{% url 'dev_hub:ai_resources' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-cpu me-1"></i>AI Resources
+    </a>
+</div>
+
 <!-- ── Stats bar ──────────────────────────────────────────────────────────── -->
 <div class="row g-3 mb-4">
     <div class="col-6 col-md-3">

@@ -204,3 +204,147 @@ class ProgressReport(models.Model):
 
     def __str__(self):
         return f'{self.get_report_type_display()} report — {self.sent_at.strftime("%Y-%m-%d")}'
+
+
+# ---------------------------------------------------------------------------
+# WeeklyReport — internal weekly + daily dev progress checklist
+# ---------------------------------------------------------------------------
+
+class WeeklyReport(models.Model):
+    """
+    Editable weekly + daily development progress report for the dev team.
+
+    Renders as a dynamic HTML page (the current weekday is highlighted so the
+    same document can be reused throughout the week) and exports to PDF.
+
+    Structure mirrors the client-facing progress template:
+      - weekly_objectives / next_week_priorities : checklist of {text, done}
+      - days                                     : per-weekday content blocks
+      - completed_deliverables                   : flat bullet list
+    """
+    WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday']
+
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title          = models.CharField(max_length=200,
+                                       default='Software Development Progress Report')
+    week_of        = models.DateField(help_text='Monday of the report week')
+    overall_status = models.CharField(max_length=100, default='In Progress')
+
+    # Checklist items: [{"text": str, "done": bool}, ...]
+    weekly_objectives    = models.JSONField(default=list, blank=True)
+    next_week_priorities = models.JSONField(default=list, blank=True)
+
+    # Flat bullet list: ["...", ...]
+    completed_deliverables = models.JSONField(default=list, blank=True)
+
+    # Per-day content keyed by weekday name:
+    #   {"Monday": {"objectives": [...], "accomplishments": [...], "goal_progress": [...]}}
+    days           = models.JSONField(default=dict, blank=True)
+
+    created_by     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                       null=True, blank=True, related_name='weekly_reports')
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-week_of', '-created_at']
+
+    def __str__(self):
+        return f'{self.title} — week of {self.week_of:%b %d, %Y}'
+
+    @property
+    def week_of_display(self):
+        return self.week_of.strftime('%B %d, %Y') if self.week_of else ''
+
+    def day_rows(self):
+        """Ordered Mon–Fri rows with their content, for template iteration."""
+        rows = []
+        for name in self.WEEKDAYS:
+            content = (self.days or {}).get(name, {})
+            rows.append({
+                'name':            name,
+                'objectives':      content.get('objectives', []),
+                'accomplishments': content.get('accomplishments', []),
+                'goal_progress':   content.get('goal_progress', []),
+            })
+        return rows
+
+    @property
+    def objectives_done_count(self):
+        return sum(1 for o in (self.weekly_objectives or []) if o.get('done'))
+
+    @staticmethod
+    def default_payload():
+        """Starting content for a new report (the standard team template)."""
+        return {
+            'overall_status': 'In Progress',
+            'weekly_objectives': [
+                {'text': 'Implement signature signing feature for lease system', 'done': True},
+                {'text': 'Add new room to default room list', 'done': True},
+                {'text': 'Remove incorrect "$8,000" value from basic room list display', 'done': True},
+                {'text': 'Enable drag-and-drop room management', 'done': True},
+                {'text': 'Automatically update room numbering after reordering or removal', 'done': True},
+            ],
+            'days': {
+                'Monday': {
+                    'objectives': ['Implement lease signature functionality',
+                                   'Begin room list improvements'],
+                    'accomplishments': [
+                        'Implemented signature signing functionality for the lease system.',
+                        'Added support for capturing and storing lease signatures.',
+                        'Began review of room list management workflow.'],
+                    'goal_progress': ['Signature feature completed.',
+                                      'Room management improvements in progress.'],
+                },
+                'Tuesday': {
+                    'objectives': ['Add new room option to default room list',
+                                   'Remove incorrect room list values'],
+                    'accomplishments': [
+                        'Added new room to the default room list.',
+                        'Removed the incorrect "$8,000" value from appearing in the basic room list.',
+                        'Performed validation testing on room list display.'],
+                    'goal_progress': ['Room list updates completed.',
+                                      'Preparing drag-and-drop enhancements.'],
+                },
+                'Wednesday': {
+                    'objectives': ['Implement drag-and-drop room management'],
+                    'accomplishments': [
+                        'Added drag-and-drop functionality for room ordering.',
+                        'Users can now rearrange rooms directly within the interface.',
+                        'Improved room management workflow and usability.'],
+                    'goal_progress': ['Core drag-and-drop functionality completed.'],
+                },
+                'Thursday': {
+                    'objectives': ['Implement automatic room number updates',
+                                   'Test room removal workflow'],
+                    'accomplishments': [
+                        'Implemented automatic room numbering updates after room reordering.',
+                        'Implemented automatic numbering updates after room removal.',
+                        'Tested room sequence integrity across multiple scenarios.'],
+                    'goal_progress': ['Room management workflow completed.'],
+                },
+                'Friday': {
+                    'objectives': ['Testing and final validation',
+                                   'Bug fixes and deployment readiness'],
+                    'accomplishments': [
+                        'Completed feature testing across lease and room management modules.',
+                        'Resolved minor UI and workflow issues.',
+                        'Verified successful operation of all completed weekly objectives.'],
+                    'goal_progress': ['All planned objectives completed.',
+                                      'Features ready for client review and acceptance.'],
+                },
+            },
+            'completed_deliverables': [
+                'Lease signature signing feature implemented',
+                'New room added to default room list',
+                'Removed incorrect "$8,000" value from room list display',
+                'Drag-and-drop room management functionality implemented',
+                'Automatic room numbering updates after reordering or deletion',
+            ],
+            'next_week_priorities': [
+                {'text': 'Client feedback review', 'done': False},
+                {'text': 'Additional UI improvements', 'done': False},
+                {'text': 'Workflow optimizations', 'done': False},
+                {'text': 'Bug fixes and enhancements identified during testing', 'done': False},
+            ],
+        }

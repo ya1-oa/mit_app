@@ -15,15 +15,19 @@ import json
 import logging
 import urllib.parse
 
+from datetime import timedelta
+
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
-from django.http import JsonResponse
+from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
+from django.template.loader import render_to_string
 from django.utils import timezone
+from django.utils.dateparse import parse_date
 from django.views.decorators.http import require_POST
 
-from .models import AppModule, DevTask, TestCoverage, ProgressReport
+from .models import AppModule, DevTask, TestCoverage, ProgressReport, WeeklyReport
 
 logger = logging.getLogger(__name__)
 
@@ -442,3 +446,152 @@ def ai_usage_data(request):
         'labels': [str(r['day']) for r in rows],
         'costs':  [float(r['cost']) for r in rows],
     })
+
+
+# ===========================================================================
+# Weekly progress report  (editable HTML page + PDF export)
+# ===========================================================================
+
+WEEKDAYS = WeeklyReport.WEEKDAYS
+
+
+def _monday_of(d):
+    """Return the Monday on or before date d."""
+    return d - timedelta(days=d.weekday())
+
+
+def _parse_bullets(text):
+    """Textarea (one item per line) → ['item', ...] (blank lines dropped)."""
+    return [ln.strip() for ln in (text or '').splitlines() if ln.strip()]
+
+
+def _parse_checklist(text):
+    """Textarea → [{'text': str, 'done': bool}]. A leading [x]/[X] marks done."""
+    items = []
+    for ln in (text or '').splitlines():
+        ln = ln.rstrip()
+        if not ln.strip():
+            continue
+        stripped = ln.lstrip()
+        done = stripped[:3].lower() in ('[x]',)
+        if stripped[:3].lower() in ('[x]', '[ ]'):
+            stripped = stripped[3:].strip()
+        items.append({'text': stripped, 'done': done})
+    return items
+
+
+def _format_bullets(items):
+    return '\n'.join(items or [])
+
+
+def _format_checklist(items):
+    return '\n'.join(
+        f"[{'x' if it.get('done') else ' '}] {it.get('text', '')}"
+        for it in (items or [])
+    )
+
+
+def _report_context(report):
+    """Shared context for the on-screen report and the PDF."""
+    today_name = timezone.localdate().strftime('%A')
+    return {
+        'report':      report,
+        'day_rows':    report.day_rows(),
+        'current_day': today_name,   # highlight today's column (Mon–Fri)
+        'generated_on': timezone.localdate().strftime('%B %d, %Y'),
+    }
+
+
+@login_required
+def weekly_report_list(request):
+    reports = WeeklyReport.objects.all()
+    return render(request, 'dev_hub/weekly_report_list.html', {'reports': reports})
+
+
+@login_required
+def weekly_report_create(request):
+    """Create a new report seeded with the standard team template."""
+    payload = WeeklyReport.default_payload()
+    report = WeeklyReport.objects.create(
+        week_of=_monday_of(timezone.localdate()),
+        overall_status=payload['overall_status'],
+        weekly_objectives=payload['weekly_objectives'],
+        next_week_priorities=payload['next_week_priorities'],
+        completed_deliverables=payload['completed_deliverables'],
+        days=payload['days'],
+        created_by=request.user,
+    )
+    messages.success(request, 'New weekly report created from the template — edit the values as needed.')
+    return redirect('dev_hub:weekly_report_edit', report_id=report.id)
+
+
+@login_required
+def weekly_report_detail(request, report_id):
+    report = get_object_or_404(WeeklyReport, id=report_id)
+    return render(request, 'dev_hub/weekly_report_detail.html', _report_context(report))
+
+
+@login_required
+def weekly_report_edit(request, report_id):
+    report = get_object_or_404(WeeklyReport, id=report_id)
+
+    if request.method == 'POST':
+        report.title          = request.POST.get('title', report.title).strip() or report.title
+        report.overall_status = request.POST.get('overall_status', '').strip() or 'In Progress'
+        week_of = request.POST.get('week_of', '').strip()
+        if week_of:
+            parsed = parse_date(week_of)
+            if parsed:
+                report.week_of = parsed
+
+        report.weekly_objectives      = _parse_checklist(request.POST.get('weekly_objectives'))
+        report.next_week_priorities   = _parse_checklist(request.POST.get('next_week_priorities'))
+        report.completed_deliverables = _parse_bullets(request.POST.get('completed_deliverables'))
+
+        days = {}
+        for name in WEEKDAYS:
+            days[name] = {
+                'objectives':      _parse_bullets(request.POST.get(f'{name}_objectives')),
+                'accomplishments': _parse_bullets(request.POST.get(f'{name}_accomplishments')),
+                'goal_progress':   _parse_bullets(request.POST.get(f'{name}_goal_progress')),
+            }
+        report.days = days
+        report.save()
+        messages.success(request, 'Report saved.')
+        return redirect('dev_hub:weekly_report_detail', report_id=report.id)
+
+    # GET — build editable text blocks
+    day_fields = []
+    for row in report.day_rows():
+        day_fields.append({
+            'name':            row['name'],
+            'objectives':      _format_bullets(row['objectives']),
+            'accomplishments': _format_bullets(row['accomplishments']),
+            'goal_progress':   _format_bullets(row['goal_progress']),
+        })
+    context = {
+        'report':                 report,
+        'weekly_objectives_text': _format_checklist(report.weekly_objectives),
+        'next_week_text':         _format_checklist(report.next_week_priorities),
+        'deliverables_text':      _format_bullets(report.completed_deliverables),
+        'day_fields':             day_fields,
+    }
+    return render(request, 'dev_hub/weekly_report_edit.html', context)
+
+
+@login_required
+def weekly_report_pdf(request, report_id):
+    """Render the same report to a downloadable PDF via WeasyPrint."""
+    report = get_object_or_404(WeeklyReport, id=report_id)
+    try:
+        from weasyprint import HTML as WeasyHTML
+    except ImportError:
+        return HttpResponse('PDF engine (weasyprint) not available on this server.', status=500)
+
+    html = render_to_string('dev_hub/weekly_report_pdf.html', _report_context(report))
+    pdf_bytes = WeasyHTML(string=html, base_url=request.build_absolute_uri('/')).write_pdf()
+
+    filename = f"progress_report_{report.week_of:%Y-%m-%d}.pdf"
+    resp = HttpResponse(pdf_bytes, content_type='application/pdf')
+    resp['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return resp

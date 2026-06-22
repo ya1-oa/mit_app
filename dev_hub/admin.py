@@ -1,5 +1,5 @@
 from django.contrib import admin
-from .models import AppModule, DevTask, TestCoverage, ProgressReport
+from .models import AppModule, DevTask, TestCoverage, ProgressReport, WeeklyReport
 
 
 class DevTaskInline(admin.TabularInline):
@@ -54,3 +54,12 @@ class ProgressReportAdmin(admin.ModelAdmin):
     @admin.display(boolean=True, description='Response')
     def has_response(self, obj):
         return bool(obj.response_notes)
+
+
+@admin.register(WeeklyReport)
+class WeeklyReportAdmin(admin.ModelAdmin):
+    list_display    = ['title', 'week_of', 'overall_status', 'created_by', 'updated_at']
+    list_filter     = ['overall_status', 'week_of']
+    search_fields   = ['title']
+    readonly_fields = ['id', 'created_at', 'updated_at']
+    date_hierarchy  = 'week_of'

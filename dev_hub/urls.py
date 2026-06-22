@@ -7,6 +7,15 @@ urlpatterns = [
     # Dashboard
     path('',                                    views.dashboard,       name='dashboard'),
 
+    # Weekly progress report (editable HTML + PDF).
+    # MUST precede the <slug:slug> catch-all below, or "weekly-reports" would be
+    # resolved as a module slug.
+    path('weekly-reports/',                       views.weekly_report_list,   name='weekly_report_list'),
+    path('weekly-reports/new/',                   views.weekly_report_create, name='weekly_report_create'),
+    path('weekly-reports/<uuid:report_id>/',       views.weekly_report_detail, name='weekly_report_detail'),
+    path('weekly-reports/<uuid:report_id>/edit/',  views.weekly_report_edit,   name='weekly_report_edit'),
+    path('weekly-reports/<uuid:report_id>/pdf/',   views.weekly_report_pdf,    name='weekly_report_pdf'),
+
     # Module detail
     path('<slug:slug>/',                         views.module_detail,   name='module_detail'),
 

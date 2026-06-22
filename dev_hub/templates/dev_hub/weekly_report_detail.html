@@ -1,0 +1,36 @@
+{% extends "account/base.html" %}
+
+{% block title %}{{ report.title }}{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'dev_hub:dashboard' %}">Dev Hub</a></li>
+            <li class="breadcrumb-item"><a href="{% url 'dev_hub:weekly_report_list' %}">Weekly Reports</a></li>
+            <li class="breadcrumb-item active">{{ report.week_of_display }}</li>
+        </ol>
+    </nav>
+    <h1 class="ms-3">Weekly Progress Report</h1>
+</div>
+{% endblock %}
+
+{% block content %}
+{% include "dev_hub/_weekly_report_styles.html" %}
+
+<div class="d-flex flex-wrap gap-2 mb-3 justify-content-end">
+    <a href="{% url 'dev_hub:weekly_report_list' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-arrow-left me-1"></i>All Reports
+    </a>
+    <a href="{% url 'dev_hub:weekly_report_edit' report.id %}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-pencil me-1"></i>Edit
+    </a>
+    <a href="{% url 'dev_hub:weekly_report_pdf' report.id %}" class="btn btn-primary btn-sm">
+        <i class="bi bi-download me-1"></i>Download PDF
+    </a>
+</div>
+
+<div class="card shadow-sm" style="border:1px solid #e5e7eb;">
+    {% include "dev_hub/_weekly_report_body.html" %}
+</div>
+{% endblock %}
