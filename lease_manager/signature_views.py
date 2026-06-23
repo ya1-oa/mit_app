@@ -30,6 +30,7 @@ from django.views.decorators.http import require_POST
 from docsAppR.models import Client, Lease, LeaseActivity, LeaseDocument, LeaseSignatureRequest
 
 from .views import _ale_to_lease_fields, _lease_contacts
+from .email_utils import get_lease_email_connection, get_lease_from_email
 
 
 # ============================================================================
@@ -1041,7 +1042,8 @@ def _send_signature_request_email(sig_req, lease, signing_url):
         msg = EmailMultiAlternatives(
             subject=subject,
             body=text_body,
-            from_email=FROM_EMAIL,
+            from_email=get_lease_from_email(),
+            connection=get_lease_email_connection(),
             to=[sig_req.signer_email],
         )
         if html_body:
@@ -1347,7 +1349,8 @@ def _send_otp_email(sig_req, otp, to_email=None):
         EmailMessage(
             subject=subject,
             body=body,
-            from_email=FROM_EMAIL,
+            from_email=get_lease_from_email(),
+            connection=get_lease_email_connection(),
             to=[target],
         ).send(fail_silently=True)
     except Exception as exc:
@@ -1439,7 +1442,8 @@ def _notify_staff_signature(sig_req, lease):
                 f'Client: {lease.client.pOwner}\n\n'
                 f'View: {SITE_URL}/lease-manager/lease/{lease.id}/'
             ),
-            from_email=FROM_EMAIL,
+            from_email=get_lease_from_email(),
+            connection=get_lease_email_connection(),
             to=[OWNER_EMAIL],
         ).send()
     except Exception as exc:
@@ -1457,7 +1461,8 @@ def _notify_staff_decline(sig_req):
                 f'Action needed: contact them and resend if appropriate.\n\n'
                 f'View: {SITE_URL}/lease-manager/lease/{sig_req.lease.id}/'
             ),
-            from_email=FROM_EMAIL,
+            from_email=get_lease_from_email(),
+            connection=get_lease_email_connection(),
             to=[OWNER_EMAIL],
         ).send()
     except Exception as exc:
@@ -1476,7 +1481,8 @@ def _notify_all_signed(lease):
                 f'Next step: create the invoice.\n'
                 f'View: {SITE_URL}/lease-manager/lease/{lease.id}/'
             ),
-            from_email=FROM_EMAIL,
+            from_email=get_lease_from_email(),
+            connection=get_lease_email_connection(),
             to=[OWNER_EMAIL],
         ).send()
     except Exception as exc:

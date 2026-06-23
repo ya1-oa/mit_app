@@ -206,6 +206,23 @@ EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
 
+# ── Lease / signature emails — optional dedicated sender (e.g. Outlook) ──────
+# Signature- and lease-related emails (signing invites, OTP codes, document
+# packages, and signing notifications) send from THIS account instead of the
+# default mailbox above, so they come from the firm's ALE/lease address.
+# Set these in the environment (.env). When LEASE_EMAIL_HOST_USER /
+# LEASE_EMAIL_HOST_PASSWORD are blank, those emails fall back to the default
+# connection automatically — so nothing breaks until you configure it.
+#   Outlook / Microsoft 365 business : smtp.office365.com    port 587  TLS
+#   Outlook.com (personal)           : smtp-mail.outlook.com port 587  TLS
+LEASE_EMAIL_HOST          = os.getenv('LEASE_EMAIL_HOST', 'smtp.office365.com')
+LEASE_EMAIL_PORT          = int(os.getenv('LEASE_EMAIL_PORT', '587'))
+LEASE_EMAIL_USE_TLS       = os.getenv('LEASE_EMAIL_USE_TLS', 'True') == 'True'
+LEASE_EMAIL_HOST_USER     = os.getenv('LEASE_EMAIL_HOST_USER', '')
+LEASE_EMAIL_HOST_PASSWORD = os.getenv('LEASE_EMAIL_HOST_PASSWORD', '')
+# From-address shown to recipients; defaults to the lease mailbox login.
+LEASE_FROM_EMAIL          = os.getenv('LEASE_FROM_EMAIL', '') or LEASE_EMAIL_HOST_USER
+
 AUTH_USER_MODEL = 'docsAppR.CustomUser'
 
 # Add these settings for media files

@@ -27,6 +27,8 @@ from docsAppR.models import (
 
 from docsAppR.views import generate_document_from_html  # noqa: F401 (re-exported)
 
+from .email_utils import get_lease_email_connection, get_lease_from_email
+
 logger = logging.getLogger(__name__)
 
 OWNER_EMAIL  = getattr(settings, 'NOTIFY_EMAIL', 'wsbjoe9@gmail.com')
@@ -1083,7 +1085,8 @@ def _send_lease_package_email(lease, to_emails, cc_emails, bcc_emails,
         email = EmailMessage(
             subject=subject,
             body=html_body,
-            from_email=FROM_EMAIL,
+            from_email=get_lease_from_email(),
+            connection=get_lease_email_connection(),
             to=to_emails,
             cc=cc_emails,
             bcc=bcc_emails,

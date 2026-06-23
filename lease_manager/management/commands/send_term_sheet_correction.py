@@ -38,10 +38,11 @@ from django.core.management.base import BaseCommand
 from django.template.loader import render_to_string
 
 from docsAppR.models import Lease, LeaseActivity
+from lease_manager.email_utils import get_lease_email_connection, get_lease_from_email
 
 logger = logging.getLogger(__name__)
 
-FROM_EMAIL  = getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@claimetapp.com')
+FROM_EMAIL  = get_lease_from_email()
 OWNER_EMAIL = getattr(settings, 'NOTIFY_EMAIL',        'wsbjoe9@gmail.com')
 SITE_URL    = getattr(settings, 'SITE_URL',             'https://claimetapp.com')
 
@@ -179,6 +180,7 @@ def _send_correction_email(lease, ctx, dry_run=False):
         from_email=FROM_EMAIL,
         to=[ctx['recipient_email']],
         reply_to=[FROM_EMAIL],
+        connection=get_lease_email_connection(),
     )
     msg.attach_alternative(html_body, 'text/html')
 
