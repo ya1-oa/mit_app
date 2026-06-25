@@ -473,7 +473,9 @@
         <div class="card-body">
             <div class="row work-types-container">
                 {% for work_type in work_types %}
-                <div class="col-md-3 mb-2">
+                {# 8000-series (8100-8400 MC Day Readings) only show when the 8000s
+                   template is selected — hidden by default. #}
+                <div class="col-md-3 mb-2{% if work_type.work_type_id >= 8000 %} wt-8000-series{% endif %}"{% if work_type.work_type_id >= 8000 %} style="display:none;"{% endif %}>
                     <label class="form-label small mb-1">
                         <span class="badge bg-dark">{{ work_type.work_type_id }}</span>
                         {{ work_type.name }}
@@ -776,7 +778,25 @@ $(document).ready(function() {
 
             container.append(configDiv);
         });
+
+        // 8000-series work types only appear when the 8000s template is selected.
+        apply8000Visibility();
     }
+
+    // Show/hide the 8000-series (8100-8400 MC Day Readings) work-type configs
+    // based on whether the "8000s MC Day Readings" template is checked.
+    function apply8000Visibility() {
+        const show = $('#step2-tpl-8000').is(':checked');
+        const cols = $('#modal-work-type-container .wt-8000-series');
+        cols.toggle(show);
+        if (!show) {
+            // Clear hidden 8000-series values so a hidden column can't carry data.
+            cols.find('.work-type-select').val('');
+        }
+    }
+
+    // Live-toggle if the 8000s template is changed while the modal is open.
+    $(document).on('change', '#step2-tpl-8000', apply8000Visibility);
 
     // Set all work types buttons
     $('#set-all-empty-btn').click(function() {
@@ -882,8 +902,8 @@ $(document).ready(function() {
         const masterValue = $(this).val();
         const configContainer = $(this).closest('.work-type-config-item');
 
-        // Update all follower work types in this room
-        configContainer.find('.work-type-select[data-follows-master="true"]').each(function() {
+        // Update all follower work types in this room (skip hidden 8000-series).
+        configContainer.find('.work-type-select[data-follows-master="true"]:visible').each(function() {
             $(this).val(masterValue);
         });
     });
