@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'contractor_hub',
     'dev_hub',
     'tasks',
+    'ar_tracking',
 
     # Auth
     #'django.contrib.sites',

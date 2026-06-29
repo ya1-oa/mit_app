@@ -191,5 +191,12 @@ def home(request):
             'icon': 'fas fa-file-invoice-dollar',
             'color': '#059669',
         },
+        {
+            'name': 'Accounts Receivable',
+            'description': 'Track contractor invoices and follow-up reminders',
+            'url': '/ar-tracking/',
+            'icon': 'fas fa-hand-holding-dollar',
+            'color': '#0891b2',
+        },
     ]
     return render(request, 'account/home.html', {'apps': apps})

@@ -58,6 +58,9 @@ urlpatterns = [
     # Contractor Bid Hub
     path('contractor-hub/', include('contractor_hub.urls')),
 
+    # Accounts Receivable Tracking — invoice communication activity + follow-ups
+    path('ar-tracking/', include('ar_tracking.urls')),
+
     # Dev Hub — internal project tracking + notification hub
     path('dev-hub/', include('dev_hub.urls')),
 

@@ -1,0 +1,49 @@
+{% extends "account/base.html" %}
+
+{% block title %}Accounts Receivable — Claimet{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+            <li class="breadcrumb-item active">Accounts Receivable</li>
+        </ol>
+    </nav>
+    <h1 class="ms-3">Accounts Receivable</h1>
+</div>
+{% endblock %}
+
+{% block content %}
+<p class="text-muted mb-4">
+    Track contractor invoices through Invoiced → Delayed → Paid. Log communication activity
+    and schedule follow-up reminders per invoice.
+</p>
+
+<div class="row g-3">
+    {% for col in columns %}
+    <div class="col-md-4">
+        <div class="card h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <span class="fw-semibold">{{ col.label }}</span>
+                <span class="badge bg-secondary">{{ col.estimates|length }}</span>
+            </div>
+            <div class="card-body p-2">
+                {% for e in col.estimates %}
+                <a href="{% url 'ar_tracking:detail' e.id %}"
+                   class="d-block p-2 mb-2 rounded text-decoration-none"
+                   style="background:#f8fafc;border:1px solid #e2e8f0;color:inherit;">
+                    <div class="fw-semibold" style="font-size:.9rem;">{{ e.gc_contractor.name }}</div>
+                    <div class="text-muted" style="font-size:.78rem;">{{ e.client.pOwner }}</div>
+                    <div class="text-muted" style="font-size:.78rem;">{{ e.estimate_number|default:"—" }}</div>
+                    <div class="fw-semibold mt-1" style="font-size:.85rem;">${{ e.grand_total|floatformat:2 }}</div>
+                </a>
+                {% empty %}
+                <p class="text-muted text-center py-3 mb-0" style="font-size:.85rem;">No invoices</p>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

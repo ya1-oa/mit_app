@@ -183,6 +183,7 @@ class EstimateStatus(models.TextChoices):
     SUBMITTED   = 'submitted',   'Submitted to Insurance'
     APPROVED    = 'approved',    'Approved'
     BILLED      = 'billed',      'Billed'
+    DELAYED     = 'delayed',     'Delayed'  # AR tracking board column — payment overdue/stalled
     PAID        = 'paid',        'Paid'
     CANCELLED   = 'cancelled',   'Cancelled'
 
@@ -246,7 +247,7 @@ class GCEstimate(models.Model):
         constraints = [
             models.UniqueConstraint(
                 fields=['client'],
-                condition=models.Q(status__in=['draft', 'submitted', 'approved', 'billed']),
+                condition=models.Q(status__in=['draft', 'submitted', 'approved', 'billed', 'delayed']),
                 name='one_active_estimate_per_client',
             )
         ]
