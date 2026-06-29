@@ -311,6 +311,11 @@ CELERY_BEAT_SCHEDULE = {
         'schedule': crontab(hour=6, minute=0),
         'kwargs': {'triggered_by': 'schedule'},
     },
+    # ── Lease signature reminders: 24h -> 48h -> 72h cadence — checked every 30 min
+    'lease-signature-reminders': {
+        'task': 'lease_manager.tasks.send_signature_reminders_task',
+        'schedule': crontab(minute='*/30'),
+    },
 }
 
 # ==================== Cache Configuration ====================

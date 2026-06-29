@@ -1955,6 +1955,15 @@ class LeaseSignatureRequest(models.Model):
     declined_at = models.DateTimeField(null=True, blank=True)
     expires_at  = models.DateTimeField()  # set to sent_at + 7 days on creation
 
+    # ── Reminder cadence (24h -> 48h -> 72h after the previous reminder) ─────
+    # Each is set the moment that reminder is sent; the Celery Beat task scans
+    # for requests still pending/viewed and sends the next one whose threshold
+    # has elapsed. The cadence stops automatically once status='signed' (or
+    # 'declined'/'expired') — that's a queryset filter, not a flag here.
+    reminder_24h_sent_at = models.DateTimeField(null=True, blank=True)
+    reminder_48h_sent_at = models.DateTimeField(null=True, blank=True)
+    reminder_72h_sent_at = models.DateTimeField(null=True, blank=True)
+
     class Meta:
         ordering = ['signer_role', '-sent_at']
         verbose_name = 'Lease Signature Request'

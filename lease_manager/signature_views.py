@@ -1054,6 +1054,63 @@ def _send_signature_request_email(sig_req, lease, signing_url):
         logger.error('Signature request email failed for %s: %s', sig_req.signer_email, exc)
 
 
+_REMINDER_COPY = {
+    '24h': "This is a reminder that you haven't yet signed your lease document.",
+    '48h': "Second reminder: your lease document is still waiting for your signature.",
+    '72h': "Final reminder: please sign your lease document as soon as possible.",
+}
+
+
+def _send_signature_reminder_email(sig_req, stage):
+    """
+    Re-send the signing link as a follow-up reminder. `stage` is '24h', '48h',
+    or '72h' — used only for the copy/subject, not the scheduling logic (that
+    lives in lease_manager.tasks.send_signature_reminders_task).
+    """
+    lease = sig_req.lease
+    signing_url = f"{SITE_URL}/lease-manager/sign/{sig_req.token}/"
+    subject = (
+        f'Reminder: Sign your lease — '
+        f'{lease.property_address or lease.client.pOwner}'
+    )
+    try:
+        html_body = render_to_string(
+            'lease_manager/email/signature_request.html',
+            {
+                'sig_req':        sig_req,
+                'lease':          lease,
+                'signing_url':    signing_url,
+                'reminder_note':  _REMINDER_COPY.get(stage, ''),
+            }
+        )
+    except Exception:
+        html_body = None
+
+    text_body = (
+        f"Hi {sig_req.signer_name},\n\n"
+        f"{_REMINDER_COPY.get(stage, '')}\n\n"
+        f"Property: {lease.property_address}\n"
+        f"Your role: {sig_req.get_signer_role_display()}\n\n"
+        f"Sign here (link expires {sig_req.expires_at.strftime('%B %d, %Y')}):\n"
+        f"{signing_url}\n\n"
+        f"This is a legally binding electronic signature. "
+        f"By signing you agree to the terms of the lease.\n\n"
+        f"— The Claimet Team"
+    )
+
+    msg = EmailMultiAlternatives(
+        subject=subject,
+        body=text_body,
+        from_email=get_lease_from_email(),
+        connection=get_lease_email_connection(),
+        to=[sig_req.signer_email],
+    )
+    if html_body:
+        msg.attach_alternative(html_body, 'text/html')
+    msg.send()
+    logger.info('Signature %s reminder sent to %s (lease %s)', stage, sig_req.signer_email, lease.id)
+
+
 # ============================================================================
 # PUBLIC SIGNING PAGES  (no login required)
 # ============================================================================
