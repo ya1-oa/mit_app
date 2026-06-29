@@ -50,11 +50,46 @@ class CustomUserManager(BaseUserManager):
             )
         return self._create_user(email, password, **extra_fields)
     
+class Tenant(models.Model):
+    """
+    A contractor company using ClaiMetApp as its own siloed workspace.
+    Every tenant-scoped model (see TenantScopedModel in tenancy.py) carries a
+    FK to one of these. Users get exactly one tenant (CustomUser.tenant
+    below) — staff/internal ClaiMetApp accounts have tenant=NULL, which is
+    the signal that distinguishes "internal user" from "customer user".
+    """
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('suspended', 'Suspended'),
+        ('trial', 'Trial'),
+    ]
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=64, unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', db_index=True)
+    plan = models.CharField(max_length=50, blank=True, default='')
+    primary_contact_email = models.EmailField(blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
 class CustomUser(AbstractUser):
     email = models.EmailField("email", unique=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
+
+    # NULL = internal/staff ClaiMetApp account (no ambient tenant — see
+    # docsAppR/middleware.py TenantMiddleware). Non-staff accounts get exactly
+    # one tenant; null=True only during the migration/backfill window.
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='users',
+    )
 
     objects = CustomUserManager()
 
