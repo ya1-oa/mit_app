@@ -4192,6 +4192,67 @@ def dashboard(request):
     except Exception:
         encircle_sync_log = None
 
+    # ── AR revenue data ────────────────────────────────────────────────────
+    ar_total_invoiced  = Decimal('0')
+    ar_total_collected = Decimal('0')
+    ar_billed_count    = 0
+    ar_delayed_count   = 0
+    ar_paid_count      = 0
+    ar_recent_invoices = []
+    ar_by_insurer_json = json.dumps({})
+    ar_aging_json      = json.dumps({})
+    try:
+        from ar_tracking.models import GCEstimate
+        from decimal import Decimal as _D
+        ar_qs = list(
+            GCEstimate.objects
+            .filter(status__in=['billed', 'delayed', 'paid'])
+            .select_related('client', 'gc_contractor')
+            .order_by('-created_at')
+        )
+        for e in ar_qs:
+            gt = e.grand_total
+            ar_total_invoiced += gt
+            if e.status == 'paid':
+                ar_total_collected += gt
+                ar_paid_count += 1
+            elif e.status == 'delayed':
+                ar_delayed_count += 1
+            else:
+                ar_billed_count += 1
+
+        ar_recent_invoices = ar_qs[:8]
+
+        # Revenue by insurer
+        by_insurer: dict = {}
+        for e in ar_qs:
+            name = (e.client.insuranceCo_Name or 'Unknown').strip() or 'Unknown'
+            by_insurer[name] = float(by_insurer.get(name, 0)) + float(e.grand_total)
+        top_insurers = dict(sorted(by_insurer.items(), key=lambda x: x[1], reverse=True)[:8])
+        ar_by_insurer_json = json.dumps(top_insurers)
+
+        # Invoice aging (days since created_at for unpaid)
+        import datetime as _dt
+        _now = timezone.now()
+        aging = {'0-30 days': 0, '31-60 days': 0, '61-90 days': 0, '90+ days': 0}
+        for e in ar_qs:
+            if e.status == 'paid':
+                continue
+            age_days = (_now - e.created_at).days
+            if age_days <= 30:
+                aging['0-30 days'] += 1
+            elif age_days <= 60:
+                aging['31-60 days'] += 1
+            elif age_days <= 90:
+                aging['61-90 days'] += 1
+            else:
+                aging['90+ days'] += 1
+        ar_aging_json = json.dumps(aging)
+    except Exception:
+        pass
+
+    ar_outstanding = ar_total_invoiced - ar_total_collected
+
     context = {
         'total_claims': total_claims,
         'avg_completion': avg_completion,
@@ -4208,6 +4269,16 @@ def dashboard(request):
         'items_completion_json': json.dumps(items_completion),
         # Encircle sync
         'encircle_sync_log': encircle_sync_log,
+        # AR data
+        'ar_total_invoiced':  ar_total_invoiced,
+        'ar_total_collected': ar_total_collected,
+        'ar_outstanding':     ar_outstanding,
+        'ar_billed_count':    ar_billed_count,
+        'ar_delayed_count':   ar_delayed_count,
+        'ar_paid_count':      ar_paid_count,
+        'ar_recent_invoices': ar_recent_invoices,
+        'ar_by_insurer_json': ar_by_insurer_json,
+        'ar_aging_json':      ar_aging_json,
     }
 
     return render(request, 'account/dashboard.html', context)

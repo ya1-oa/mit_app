@@ -34,6 +34,87 @@
             </div>
         </div>
 
+        <!-- ══ AR Revenue KPI Row ════════════════════════════════════════════ -->
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;margin-bottom:1.5rem;">
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;padding:1.25rem 1.5rem;box-shadow:0 2px 8px rgba(15,23,42,.05);position:relative;overflow:hidden;">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#2563eb;border-radius:4px 0 0 4px;"></div>
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:.4rem;">Total Invoiced</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#1e293b;">${{ ar_total_invoiced|floatformat:0|intcomma }}</div>
+            <div style="font-size:.75rem;color:#64748b;margin-top:.2rem;">{{ ar_billed_count }} billed &middot; {{ ar_delayed_count }} delayed &middot; {{ ar_paid_count }} paid</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;padding:1.25rem 1.5rem;box-shadow:0 2px 8px rgba(15,23,42,.05);position:relative;overflow:hidden;">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#059669;border-radius:4px 0 0 4px;"></div>
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:.4rem;">Collected</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#059669;">${{ ar_total_collected|floatformat:0|intcomma }}</div>
+            <div style="font-size:.75rem;color:#64748b;margin-top:.2rem;">{{ ar_paid_count }} paid invoice{{ ar_paid_count|pluralize }}</div>
+          </div>
+          <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;padding:1.25rem 1.5rem;box-shadow:0 2px 8px rgba(15,23,42,.05);position:relative;overflow:hidden;">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:4px;background:#dc2626;border-radius:4px 0 0 4px;"></div>
+            <div style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#94a3b8;margin-bottom:.4rem;">Outstanding</div>
+            <div style="font-size:1.6rem;font-weight:800;color:#dc2626;">${{ ar_outstanding|floatformat:0|intcomma }}</div>
+            <div style="font-size:.75rem;color:#64748b;margin-top:.2rem;">Unpaid balance</div>
+          </div>
+        </div>
+
+        <!-- ══ AR Mini-Kanban ════════════════════════════════════════════════ -->
+        <div style="background:#fff;border:1px solid #e2e8f0;border-radius:.9rem;box-shadow:0 2px 8px rgba(15,23,42,.05);padding:1.25rem 1.5rem;margin-bottom:1.5rem;">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+            <h3 style="margin:0;font-size:1rem;font-weight:700;color:#1e293b;display:flex;align-items:center;gap:.5rem;">
+              <i class="fas fa-file-invoice-dollar" style="color:#2563eb;"></i> Accounts Receivable Pipeline
+            </h3>
+            <a href="{% url 'ar_tracking:board' %}" style="font-size:.78rem;font-weight:600;color:#2563eb;text-decoration:none;">View Full Board &rarr;</a>
+          </div>
+          <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:1rem;">
+
+            <!-- Invoiced (Billed) column -->
+            <div style="background:#eff6ff;border-radius:.6rem;padding:.75rem;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
+                <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#1d4ed8;">Invoiced</span>
+                <span style="background:#2563eb;color:#fff;border-radius:999px;padding:.1rem .5rem;font-size:.72rem;font-weight:700;">{{ ar_billed_count }}</span>
+              </div>
+              {% for e in ar_recent_invoices %}{% if e.status == 'billed' %}
+              <div style="background:#fff;border:1px solid #bfdbfe;border-radius:.5rem;padding:.6rem .75rem;margin-bottom:.5rem;font-size:.78rem;">
+                <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.client.pOwner }}</div>
+                <div style="color:#64748b;font-size:.72rem;">{% if e.client.claimNumber %}#{{ e.client.claimNumber }} &middot; {% endif %}{{ e.client.insuranceCo_Name|truncatechars:20 }}</div>
+                <div style="color:#2563eb;font-weight:700;margin-top:.2rem;">${{ e.grand_total|floatformat:0|intcomma }}</div>
+              </div>
+              {% endif %}{% endfor %}
+              {% if not ar_recent_invoices %}<div style="color:#94a3b8;font-size:.78rem;text-align:center;padding:.5rem 0;">No records</div>{% endif %}
+            </div>
+
+            <!-- Delayed column -->
+            <div style="background:#fff7ed;border-radius:.6rem;padding:.75rem;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
+                <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#c2410c;">Delayed</span>
+                <span style="background:#ea580c;color:#fff;border-radius:999px;padding:.1rem .5rem;font-size:.72rem;font-weight:700;">{{ ar_delayed_count }}</span>
+              </div>
+              {% for e in ar_recent_invoices %}{% if e.status == 'delayed' %}
+              <div style="background:#fff;border:1px solid #fed7aa;border-radius:.5rem;padding:.6rem .75rem;margin-bottom:.5rem;font-size:.78rem;">
+                <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.client.pOwner }}</div>
+                <div style="color:#64748b;font-size:.72rem;">{% if e.client.claimNumber %}#{{ e.client.claimNumber }} &middot; {% endif %}{{ e.client.insuranceCo_Name|truncatechars:20 }}</div>
+                <div style="color:#ea580c;font-weight:700;margin-top:.2rem;">${{ e.grand_total|floatformat:0|intcomma }}</div>
+              </div>
+              {% endif %}{% endfor %}
+            </div>
+
+            <!-- Paid column -->
+            <div style="background:#f0fdf4;border-radius:.6rem;padding:.75rem;">
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.6rem;">
+                <span style="font-size:.72rem;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:#15803d;">Paid</span>
+                <span style="background:#16a34a;color:#fff;border-radius:999px;padding:.1rem .5rem;font-size:.72rem;font-weight:700;">{{ ar_paid_count }}</span>
+              </div>
+              {% for e in ar_recent_invoices %}{% if e.status == 'paid' %}
+              <div style="background:#fff;border:1px solid #bbf7d0;border-radius:.5rem;padding:.6rem .75rem;margin-bottom:.5rem;font-size:.78rem;">
+                <div style="font-weight:600;color:#1e293b;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">{{ e.client.pOwner }}</div>
+                <div style="color:#64748b;font-size:.72rem;">{% if e.client.claimNumber %}#{{ e.client.claimNumber }} &middot; {% endif %}{{ e.client.insuranceCo_Name|truncatechars:20 }}</div>
+                <div style="color:#16a34a;font-weight:700;margin-top:.2rem;">${{ e.grand_total|floatformat:0|intcomma }}</div>
+              </div>
+              {% endif %}{% endfor %}
+            </div>
+
+          </div>
+        </div>
+
         <!-- ══ Encircle Sync Status Widget ══════════════════════════════════ -->
         <div id="encircle-sync-widget" style="
             background:#fff; border:1px solid #e2e8f0; border-radius:.9rem;
@@ -336,6 +417,28 @@
                 </div>
             </div>
         </div>
+
+        <!-- AR Charts -->
+        <div class="charts-grid" style="margin-top:20px;">
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>AR Revenue by Insurer</h3>
+                    <span class="chart-subtitle">Invoiced amount per insurance company</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="arInsurerChart"></canvas>
+                </div>
+            </div>
+            <div class="chart-card">
+                <div class="chart-header">
+                    <h3>Invoice Aging</h3>
+                    <span class="chart-subtitle">Outstanding invoices by days unpaid</span>
+                </div>
+                <div class="chart-container">
+                    <canvas id="arAgingChart"></canvas>
+                </div>
+            </div>
+        </div>
     </main>
 
     <!-- Include Chart.js -->
@@ -359,7 +462,9 @@
         documentCompletion: JSON.parse('{{ document_completion_json|escapejs }}'),
         completionDistribution: JSON.parse('{{ completion_distribution_json|escapejs }}'),
         categoryStats: JSON.parse('{{ category_stats_json|escapejs }}'),
-        itemsCompletion: JSON.parse('{{ items_completion_json|escapejs }}')
+        itemsCompletion: JSON.parse('{{ items_completion_json|escapejs }}'),
+        arByInsurer: JSON.parse('{{ ar_by_insurer_json|escapejs }}'),
+        arAging: JSON.parse('{{ ar_aging_json|escapejs }}')
     };
 
     console.log('Parsed chart data:', window.chartData);
@@ -1169,6 +1274,87 @@ function initializeCharts() {
                 }
             });
             console.log('Items completion chart initialized');
+        }
+
+        // AR Revenue by Insurer Chart
+        const arInsurerCtx = document.getElementById('arInsurerChart');
+        if (arInsurerCtx && window.chartData.arByInsurer && Object.keys(window.chartData.arByInsurer).length) {
+            const insurerData = window.chartData.arByInsurer;
+            new Chart(arInsurerCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(insurerData),
+                    datasets: [{
+                        label: 'Invoiced ($)',
+                        data: Object.values(insurerData),
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 5,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return '$' + context.raw.toLocaleString('en-US', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false }, ticks: { font: { size: 10 } } },
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(v) { return '$' + (v >= 1000 ? (v/1000).toFixed(0)+'k' : v); },
+                                font: { size: 10 }
+                            },
+                            grid: { drawBorder: false }
+                        }
+                    }
+                }
+            });
+        }
+
+        // AR Invoice Aging Chart
+        const arAgingCtx = document.getElementById('arAgingChart');
+        if (arAgingCtx && window.chartData.arAging && Object.keys(window.chartData.arAging).length) {
+            const agingData = window.chartData.arAging;
+            new Chart(arAgingCtx, {
+                type: 'bar',
+                data: {
+                    labels: Object.keys(agingData),
+                    datasets: [{
+                        label: 'Outstanding Invoices',
+                        data: Object.values(agingData),
+                        backgroundColor: ['#22c55e', '#f59e0b', '#f97316', '#ef4444'],
+                        borderRadius: 5,
+                        borderWidth: 0
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return context.raw + ' invoice' + (context.raw !== 1 ? 's' : '');
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { grid: { display: false } },
+                        y: { beginAtZero: true, ticks: { stepSize: 1 }, grid: { drawBorder: false } }
+                    }
+                }
+            });
         }
 
         console.log('All charts initialized successfully');
