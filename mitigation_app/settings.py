@@ -179,6 +179,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 SITE_ID = 1
 LOGIN_REDIRECT_URL = '/'
 ACCOUNT_SIGNUP_FIELDS         = ['email*', 'password1*', 'password2*']
+ACCOUNT_LOGIN_METHODS         = {'email'}
 ACCOUNT_EMAIL_VERIFICATION    = 'mandatory'
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 ACCOUNT_ADAPTER               = 'docsAppR.adapters.AccountAdapter'
