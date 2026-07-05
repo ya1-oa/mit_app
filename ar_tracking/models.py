@@ -25,6 +25,51 @@ from django.db import models
 from docsAppR.tenancy import TenantScopedModel
 
 
+class AREmailTemplate(models.Model):
+    """
+    Reusable email templates for AR follow-up emails.
+    tenant=None means global default (available to all tenants).
+    Per-tenant templates override globals when the names collide.
+    """
+
+    class Category(models.TextChoices):
+        INITIAL_INVOICE = 'initial_invoice', 'Initial Invoice'
+        FOLLOWUP_30     = 'followup_30',     '30-Day Follow-up'
+        FOLLOWUP_60     = 'followup_60',     '60-Day Follow-up'
+        DEMAND          = 'demand',          'Payment Demand'
+        SUPPLEMENT      = 'supplement',      'Supplement Request'
+        GENERAL         = 'general',         'General'
+
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.CASCADE,
+        null=True, blank=True, db_index=True,
+        help_text='Null = global default available to all tenants.',
+    )
+    name     = models.CharField(max_length=200)
+    category = models.CharField(max_length=30, choices=Category.choices, default=Category.GENERAL)
+    subject_template = models.CharField(
+        max_length=500,
+        help_text='Placeholders: {claim_number} {policy_number} {insurer} {contractor_name} {amount} {date}',
+    )
+    body_template = models.TextField(
+        help_text='Same placeholders as subject_template.',
+    )
+    is_default = models.BooleanField(default=False)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True,
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['category', 'name']
+        verbose_name = 'AR Email Template'
+        verbose_name_plural = 'AR Email Templates'
+
+    def __str__(self):
+        prefix = f'[{self.tenant}] ' if self.tenant else '[Global] '
+        return f'{prefix}{self.get_category_display()} — {self.name}'
+
+
 class CommunicationActivity(TenantScopedModel):
     """One entry in an invoice's communication activity feed."""
 

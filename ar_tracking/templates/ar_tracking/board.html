@@ -15,11 +15,79 @@
 {% endblock %}
 
 {% block content %}
-<p class="text-muted mb-4">
-    Track contractor invoices through Invoiced → Delayed → Paid. Log communication activity
-    and schedule follow-up reminders per invoice.
+
+{# ── Revenue summary ─────────────────────────────────────────────────────── #}
+<div class="row g-3 mb-4">
+    <div class="col-md-4">
+        <div class="card border-0" style="background:#f8fafc;">
+            <div class="card-body text-center py-3">
+                <div class="text-muted small mb-1">Total Invoiced</div>
+                <div class="fw-bold fs-5">${{ total_invoiced|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0" style="background:#f0fdf4;">
+            <div class="card-body text-center py-3">
+                <div class="text-muted small mb-1">Collected (Paid)</div>
+                <div class="fw-bold fs-5" style="color:#166534;">${{ total_collected|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card border-0" style="background:#fff7ed;">
+            <div class="card-body text-center py-3">
+                <div class="text-muted small mb-1">Outstanding</div>
+                <div class="fw-bold fs-5" style="color:#9a3412;">${{ outstanding|floatformat:2 }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{# ── Filter bar ──────────────────────────────────────────────────────────── #}
+<form method="get" class="card p-3 mb-4">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Claim #</label>
+            <input type="text" name="claim_number" class="form-control form-control-sm"
+                   placeholder="Search claim #" value="{{ f_claim_number }}">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Policy #</label>
+            <input type="text" name="policy_number" class="form-control form-control-sm"
+                   placeholder="Search policy #" value="{{ f_policy_number }}">
+        </div>
+        <div class="col-md-3">
+            <label class="form-label small fw-semibold mb-1">Insurance Company</label>
+            <select name="insurer" class="form-select form-select-sm">
+                <option value="">All Insurers</option>
+                {% for name in insurer_choices %}
+                <option value="{{ name }}" {% if name == f_insurer %}selected{% endif %}>{{ name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label small fw-semibold mb-1">Status</label>
+            <select name="status" class="form-select form-select-sm">
+                <option value="">All</option>
+                <option value="billed"  {% if f_status == "billed"  %}selected{% endif %}>Invoiced</option>
+                <option value="delayed" {% if f_status == "delayed" %}selected{% endif %}>Delayed</option>
+                <option value="paid"    {% if f_status == "paid"    %}selected{% endif %}>Paid</option>
+            </select>
+        </div>
+        <div class="col-md-1 d-flex gap-1">
+            <button type="submit" class="btn btn-sm btn-primary">Filter</button>
+            <a href="{% url 'ar_tracking:board' %}" class="btn btn-sm btn-outline-secondary">Clear</a>
+        </div>
+    </div>
+</form>
+
+<p class="text-muted mb-3" style="font-size:.85rem;">
+    Track contractor invoices through Invoiced &rarr; Delayed &rarr; Paid. Log communication
+    activity and schedule follow-up reminders per invoice.
 </p>
 
+{# ── Kanban columns ──────────────────────────────────────────────────────── #}
 <div class="row g-3">
     {% for col in columns %}
     <div class="col-md-4">
@@ -35,6 +103,12 @@
                    style="background:#f8fafc;border:1px solid #e2e8f0;color:inherit;">
                     <div class="fw-semibold" style="font-size:.9rem;">{{ e.gc_contractor.name }}</div>
                     <div class="text-muted" style="font-size:.78rem;">{{ e.client.pOwner }}</div>
+                    {% if e.client.claimNumber %}
+                    <div class="text-muted" style="font-size:.75rem;">Claim: {{ e.client.claimNumber }}</div>
+                    {% endif %}
+                    {% if e.client.insuranceCo_Name %}
+                    <div class="text-muted" style="font-size:.75rem;">{{ e.client.insuranceCo_Name }}</div>
+                    {% endif %}
                     <div class="text-muted" style="font-size:.78rem;">{{ e.estimate_number|default:"—" }}</div>
                     <div class="fw-semibold mt-1" style="font-size:.85rem;">${{ e.grand_total|floatformat:2 }}</div>
                 </a>

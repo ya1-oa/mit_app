@@ -17,14 +17,27 @@
 
 {% block content %}
 <div class="row g-4">
+
+    {# ── LEFT PANEL ────────────────────────────────────────────────────────── #}
     <div class="col-md-4">
+
+        {# Invoice card #}
         <div class="card mb-3">
             <div class="card-body">
                 <h6 class="card-title">Invoice</h6>
-                <div class="mb-2"><span class="text-muted small">Claim</span><br>{{ estimate.client.pOwner }}</div>
+                <div class="mb-2"><span class="text-muted small">Property Owner</span><br>{{ estimate.client.pOwner }}</div>
+                {% if estimate.client.claimNumber %}
+                <div class="mb-2"><span class="text-muted small">Claim #</span><br><strong>{{ estimate.client.claimNumber }}</strong></div>
+                {% endif %}
+                {% if estimate.client.policyNumber %}
+                <div class="mb-2"><span class="text-muted small">Policy #</span><br>{{ estimate.client.policyNumber }}</div>
+                {% endif %}
+                {% if estimate.client.insuranceCo_Name %}
+                <div class="mb-2"><span class="text-muted small">Insurance Co.</span><br>{{ estimate.client.insuranceCo_Name }}</div>
+                {% endif %}
                 <div class="mb-2"><span class="text-muted small">Estimate #</span><br>{{ estimate.estimate_number|default:"—" }}</div>
-                <div class="mb-2"><span class="text-muted small">Amount</span><br>
-                    <span class="fw-bold">${{ estimate.grand_total|floatformat:2 }}</span>
+                <div class="mb-2"><span class="text-muted small">Grand Total</span><br>
+                    <span class="fw-bold fs-6">${{ estimate.grand_total|floatformat:2 }}</span>
                 </div>
                 <div class="mb-3">
                     <span class="text-muted small">Status</span><br>
@@ -33,7 +46,7 @@
 
                 <form method="post" action="{% url 'ar_tracking:mark_status' estimate.id %}">
                     {% csrf_token %}
-                    <label class="form-label small fw-semibold">Change status</label>
+                    <label class="form-label small fw-semibold">Change Status</label>
                     <select name="status" class="form-select form-select-sm mb-2">
                         {% for value, label in status_choices %}
                         <option value="{{ value }}" {% if value == estimate.status %}selected{% endif %}>{{ label }}</option>
@@ -44,20 +57,52 @@
             </div>
         </div>
 
+        {# O&P / Financial Breakdown card #}
+        <div class="card mb-3">
+            <div class="card-body">
+                <h6 class="card-title">Financial Breakdown (O&amp;P)</h6>
+                <table class="table table-sm table-borderless mb-0" style="font-size:.82rem;">
+                    <tr>
+                        <td class="text-muted ps-0">Line Items</td>
+                        <td class="text-end pe-0">${{ estimate.line_item_total|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted ps-0">Overhead ({{ estimate.overhead_pct }}%)</td>
+                        <td class="text-end pe-0">${{ estimate.overhead_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted ps-0">Profit ({{ estimate.profit_pct }}%)</td>
+                        <td class="text-end pe-0">${{ estimate.profit_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr>
+                        <td class="text-muted ps-0">Tax ({{ estimate.tax_rate }}%)</td>
+                        <td class="text-end pe-0">${{ estimate.tax_amount|floatformat:2 }}</td>
+                    </tr>
+                    <tr style="border-top:1px solid #dee2e6;">
+                        <td class="fw-bold ps-0">Grand Total</td>
+                        <td class="text-end fw-bold pe-0">${{ estimate.grand_total|floatformat:2 }}</td>
+                    </tr>
+                </table>
+            </div>
+        </div>
+
+        {# Contractor card #}
         <div class="card">
             <div class="card-body">
                 <h6 class="card-title">Contractor</h6>
-                <div class="mb-1">{{ estimate.gc_contractor.name }}</div>
+                <div class="mb-1 fw-semibold">{{ estimate.gc_contractor.name }}</div>
                 <div class="text-muted small">{{ estimate.gc_contractor.email|default:"No email on file" }}</div>
                 <div class="text-muted small">{{ estimate.gc_contractor.phone }}</div>
             </div>
         </div>
     </div>
 
+    {# ── RIGHT PANEL ───────────────────────────────────────────────────────── #}
     <div class="col-md-8">
         <div class="d-flex justify-content-between align-items-center mb-2">
             <h6 class="mb-0">Communication Activity</h6>
-            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#scheduleModal">
+            <button type="button" class="btn btn-sm btn-primary"
+                    data-bs-toggle="modal" data-bs-target="#scheduleModal">
                 <i class="bi bi-clock-history me-1"></i>Schedule Follow-up
             </button>
         </div>
@@ -65,21 +110,52 @@
         <form method="post" action="{% url 'ar_tracking:add_note' estimate.id %}" class="mb-3">
             {% csrf_token %}
             <div class="input-group">
-                <textarea name="notes" class="form-control" rows="2" placeholder="Log a manual note (e.g. a phone call, a reply received)..."></textarea>
+                <textarea name="notes" class="form-control" rows="2"
+                          placeholder="Log a manual note (e.g. a phone call, a reply received)..."></textarea>
                 <button type="submit" class="btn btn-outline-secondary">Add Note</button>
             </div>
         </form>
 
-        {% if activities %}
+        {# Unified timeline: outbound emails + activity entries, newest first #}
+        {% if timeline %}
         <ul class="list-group">
-            {% for a in activities %}
+            {% for item in timeline %}
+
+            {% if item.kind == 'email' %}
+            {# ── Outbound email row ── #}
             <li class="list-group-item">
-                <div class="d-flex justify-content-between">
-                    <span class="badge bg-light text-dark">{{ a.get_activity_type_display }}</span>
-                    <span class="text-muted small">{{ a.created_at|date:"M d, Y H:i" }}{% if a.created_by %} · {{ a.created_by.email }}{% endif %}</span>
+                <div class="d-flex justify-content-between align-items-start flex-wrap gap-1">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <i class="bi bi-envelope text-muted"></i>
+                        <span class="fw-semibold" style="font-size:.85rem;">{{ item.subject }}</span>
+                    </div>
+                    {% if item.is_opened %}
+                    <span class="badge text-bg-success">Opened {{ item.opened_at|date:"M d, H:i" }}</span>
+                    {% else %}
+                    <span class="badge text-bg-secondary">Unseen</span>
+                    {% endif %}
                 </div>
-                {% if a.notes %}<div class="mt-1">{{ a.notes }}</div>{% endif %}
+                <div class="text-muted small mt-1">
+                    To: {{ item.recipients|join:", " }}
+                    &nbsp;&middot;&nbsp; {{ item.sent_at|date:"M d, Y H:i" }}
+                    {% if item.sent_by %}&nbsp;&middot;&nbsp; {{ item.sent_by.email }}{% endif %}
+                </div>
             </li>
+
+            {% else %}
+            {# ── Activity entry row ── #}
+            <li class="list-group-item">
+                <div class="d-flex justify-content-between flex-wrap gap-1">
+                    <span class="badge bg-light text-dark">{{ item.get_activity_type_display }}</span>
+                    <span class="text-muted small">
+                        {{ item.created_at|date:"M d, Y H:i" }}
+                        {% if item.created_by %}&nbsp;&middot;&nbsp; {{ item.created_by.email }}{% endif %}
+                    </span>
+                </div>
+                {% if item.notes %}<div class="mt-1" style="font-size:.9rem;">{{ item.notes }}</div>{% endif %}
+            </li>
+            {% endif %}
+
             {% endfor %}
         </ul>
         {% else %}
@@ -88,9 +164,14 @@
     </div>
 </div>
 
-{# ── Schedule Follow-up modal ──────────────────────────────────────────── #}
-<div class="modal fade" id="scheduleModal" tabindex="-1">
-    <div class="modal-dialog">
+{# ── Schedule Follow-up Modal ─────────────────────────────────────────────── #}
+<div class="modal fade" id="scheduleModal" tabindex="-1"
+     data-claim-number="{{ estimate.client.claimNumber }}"
+     data-policy-number="{{ estimate.client.policyNumber }}"
+     data-insurer="{{ estimate.client.insuranceCo_Name }}"
+     data-contractor="{{ estimate.gc_contractor.name }}"
+     data-amount="{{ estimate.grand_total|floatformat:2 }}">
+    <div class="modal-dialog modal-lg">
         <form method="post" action="{% url 'ar_tracking:schedule_followup' estimate.id %}">
             {% csrf_token %}
             <div class="modal-content">
@@ -99,6 +180,15 @@
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
                 <div class="modal-body">
+
+                    {# Template picker #}
+                    <div class="mb-3">
+                        <label class="form-label small fw-semibold">Load Template</label>
+                        <select id="templatePicker" class="form-select form-select-sm">
+                            <option value="">— Load a template —</option>
+                        </select>
+                    </div>
+
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">To</label>
                         <input type="email" name="to_email" class="form-control"
@@ -106,12 +196,13 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Subject</label>
-                        <input type="text" name="subject" class="form-control"
-                               value="Payment Follow-up — {{ estimate.estimate_number|default:estimate.gc_contractor.name }}" required>
+                        <input type="text" id="id_subject" name="subject" class="form-control"
+                               value="Payment Follow-up — {{ estimate.estimate_number|default:estimate.gc_contractor.name }}"
+                               required>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small fw-semibold">Message</label>
-                        <textarea name="body" class="form-control" rows="4" required>Hi {{ estimate.gc_contractor.contact_person|default:estimate.gc_contractor.name }},
+                        <textarea id="id_body" name="body" class="form-control" rows="5" required>Hi {{ estimate.gc_contractor.contact_person|default:estimate.gc_contractor.name }},
 
 Following up on the outstanding balance of ${{ estimate.grand_total|floatformat:2 }} for {{ estimate.client.pOwner }}. Please let us know the status of payment.
 
@@ -132,9 +223,11 @@ Thank you.</textarea>
                         </div>
                         <div class="col-5">
                             <label class="form-label small fw-semibold">Days</label>
-                            <input type="number" name="followup_days" class="form-control form-control-sm" min="1" value="3">
+                            <input type="number" name="followup_days" class="form-control form-control-sm"
+                                   min="1" value="3">
                         </div>
                     </div>
+
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -144,4 +237,41 @@ Thank you.</textarea>
         </form>
     </div>
 </div>
+
+<script>
+(function () {
+    const modal = document.getElementById('scheduleModal');
+    const subs = {
+        '{claim_number}':    modal.dataset.claimNumber  || '',
+        '{policy_number}':   modal.dataset.policyNumber || '',
+        '{insurer}':         modal.dataset.insurer      || '',
+        '{contractor_name}': modal.dataset.contractor   || '',
+        '{amount}':          modal.dataset.amount       || '',
+        '{date}':            new Date().toLocaleDateString(),
+    };
+
+    fetch("{% url 'ar_tracking:template_api' %}")
+        .then(function (r) { return r.json(); })
+        .then(function (data) {
+            const sel = document.getElementById('templatePicker');
+            data.templates.forEach(function (t) {
+                const opt = new Option('[' + t.category + '] ' + t.name, t.id);
+                opt.dataset.subject = t.subject;
+                opt.dataset.body    = t.body;
+                sel.appendChild(opt);
+            });
+            sel.addEventListener('change', function () {
+                const opt = this.selectedOptions[0];
+                if (!opt.value) return;
+                let s = opt.dataset.subject, b = opt.dataset.body;
+                Object.keys(subs).forEach(function (k) {
+                    s = s.split(k).join(subs[k]);
+                    b = b.split(k).join(subs[k]);
+                });
+                document.getElementById('id_subject').value = s;
+                document.getElementById('id_body').value    = b;
+            });
+        });
+})();
+</script>
 {% endblock %}

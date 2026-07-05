@@ -177,14 +177,13 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Django Allauth settings
-SITE_ID = 1  # Required for allauth
-LOGIN_REDIRECT_URL = '/'  # Where to redirect after successful login
-ACCOUNT_EMAIL_REQUIRED = True                    # Email is required at signup
-ACCOUNT_EMAIL_VERIFICATION = 'mandatory'         # Must verify before first login
-ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3       # Verification link lives 3 days
-ACCOUNT_ADAPTER = 'docsAppR.adapters.AccountAdapter'  # Custom: resend on unverified re-signup
-#settings.ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+# Django Allauth settings (allauth 65.x format)
+SITE_ID = 1
+LOGIN_REDIRECT_URL = '/'
+ACCOUNT_SIGNUP_FIELDS         = ['email*', 'password1*', 'password2*']
+ACCOUNT_EMAIL_VERIFICATION    = 'mandatory'
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
+ACCOUNT_ADAPTER               = 'docsAppR.adapters.AccountAdapter'
 
 AUTH_PASSWORD_VALIDATORS = [{'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'}, {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'}, {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'}, {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'}]
 LANGUAGE_CODE = 'en-us'
@@ -312,6 +311,16 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'docsAppR.tasks.sync_encircle_claims_task',
         'schedule': crontab(hour=6, minute=0),
         'kwargs': {'triggered_by': 'schedule'},
+    },
+    # ── AR: batch follow-up emails — every minute (same cadence as send_scheduled_emails_task)
+    'process-scheduled-batch-emails': {
+        'task': 'email_manager.tasks.process_scheduled_batch_emails',
+        'schedule': crontab(minute='*'),
+    },
+    # ── AR: unopened/opened follow-up trigger check — every hour
+    'check-followup-triggers': {
+        'task': 'email_manager.tasks.check_followup_triggers',
+        'schedule': crontab(minute=0),
     },
 }
 
