@@ -506,28 +506,36 @@ def api_auto_from_encircle(request):
         return JsonResponse({'error': 'No 300-series packout rooms found in this claim'}, status=400)
 
     # Create/upsert CPS session and clear previous run
-    session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
-    session.rooms.all().delete()
+    try:
+        session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
+        session.rooms.all().delete()
+    except Exception as e:
+        logger.error("CPS session DB error for client %s: %s", client_id, e, exc_info=True)
+        return JsonResponse({'error': f'Database error — migrations may not have run: {e}'}, status=500)
 
     # Create pending room records and dispatch one download+analyze task per room
     room_tasks = []
-    for order, room_info in enumerate(packout_rooms):
-        cps_room = BoxCalcCPSRoom.objects.create(
-            session=session,
-            room_name=room_info['name'],
-            order=order,
-            status='pending',
-        )
-        task = download_encircle_room_task.delay(
-            session_id=session.id,
-            room_name=room_info['name'],
-            encircle_claim_id=client.encircle_claim_id,
-            structure_id=structure_id,
-            encircle_room_id=room_info['id'],
-        )
-        cps_room.celery_task_id = task.id
-        cps_room.save(update_fields=['celery_task_id'])
-        room_tasks.append({'room_name': room_info['name'], 'task_id': task.id})
+    try:
+        for order, room_info in enumerate(packout_rooms):
+            cps_room = BoxCalcCPSRoom.objects.create(
+                session=session,
+                room_name=room_info['name'],
+                order=order,
+                status='pending',
+            )
+            task = download_encircle_room_task.delay(
+                session_id=session.id,
+                room_name=room_info['name'],
+                encircle_claim_id=client.encircle_claim_id,
+                structure_id=structure_id,
+                encircle_room_id=room_info['id'],
+            )
+            cps_room.celery_task_id = task.id
+            cps_room.save(update_fields=['celery_task_id'])
+            room_tasks.append({'room_name': room_info['name'], 'task_id': task.id})
+    except Exception as e:
+        logger.error("Error dispatching Encircle tasks for client %s: %s", client_id, e, exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
 
     return JsonResponse({
         'success': True,
