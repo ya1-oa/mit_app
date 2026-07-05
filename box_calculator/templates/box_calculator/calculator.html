@@ -1,0 +1,395 @@
+{% extends "account/base.html" %}
+{% block title %}Box Count Calculator{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">Box Count Calculator</h2>
+      <p class="text-muted mb-0">Estimate pack-out box counts by category for any claim</p>
+    </div>
+    <div id="header-actions" style="display:none">
+      <a id="btn-report" href="#" class="btn btn-outline-secondary me-2" target="_blank">
+        <i class="fas fa-file-alt me-1"></i>Print Report
+      </a>
+      <button id="btn-save" class="btn btn-success">
+        <span id="save-spinner" class="spinner-border spinner-border-sm me-1" style="display:none"></span>
+        <i class="fas fa-save me-1"></i>Save Session
+      </button>
+    </div>
+  </div>
+
+  {# ── Client selector ────────────────────────────────────────────────── #}
+  <div class="card mb-4">
+    <div class="card-body">
+      <label class="form-label fw-semibold">Select Client</label>
+      <select id="client-select" class="form-select form-select-lg">
+        <option value="">— choose a client —</option>
+        {% for c in clients %}
+        <option value="{{ c.id }}"
+                data-owner="{{ c.pOwner }}"
+                data-claim="{{ c.claimNumber|default:'' }}">
+          {{ c.pOwner }}{% if c.claimNumber %} — #{{ c.claimNumber }}{% endif %}{% if c.pAddress %} &nbsp;·&nbsp; {{ c.pAddress }}{% endif %}
+        </option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+
+  {# ── Workspace ───────────────────────────────────────────────────────── #}
+  <div id="workspace" style="display:none">
+    <div class="row g-4">
+
+      {# Left: Room list + add items #}
+      <div class="col-lg-7">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <h6 class="mb-0">Rooms</h6>
+          <button id="btn-add-room" class="btn btn-sm btn-outline-primary">
+            <i class="fas fa-plus me-1"></i>Add Custom Room
+          </button>
+        </div>
+        <div id="room-list"></div>
+
+        <div class="mt-3">
+          <button id="btn-calculate" class="btn btn-primary">
+            <i class="fas fa-calculator me-1"></i>Calculate Box Counts
+          </button>
+        </div>
+      </div>
+
+      {# Right: Results #}
+      <div class="col-lg-5">
+        <div class="card" id="results-card" style="display:none">
+          <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+            <span>Box Count Summary</span>
+            <span id="total-badge" class="badge bg-primary rounded-pill">0 boxes</span>
+          </div>
+          <div class="card-body p-0">
+            <table class="table table-sm mb-0" id="results-table">
+              <thead class="table-light">
+                <tr>
+                  <th>Room</th>
+                  <th class="text-center" title="Small 1.5 cu ft">Sm</th>
+                  <th class="text-center" title="Medium 3.0 cu ft">Med</th>
+                  <th class="text-center" title="Large 4.5 cu ft">Lg</th>
+                  <th class="text-center" title="Dish Pack 5.2 cu ft">DP</th>
+                  <th class="text-center" title="Wardrobe 10 cu ft">WD</th>
+                  <th class="text-center" title="XL Furniture Wrap">XL</th>
+                  <th class="text-center fw-bold">Total</th>
+                </tr>
+              </thead>
+              <tbody id="results-tbody"></tbody>
+              <tfoot id="results-tfoot" class="table-warning fw-bold"></tfoot>
+            </table>
+          </div>
+          <div class="card-footer text-muted small" id="cubic-feet-line"></div>
+        </div>
+
+        <div class="card mt-3">
+          <div class="card-header fw-semibold">Notes</div>
+          <div class="card-body">
+            <textarea id="session-notes" class="form-control" rows="3"
+                      placeholder="Any notes about this pack-out…"></textarea>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+{# ── Category select template (hidden, cloned via JS) ─────────────────── #}
+<template id="tpl-category-select">
+  <select class="form-select form-select-sm item-category" name="category">
+    <option value="">— category —</option>
+    {% for group, cats in category_groups.items %}
+    <optgroup label="{{ group }}">
+      {% for value, label in cats %}
+      <option value="{{ value }}">{{ label }}</option>
+      {% endfor %}
+    </optgroup>
+    {% endfor %}
+  </select>
+</template>
+
+<script>
+// ── State ─────────────────────────────────────────────────────────────────
+let currentClientId = null;
+let sessionId       = null;
+let roomsData       = {};  // roomName → {items: [...]}
+
+// Items that use compartments
+const COMPARTMENT_CATS = new Set([
+  'dresser','nightstand','filing_cabinet','desk',
+  'entertainment_center','bookshelf','china_cabinet'
+]);
+
+// ── DOM refs ──────────────────────────────────────────────────────────────
+const clientSelect  = document.getElementById('client-select');
+const workspace     = document.getElementById('workspace');
+const roomList      = document.getElementById('room-list');
+const headerActions = document.getElementById('header-actions');
+const btnReport     = document.getElementById('btn-report');
+const btnSave       = document.getElementById('btn-save');
+const saveSpinner   = document.getElementById('save-spinner');
+const resultsCard   = document.getElementById('results-card');
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function csrf() {
+  return document.cookie.split(';').map(c => c.trim())
+    .find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
+}
+
+function postJSON(url, body) {
+  return fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-CSRFToken': csrf()},
+    body: JSON.stringify(body),
+  }).then(r => r.json());
+}
+
+// ── Client selection ──────────────────────────────────────────────────────
+clientSelect.addEventListener('change', async () => {
+  currentClientId = clientSelect.value;
+  if (!currentClientId) { workspace.style.display = 'none'; return; }
+
+  roomList.innerHTML = '<p class="text-muted">Loading rooms…</p>';
+  workspace.style.display = 'block';
+  resultsCard.style.display = 'none';
+  headerActions.style.display = 'none';
+  sessionId = null;
+  roomsData = {};
+
+  const data = await fetch(`/calculator/api/rooms/${currentClientId}/`).then(r => r.json());
+  sessionId = data.session_id;
+  roomList.innerHTML = '';
+
+  if (data.rooms && data.rooms.length) {
+    data.rooms.forEach(r => renderRoom(r.name, r.items));
+  } else {
+    roomList.innerHTML = '<p class="text-muted small">No rooms found for this client. Use "Add Custom Room" to add one.</p>';
+  }
+
+  if (sessionId) {
+    headerActions.style.display = 'flex';
+    btnReport.href = `/calculator/report/${sessionId}/`;
+  }
+});
+
+// ── Render a room accordion card ──────────────────────────────────────────
+function renderRoom(roomName, savedItems) {
+  const safeId = 'room-' + roomName.replace(/[^a-z0-9]/gi, '_');
+  const card = document.createElement('div');
+  card.className = 'card mb-2';
+  card.dataset.room = roomName;
+  card.innerHTML = `
+    <div class="card-header d-flex justify-content-between align-items-center py-2 px-3"
+         style="cursor:pointer" onclick="toggleRoom('${safeId}')">
+      <span class="fw-semibold" style="font-size:.9rem;">${roomName}</span>
+      <div class="d-flex gap-2 align-items-center">
+        <span class="badge bg-secondary item-count-badge">0 items</span>
+        <i class="fas fa-chevron-down text-muted" style="font-size:.75rem;" id="${safeId}-chevron"></i>
+      </div>
+    </div>
+    <div id="${safeId}" style="display:none">
+      <div class="card-body p-2">
+        <table class="table table-sm table-borderless mb-2" style="font-size:.82rem;">
+          <thead class="table-light">
+            <tr>
+              <th style="width:40%">Category</th>
+              <th style="width:15%" class="text-center">Qty</th>
+              <th style="width:20%" class="text-center">Compartments</th>
+              <th style="width:20%">Note</th>
+              <th style="width:5%"></th>
+            </tr>
+          </thead>
+          <tbody class="item-tbody"></tbody>
+        </table>
+        <div class="d-flex gap-2">
+          <button class="btn btn-xs btn-outline-primary" style="font-size:.75rem;padding:2px 8px;"
+                  onclick="addItemRow(this)">+ Add Item</button>
+          <button class="btn btn-xs btn-outline-secondary" style="font-size:.75rem;padding:2px 8px;"
+                  onclick="loadDefaults(this, '${roomName}')">Load Defaults</button>
+        </div>
+      </div>
+    </div>
+  `;
+  roomList.appendChild(card);
+
+  const tbody = card.querySelector('.item-tbody');
+  (savedItems || []).forEach(item => addItemRow(card.querySelector('button'), item));
+  updateItemBadge(card);
+}
+
+function toggleRoom(id) {
+  const el = document.getElementById(id);
+  const chevron = document.getElementById(id + '-chevron');
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+  if (chevron) chevron.style.transform = el.style.display === 'none' ? '' : 'rotate(180deg)';
+}
+
+// ── Add an item row to a room ─────────────────────────────────────────────
+function addItemRow(triggerEl, savedItem) {
+  const card = triggerEl.closest('.card');
+  const tbody = card.querySelector('.item-tbody');
+
+  const catTpl = document.getElementById('tpl-category-select').content.cloneNode(true);
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td class="ps-0"></td>
+    <td class="text-center"><input type="number" class="form-control form-control-sm item-qty" min="1" value="1" style="width:60px;margin:auto"></td>
+    <td class="text-center"><input type="number" class="form-control form-control-sm item-comp" min="0" value="0" style="width:60px;margin:auto" title="compartments / drawers / shelves"></td>
+    <td><input type="text" class="form-control form-control-sm item-note" placeholder="note…" style="font-size:.78rem;"></td>
+    <td><button class="btn btn-sm text-danger p-0" onclick="this.closest('tr').remove(); updateItemBadge(this.closest('.card'))" title="remove">×</button></td>
+  `;
+  tr.querySelector('td').appendChild(catTpl);
+
+  if (savedItem) {
+    tr.querySelector('.item-category').value = savedItem.category || '';
+    tr.querySelector('.item-qty').value       = savedItem.quantity || 1;
+    tr.querySelector('.item-comp').value      = savedItem.compartments || 0;
+    tr.querySelector('.item-note').value      = savedItem.note || '';
+  }
+
+  // Show/hide compartments based on category
+  const catSel = tr.querySelector('.item-category');
+  const compInput = tr.querySelector('.item-comp');
+  function toggleComp() {
+    compInput.closest('td').style.opacity = COMPARTMENT_CATS.has(catSel.value) ? '1' : '0.3';
+    if (!COMPARTMENT_CATS.has(catSel.value)) compInput.value = 0;
+  }
+  catSel.addEventListener('change', toggleComp);
+  toggleComp();
+
+  tbody.appendChild(tr);
+  updateItemBadge(card);
+  catSel.addEventListener('change', () => updateItemBadge(card));
+}
+
+function updateItemBadge(card) {
+  const rows = card.querySelectorAll('.item-tbody tr');
+  const badge = card.querySelector('.item-count-badge');
+  if (badge) badge.textContent = `${rows.length} item${rows.length !== 1 ? 's' : ''}`;
+}
+
+// ── Load room defaults ────────────────────────────────────────────────────
+async function loadDefaults(btn, roomName) {
+  const card = btn.closest('.card');
+  const data = await postJSON('/calculator/api/defaults/', {room_name: roomName});
+  if (data.items) {
+    card.querySelector('.item-tbody').innerHTML = '';
+    data.items.forEach(item => addItemRow(btn, item));
+    updateItemBadge(card);
+  }
+}
+
+// ── Add custom room ───────────────────────────────────────────────────────
+document.getElementById('btn-add-room').addEventListener('click', () => {
+  const name = prompt('Room name:');
+  if (name && name.trim()) renderRoom(name.trim(), []);
+});
+
+// ── Collect room data from DOM ────────────────────────────────────────────
+function collectRooms() {
+  const rooms = [];
+  document.querySelectorAll('#room-list .card[data-room]').forEach(card => {
+    const roomName = card.dataset.room;
+    const items = [];
+    card.querySelectorAll('.item-tbody tr').forEach(tr => {
+      const cat = tr.querySelector('.item-category')?.value;
+      if (!cat) return;
+      items.push({
+        category:     cat,
+        quantity:     parseInt(tr.querySelector('.item-qty')?.value || '1'),
+        compartments: parseInt(tr.querySelector('.item-comp')?.value || '0'),
+        note:         tr.querySelector('.item-note')?.value || '',
+      });
+    });
+    rooms.push({name: roomName, items});
+  });
+  return rooms;
+}
+
+// ── Calculate ─────────────────────────────────────────────────────────────
+document.getElementById('btn-calculate').addEventListener('click', async () => {
+  const rooms = collectRooms();
+  if (!rooms.length) { alert('Add at least one room with items.'); return; }
+
+  const data = await postJSON('/calculator/api/calculate/', {rooms});
+  if (data.error) { alert('Error: ' + data.error); return; }
+  renderResults(data.report);
+});
+
+function renderResults(report) {
+  const tbody = document.getElementById('results-tbody');
+  const tfoot = document.getElementById('results-tfoot');
+  tbody.innerHTML = '';
+
+  report.rooms.forEach(r => {
+    const t = r.totals;
+    const total = t.total_boxes + t.xl;
+    tbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td class="text-nowrap" style="font-size:.82rem;">${r.room}</td>
+        <td class="text-center">${t.small || ''}</td>
+        <td class="text-center">${t.medium || ''}</td>
+        <td class="text-center">${t.large || ''}</td>
+        <td class="text-center">${t.dish_pack || ''}</td>
+        <td class="text-center">${t.wardrobe || ''}</td>
+        <td class="text-center text-muted">${t.xl || ''}</td>
+        <td class="text-center fw-bold">${total || ''}</td>
+      </tr>
+    `);
+  });
+
+  const tot = report.totals;
+  const grandTotal = tot.total_boxes + tot.xl;
+  tfoot.innerHTML = `
+    <tr>
+      <td class="ps-2">TOTALS</td>
+      <td class="text-center">${tot.small || 0}</td>
+      <td class="text-center">${tot.medium || 0}</td>
+      <td class="text-center">${tot.large || 0}</td>
+      <td class="text-center">${tot.dish_pack || 0}</td>
+      <td class="text-center">${tot.wardrobe || 0}</td>
+      <td class="text-center">${tot.xl || 0}</td>
+      <td class="text-center">${grandTotal}</td>
+    </tr>
+  `;
+
+  document.getElementById('total-badge').textContent = `${tot.total_boxes} boxes + ${tot.xl} XL`;
+  document.getElementById('cubic-feet-line').textContent =
+    `Total volume: ${parseFloat(tot.total_cubic_feet || 0).toFixed(1)} cu ft`;
+
+  resultsCard.style.display = 'block';
+  resultsCard.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+
+// ── Save session ──────────────────────────────────────────────────────────
+btnSave.addEventListener('click', async () => {
+  if (!currentClientId) { alert('Select a client first.'); return; }
+  const rooms = collectRooms();
+  if (!rooms.length) { alert('Nothing to save.'); return; }
+
+  saveSpinner.style.display = 'inline-block';
+  btnSave.disabled = true;
+  try {
+    const data = await postJSON('/calculator/api/save/', {
+      client_id: currentClientId,
+      rooms,
+      notes: document.getElementById('session-notes').value,
+    });
+    if (data.error) { alert('Save error: ' + data.error); return; }
+    sessionId = data.session_id;
+    headerActions.style.display = 'flex';
+    btnReport.href = `/calculator/report/${sessionId}/`;
+    if (data.report) renderResults(data.report);
+    // Brief success indicator
+    btnSave.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
+    setTimeout(() => { btnSave.innerHTML = '<i class="fas fa-save me-1"></i>Save Session'; }, 2000);
+  } finally {
+    saveSpinner.style.display = 'none';
+    btnSave.disabled = false;
+  }
+});
+</script>
+{% endblock %}

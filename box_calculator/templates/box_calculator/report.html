@@ -1,0 +1,165 @@
+{% extends "account/base.html" %}
+{% block title %}Box Count Report — {{ session.client.pOwner }}{% endblock %}
+
+{% block extra_css %}
+<style>
+@media print {
+  .no-print { display: none !important; }
+  .card { box-shadow: none !important; border: 1px solid #dee2e6 !important; }
+  body { font-size: 12px; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+
+  {# ── Header ── #}
+  <div class="d-flex justify-content-between align-items-start mb-4 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-1">Box Count Report</h2>
+      <div class="text-muted">{{ session.client.pOwner }}{% if session.client.claimNumber %} &nbsp;·&nbsp; Claim #{{ session.client.claimNumber }}{% endif %}</div>
+      <div class="text-muted small">Generated: {{ session.updated_at|date:"N j, Y, g:i a" }}</div>
+    </div>
+    <div class="no-print d-flex gap-2">
+      <a href="{% url 'calculator_home' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-arrow-left me-1"></i>Back to Calculator
+      </a>
+      <button onclick="window.print()" class="btn btn-primary btn-sm">
+        <i class="fas fa-print me-1"></i>Print / Save PDF
+      </button>
+    </div>
+  </div>
+
+  {# ── Grand totals card ── #}
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">Grand Totals</div>
+    <div class="card-body p-0">
+      <table class="table table-bordered mb-0 text-center">
+        <thead class="table-light">
+          <tr>
+            <th>Small<br><small class="text-muted fw-normal">1.5 cu ft</small></th>
+            <th>Medium<br><small class="text-muted fw-normal">3.0 cu ft</small></th>
+            <th>Large<br><small class="text-muted fw-normal">4.5 cu ft</small></th>
+            <th>Dish Pack<br><small class="text-muted fw-normal">5.2 cu ft</small></th>
+            <th>Wardrobe<br><small class="text-muted fw-normal">10 cu ft</small></th>
+            <th>XL Wrap<br><small class="text-muted fw-normal">furniture</small></th>
+            <th class="table-primary">Total Boxes</th>
+            <th class="table-primary">Volume (cu ft)</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr class="fw-bold fs-5">
+            <td>{{ report.totals.small }}</td>
+            <td>{{ report.totals.medium }}</td>
+            <td>{{ report.totals.large }}</td>
+            <td>{{ report.totals.dish_pack }}</td>
+            <td>{{ report.totals.wardrobe }}</td>
+            <td class="text-muted">{{ report.totals.xl }}</td>
+            <td class="table-primary">{{ report.totals.total_boxes }}</td>
+            <td class="table-primary">{{ report.totals.total_cubic_feet }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  {# ── Per-room summary ── #}
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">Room Summary</div>
+    <div class="card-body p-0">
+      <table class="table table-sm table-bordered table-hover mb-0 text-center">
+        <thead class="table-light">
+          <tr>
+            <th class="text-start">Room</th>
+            <th>Small</th>
+            <th>Medium</th>
+            <th>Large</th>
+            <th>Dish Pack</th>
+            <th>Wardrobe</th>
+            <th>XL Wrap</th>
+            <th class="fw-bold">Boxes</th>
+            <th class="fw-bold">cu ft</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for room_report in report.rooms %}
+          <tr>
+            <td class="text-start fw-semibold">{{ room_report.room }}</td>
+            <td>{{ room_report.totals.small|default:"" }}</td>
+            <td>{{ room_report.totals.medium|default:"" }}</td>
+            <td>{{ room_report.totals.large|default:"" }}</td>
+            <td>{{ room_report.totals.dish_pack|default:"" }}</td>
+            <td>{{ room_report.totals.wardrobe|default:"" }}</td>
+            <td class="text-muted">{{ room_report.totals.xl|default:"" }}</td>
+            <td class="fw-bold">{{ room_report.totals.total_boxes }}</td>
+            <td class="text-muted small">{{ room_report.totals.total_cubic_feet }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+        <tfoot class="table-warning fw-bold">
+          <tr>
+            <td class="text-start">TOTAL</td>
+            <td>{{ report.totals.small }}</td>
+            <td>{{ report.totals.medium }}</td>
+            <td>{{ report.totals.large }}</td>
+            <td>{{ report.totals.dish_pack }}</td>
+            <td>{{ report.totals.wardrobe }}</td>
+            <td>{{ report.totals.xl }}</td>
+            <td>{{ report.totals.total_boxes }}</td>
+            <td>{{ report.totals.total_cubic_feet }}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  </div>
+
+  {# ── Per-room line item detail ── #}
+  {% for room_report in report.rooms %}
+  {% if room_report.line_items %}
+  <div class="card mb-3">
+    <div class="card-header fw-semibold" style="font-size:.9rem;">
+      {{ room_report.room }}
+      <span class="badge bg-secondary ms-2">{{ room_report.totals.total_boxes }} boxes</span>
+      {% if room_report.totals.xl %}<span class="badge bg-secondary ms-1">{{ room_report.totals.xl }} XL</span>{% endif %}
+    </div>
+    <div class="card-body p-0">
+      <table class="table table-sm mb-0" style="font-size:.82rem;">
+        <thead class="table-light">
+          <tr>
+            <th>Item</th>
+            <th class="text-center">Qty</th>
+            <th class="text-center">Box Type</th>
+            <th class="text-center">Boxes</th>
+            <th>Note</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for line in room_report.line_items %}
+          <tr>
+            <td>{{ line.category_label }}{% if line.is_furniture %} <span class="badge bg-light text-dark border" style="font-size:.7rem;">XL</span>{% endif %}</td>
+            <td class="text-center">{{ line.quantity }}</td>
+            <td class="text-center text-muted">{{ line.box_size_label }}</td>
+            <td class="text-center fw-semibold">{{ line.box_count }}</td>
+            <td class="text-muted">{{ line.note }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+  {% endfor %}
+
+  {% if session.notes %}
+  <div class="card mb-4">
+    <div class="card-header fw-semibold">Notes</div>
+    <div class="card-body">{{ session.notes }}</div>
+  </div>
+  {% endif %}
+
+  <div class="text-muted small text-center no-print">
+    All Phase Consulting &nbsp;·&nbsp; Box Count Report &nbsp;·&nbsp; {{ session.updated_at|date:"N j, Y" }}
+  </div>
+</div>
+{% endblock %}
