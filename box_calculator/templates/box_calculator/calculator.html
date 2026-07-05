@@ -186,6 +186,8 @@
 
 {% block extra_js %}
 <script>
+const BC = "{% url 'calculator_home' %}";  // resolves to /box-calculator/ — all API paths built from this
+
 const clientSelect  = document.getElementById('client-select');
 const step2Card     = document.getElementById('step2-card');
 const encircleCard  = document.getElementById('encircle-method-card');
@@ -242,7 +244,7 @@ async function startEncircleDownload() {
   document.getElementById('encircle-error').style.display = 'none';
 
   try {
-    const resp = await fetch('/calculator/api/auto-from-encircle/', {
+    const resp = await fetch(BC + 'api/auto-from-encircle/', {
       method: 'POST',
       headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrf()},
       body: JSON.stringify({client_id: parseInt(selectedClientId)}),
@@ -286,7 +288,7 @@ function renderRoomRows(rooms) {
 function startPolling(roomName, taskId, sessionId) {
   const ivId = setInterval(async () => {
     try {
-      const resp = await fetch(`/calculator/cps/status/${taskId}/`);
+      const resp = await fetch(`${BC}cps/status/${taskId}/`);
       const data = await resp.json();
       updateRoomRow(taskId, data.state, data.room);
       if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
@@ -330,7 +332,7 @@ function checkAllDone(sessionId) {
   if (Object.keys(pollIntervals).length > 0) return;
   // All tasks finished
   const reportBtn = document.getElementById('btn-open-report');
-  reportBtn.href = `/calculator/cps/report/${sessionId}/`;
+  reportBtn.href = `${BC}cps/report/${sessionId}/`;
   document.getElementById('encircle-done').style.display = '';
 }
 
@@ -401,14 +403,14 @@ btnAnalyze.addEventListener('click', async () => {
   formData.append('client_id', selectedClientId);
 
   try {
-    const resp = await fetch('/calculator/api/analyze-pdf/', {
+    const resp = await fetch(BC + 'api/analyze-pdf/', {
       method: 'POST',
       headers: {'X-CSRFToken': getCsrf()},
       body: formData,
     });
     const data = await resp.json();
     if (!resp.ok || data.error) { showPdfError('Analysis failed: ' + (data.error || 'Unknown error')); return; }
-    window.location.href = `/calculator/cps/report/${data.session_id}/`;
+    window.location.href = `${BC}cps/report/${data.session_id}/`;
   } catch (err) {
     showPdfError('Network error: ' + err.message);
   } finally {
