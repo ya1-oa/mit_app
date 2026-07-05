@@ -47,33 +47,57 @@ def calculator_home(request):
 
 @login_required
 def api_client_rooms(request, client_id):
-    """Return rooms for a client, with any saved session data."""
+    """Return rooms for a client, with any saved session data and Encircle dimensions."""
     client = get_object_or_404(Client, id=client_id)
-    rooms = Room.objects.filter(client=client).order_by('sequence', 'room_name')
+    rooms = list(Room.objects.filter(client=client).order_by('sequence', 'room_name'))
 
-    # Load latest session if exists
-    session = BoxCalcSession.objects.filter(client=client).first()
+    # Load latest session if exists (table may not exist yet if migrations haven't run)
+    session = None
     saved_rooms: dict[str, list] = {}
-    if session:
-        for bcr in session.rooms.prefetch_related('items').all():
-            saved_rooms[bcr.room_name] = [
-                {
-                    'category': i.category,
-                    'quantity': i.quantity,
-                    'compartments': i.compartments,
-                    'note': i.note,
-                    'ai_suggested': i.ai_suggested,
-                }
-                for i in bcr.items.all()
-            ]
+    try:
+        session = BoxCalcSession.objects.filter(client=client).first()
+        if session:
+            for bcr in session.rooms.prefetch_related('items').all():
+                saved_rooms[bcr.room_name] = [
+                    {
+                        'category': i.category,
+                        'quantity': i.quantity,
+                        'compartments': i.compartments,
+                        'note': i.note,
+                        'ai_suggested': i.ai_suggested,
+                    }
+                    for i in bcr.items.all()
+                ]
+    except Exception:
+        pass  # tables don't exist yet — degrade gracefully
+
+    # Fetch Encircle floor plan dimensions if available
+    encircle_dims: dict[str, dict] = {}
+    if client.encircle_claim_id:
+        try:
+            from docsAppR.encircle_client import EncircleAPIClient, EncircleDataProcessor
+            api_ec = EncircleAPIClient()
+            raw_fp = api_ec.get_claim_floor_plan(client.encircle_claim_id)
+            floor_plan = EncircleDataProcessor.process_floor_plan_data(raw_fp)
+            for floor_rooms in floor_plan.values():
+                for rname, dims in floor_rooms.items():
+                    encircle_dims[rname.lower().strip()] = dims
+        except Exception as e:
+            logger.warning(f"Could not fetch Encircle floor plan for client {client_id}: {e}")
 
     room_data = []
     for room in rooms:
         items = saved_rooms.get(room.room_name, get_defaults_for_room(room.room_name))
+        dims = encircle_dims.get(room.room_name.lower().strip(), {})
+        bb = dims.get('bounding_box', {})
         room_data.append({
             'id': str(room.id),
             'name': room.room_name,
             'items': items,
+            'width': bb.get('width'),
+            'length': bb.get('height'),
+            'area': dims.get('area'),
+            'ceiling_height': dims.get('ceiling_height'),
         })
 
     return JsonResponse({
@@ -428,3 +452,48 @@ def cps_delete_room(request, room_id):
     ppr_room = get_object_or_404(BoxCalcCPSRoom, id=room_id)
     ppr_room.delete()
     return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def api_analyze_pdf(request):
+    """
+    Accept an uploaded box count report PDF and return Claude's structured
+    room-by-room box count estimates using the master estimator prompt.
+
+    POST: multipart/form-data
+        file        — PDF file
+        client_id   — optional int (adds claim context to prompt)
+    """
+    from .ai_analyzer import analyze_pdf_report
+
+    pdf_file = request.FILES.get('file')
+    if not pdf_file:
+        return JsonResponse({'error': 'No file uploaded'}, status=400)
+    if not pdf_file.name.lower().endswith('.pdf'):
+        return JsonResponse({'error': 'File must be a PDF'}, status=400)
+    if pdf_file.size > 20 * 1024 * 1024:
+        return JsonResponse({'error': 'PDF must be under 20 MB'}, status=400)
+
+    client_context = ''
+    client_id = request.POST.get('client_id')
+    if client_id:
+        try:
+            c = Client.objects.filter(id=client_id).values('pOwner', 'claimNumber', 'pAddress').first()
+            if c:
+                parts = [c['pOwner']]
+                if c['claimNumber']:
+                    parts.append(f"Claim #{c['claimNumber']}")
+                if c['pAddress']:
+                    parts.append(c['pAddress'])
+                client_context = ' — '.join(parts)
+        except Exception:
+            pass
+
+    try:
+        pdf_bytes = pdf_file.read()
+        result = analyze_pdf_report(pdf_bytes, client_context=client_context)
+        return JsonResponse(result)
+    except Exception as e:
+        logger.error(f"api_analyze_pdf error: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)

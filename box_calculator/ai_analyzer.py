@@ -1,5 +1,6 @@
 """
-AI-powered room content analysis using Claude vision + Encircle images.
+AI-powered room content analysis using Claude vision + Encircle images,
+and PDF box count report analysis.
 """
 from __future__ import annotations
 
@@ -11,6 +12,135 @@ import os
 import requests
 
 logger = logging.getLogger(__name__)
+
+# ── PDF report analysis ───────────────────────────────────────────────────────
+
+_PDF_SYSTEM_PROMPT = """You are a master moving company estimator with decades of experience \
+packing out homes for insurance mitigation claims. You know exactly how many boxes every type \
+of household item requires, and you can spot what less-experienced estimators miss.
+
+Box specifications you MUST follow:
+- SMALL  (1.5 cu ft)  — books, tools, small dense items (≤20 lbs/box)
+- MEDIUM (3.0 cu ft, 20"L×16"W×15"D, ≤65 lbs) — DEFAULT for most household items
+  (clothes, toys, pantry, small electronics, general household)
+- LARGE  (4.5 cu ft)  — pillows, lampshades, lightweight bulky decor, linens
+- DISH_PACK (5.2 cu ft) — china, crystal, glassware, fragile kitchenware
+- WARDROBE (10 cu ft)  — hanging clothes: 1 wardrobe box per 2–3 linear feet of rod
+- XL_WRAP  (furniture pad-wrap, NO box) — sofas, bed frames, dressers, large appliances,
+  TVs>50", artwork>24"
+
+You respond ONLY with valid JSON — no markdown, no explanation."""
+
+_PDF_USER_PROMPT = """Analyze this box count report / contents document and estimate the \
+complete box count needed for a full pack-out.
+
+{context}
+
+{step_instruction}
+
+Return JSON in this EXACT format:
+{{
+  "rooms": [
+    {{
+      "name": "Room Name",
+      "small": 0,
+      "medium": 0,
+      "large": 0,
+      "dish_pack": 0,
+      "wardrobe": 0,
+      "xl_wrap": 0,
+      "notes": "brief estimator notes for any unusual items or caveats"
+    }}
+  ],
+  "summary": {{
+    "total_small": 0,
+    "total_medium": 0,
+    "total_large": 0,
+    "total_dish_pack": 0,
+    "total_wardrobe": 0,
+    "total_xl_wrap": 0,
+    "estimator_notes": "overall notes, items that may require rebuttal from insurer, \
+anything the adjuster might challenge"
+  }}
+}}"""
+
+_STEP1_INSTRUCTION = """STEP 1 — Base estimate:
+Based on the contents listed in this report, estimate how many boxes of each type are needed \
+per room. Use MEDIUM boxes as your default. Only use SMALL for genuinely heavy/dense items."""
+
+_STEP2_INSTRUCTION = """STEP 2 — Review for missed items:
+Also look at the overall context (overview photos / room totals) and add any additional \
+boxes for items that may have been missed or underestimated in the per-room breakdown."""
+
+
+def analyze_pdf_report(pdf_bytes: bytes, client_context: str = '') -> dict:
+    """
+    Analyze an uploaded box count report PDF using Claude.
+
+    Returns:
+        {
+          "success": bool,
+          "rooms": [...],
+          "summary": {...},
+          "error": str | None,
+        }
+    """
+    import anthropic
+
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+    if not api_key:
+        return {"success": False, "rooms": [], "summary": {}, "error": "ANTHROPIC_API_KEY not configured"}
+
+    pdf_b64 = base64.standard_b64encode(pdf_bytes).decode('utf-8')
+
+    context_str = f"\nClient/claim context: {client_context}" if client_context else ""
+
+    content = [
+        {
+            "type": "document",
+            "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
+        },
+        {
+            "type": "text",
+            "text": _PDF_USER_PROMPT.format(
+                context=context_str,
+                step_instruction=_STEP1_INSTRUCTION + "\n\n" + _STEP2_INSTRUCTION,
+            ),
+        },
+    ]
+
+    try:
+        client = anthropic.Anthropic(api_key=api_key)
+        response = client.messages.create(
+            model="claude-sonnet-4-6",
+            max_tokens=4096,
+            system=_PDF_SYSTEM_PROMPT,
+            messages=[{"role": "user", "content": content}],
+        )
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        raw = raw.strip()
+
+        parsed = json.loads(raw)
+        rooms = parsed.get("rooms", [])
+        summary = parsed.get("summary", {})
+
+        # Compute totals if Claude didn't supply them
+        if rooms and not summary.get("total_medium"):
+            for key in ["small", "medium", "large", "dish_pack", "wardrobe", "xl_wrap"]:
+                summary[f"total_{key}"] = sum(r.get(key, 0) for r in rooms)
+
+        return {"success": True, "rooms": rooms, "summary": summary, "error": None}
+
+    except json.JSONDecodeError as e:
+        logger.error(f"PDF analysis JSON parse error: {e}")
+        return {"success": False, "rooms": [], "summary": {}, "error": "AI returned invalid JSON — try again"}
+    except Exception as e:
+        logger.error(f"PDF analysis error: {e}", exc_info=True)
+        return {"success": False, "rooms": [], "summary": {}, "error": str(e)}
 
 VALID_CATEGORIES = [
     "books", "kitchen", "fragile_kitchen", "general", "linens",

@@ -3,7 +3,7 @@
 
 {% block content %}
 <div class="container-fluid py-4">
-  <div class="d-flex align-items-center justify-content-between mb-4 flex-wrap gap-2">
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <div>
       <h2 class="mb-0">Box Count Calculator</h2>
       <p class="text-muted mb-0">Estimate pack-out box counts by category for any claim</p>
@@ -36,66 +36,166 @@
     </div>
   </div>
 
-  {# ── Workspace ───────────────────────────────────────────────────────── #}
-  <div id="workspace" style="display:none">
-    <div class="row g-4">
+  {# ── Tabs ────────────────────────────────────────────────────────────── #}
+  <ul class="nav nav-tabs mb-3" id="calcTabs">
+    <li class="nav-item">
+      <button class="nav-link active" data-tab="manual">
+        <i class="fas fa-list me-1"></i>Manual Calculator
+      </button>
+    </li>
+    <li class="nav-item">
+      <button class="nav-link" data-tab="ai-pdf">
+        <i class="fas fa-robot me-1"></i>AI Report Analyzer
+      </button>
+    </li>
+  </ul>
 
-      {# Left: Room list + add items #}
-      <div class="col-lg-7">
-        <div class="d-flex justify-content-between align-items-center mb-2">
-          <h6 class="mb-0">Rooms</h6>
-          <button id="btn-add-room" class="btn btn-sm btn-outline-primary">
-            <i class="fas fa-plus me-1"></i>Add Custom Room
-          </button>
-        </div>
-        <div id="room-list"></div>
+  {# ── Tab: Manual Calculator ──────────────────────────────────────────── #}
+  <div id="tab-manual">
+    <div id="workspace" style="display:none">
+      <div class="row g-4">
 
-        <div class="mt-3">
-          <button id="btn-calculate" class="btn btn-primary">
-            <i class="fas fa-calculator me-1"></i>Calculate Box Counts
-          </button>
-        </div>
-      </div>
-
-      {# Right: Results #}
-      <div class="col-lg-5">
-        <div class="card" id="results-card" style="display:none">
-          <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-            <span>Box Count Summary</span>
-            <span id="total-badge" class="badge bg-primary rounded-pill">0 boxes</span>
+        {# Left: Room list + add items #}
+        <div class="col-lg-7">
+          <div class="d-flex justify-content-between align-items-center mb-2">
+            <h6 class="mb-0">Rooms</h6>
+            <button id="btn-add-room" class="btn btn-sm btn-outline-primary">
+              <i class="fas fa-plus me-1"></i>Add Custom Room
+            </button>
           </div>
-          <div class="card-body p-0">
-            <table class="table table-sm mb-0" id="results-table">
-              <thead class="table-light">
-                <tr>
-                  <th>Room</th>
-                  <th class="text-center" title="Small 1.5 cu ft">Sm</th>
-                  <th class="text-center" title="Medium 3.0 cu ft">Med</th>
-                  <th class="text-center" title="Large 4.5 cu ft">Lg</th>
-                  <th class="text-center" title="Dish Pack 5.2 cu ft">DP</th>
-                  <th class="text-center" title="Wardrobe 10 cu ft">WD</th>
-                  <th class="text-center" title="XL Furniture Wrap">XL</th>
-                  <th class="text-center fw-bold">Total</th>
-                </tr>
-              </thead>
-              <tbody id="results-tbody"></tbody>
-              <tfoot id="results-tfoot" class="table-warning fw-bold"></tfoot>
-            </table>
+          <div id="room-list"></div>
+
+          <div class="mt-3">
+            <button id="btn-calculate" class="btn btn-primary">
+              <i class="fas fa-calculator me-1"></i>Calculate Box Counts
+            </button>
           </div>
-          <div class="card-footer text-muted small" id="cubic-feet-line"></div>
         </div>
 
-        <div class="card mt-3">
-          <div class="card-header fw-semibold">Notes</div>
-          <div class="card-body">
-            <textarea id="session-notes" class="form-control" rows="3"
-                      placeholder="Any notes about this pack-out…"></textarea>
+        {# Right: Results #}
+        <div class="col-lg-5">
+          <div class="card" id="results-card" style="display:none">
+            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
+              <span>Box Count Summary</span>
+              <span id="total-badge" class="badge bg-primary rounded-pill">0 boxes</span>
+            </div>
+            <div class="card-body p-0">
+              <table class="table table-sm mb-0" id="results-table">
+                <thead class="table-light">
+                  <tr>
+                    <th>Room</th>
+                    <th class="text-center" title="Small 1.5 cu ft">Sm</th>
+                    <th class="text-center" title="Medium 3.0 cu ft">Med</th>
+                    <th class="text-center" title="Large 4.5 cu ft">Lg</th>
+                    <th class="text-center" title="Dish Pack 5.2 cu ft">DP</th>
+                    <th class="text-center" title="Wardrobe 10 cu ft">WD</th>
+                    <th class="text-center" title="XL Furniture Wrap">XL</th>
+                    <th class="text-center fw-bold">Total</th>
+                  </tr>
+                </thead>
+                <tbody id="results-tbody"></tbody>
+                <tfoot id="results-tfoot" class="table-warning fw-bold"></tfoot>
+              </table>
+            </div>
+            <div class="card-footer text-muted small" id="cubic-feet-line"></div>
+          </div>
+
+          <div class="card mt-3">
+            <div class="card-header fw-semibold">Notes</div>
+            <div class="card-body">
+              <textarea id="session-notes" class="form-control" rows="3"
+                        placeholder="Any notes about this pack-out…"></textarea>
+            </div>
           </div>
         </div>
       </div>
     </div>
+
+    {# No-client placeholder #}
+    <div id="manual-placeholder" class="text-center text-muted py-5">
+      <i class="fas fa-hand-point-up fa-2x mb-2 d-block"></i>
+      Select a client above to load rooms
+    </div>
   </div>
-</div>
+
+  {# ── Tab: AI Report Analyzer ─────────────────────────────────────────── #}
+  <div id="tab-ai-pdf" style="display:none">
+    <div class="card mb-4">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2">
+        <i class="fas fa-robot text-primary"></i>
+        AI Box Count Estimator — Upload a Report PDF
+      </div>
+      <div class="card-body">
+        <p class="text-muted small mb-3">
+          Upload an existing box count report, contents list, or scope of work PDF.
+          Claude will read it as a <strong>master moving company estimator</strong> and produce
+          a complete room-by-room box count estimate using the two-step analysis method
+          (individual items first, then overview review for missed items).
+        </p>
+        <div class="row g-3 align-items-end">
+          <div class="col-md-8">
+            <label class="form-label fw-semibold">Upload Box Count Report / Contents PDF</label>
+            <input type="file" id="pdf-file-input" class="form-control" accept=".pdf">
+            <div class="form-text">Max 20 MB · PDF only</div>
+          </div>
+          <div class="col-md-4">
+            <button id="btn-analyze-pdf" class="btn btn-primary w-100">
+              <span id="pdf-spinner" class="spinner-border spinner-border-sm me-1" style="display:none"></span>
+              <i id="pdf-icon" class="fas fa-robot me-1"></i>
+              Analyze with AI
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {# AI results — hidden until analysis completes #}
+    <div id="ai-results" style="display:none">
+      <div class="d-flex justify-content-between align-items-center mb-3">
+        <h5 class="mb-0">
+          <i class="fas fa-check-circle text-success me-2"></i>AI Estimate Complete
+        </h5>
+        <button id="btn-apply-ai" class="btn btn-success btn-sm">
+          <i class="fas fa-arrow-right me-1"></i>Apply to Manual Calculator
+        </button>
+      </div>
+
+      <div class="card mb-3">
+        <div class="card-header fw-semibold">Room-by-Room Estimate</div>
+        <div class="card-body p-0">
+          <table class="table table-sm mb-0" id="ai-results-table">
+            <thead class="table-light">
+              <tr>
+                <th>Room</th>
+                <th class="text-center" title="Small 1.5 cu ft">Sm</th>
+                <th class="text-center" title="Medium 3.0 cu ft">Med</th>
+                <th class="text-center" title="Large 4.5 cu ft">Lg</th>
+                <th class="text-center" title="Dish Pack 5.2 cu ft">DP</th>
+                <th class="text-center" title="Wardrobe 10 cu ft">WD</th>
+                <th class="text-center" title="XL Furniture Wrap">XL</th>
+                <th>Estimator Notes</th>
+              </tr>
+            </thead>
+            <tbody id="ai-results-tbody"></tbody>
+            <tfoot id="ai-results-tfoot" class="table-warning fw-bold"></tfoot>
+          </table>
+        </div>
+      </div>
+
+      <div class="card" id="ai-notes-card" style="display:none">
+        <div class="card-header fw-semibold">
+          <i class="fas fa-clipboard-list me-1"></i>Estimator Notes &amp; Rebuttal Guidance
+        </div>
+        <div class="card-body">
+          <div id="ai-estimator-notes" class="small" style="white-space:pre-wrap;"></div>
+        </div>
+      </div>
+    </div>
+
+    <div id="ai-error-msg" class="alert alert-danger" style="display:none"></div>
+  </div>
+
+</div>{# end container #}
 
 {# ── Category select template (hidden, cloned via JS) ─────────────────── #}
 <template id="tpl-category-select">
@@ -115,7 +215,8 @@
 // ── State ─────────────────────────────────────────────────────────────────
 let currentClientId = null;
 let sessionId       = null;
-let roomsData       = {};  // roomName → {items: [...]}
+let roomsData       = {};
+let aiRooms         = [];  // AI-estimated rooms for "apply" action
 
 // Items that use compartments
 const COMPARTMENT_CATS = new Set([
@@ -132,6 +233,18 @@ const btnReport     = document.getElementById('btn-report');
 const btnSave       = document.getElementById('btn-save');
 const saveSpinner   = document.getElementById('save-spinner');
 const resultsCard   = document.getElementById('results-card');
+const manualPH      = document.getElementById('manual-placeholder');
+
+// ── Tab switching ─────────────────────────────────────────────────────────
+document.querySelectorAll('#calcTabs .nav-link').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('#calcTabs .nav-link').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    const tab = btn.dataset.tab;
+    document.getElementById('tab-manual').style.display   = tab === 'manual'   ? '' : 'none';
+    document.getElementById('tab-ai-pdf').style.display   = tab === 'ai-pdf'   ? '' : 'none';
+  });
+});
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 function csrf() {
@@ -150,42 +263,76 @@ function postJSON(url, body) {
 // ── Client selection ──────────────────────────────────────────────────────
 clientSelect.addEventListener('change', async () => {
   currentClientId = clientSelect.value;
-  if (!currentClientId) { workspace.style.display = 'none'; return; }
+  if (!currentClientId) {
+    workspace.style.display = 'none';
+    manualPH.style.display = '';
+    return;
+  }
 
-  roomList.innerHTML = '<p class="text-muted">Loading rooms…</p>';
+  manualPH.style.display = 'none';
+  roomList.innerHTML = '<p class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading rooms…</p>';
   workspace.style.display = 'block';
   resultsCard.style.display = 'none';
   headerActions.style.display = 'none';
   sessionId = null;
   roomsData = {};
 
-  const data = await fetch(`/calculator/api/rooms/${currentClientId}/`).then(r => r.json());
-  sessionId = data.session_id;
-  roomList.innerHTML = '';
+  try {
+    const resp = await fetch(`/calculator/api/rooms/${currentClientId}/`);
+    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
 
-  if (data.rooms && data.rooms.length) {
-    data.rooms.forEach(r => renderRoom(r.name, r.items));
-  } else {
-    roomList.innerHTML = '<p class="text-muted small">No rooms found for this client. Use "Add Custom Room" to add one.</p>';
-  }
+    sessionId = data.session_id;
+    roomList.innerHTML = '';
 
-  if (sessionId) {
-    headerActions.style.display = 'flex';
-    btnReport.href = `/calculator/report/${sessionId}/`;
+    if (data.rooms && data.rooms.length) {
+      data.rooms.forEach(r => renderRoom(r.name, r.items, r));
+    } else {
+      roomList.innerHTML = '<p class="text-muted small">No rooms found for this client — use "Add Custom Room" to add one, or ensure this client has been synced from Encircle.</p>';
+    }
+
+    if (sessionId) {
+      headerActions.style.display = 'flex';
+      btnReport.href = `/calculator/report/${sessionId}/`;
+    }
+  } catch (err) {
+    roomList.innerHTML = `
+      <div class="alert alert-danger">
+        <strong>Could not load rooms:</strong> ${err.message}
+        <div class="small mt-1">The box calculator database tables may need to be created. Run <code>manage.py migrate</code> on the server, then try again.</div>
+      </div>`;
   }
 });
 
 // ── Render a room accordion card ──────────────────────────────────────────
-function renderRoom(roomName, savedItems) {
+function renderRoom(roomName, savedItems, roomMeta) {
   const safeId = 'room-' + roomName.replace(/[^a-z0-9]/gi, '_');
   const card = document.createElement('div');
   card.className = 'card mb-2';
   card.dataset.room = roomName;
+
+  // Build dimension badge if Encircle data is available
+  let dimBadge = '';
+  if (roomMeta && roomMeta.width && roomMeta.length) {
+    const w = parseFloat(roomMeta.width).toFixed(1);
+    const l = parseFloat(roomMeta.length).toFixed(1);
+    const area = roomMeta.area ? parseFloat(roomMeta.area).toFixed(0) + ' sq ft' : '';
+    const ch   = roomMeta.ceiling_height && roomMeta.ceiling_height !== 'N/A'
+                  ? ` · ${roomMeta.ceiling_height}H` : '';
+    dimBadge = `<span class="badge bg-light text-secondary border me-1" style="font-size:.68rem;" title="Encircle floor plan dimensions">
+      📐 ${w}' × ${l}'${area ? ' · ' + area : ''}${ch}
+    </span>`;
+  }
+
   card.innerHTML = `
     <div class="card-header d-flex justify-content-between align-items-center py-2 px-3"
          style="cursor:pointer" onclick="toggleRoom('${safeId}')">
-      <span class="fw-semibold" style="font-size:.9rem;">${roomName}</span>
-      <div class="d-flex gap-2 align-items-center">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="fw-semibold" style="font-size:.9rem;">${roomName}</span>
+        ${dimBadge}
+      </div>
+      <div class="d-flex gap-2 align-items-center flex-shrink-0">
         <span class="badge bg-secondary item-count-badge">0 items</span>
         <i class="fas fa-chevron-down text-muted" style="font-size:.75rem;" id="${safeId}-chevron"></i>
       </div>
@@ -215,7 +362,6 @@ function renderRoom(roomName, savedItems) {
   `;
   roomList.appendChild(card);
 
-  const tbody = card.querySelector('.item-tbody');
   (savedItems || []).forEach(item => addItemRow(card.querySelector('button'), item));
   updateItemBadge(card);
 }
@@ -250,8 +396,7 @@ function addItemRow(triggerEl, savedItem) {
     tr.querySelector('.item-note').value      = savedItem.note || '';
   }
 
-  // Show/hide compartments based on category
-  const catSel = tr.querySelector('.item-category');
+  const catSel   = tr.querySelector('.item-category');
   const compInput = tr.querySelector('.item-comp');
   function toggleComp() {
     compInput.closest('td').style.opacity = COMPARTMENT_CATS.has(catSel.value) ? '1' : '0.3';
@@ -266,7 +411,7 @@ function addItemRow(triggerEl, savedItem) {
 }
 
 function updateItemBadge(card) {
-  const rows = card.querySelectorAll('.item-tbody tr');
+  const rows  = card.querySelectorAll('.item-tbody tr');
   const badge = card.querySelector('.item-count-badge');
   if (badge) badge.textContent = `${rows.length} item${rows.length !== 1 ? 's' : ''}`;
 }
@@ -285,7 +430,7 @@ async function loadDefaults(btn, roomName) {
 // ── Add custom room ───────────────────────────────────────────────────────
 document.getElementById('btn-add-room').addEventListener('click', () => {
   const name = prompt('Room name:');
-  if (name && name.trim()) renderRoom(name.trim(), []);
+  if (name && name.trim()) renderRoom(name.trim(), [], null);
 });
 
 // ── Collect room data from DOM ────────────────────────────────────────────
@@ -383,13 +528,142 @@ btnSave.addEventListener('click', async () => {
     headerActions.style.display = 'flex';
     btnReport.href = `/calculator/report/${sessionId}/`;
     if (data.report) renderResults(data.report);
-    // Brief success indicator
     btnSave.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
     setTimeout(() => { btnSave.innerHTML = '<i class="fas fa-save me-1"></i>Save Session'; }, 2000);
   } finally {
     saveSpinner.style.display = 'none';
     btnSave.disabled = false;
   }
+});
+
+// ── AI PDF Analysis ───────────────────────────────────────────────────────
+document.getElementById('btn-analyze-pdf').addEventListener('click', async () => {
+  const fileInput = document.getElementById('pdf-file-input');
+  const errDiv    = document.getElementById('ai-error-msg');
+  const resultsDiv = document.getElementById('ai-results');
+  const spinner   = document.getElementById('pdf-spinner');
+  const icon      = document.getElementById('pdf-icon');
+
+  errDiv.style.display = 'none';
+  resultsDiv.style.display = 'none';
+
+  if (!fileInput.files.length) {
+    errDiv.textContent = 'Please select a PDF file first.';
+    errDiv.style.display = '';
+    return;
+  }
+
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  if (currentClientId) formData.append('client_id', currentClientId);
+
+  spinner.style.display = 'inline-block';
+  icon.style.display = 'none';
+  document.getElementById('btn-analyze-pdf').disabled = true;
+
+  try {
+    const resp = await fetch('/calculator/api/analyze-pdf/', {
+      method: 'POST',
+      headers: {'X-CSRFToken': csrf()},
+      body: formData,
+    });
+    const data = await resp.json();
+
+    if (!resp.ok || data.error) {
+      errDiv.textContent = 'Analysis failed: ' + (data.error || 'Unknown error');
+      errDiv.style.display = '';
+      return;
+    }
+
+    renderAiResults(data);
+  } catch (err) {
+    errDiv.textContent = 'Network error: ' + err.message;
+    errDiv.style.display = '';
+  } finally {
+    spinner.style.display = 'none';
+    icon.style.display = 'inline-block';
+    document.getElementById('btn-analyze-pdf').disabled = false;
+  }
+});
+
+function renderAiResults(data) {
+  aiRooms = data.rooms || [];
+  const tbody  = document.getElementById('ai-results-tbody');
+  const tfoot  = document.getElementById('ai-results-tfoot');
+  const notesDiv = document.getElementById('ai-estimator-notes');
+  const notesCard = document.getElementById('ai-notes-card');
+
+  tbody.innerHTML = '';
+  aiRooms.forEach(r => {
+    tbody.insertAdjacentHTML('beforeend', `
+      <tr>
+        <td class="fw-semibold" style="font-size:.82rem;">${r.name}</td>
+        <td class="text-center">${r.small || ''}</td>
+        <td class="text-center">${r.medium || ''}</td>
+        <td class="text-center">${r.large || ''}</td>
+        <td class="text-center">${r.dish_pack || ''}</td>
+        <td class="text-center">${r.wardrobe || ''}</td>
+        <td class="text-center text-muted">${r.xl_wrap || ''}</td>
+        <td class="text-muted small">${r.notes || ''}</td>
+      </tr>
+    `);
+  });
+
+  const s = data.summary || {};
+  tfoot.innerHTML = `
+    <tr>
+      <td class="ps-2">TOTALS</td>
+      <td class="text-center">${s.total_small || 0}</td>
+      <td class="text-center">${s.total_medium || 0}</td>
+      <td class="text-center">${s.total_large || 0}</td>
+      <td class="text-center">${s.total_dish_pack || 0}</td>
+      <td class="text-center">${s.total_wardrobe || 0}</td>
+      <td class="text-center">${s.total_xl_wrap || 0}</td>
+      <td></td>
+    </tr>
+  `;
+
+  if (s.estimator_notes) {
+    notesDiv.textContent = s.estimator_notes;
+    notesCard.style.display = '';
+  } else {
+    notesCard.style.display = 'none';
+  }
+
+  document.getElementById('ai-results').style.display = '';
+}
+
+// "Apply to Calculator" — load AI rooms into the manual calculator
+document.getElementById('btn-apply-ai').addEventListener('click', () => {
+  if (!aiRooms.length) return;
+
+  // Switch to manual tab
+  document.querySelector('[data-tab="manual"]').click();
+
+  // If no client selected, show workspace anyway
+  if (!currentClientId) {
+    workspace.style.display = 'block';
+    manualPH.style.display = 'none';
+  }
+
+  // Clear existing rooms and render AI rooms
+  roomList.innerHTML = '';
+  aiRooms.forEach(r => {
+    // Convert AI estimate format → item list format
+    const items = [];
+    const boxMap = [
+      {cat: 'general',         qty: r.medium  || 0},
+      {cat: 'books',           qty: r.small   || 0},
+      {cat: 'linens',          qty: r.large   || 0},
+      {cat: 'fragile_kitchen', qty: r.dish_pack || 0},
+      {cat: 'hanging_clothes', qty: r.wardrobe || 0},
+    ];
+    boxMap.forEach(({cat, qty}) => {
+      if (qty > 0) items.push({category: cat, quantity: qty, compartments: 0, note: 'AI estimate'});
+    });
+    if (r.xl_wrap) items.push({category: 'sofa', quantity: r.xl_wrap, compartments: 0, note: 'XL wrap items'});
+    renderRoom(r.name, items, null);
+  });
 });
 </script>
 {% endblock %}
