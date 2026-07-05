@@ -490,7 +490,9 @@
     <a href="{% url 'push_rooms_page' %}"   class="{% if 'push-rooms' in request.path %}active{% endif %}"><i class="fas fa-upload"></i> Push Rooms</a>
     <a href="{% url 'push_rooms_page' %}#photo-copy-tool"><i class="fas fa-copy"></i> Copy Photos</a>
 
-    <div class="drawer-section">Reports & Pricing</div>
+    <div class="drawer-section">Billing &amp; Finance</div>
+    <a href="{% url 'contractor_hub:dashboard' %}" class="{% if '/contractor-hub' in request.path %}active{% endif %}"><i class="fas fa-hard-hat"></i> Contractor Hub</a>
+    <a href="{% url 'ar_tracking:board' %}" class="{% if '/ar/' in request.path %}active{% endif %}"><i class="fas fa-file-invoice-dollar"></i> Accounts Receivable</a>
     <a href="{% url 'calculator_home' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}"><i class="fas fa-boxes"></i> Box Calculator</a>
 
     <div class="drawer-section">Tasks &amp; System</div>
