@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Email Verified — Claimet</title>
+</head>
+<body style="margin:0;padding:0;background:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" style="background:#f1f5f9;padding:40px 20px;">
+    <tr>
+      <td align="center">
+        <table width="100%" style="max-width:560px;" cellpadding="0" cellspacing="0">
+
+          <!-- Header / Logo -->
+          <tr>
+            <td align="center" style="padding-bottom:24px;">
+              <div style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);border-radius:12px;padding:12px 28px;">
+                <span style="color:#fff;font-size:22px;font-weight:800;letter-spacing:-0.5px;">Claimet</span>
+              </div>
+            </td>
+          </tr>
+
+          <!-- Card -->
+          <tr>
+            <td style="background:#fff;border-radius:16px;box-shadow:0 4px 24px rgba(0,0,0,.08);overflow:hidden;">
+
+              <!-- Green success banner -->
+              <div style="background:linear-gradient(135deg,#10b981,#059669);padding:32px 40px;text-align:center;">
+                <div style="display:inline-block;background:rgba(255,255,255,.2);border-radius:50%;width:64px;height:64px;line-height:64px;text-align:center;font-size:32px;margin-bottom:16px;">✓</div>
+                <h1 style="margin:0;color:#fff;font-size:24px;font-weight:800;">Email Verified!</h1>
+                <p style="margin:8px 0 0;color:rgba(255,255,255,.85);font-size:15px;">Your account is now fully active</p>
+              </div>
+
+              <!-- Body -->
+              <div style="padding:36px 40px;">
+                <p style="margin:0 0 16px;font-size:16px;color:#0f172a;">Hi {{ username }},</p>
+                <p style="margin:0 0 24px;font-size:15px;color:#475569;line-height:1.6;">
+                  Great news — your email address <strong style="color:#0f172a;">{{ email }}</strong>
+                  has been successfully verified. You now have full access to your Claimet account.
+                </p>
+
+                <!-- What you can do -->
+                <div style="background:#f8fafc;border-radius:10px;padding:20px 24px;margin-bottom:28px;border:1px solid #e2e8f0;">
+                  <p style="margin:0 0 12px;font-size:13px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.5px;">What you can do now</p>
+                  <table cellpadding="0" cellspacing="0" width="100%">
+                    <tr>
+                      <td style="padding:6px 0;font-size:14px;color:#334155;">
+                        <span style="color:#10b981;font-weight:700;margin-right:8px;">✓</span> Manage claims and file uploads
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;font-size:14px;color:#334155;">
+                        <span style="color:#10b981;font-weight:700;margin-right:8px;">✓</span> Create and send lease agreements
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;font-size:14px;color:#334155;">
+                        <span style="color:#10b981;font-weight:700;margin-right:8px;">✓</span> Generate reports, invoices, and schedules
+                      </td>
+                    </tr>
+                    <tr>
+                      <td style="padding:6px 0;font-size:14px;color:#334155;">
+                        <span style="color:#10b981;font-weight:700;margin-right:8px;">✓</span> Access email manager and batch scheduling
+                      </td>
+                    </tr>
+                  </table>
+                </div>
+
+                <!-- CTA button -->
+                <div style="text-align:center;margin-bottom:28px;">
+                  <a href="{{ login_url }}"
+                     style="display:inline-block;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;text-decoration:none;font-size:15px;font-weight:700;padding:14px 36px;border-radius:10px;letter-spacing:.2px;">
+                    Go to Dashboard →
+                  </a>
+                </div>
+
+                <p style="margin:0;font-size:13px;color:#94a3b8;line-height:1.5;">
+                  If you did not create a Claimet account, you can safely ignore this email.
+                  No action is required on your part.
+                </p>
+              </div>
+
+            </td>
+          </tr>
+
+          <!-- Footer -->
+          <tr>
+            <td align="center" style="padding-top:24px;">
+              <p style="margin:0;font-size:12px;color:#94a3b8;">
+                © Claimet · Mitigation Management Platform
+              </p>
+            </td>
+          </tr>
+
+        </table>
+      </td>
+    </tr>
+  </table>
+
+</body>
+</html>

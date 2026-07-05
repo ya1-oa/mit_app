@@ -50,11 +50,46 @@ class CustomUserManager(BaseUserManager):
             )
         return self._create_user(email, password, **extra_fields)
     
+class Tenant(models.Model):
+    """
+    A contractor company using ClaiMetApp as its own siloed workspace.
+    Every tenant-scoped model (see TenantScopedModel in tenancy.py) carries a
+    FK to one of these. Users get exactly one tenant (CustomUser.tenant
+    below) — staff/internal ClaiMetApp accounts have tenant=NULL, which is
+    the signal that distinguishes "internal user" from "customer user".
+    """
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('suspended', 'Suspended'),
+        ('trial', 'Trial'),
+    ]
+
+    name = models.CharField(max_length=255)
+    slug = models.SlugField(max_length=64, unique=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active', db_index=True)
+    plan = models.CharField(max_length=50, blank=True, default='')
+    primary_contact_email = models.EmailField(blank=True)
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.name
+
+
 class CustomUser(AbstractUser):
     email = models.EmailField("email", unique=True)
 
     USERNAME_FIELD = 'email'
     REQUIRED_FIELDS = ['username']
+
+    # NULL = internal/staff ClaiMetApp account (no ambient tenant — see
+    # docsAppR/middleware.py TenantMiddleware). Non-staff accounts get exactly
+    # one tenant; null=True only during the migration/backfill window.
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT, null=True, blank=True,
+        related_name='users',
+    )
 
     objects = CustomUserManager()
 
@@ -173,6 +208,13 @@ class Client(models.Model):
     drawRequest = models.CharField(max_length=255, blank=True)
 
     #Contractor
+    contractor = models.ForeignKey(
+        'contractor_hub.Contractor',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='claims'
+    )
+    
     coName = models.CharField(max_length=255, blank=True)
     coWebsite = models.CharField(max_length=255, blank=True)
     coEmailstatus = models.CharField(max_length=255, blank=True)
@@ -215,6 +257,13 @@ class Client(models.Model):
     ale_rental_start_date = models.DateField(null=True, blank=True, help_text="Rental Start Date")
     ale_rental_end_date = models.DateField(null=True, blank=True, help_text="Rental End Date")
     ale_rental_amount_per_month = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Amount Per Month")
+    ale_rental_security_deposit = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Security Deposit")
+    ale_lease_agreement_date = models.DateField(null=True, blank=True, help_text="Lease Agreement Date (date lease is signed/effective)")
+    ale_inspection_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Final Inspection & Cleanup Fee")
+    ale_late_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="Late Fee Amount (default $50)")
+    ale_late_fee_start_day = models.PositiveIntegerField(null=True, blank=True, help_text="Day of month late fee kicks in (default 5)")
+    ale_nsf_fee = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, help_text="NSF / Returned Check Fee (default $35)")
+    ale_rent_due_day = models.PositiveIntegerField(null=True, blank=True, help_text="Day of month rent is due (default 1)")
 
     # LESSOR INFO (Landlord/Property Owner renting to customer)
     ale_lessor_name = models.CharField(max_length=255, blank=True, help_text="Lessor Legal Name")
@@ -237,14 +286,44 @@ class Client(models.Model):
     ale_re_owner_broker_phone = models.CharField(max_length=255, blank=True, help_text="Owner/Broker Phone")
     ale_re_owner_broker_email = models.CharField(max_length=255, blank=True, help_text="Owner/Broker Email")
 
-    # Encircle integration
+    # ── Encircle integration ────────────────────────────────────────────────
     encircle_claim_id = models.CharField(
         max_length=100, blank=True, null=True,
-        help_text="Encircle property claim ID (set after push to Encircle)"
+        help_text="Encircle property claim ID (set after push to Encircle)",
+        db_index=True,
     )
     encircle_synced_at = models.DateTimeField(
         null=True, blank=True,
-        help_text="Last time this claim was pushed to Encircle"
+        help_text="Last time this claim was pushed TO Encircle"
+    )
+    # Fields populated by the automated Encircle→Claimet daily sync
+    encircle_permalink_url = models.URLField(
+        max_length=500, blank=True,
+        help_text="Direct link to this claim in the Encircle web app"
+    )
+    encircle_date_created = models.DateTimeField(
+        null=True, blank=True,
+        help_text="When this claim was first created in Encircle"
+    )
+    encircle_project_manager = models.CharField(
+        max_length=255, blank=True,
+        help_text="Project manager name as set in Encircle"
+    )
+    encircle_loss_details = models.TextField(
+        blank=True,
+        help_text="Free-text loss description from Encircle"
+    )
+    encircle_cat_code = models.CharField(
+        max_length=100, blank=True,
+        help_text="Catastrophe code from Encircle"
+    )
+    encircle_assignment_id = models.CharField(
+        max_length=255, blank=True,
+        help_text="Assignment identifier from Encircle"
+    )
+    encircle_last_synced_at = models.DateTimeField(
+        null=True, blank=True,
+        help_text="Last time this claim was pulled FROM Encircle (inbound sync)"
     )
 
     completion_percent = models.IntegerField(
@@ -344,7 +423,7 @@ class Client(models.Model):
         create_checklist_items_for_client(self)
 
 class WorkType(models.Model):
-    """Definition of work types (100, 200, 300, 400, 500, 800, 900)"""
+    """Definition of work types (100, 200, 300, 400, 500, 800, 900, ALE)"""
     WORK_TYPE_CHOICES = [
         (100, 'Work Type 100'),
         (200, 'Work Type 200'),
@@ -986,6 +1065,10 @@ class EmailSchedule(models.Model):
     notify_on_open = models.BooleanField(default=True)
     admin_notification_email = models.EmailField()
 
+    # Tracking — required to avoid re-sending on every Beat poll
+    last_sent  = models.DateTimeField(null=True, blank=True)
+    send_count = models.IntegerField(default=0)
+
     def __str__(self):
         return self.name
 
@@ -1029,6 +1112,20 @@ class SentEmail(models.Model):
     notify_on_open = models.BooleanField(default=False)
     admin_notification_email = models.EmailField(null=True, blank=True)
 
+    # Extended recipients
+    cc  = models.JSONField(default=list, blank=True)
+    bcc = models.JSONField(default=list, blank=True)
+
+    # Optional claim link (for claim-linked recipient selection)
+    claim = models.ForeignKey('Client', on_delete=models.SET_NULL, null=True, blank=True,
+                               related_name='sent_emails')
+
+    # New attachment types
+    generated_files      = models.ManyToManyField('GeneratedFile', blank=True,
+                                                   related_name='sent_in_emails')
+    uploaded_attachments = models.ManyToManyField('UploadedAttachment', blank=True,
+                                                   related_name='sent_in_emails')
+
     class Meta:
         ordering = ['-sent_at']
 
@@ -1041,9 +1138,224 @@ class EmailOpenEvent(models.Model):
     opened_at = models.DateTimeField(auto_now_add=True)
     ip_address = models.GenericIPAddressField(null=True, blank=True)
     user_agent = models.TextField(blank=True)
-    
+
     class Meta:
         ordering = ['-opened_at']
+
+
+class EmailLinkClick(models.Model):
+    """Track when recipients click links in emails."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    sent_email = models.ForeignKey(SentEmail, on_delete=models.CASCADE, related_name='link_clicks')
+    url = models.URLField()
+    clicked_at = models.DateTimeField(auto_now_add=True)
+    ip_address = models.GenericIPAddressField(null=True, blank=True)
+    user_agent = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-clicked_at']
+        indexes = [models.Index(fields=['sent_email', 'clicked_at'])]
+
+    def __str__(self):
+        return f"Click on {self.url} at {self.clicked_at}"
+
+
+class EmailBatch(models.Model):
+    """Group related emails sent as a batch (e.g. monthly newsletters, follow-up campaigns)."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name = models.CharField(max_length=255, help_text='e.g. "July Follow-up Campaign"')
+    claim = models.ForeignKey('Client', on_delete=models.CASCADE, related_name='email_batches',
+                              null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                   null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+    @property
+    def total_scheduled(self):
+        """Count total emails (including follow-ups) in this batch."""
+        return self.scheduled_emails.count()
+
+    @property
+    def total_sent(self):
+        """Count sent emails in this batch."""
+        return self.sent_emails.count()
+
+
+class ScheduledEmail(models.Model):
+    """An email scheduled to be sent, with optional follow-up rules."""
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    batch = models.ForeignKey(EmailBatch, on_delete=models.CASCADE, related_name='scheduled_emails')
+
+    # Email content
+    subject = models.TextField()
+    body = models.TextField()
+    recipients = models.JSONField(help_text='List of email addresses')
+    cc = models.JSONField(default=list, blank=True)
+    bcc = models.JSONField(default=list, blank=True)
+
+    # Attachments
+    generated_files = models.ManyToManyField('GeneratedFile', blank=True)
+    uploaded_attachments = models.ManyToManyField('UploadedAttachment', blank=True)
+
+    # Scheduling
+    scheduled_send_time = models.DateTimeField(help_text='When this email should be sent')
+    is_sent = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    # Follow-up configuration
+    has_followup = models.BooleanField(default=False)
+    followup_trigger = models.CharField(
+        max_length=20,
+        choices=[
+            ('time', 'After X days'),
+            ('unopened', 'If not opened after X days'),
+            ('opened', 'When opened'),
+        ],
+        blank=True,
+        help_text='How to trigger the follow-up'
+    )
+    followup_days = models.PositiveIntegerField(null=True, blank=True,
+                                                help_text='Days to wait before follow-up')
+    followup_subject = models.TextField(blank=True, help_text='Subject of follow-up email')
+    followup_body = models.TextField(blank=True, help_text='Body of follow-up email')
+
+    # Tracking
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['scheduled_send_time']
+        indexes = [
+            models.Index(fields=['batch', 'is_sent']),
+            models.Index(fields=['scheduled_send_time', 'is_sent']),
+        ]
+
+    def __str__(self):
+        return f"{self.subject} → {', '.join(self.recipients[:3])}"
+
+    @property
+    def is_overdue(self):
+        """Check if scheduled send time has passed but not yet sent."""
+        return not self.is_sent and self.scheduled_send_time <= timezone.now()
+
+
+# ==================== Email Attachment Models ====================
+
+class GeneratedFile(models.Model):
+    """App-generated files (PDFs, Excel, invoices) available to attach to outbound emails."""
+    CATEGORY_CHOICES = [
+        ('pdf',     'PDF Report'),
+        ('excel',   'Excel Spreadsheet'),
+        ('invoice', 'Invoice'),
+        ('other',   'Other'),
+    ]
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name       = models.CharField(max_length=255)
+    file_path  = models.CharField(max_length=1000, help_text='Absolute server path to the file')
+    mime_type  = models.CharField(max_length=100, default='application/octet-stream')
+    category   = models.CharField(max_length=20, choices=CATEGORY_CHOICES, default='other')
+    client     = models.ForeignKey('Client', on_delete=models.SET_NULL, null=True, blank=True,
+                                   related_name='generated_files')
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                   null=True, blank=True, related_name='generated_files')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.name
+
+
+class UploadedAttachment(models.Model):
+    """User-uploaded files attached to outbound emails."""
+    id            = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    file          = models.FileField(upload_to='email_attachments/%Y/%m/')
+    original_name = models.CharField(max_length=255)
+    mime_type     = models.CharField(max_length=100, default='application/octet-stream')
+    size          = models.PositiveIntegerField(default=0, help_text='File size in bytes')
+    uploaded_by   = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+                                      null=True, related_name='uploaded_attachments')
+    uploaded_at   = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-uploaded_at']
+
+    def __str__(self):
+        return self.original_name
+
+
+# ==================== Email Campaign Model ====================
+
+class EmailCampaign(models.Model):
+    STATUS_CHOICES = [
+        ('draft',     'Draft'),
+        ('scheduled', 'Scheduled'),
+        ('running',   'Running'),
+        ('complete',  'Complete'),
+        ('cancelled', 'Cancelled'),
+    ]
+    UNIT_CHOICES = [
+        ('hours', 'Hours'),
+        ('days',  'Days'),
+        ('weeks', 'Weeks'),
+    ]
+
+    id             = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    name           = models.CharField(max_length=255)
+
+    # Campaign template — copied to each SentEmail on dispatch
+    subject        = models.CharField(max_length=255)
+    body           = models.TextField()
+    recipients     = models.JSONField(default=list)
+    cc             = models.JSONField(default=list, blank=True)
+    bcc            = models.JSONField(default=list, blank=True)
+
+    # Cadence
+    total_sends    = models.PositiveIntegerField()
+    interval_value = models.PositiveIntegerField()
+    interval_unit  = models.CharField(max_length=10, choices=UNIT_CHOICES, default='days')
+    start_at       = models.DateTimeField()
+
+    # State
+    status         = models.CharField(max_length=20, choices=STATUS_CHOICES, default='draft')
+    sends_completed = models.PositiveIntegerField(default=0)
+
+    # FK to each sent instance (populated as tasks fire)
+    sent_emails    = models.ManyToManyField('SentEmail', blank=True, related_name='campaigns')
+
+    # Celery task IDs so we can revoke on cancellation
+    beat_task_ids  = models.JSONField(default=list, blank=True)
+
+    created_by     = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    created_at     = models.DateTimeField(auto_now_add=True)
+    updated_at     = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f'{self.name} ({self.status})'
+
+    def interval_as_timedelta(self):
+        from datetime import timedelta
+        if self.interval_unit == 'hours':
+            return timedelta(hours=self.interval_value)
+        elif self.interval_unit == 'weeks':
+            return timedelta(weeks=self.interval_value)
+        return timedelta(days=self.interval_value)
+
+    def compute_send_datetimes(self):
+        """Return list of N datetimes, one per scheduled send."""
+        delta = self.interval_as_timedelta()
+        return [self.start_at + delta * i for i in range(self.total_sends)]
 
 
 # ==================== Server-Based File Management Models ====================
@@ -1241,6 +1553,12 @@ class Lease(models.Model):
     broker_phone = models.CharField(max_length=50, blank=True)
     broker_email = models.EmailField(blank=True)
 
+    # ===== LESSEE (TENANT) INFORMATION =====
+    lessee_name    = models.CharField(max_length=255, blank=True, verbose_name="Tenant Name")
+    lessee_email   = models.EmailField(blank=True, verbose_name="Tenant Email")
+    lessee_phone   = models.CharField(max_length=50, blank=True, verbose_name="Tenant Phone")
+    lessee_address = models.CharField(max_length=500, blank=True, verbose_name="Tenant Home Address")
+
     # ===== SPECIAL NOTES =====
     special_notes = models.TextField(blank=True)
 
@@ -1315,6 +1633,45 @@ class Lease(models.Model):
         return self.lease_end_date < date.today()
 
     @property
+    def is_original(self):
+        """
+        True if this is the first/original lease for the claim (not a renewal).
+        Determined by being the oldest non-cancelled lease (by created_at).
+        Mirrors the sync-back rule in lease_update_terms so the two always agree.
+        """
+        first_id = (
+            self.__class__.objects.filter(client=self.client)
+            .exclude(status='cancelled')
+            .order_by('created_at')
+            .values_list('id', flat=True)
+            .first()
+        )
+        return first_id == self.id
+
+    @property
+    def renewal_number(self):
+        """
+        0 for the original lease; 1 for the first renewal, 2 for the second, etc.
+        Cancelled leases are ignored in the sequence.
+        """
+        ids = list(
+            self.__class__.objects.filter(client=self.client)
+            .exclude(status='cancelled')
+            .order_by('created_at')
+            .values_list('id', flat=True)
+        )
+        try:
+            return ids.index(self.id)
+        except ValueError:
+            return 0  # cancelled lease — treat as original for display
+
+    @property
+    def lease_label(self):
+        """Human-readable label: 'Original Lease', 'Renewal #1', 'Renewal #2' …"""
+        n = self.renewal_number
+        return 'Original Lease' if n == 0 else f'Renewal #{n}'
+
+    @property
     def full_property_address(self):
         """Return full formatted property address"""
         parts = [self.property_address, self.property_city, self.property_state, self.property_zip]
@@ -1336,6 +1693,58 @@ class Lease(models.Model):
             'cancelled': 'danger',
         }
         return color_map.get(self.status, 'secondary')
+
+
+class LeaseTask(models.Model):
+    """
+    Tracks workflow steps for each lease (ALE temporary housing process).
+    Allows field users to check off tasks on mobile as work progresses.
+    """
+    TASK_CHOICES = [
+        ('draft', 'Draft Lease Created'),
+        ('send_for_signature', 'Send for Signature'),
+        ('re_company_signed', 'Signed by Real Estate Company'),
+        ('tenant_signed', 'Signed by Tenant'),
+        ('landlord_signed', 'Signed by Landlord'),
+        ('completed', 'All Signatures Received'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lease = models.ForeignKey(
+        Lease, on_delete=models.CASCADE, related_name='workflow_tasks'
+    )
+    task_type = models.CharField(max_length=30, choices=TASK_CHOICES)
+    is_completed = models.BooleanField(default=False)
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='completed_lease_tasks',
+    )
+    completed_at = models.DateTimeField(null=True, blank=True)
+    notes = models.TextField(blank=True, help_text='Field notes on completion')
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['lease', 'created_at']
+        indexes = [
+            models.Index(fields=['lease', 'is_completed']),
+            models.Index(fields=['lease', 'task_type']),
+        ]
+        unique_together = [['lease', 'task_type']]
+
+    def __str__(self):
+        return f"{self.lease.client.pOwner} - {self.get_task_type_display()}"
+
+    @property
+    def is_overdue(self):
+        """Check if task has been pending for > 7 days"""
+        if self.is_completed or not self.created_at:
+            return False
+        from datetime import timedelta
+        return timezone.now() - self.created_at > timedelta(days=7)
 
 
 
@@ -1513,6 +1922,108 @@ class LeaseStageCompletion(models.Model):
     def __str__(self):
         status = "Completed" if self.is_completed else "Pending"
         return f"{self.lease.client.pOwner} - {self.get_stage_display()}: {status}"
+
+
+# ==================== E-Signature System ====================
+
+class LeaseSignatureRequest(models.Model):
+    """
+    One record per signer per lease. Stores the secure token emailed to the
+    signer and captures their drawn signature + full ESIGN Act audit trail.
+    """
+    ROLE_CHOICES = [
+        ('tenant',     'Tenant / Lessee'),
+        ('landlord',   'Landlord / Lessor'),
+        ('re_company', 'Real Estate Company'),
+    ]
+    STATUS_CHOICES = [
+        ('pending',  'Pending'),
+        ('viewed',   'Viewed'),
+        ('signed',   'Signed'),
+        ('declined', 'Declined'),
+        ('expired',  'Expired'),
+    ]
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    lease       = models.ForeignKey(
+        Lease, on_delete=models.CASCADE, related_name='signature_requests'
+    )
+    signer_role  = models.CharField(max_length=20, choices=ROLE_CHOICES)
+    signer_name  = models.CharField(max_length=255)
+    signer_email = models.EmailField()
+
+    # Unique token embedded in the signing URL — never reused
+    token  = models.UUIDField(unique=True, default=uuid.uuid4)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+
+    # ── Contact info ─────────────────────────────────────────────────────────
+    # Optional phone so signers can verify by SMS instead of email
+    signer_phone = models.CharField(max_length=30, blank=True)
+
+    # ── OTP identity verification ─────────────────────────────────────────────
+    # Signer must verify their email or phone before the canvas is shown.
+    otp_code        = models.CharField(max_length=6, blank=True)
+    otp_sent_at     = models.DateTimeField(null=True, blank=True)
+    otp_verified_at = models.DateTimeField(null=True, blank=True)
+    otp_contact     = models.CharField(max_length=200, blank=True)  # which email/phone was used
+    otp_attempts    = models.PositiveSmallIntegerField(default=0)
+    is_otp_verified = models.BooleanField(default=False)
+
+    # ── Signature capture ────────────────────────────────────────────────────
+    # Base64 PNG data URL of the drawn signature (stored in DB; no file needed)
+    signature_image = models.TextField(blank=True)
+    # Name they typed — must match signer_name to confirm intent
+    typed_name      = models.CharField(max_length=255, blank=True)
+
+    # ── ESIGN Act / UETA audit trail ─────────────────────────────────────────
+    ip_address    = models.GenericIPAddressField(null=True, blank=True)
+    user_agent    = models.TextField(blank=True)
+    # SHA-256 of key lease fields at signing time — proves document not altered
+    document_hash = models.CharField(max_length=64, blank=True)
+    # Explicit e-sign consent checkbox
+    agreed_to_esign = models.BooleanField(default=False)
+
+    # ── Timestamps ───────────────────────────────────────────────────────────
+    sent_at     = models.DateTimeField(auto_now_add=True)
+    viewed_at   = models.DateTimeField(null=True, blank=True)
+    signed_at   = models.DateTimeField(null=True, blank=True)
+    declined_at = models.DateTimeField(null=True, blank=True)
+    expires_at  = models.DateTimeField()  # set to sent_at + 7 days on creation
+
+    class Meta:
+        ordering = ['signer_role', '-sent_at']
+        verbose_name = 'Lease Signature Request'
+        verbose_name_plural = 'Lease Signature Requests'
+        indexes = [
+            models.Index(fields=['token']),
+            models.Index(fields=['lease', 'status']),
+        ]
+
+    def __str__(self):
+        return f"{self.get_signer_role_display()} — {self.signer_name} ({self.status})"
+
+    @property
+    def is_expired_flag(self):
+        from django.utils import timezone as tz
+        return self.status == 'pending' and self.expires_at < tz.now()
+
+    def get_status_color(self):
+        return {
+            'pending':  'warning',
+            'viewed':   'info',
+            'signed':   'success',
+            'declined': 'danger',
+            'expired':  'secondary',
+        }.get(self.status, 'secondary')
+
+    def get_status_icon(self):
+        return {
+            'pending':  '⏳',
+            'viewed':   '👁️',
+            'signed':   '✅',
+            'declined': '❌',
+            'expired':  '⌛',
+        }.get(self.status, '⏳')
 
 
 # ==================== Email Parsing Models ====================
@@ -1747,6 +2258,7 @@ class RoomScopeChecklist(models.Model):
         return f"Scope Checklist - {self.room.room_name} ({self.client.pOwner})"
 
     def to_dict(self):
+
         """Convert to dictionary for JSON serialization"""
         return {
             'clg_material': self.clg_material,
@@ -1798,3 +2310,391 @@ class RoomScopeChecklist(models.Model):
             'frm_lf': str(self.frm_lf) if self.frm_lf else '',
             'activity_notes': self.activity_notes,
         }
+
+
+# ── Global System Activity Log ────────────────────────────────────────────────
+
+class SystemActivity(models.Model):
+    """
+    App-wide audit trail.  Every significant action across every feature app
+    (email sends, lease events, document generation, logins, etc.) is recorded
+    here so there is one place to review what happened and who did it.
+    """
+    ACTION_CHOICES = [
+        ('email_sent',           'Email Sent'),
+        ('package_sent',         'Package Sent'),
+        ('demand_letter',        'Demand Letter Generated'),
+        ('lease_created',        'Lease Created'),
+        ('lease_status_changed', 'Lease Status Changed'),
+        ('document_generated',   'Document Generated'),
+        ('pdf_generated',        'PDF Generated'),
+        ('note_added',           'Note Added'),
+        ('claim_created',        'Claim Created'),
+        ('file_uploaded',        'File Uploaded'),
+        ('login',                'User Login'),
+        ('ale_sync',             'ALE Data Synced'),
+        ('other',                'Other'),
+    ]
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    action_type = models.CharField(max_length=50, choices=ACTION_CHOICES, default='other', db_index=True)
+    description = models.TextField()
+    performed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='system_activities',
+    )
+    related_client = models.ForeignKey(
+        'Client',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='system_activities',
+    )
+    related_lease = models.ForeignKey(
+        'Lease',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='system_activities',
+    )
+    metadata    = models.JSONField(default=dict, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['-created_at']),
+            models.Index(fields=['performed_by', '-created_at']),
+            models.Index(fields=['action_type', '-created_at']),
+        ]
+        verbose_name = 'System Activity'
+        verbose_name_plural = 'System Activities'
+
+    def __str__(self):
+        return f'{self.get_action_type_display()} — {self.description[:80]}'
+
+
+def log_activity(action_type, description, user=None, client=None, lease=None, **metadata):
+    """
+    Convenience wrapper — call from any view to write a SystemActivity row.
+
+        log_activity('email_sent', 'Sent demand letter to foo@bar.com',
+                     user=request.user, lease=lease, subject=subject)
+    """
+    try:
+        SystemActivity.objects.create(
+            action_type=action_type,
+            description=description,
+            performed_by=user if (user and user.is_authenticated) else None,
+            related_client=client,
+            related_lease=lease,
+            metadata=metadata or {},
+        )
+    except Exception:
+        pass  # never let activity logging crash the caller
+
+
+# ── Task Management ───────────────────────────────────────────────────────────
+
+class TaskItem(models.Model):
+    """
+    General-purpose task / to-do item usable across every app.
+    Can be linked to a claim (Client) or lease for context,
+    or kept standalone as a general action item.
+    """
+
+    STATUS_CHOICES = [
+        ('backlog',     'Backlog'),
+        ('todo',        'To Do'),
+        ('in_progress', 'In Progress'),
+        ('review',      'Needs Review'),
+        ('done',        'Done'),
+        ('cancelled',   'Cancelled'),
+    ]
+
+    PRIORITY_CHOICES = [
+        ('low',    'Low'),
+        ('medium', 'Medium'),
+        ('high',   'High'),
+        ('urgent', 'Urgent'),
+    ]
+
+    CATEGORY_CHOICES = [
+        ('general',     'General'),
+        ('claim',       'Claim'),
+        ('lease',       'Lease / ALE'),
+        ('email',       'Email'),
+        ('follow_up',   'Follow Up'),
+        ('admin',       'Admin'),
+        ('billing',     'Billing'),
+        ('legal',       'Legal'),
+        ('development', 'Development / Code'),
+    ]
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    title       = models.CharField(max_length=255)
+    description = models.TextField(blank=True)
+
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES,
+                                    default='todo', db_index=True)
+    priority    = models.CharField(max_length=10, choices=PRIORITY_CHOICES,
+                                    default='medium', db_index=True)
+    category    = models.CharField(max_length=20, choices=CATEGORY_CHOICES,
+                                    default='general', db_index=True)
+
+    assigned_to = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='assigned_tasks',
+    )
+    created_by  = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='created_tasks',
+    )
+
+    due_date    = models.DateField(null=True, blank=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    related_client = models.ForeignKey(
+        'Client',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='tasks',
+    )
+    related_lease = models.ForeignKey(
+        'Lease',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='tasks',
+    )
+
+    notes      = models.TextField(blank=True)
+
+    # ── Completion tracking ───────────────────────────────────────────────────
+    completed_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='task_completions',
+    )
+    completion_notes = models.TextField(
+        blank=True,
+        help_text='Notes added by the person who completed this task',
+    )
+    # Code/dev task audit fields (only relevant when category='development')
+    unit_tests_passed = models.BooleanField(
+        null=True, blank=True,
+        help_text='None = N/A, True = passed, False = failed',
+    )
+    beta_tested = models.BooleanField(
+        null=True, blank=True,
+        help_text='None = N/A, True = yes, False = no',
+    )
+    test_notes = models.TextField(
+        blank=True,
+        help_text='Unit test / beta test details for development tasks',
+    )
+
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['assigned_to', 'status']),
+            models.Index(fields=['due_date']),
+        ]
+        verbose_name = 'Task'
+        verbose_name_plural = 'Tasks'
+
+    def __str__(self):
+        return self.title
+
+    # ── Computed helpers ──────────────────────────────────────────────────────
+
+    @property
+    def is_overdue(self):
+        from django.utils import timezone
+        if self.due_date and self.status not in ('done', 'cancelled'):
+            return self.due_date < timezone.now().date()
+        return False
+
+    @property
+    def priority_color(self):
+        return {'low': '#10b981', 'medium': '#f59e0b',
+                'high': '#ef4444', 'urgent': '#7c3aed'}.get(self.priority, '#64748b')
+
+    @property
+    def status_color(self):
+        return {
+            'backlog':     '#94a3b8', 'todo': '#3b82f6',
+            'in_progress': '#f59e0b', 'review': '#8b5cf6',
+            'done':        '#10b981', 'cancelled': '#ef4444',
+        }.get(self.status, '#94a3b8')
+
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# AI Usage Tracking
+# Records every call to the Anthropic Claude API so we can track cost per
+# operation, per session, per room, and all-time across the whole platform.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Pricing per million tokens (update if Anthropic changes rates)
+_CLAUDE_PRICING = {
+    # model-key: (input $/MTok, output $/MTok)
+    'claude-haiku-4-5-20251001':    (1.00,  5.00),
+    'claude-haiku-3-5':             (0.80,  4.00),
+    'claude-sonnet-4-5-20251001':   (3.00, 15.00),
+    'claude-sonnet-4-5':            (3.00, 15.00),
+    'claude-opus-4-5':             (15.00, 75.00),
+    'default':                      (3.00, 15.00),
+}
+
+
+def _calc_cost(model: str, input_tokens: int, output_tokens: int) -> float:
+    pricing = _CLAUDE_PRICING.get(model) or _CLAUDE_PRICING['default']
+    input_cost  = (input_tokens  / 1_000_000) * pricing[0]
+    output_cost = (output_tokens / 1_000_000) * pricing[1]
+    return round(input_cost + output_cost, 8)
+
+
+class AIUsageLog(models.Model):
+    """One record per Claude API call across the entire platform."""
+
+    OPERATION_CHOICES = [
+        ('cps_room',       'CPS – Room Analysis'),
+        ('equipment',      'Equipment Checker'),
+        ('sensor',         'Sensor Renamer'),
+        ('encircle',       'Encircle Sync'),
+        ('other',          'Other'),
+    ]
+
+    created_at      = models.DateTimeField(auto_now_add=True, db_index=True)
+    operation       = models.CharField(max_length=50, choices=OPERATION_CHOICES, default='other', db_index=True)
+
+    # Loose FK references — stored as plain ints so deleting a session doesn't
+    # cascade-delete cost history.
+    cps_session_id  = models.IntegerField(null=True, blank=True, db_index=True)
+    cps_room_id     = models.IntegerField(null=True, blank=True)
+
+    model           = models.CharField(max_length=100, default='claude-haiku-4-5-20251001')
+    input_tokens    = models.PositiveIntegerField(default=0)
+    output_tokens   = models.PositiveIntegerField(default=0)
+    images_count    = models.PositiveSmallIntegerField(default=0)
+    cost_usd        = models.DecimalField(max_digits=12, decimal_places=8, default=0)
+    success         = models.BooleanField(default=True)
+    error_message   = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+        verbose_name = 'AI Usage Log'
+        verbose_name_plural = 'AI Usage Logs'
+
+    def __str__(self):
+        return f"{self.operation} | {self.created_at:%Y-%m-%d %H:%M} | ${self.cost_usd:.4f}"
+
+    def save(self, *args, **kwargs):
+        # Auto-calculate cost whenever tokens change
+        self.cost_usd = _calc_cost(self.model, self.input_tokens, self.output_tokens)
+        super().save(*args, **kwargs)
+
+    # ── Class-level helpers used by the AI resources dashboard ───────────────
+
+    @classmethod
+    def total_cost(cls):
+        from django.db.models import Sum
+        r = cls.objects.aggregate(t=Sum('cost_usd'))
+        return float(r['t'] or 0)
+
+    @classmethod
+    def total_tokens(cls):
+        from django.db.models import Sum
+        r = cls.objects.aggregate(i=Sum('input_tokens'), o=Sum('output_tokens'))
+        return int(r['i'] or 0) + int(r['o'] or 0)
+
+    @classmethod
+    def cost_for_session(cls, session_id):
+        from django.db.models import Sum
+        r = cls.objects.filter(cps_session_id=session_id).aggregate(t=Sum('cost_usd'))
+        return float(r['t'] or 0)
+
+    @classmethod
+    def log_call(cls, *, operation='other', model, input_tokens, output_tokens,
+                 images_count=0, cps_session_id=None, cps_room_id=None,
+                 success=True, error_message=''):
+        """Convenience factory. Call this right after every Claude API response."""
+        return cls.objects.create(
+            operation=operation,
+            model=model,
+            input_tokens=input_tokens,
+            output_tokens=output_tokens,
+            images_count=images_count,
+            cps_session_id=cps_session_id,
+            cps_room_id=cps_room_id,
+            success=success,
+            error_message=error_message,
+        )
+
+
+# ============================================================================
+# Encircle Sync Log
+# ============================================================================
+
+class EncircleSyncLog(models.Model):
+    """
+    Audit trail for every automated Encircle→Claimet synchronisation run.
+    One row per run; the dashboard reads the most recent row.
+    """
+
+    STATUS_CHOICES = [
+        ('running',  'Running'),
+        ('success',  'Success'),
+        ('failed',   'Failed'),
+        ('partial',  'Partial (some errors)'),
+    ]
+
+    started_at       = models.DateTimeField(auto_now_add=True, db_index=True)
+    completed_at     = models.DateTimeField(null=True, blank=True)
+    status           = models.CharField(max_length=20, choices=STATUS_CHOICES, default='running')
+    triggered_by     = models.CharField(
+        max_length=50, default='schedule',
+        help_text="'schedule' for Celery-beat runs, 'manual' for user-triggered runs"
+    )
+
+    # Counters
+    claims_processed = models.IntegerField(default=0)
+    claims_created   = models.IntegerField(default=0)
+    claims_updated   = models.IntegerField(default=0)
+    error_count      = models.IntegerField(default=0)
+
+    # Structured error details (list of {encircle_id, error} dicts)
+    error_details    = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        ordering = ['-started_at']
+        verbose_name     = 'Encircle Sync Log'
+        verbose_name_plural = 'Encircle Sync Logs'
+
+    def __str__(self):
+        duration = ''
+        if self.completed_at:
+            secs = int((self.completed_at - self.started_at).total_seconds())
+            duration = f' ({secs}s)'
+        return (
+            f"EncircleSyncLog {self.started_at:%Y-%m-%d %H:%M} "
+            f"— {self.status}{duration} "
+            f"[{self.claims_created} created / {self.claims_updated} updated / "
+            f"{self.error_count} errors]"
+        )
+
+    @property
+    def duration_seconds(self):
+        if self.completed_at:
+            return int((self.completed_at - self.started_at).total_seconds())
+        return None
+

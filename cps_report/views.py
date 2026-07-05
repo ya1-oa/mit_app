@@ -1,5 +1,5 @@
 """
-CPS Schedule of Loss Report views.
+PPR Schedule of Loss Report views.
 """
 import json
 import logging
@@ -155,6 +155,10 @@ def api_start_session(request):
         if not encircle_claim_id:
             return JsonResponse({'error': 'encircle_claim_id required'}, status=400)
 
+        pricing_mode = str(data.get('pricing_mode') or 'normal').strip()
+        if pricing_mode not in ('normal', 'premium'):
+            pricing_mode = 'normal'
+
         # Find existing Client by encircle_claim_id, or create a minimal stub
         # so CPSReportSession has an FK to attach to.
         client = Client.objects.filter(encircle_claim_id=encircle_claim_id).first()
@@ -210,6 +214,7 @@ def api_start_session(request):
             claim_number=client.claimNumber or '',
             insured_name=client.pOwner or '',
             encircle_structure_id=structure_id,
+            pricing_mode=pricing_mode,
             status='pending',
         )
 
@@ -301,12 +306,13 @@ def api_process_room(request):
         room.status = 'processing'
         room.save(update_fields=['status'])
 
-        from .ai_analyzer import analyze_room_for_cps, fetch_all_claim_media
+        from .ai_analyzer import analyze_room_for_ppr, fetch_all_claim_media
         all_claim_media = fetch_all_claim_media(session.encircle_claim_id)
-        result = analyze_room_for_cps(
+        result = analyze_room_for_ppr(
             room_name=f"{room.room_number} {room.room_name}",
             room_number=room.room_number,
             prefetched_media=all_claim_media,
+            pricing_mode=session.pricing_mode or 'normal',
         )
 
         room.images_used = result.get('images_used', 0)
@@ -364,8 +370,6 @@ def api_save_room_items(request):
                 age_years=max(0, min(5, int(item_dict.get('age_years', 0) or 0))),
                 age_months=max(0, min(11, int(item_dict.get('age_months', 0) or 0))),
                 replacement_value_each=float(item_dict.get('replacement_value_each', 0) or 0),
-                depreciation_category=str(item_dict.get('depreciation_category', 'Other'))[:100],
-                depreciation_pct=max(0, min(80, float(item_dict.get('depreciation_pct', 0) or 0))),
                 notes=str(item_dict.get('notes', ''))[:500],
                 ai_suggested=bool(item_dict.get('ai_suggested', True)),
             )
@@ -444,6 +448,18 @@ def api_session_status(request, session_id):
         'total_rcv': round(total_rcv, 2),
         'rooms': room_data,
     })
+
+
+def api_session_logs(request, session_id):
+    """Return live log lines written by the Celery task for this session."""
+    from django.core.cache import cache
+    key = f'ppr:live_logs:{session_id}'
+    logs = cache.get(key) or []
+    try:
+        after = int(request.GET.get('after', 0))
+    except (TypeError, ValueError):
+        after = 0
+    return JsonResponse({'logs': logs[after:], 'total': len(logs)})
 
 
 @login_required
@@ -563,6 +579,101 @@ def sign_session(request, token):
         'rooms': rooms,
         'token': str(token),
     })
+
+
+def sign_room_direct(request, token):
+    """Public (no login) page where the client signs a single room via its own token."""
+    from .models import CPSReportRoom
+    room = get_object_or_404(CPSReportRoom, share_token=token)
+    return render(request, 'cps_report/sign_room.html', {
+        'session': room.session,
+        'room': room,
+        'token': str(token),
+    })
+
+
+@require_POST
+def api_sign_room_direct(request, token):
+    """Public POST — sign a single room using the room's own share token."""
+    from .models import CPSReportRoom
+    room = get_object_or_404(CPSReportRoom, share_token=token)
+    try:
+        if room.signature_name:
+            return JsonResponse({'error': 'Room already signed'}, status=400)
+        data = json.loads(request.body)
+        name = (data.get('name') or '').strip()
+        if not name:
+            return JsonResponse({'error': 'name is required'}, status=400)
+
+        x_forwarded = request.META.get('HTTP_X_FORWARDED_FOR')
+        ip = x_forwarded.split(',')[0].strip() if x_forwarded else request.META.get('REMOTE_ADDR')
+
+        room.signature_name = name
+        room.signed_at = timezone.now()
+        room.signer_ip = ip
+        room.save(update_fields=['signature_name', 'signed_at', 'signer_ip'])
+
+        return JsonResponse({
+            'success': True,
+            'room_id': room.id,
+            'signed_at': room.signed_at.strftime('%B %d, %Y at %I:%M %p'),
+        })
+    except Exception as e:
+        logger.error(f"api_sign_room_direct error: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def get_room_share_link(request, session_id, room_id):
+    """Return the per-room public share URL (shows only that room to the client)."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    room = get_object_or_404(CPSReportRoom, id=room_id, session=session)
+    url = request.build_absolute_uri(f'/cps-report/sign/room/{room.share_token}/')
+    return JsonResponse({'url': url})
+
+
+@login_required
+@require_POST
+def api_cancel_session(request, session_id):
+    """Cancel a stuck processing session — revoke Celery task and mark as error."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    if session.celery_task_id:
+        try:
+            from celery.app.control import Control
+            from django.conf import settings
+            import celery as _celery
+            app = _celery.current_app
+            app.control.revoke(session.celery_task_id, terminate=True, signal='SIGTERM')
+        except Exception as e:
+            logger.warning(f"Could not revoke Celery task {session.celery_task_id}: {e}")
+    session.status = 'error'
+    session.save(update_fields=['status'])
+    session.rooms.filter(status__in=['processing', 'pending']).update(status='error')
+    return JsonResponse({'success': True})
+
+
+@login_required
+@require_POST
+def api_rerun_session(request, session_id):
+    """Reset a session and re-fire the Celery task to reprocess all rooms."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    # Reset rooms — clear old items so the task starts fresh
+    for room in session.rooms.all():
+        room.items.all().delete()
+        room.status = 'pending'
+        room.ai_confidence = ''
+        room.ai_notes = ''
+        room.images_used = 0
+        room.save(update_fields=['status', 'ai_confidence', 'ai_notes', 'images_used'])
+    session.status = 'pending'
+    session.save(update_fields=['status'])
+    # Re-fire the task
+    from .tasks import process_cps_session_task
+    task = process_cps_session_task.delay(session.id)
+    session.celery_task_id = task.id
+    session.status = 'processing'
+    session.save(update_fields=['celery_task_id', 'status'])
+    return JsonResponse({'success': True, 'redirect': f'/cps-report/session/{session.id}/progress/'})
 
 
 @require_POST
@@ -816,8 +927,6 @@ def api_import_excel(request):
                     age_years=min(5, max(0, _gi(row_idx, 16))),
                     age_months=min(11, max(0, _gi(row_idx, 17))),
                     replacement_value_each=_gf(row_idx, 18),
-                    depreciation_category=_gs(row_idx, 20),
-                    depreciation_pct=min(80, max(0, _gf(row_idx, 21))),
                     ai_suggested=False,
                 )
                 item_order += 1
@@ -838,6 +947,148 @@ def api_import_excel(request):
     except Exception as e:
         logger.error(f"api_import_excel error: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
+
+
+@login_required
+def pricing_audit_view(request, session_id):
+    """
+    Pricing audit / difference report for a PPR session.
+
+    Displays per-room and total-level breakdown of:
+      - Baseline RCV  (from a companion normal-mode session, or back-estimated)
+      - Expected Premium RCV  (baseline × PREMIUM_EXPECTED_LIFT)
+      - Actual AI-Generated Premium RCV
+      - Delta / Variance  (actual − expected)
+
+    The companion normal-mode session is selected as the most recently
+    completed normal-pricing run for the same Encircle claim ID.
+    When no normal session exists, baseline is back-estimated by dividing
+    each room's premium total by PREMIUM_EXPECTED_LIFT.
+    """
+    from .ai_analyzer import (
+        PREMIUM_SOFT_THRESHOLD,
+        PREMIUM_LOG_SCALE_FACTOR,
+        PREMIUM_HARD_CEILING,
+        PREMIUM_EXPECTED_LIFT,
+        CATEGORY_BASELINES,
+    )
+
+    session = get_object_or_404(CPSReportSession, id=session_id)
+
+    # ── Find companion normal session ─────────────────────────────────────────
+    normal_session = (
+        CPSReportSession.objects
+        .filter(
+            encircle_claim_id=session.encircle_claim_id,
+            pricing_mode='normal',
+            status='complete',
+        )
+        .order_by('-updated_at')
+        .first()
+    )
+
+    # ── Build room-level index for normal session (room_number → items) ───────
+    normal_room_rcv: dict[str, float] = {}
+    if normal_session:
+        for room in normal_session.rooms.prefetch_related('items').all():
+            normal_room_rcv[room.room_number] = float(sum(
+                (float(i.replacement_value_each or 0) * (i.qty or 1))
+                for i in room.items.all()
+            ))
+
+    # ── Build per-room audit rows ─────────────────────────────────────────────
+    room_rows = []
+    total_baseline  = 0.0
+    total_expected  = 0.0
+    total_actual    = 0.0
+    cap_hit_count   = 0
+    total_items     = 0
+
+    for room in session.rooms.prefetch_related('items').order_by('order', 'room_number'):
+        items = list(room.items.all())
+        total_items += len(items)
+
+        actual_rcv = float(sum(
+            (float(i.replacement_value_each or 0) * (i.qty or 1))
+            for i in items
+        ))
+
+        # Baseline: use companion normal session if available, else back-estimate
+        if room.room_number in normal_room_rcv:
+            baseline_rcv = normal_room_rcv[room.room_number]
+            baseline_source = 'normal_session'
+        elif actual_rcv > 0:
+            baseline_rcv = round(actual_rcv / PREMIUM_EXPECTED_LIFT, 2)
+            baseline_source = 'estimated'
+        else:
+            baseline_rcv = 0.0
+            baseline_source = 'estimated'
+
+        expected_rcv = round(baseline_rcv * PREMIUM_EXPECTED_LIFT, 2)
+        delta        = round(actual_rcv - expected_rcv, 2)
+        delta_pct    = round((delta / expected_rcv * 100) if expected_rcv else 0, 1)
+
+        # Count items that hit the cap (annotated in notes)
+        capped_items = sum(1 for i in items if 'cap-applied' in (i.notes or ''))
+        cap_hit_count += capped_items
+
+        # Health signal per room
+        if abs(delta_pct) <= 10:
+            health = 'ok'
+        elif abs(delta_pct) <= 25:
+            health = 'warn'
+        else:
+            health = 'over' if delta > 0 else 'under'
+
+        room_rows.append({
+            'room_number':    room.room_number,
+            'room_name':      room.room_name,
+            'baseline_rcv':   baseline_rcv,
+            'expected_rcv':   expected_rcv,
+            'actual_rcv':     actual_rcv,
+            'delta':          delta,
+            'delta_pct':      delta_pct,
+            'capped_items':   capped_items,
+            'item_count':     len(items),
+            'health':         health,
+            'baseline_source': baseline_source,
+        })
+
+        total_baseline += baseline_rcv
+        total_expected += expected_rcv
+        total_actual   += actual_rcv
+
+    total_delta     = round(total_actual - total_expected, 2)
+    total_delta_pct = round((total_delta / total_expected * 100) if total_expected else 0, 1)
+
+    if abs(total_delta_pct) <= 10:
+        overall_health = 'ok'
+    elif abs(total_delta_pct) <= 25:
+        overall_health = 'warn'
+    else:
+        overall_health = 'over' if total_delta > 0 else 'under'
+
+    context = {
+        'session':           session,
+        'normal_session':    normal_session,
+        'room_rows':         room_rows,
+        # Totals
+        'total_baseline':    round(total_baseline, 2),
+        'total_expected':    round(total_expected, 2),
+        'total_actual':      round(total_actual, 2),
+        'total_delta':       total_delta,
+        'total_delta_pct':   total_delta_pct,
+        'overall_health':    overall_health,
+        # Calibration metadata
+        'cap_hit_count':     cap_hit_count,
+        'total_items':       total_items,
+        'soft_threshold':    PREMIUM_SOFT_THRESHOLD,
+        'log_scale_factor':  PREMIUM_LOG_SCALE_FACTOR,
+        'hard_ceiling':      PREMIUM_HARD_CEILING,
+        'expected_lift':     PREMIUM_EXPECTED_LIFT,
+        'expected_lift_pct': round((PREMIUM_EXPECTED_LIFT - 1) * 100, 1),
+    }
+    return render(request, 'cps_report/pricing_audit.html', context)
 
 
 def _auto_generate_summary(session) -> None:

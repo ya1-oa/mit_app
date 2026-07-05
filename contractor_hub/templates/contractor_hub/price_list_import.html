@@ -1,0 +1,357 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Import Price List{% endblock %}
+
+{% block extra_css %}
+<style>
+.import-hero {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+    border-radius: 14px; padding: 24px 28px; color: #fff;
+    margin-bottom: 24px; display: flex; align-items: center; gap: 16px;
+}
+.import-hero-icon {
+    width: 48px; height: 48px; background: rgba(255,255,255,.2);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; flex-shrink: 0;
+}
+.import-hero h2 { font-size: 19px; font-weight: 700; margin-bottom: 3px; }
+.import-hero p  { font-size: 13px; opacity: .85; margin: 0; }
+
+.card {
+    background: #fff; border-radius: 12px; padding: 28px 32px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 20px;
+}
+.form-label { font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; display: block; }
+.form-control {
+    width: 100%; padding: 9px 12px; border: 1px solid #e2e8f0;
+    border-radius: 8px; font-size: 13px; color: #0f172a;
+    transition: border-color .15s;
+}
+.form-control:focus { outline: none; border-color: #10b981; box-shadow: 0 0 0 3px rgba(16,185,129,.15); }
+.form-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 16px; margin-bottom: 20px; }
+.form-grid-full { grid-column: 1 / -1; }
+
+/* Drop zone */
+.drop-zone {
+    border: 2px dashed #cbd5e1; border-radius: 10px; padding: 40px 24px;
+    text-align: center; cursor: pointer; transition: border-color .2s, background .2s;
+    background: #f8fafc;
+}
+.drop-zone:hover, .drop-zone.dragover { border-color: #10b981; background: #f0fdf4; }
+.drop-zone i { font-size: 32px; color: #94a3b8; margin-bottom: 10px; display: block; }
+.drop-zone .drop-label { font-size: 14px; font-weight: 600; color: #475569; margin-bottom: 4px; }
+.drop-zone .drop-sub { font-size: 12px; color: #94a3b8; }
+.drop-zone.has-file { border-color: #10b981; background: #f0fdf4; }
+.drop-zone.has-file i { color: #10b981; }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px;
+    border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; text-decoration: none; transition: opacity .15s; }
+.btn:hover { opacity: .88; text-decoration: none; }
+.btn-green   { background: #10b981; color: #fff; }
+.btn-purple  { background: #7c3aed; color: #fff; }
+.btn-ghost   { background: #f1f5f9; color: #334155; }
+.btn-danger  { background: #ef4444; color: #fff; }
+
+/* Stat chips */
+.stat-chips { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 20px; }
+.chip { padding: 6px 14px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.chip-new    { background: #d1fae5; color: #065f46; }
+.chip-update { background: #dbeafe; color: #1d4ed8; }
+.chip-skip   { background: #f1f5f9; color: #64748b; }
+.chip-total  { background: #f3e8ff; color: #6d28d9; }
+
+/* Preview table */
+.section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 12px;
+    padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+}
+.preview-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.preview-table thead th {
+    background: #f8fafc; padding: 8px 10px; text-align: left;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: #64748b; border-bottom: 1px solid #e2e8f0;
+    position: sticky; top: 0; z-index: 1;
+}
+.preview-table tbody td { padding: 7px 10px; border-bottom: 1px solid #f1f5f9; vertical-align: middle; }
+.preview-table tbody tr:last-child td { border-bottom: none; }
+.preview-table tbody tr.row-new td { background: #f0fdf4; }
+.preview-table tbody tr.row-changed td { background: #eff6ff; }
+.preview-table tbody tr.row-skip td { color: #94a3b8; }
+
+.badge-new     { background: #d1fae5; color: #065f46; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+.badge-update  { background: #dbeafe; color: #1d4ed8; padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+.badge-same    { background: #f1f5f9; color: #64748b;  padding: 2px 8px; border-radius: 20px; font-size: 10px; font-weight: 700; }
+
+.rate-change { font-size: 11px; }
+.rate-old    { text-decoration: line-through; color: #94a3b8; }
+.rate-new    { color: #1d4ed8; font-weight: 600; }
+
+.table-scroll { max-height: 440px; overflow-y: auto; border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+
+.step-indicator { display: flex; gap: 0; margin-bottom: 24px; }
+.step { flex: 1; padding: 10px 16px; text-align: center; font-size: 12px; font-weight: 600;
+    color: #94a3b8; border-bottom: 3px solid #e2e8f0; }
+.step.active { color: #10b981; border-bottom-color: #10b981; }
+.step.done   { color: #64748b; border-bottom-color: #94a3b8; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Hero -->
+<div class="import-hero">
+    <div class="import-hero-icon"><i class="fas fa-file-import"></i></div>
+    <div>
+        <h2>Import Xactimate Price List</h2>
+        <p>Upload a CSV export from Xactimate to update all standard rates in the rate library.</p>
+    </div>
+</div>
+
+<!-- Step Indicator -->
+<div class="step-indicator">
+    <div class="step {% if step == 1 %}active{% else %}done{% endif %}">
+        <i class="fas fa-upload" style="margin-right:6px;"></i>1 — Upload &amp; Configure
+    </div>
+    <div class="step {% if step == 2 %}active{% endif %}">
+        <i class="fas fa-eye" style="margin-right:6px;"></i>2 — Preview Changes
+    </div>
+    <div class="step">
+        <i class="fas fa-check-circle" style="margin-right:6px;"></i>3 — Confirm Import
+    </div>
+</div>
+
+{% if messages %}
+{% for msg in messages %}
+<div style="padding:12px 16px;border-radius:8px;margin-bottom:16px;font-size:13px;
+    background:{% if msg.tags == 'error' %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">
+    <i class="fas fa-{% if msg.tags == 'error' %}exclamation-circle{% else %}check-circle{% endif %}"
+       style="margin-right:8px;"></i>{{ msg }}
+</div>
+{% endfor %}
+{% endif %}
+
+{% if step != 2 %}
+<!-- ── STEP 1: Upload Form ──────────────────────────────────────────── -->
+<div class="card">
+    <div class="section-label">Price List Details</div>
+
+    <form method="post" enctype="multipart/form-data" id="upload-form">
+        {% csrf_token %}
+
+        <div class="form-grid">
+            <div>
+                <label class="form-label" for="id_code">
+                    Price List Code <span style="color:#ef4444;">*</span>
+                </label>
+                <input type="text" name="code" id="id_code" class="form-control"
+                       placeholder="e.g. OHCL8X_JUN26"
+                       value="{{ form_data.code|default:'' }}" required>
+                <div style="font-size:11px;color:#94a3b8;margin-top:4px;">
+                    Market_MonthYear format — must be unique
+                </div>
+            </div>
+            <div>
+                <label class="form-label" for="id_market">Market</label>
+                <input type="text" name="market" id="id_market" class="form-control"
+                       placeholder="e.g. Ohio - Cleveland"
+                       value="{{ form_data.market|default:'' }}">
+            </div>
+            <div>
+                <label class="form-label" for="id_effective_date">Effective Date</label>
+                <input type="date" name="effective_date" id="id_effective_date"
+                       class="form-control" value="{{ form_data.effective_date|default:'' }}">
+            </div>
+        </div>
+
+        <div class="section-label" style="margin-top:8px;">Upload File</div>
+
+        <!-- Drop Zone -->
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('id_csv_file').click();">
+            <i class="fas fa-cloud-upload-alt" id="drop-icon"></i>
+            <div class="drop-label" id="drop-label">Drop file here or click to browse</div>
+            <div class="drop-sub" id="drop-sub">Accepts .csv, .xlsx, or .xlsm (reads "PRICES XACT IN" tab automatically)</div>
+        </div>
+        <input type="file" name="csv_file" id="id_csv_file" accept=".csv,.txt,.xlsx,.xlsm,.xls"
+               style="display:none;" required onchange="fileSelected(this)">
+
+        <div style="margin-top:20px;display:flex;gap:10px;align-items:center;">
+            <button type="submit" class="btn btn-green">
+                <i class="fas fa-search"></i> Parse &amp; Preview
+            </button>
+            <a href="{% url 'contractor_hub:dashboard' %}" class="btn btn-ghost">Cancel</a>
+            <span style="margin-left:auto;font-size:12px;color:#94a3b8;">
+                <i class="fas fa-info-circle"></i>
+                CSV columns needed: CAT, SEL, Description, Remove, Replace, Unit, Taxable &nbsp;·&nbsp;
+                Excel: upload 94-CPS.xlsm — auto-reads "PRICES XACT IN" tab
+            </span>
+        </div>
+    </form>
+</div>
+
+<!-- Column Reference Card -->
+<div class="card" style="background:#fffbeb;border:1px solid #fde68a;">
+    <div style="font-size:12px;font-weight:700;color:#92400e;margin-bottom:10px;">
+        <i class="fas fa-lightbulb" style="margin-right:6px;"></i>Accepted CSV Column Headers
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:8px;font-size:12px;">
+        <div><strong>CAT:</strong> cat, category, trade</div>
+        <div><strong>SEL:</strong> sel, selector, item code, code</div>
+        <div><strong>Description:</strong> activity, description, desc</div>
+        <div><strong>Remove Rate:</strong> remove, rem, remove rate</div>
+        <div><strong>Replace Rate:</strong> replace, rep, unit price, price</div>
+        <div><strong>Unit:</strong> unit, uom, calc</div>
+        <div><strong>Taxable:</strong> tax, taxable, tax?</div>
+    </div>
+</div>
+
+{% else %}
+<!-- ── STEP 2: Preview ─────────────────────────────────────────────── -->
+<div class="card">
+    <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
+        <div>
+            <div style="font-size:16px;font-weight:700;color:#0f172a;">
+                {{ meta.code }}
+                {% if meta.market %}<span style="font-weight:400;color:#64748b;font-size:14px;"> — {{ meta.market }}</span>{% endif %}
+            </div>
+            <div style="font-size:12px;color:#94a3b8;margin-top:2px;">
+                File: {{ meta.filename }} &nbsp;·&nbsp; {{ meta.total }} rows parsed
+                {% if meta.effective_date %}&nbsp;·&nbsp; Effective: {{ meta.effective_date }}{% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Summary Chips -->
+    <div class="stat-chips">
+        <div class="chip chip-total">{{ meta.total }} Total</div>
+        <div class="chip chip-new">{{ new_count }} New</div>
+        <div class="chip chip-update">{{ update_count }} Updated</div>
+        <div class="chip chip-skip">{{ skip_count }} Unchanged</div>
+    </div>
+
+    <!-- Filter Tabs -->
+    <div style="display:flex;gap:6px;margin-bottom:12px;" id="filter-tabs">
+        <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px;" onclick="filterPreview('all')" id="tab-all">All</button>
+        <button class="btn" style="padding:5px 12px;font-size:12px;background:#d1fae5;color:#065f46;" onclick="filterPreview('new')" id="tab-new">New ({{ new_count }})</button>
+        <button class="btn" style="padding:5px 12px;font-size:12px;background:#dbeafe;color:#1d4ed8;" onclick="filterPreview('changed')" id="tab-changed">Updated ({{ update_count }})</button>
+        <button class="btn btn-ghost" style="padding:5px 12px;font-size:12px;" onclick="filterPreview('skip')" id="tab-skip">Unchanged ({{ skip_count }})</button>
+    </div>
+
+    <!-- Preview Table -->
+    <div class="table-scroll">
+        <table class="preview-table" id="preview-table">
+            <thead>
+                <tr>
+                    <th>Status</th>
+                    <th>CAT</th>
+                    <th>SEL</th>
+                    <th>Description</th>
+                    <th>Unit</th>
+                    <th>Remove</th>
+                    <th>Replace</th>
+                    <th>Tax</th>
+                </tr>
+            </thead>
+            <tbody>
+            {% for row in preview_rows %}
+            <tr class="{% if not row.row_exists %}row-new{% elif row.row_changed %}row-changed{% else %}row-skip{% endif %}"
+                data-kind="{% if not row.row_exists %}new{% elif row.row_changed %}changed{% else %}skip{% endif %}">
+                <td>
+                    {% if not row.row_exists %}
+                        <span class="badge-new">NEW</span>
+                    {% elif row.row_changed %}
+                        <span class="badge-update">UPDATED</span>
+                    {% else %}
+                        <span class="badge-same">SAME</span>
+                    {% endif %}
+                </td>
+                <td style="font-family:monospace;font-weight:600;">{{ row.cat }}</td>
+                <td style="font-family:monospace;font-weight:600;">{{ row.sel }}</td>
+                <td>{{ row.description }}</td>
+                <td>{{ row.unit }}</td>
+                <td class="rate-change">
+                    {% if row.row_exists and row.row_changed and row.old_remove != row.remove_rate %}
+                        <span class="rate-old">${{ row.old_remove|floatformat:2 }}</span><br>
+                        <span class="rate-new">${{ row.remove_rate|floatformat:2 }}</span>
+                    {% else %}
+                        ${{ row.remove_rate|floatformat:2 }}
+                    {% endif %}
+                </td>
+                <td class="rate-change">
+                    {% if row.row_exists and row.row_changed and row.old_replace != row.replace_rate %}
+                        <span class="rate-old">${{ row.old_replace|floatformat:2 }}</span><br>
+                        <span class="rate-new">${{ row.replace_rate|floatformat:2 }}</span>
+                    {% else %}
+                        ${{ row.replace_rate|floatformat:2 }}
+                    {% endif %}
+                </td>
+                <td>{{ row.taxable|yesno:"Y,N" }}</td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+    <!-- Confirm / Back actions -->
+    <div style="display:flex;gap:10px;margin-top:20px;padding-top:16px;border-top:1px solid #e2e8f0;">
+        <form method="post">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="confirm">
+            <button type="submit" class="btn btn-purple">
+                <i class="fas fa-check-circle"></i> Confirm &amp; Import {{ meta.total }} Items
+            </button>
+        </form>
+        <a href="{% url 'contractor_hub:price_list_import' %}" class="btn btn-ghost">
+            <i class="fas fa-arrow-left"></i> Back — Re-upload
+        </a>
+    </div>
+</div>
+{% endif %}
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// ── Drop zone handling ────────────────────────────────────────────────
+const zone = document.getElementById('drop-zone');
+if (zone) {
+    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('dragover'); });
+    zone.addEventListener('dragleave', () => zone.classList.remove('dragover'));
+    zone.addEventListener('drop', e => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        const f = e.dataTransfer.files[0];
+        if (f) {
+            document.getElementById('id_csv_file').files = e.dataTransfer.files;
+            fileSelected({files: [f]});
+        }
+    });
+}
+
+function fileSelected(input) {
+    const f = input.files[0];
+    if (!f) return;
+    const zone = document.getElementById('drop-zone');
+    zone.classList.add('has-file');
+    document.getElementById('drop-icon').className = 'fas fa-file-csv';
+    document.getElementById('drop-label').textContent = f.name;
+    document.getElementById('drop-sub').textContent =
+        (f.size / 1024).toFixed(1) + ' KB — ready to parse';
+}
+
+// ── Preview filter tabs ───────────────────────────────────────────────
+function filterPreview(kind) {
+    document.querySelectorAll('#preview-table tbody tr').forEach(row => {
+        row.style.display = (kind === 'all' || row.dataset.kind === kind) ? '' : 'none';
+    });
+    document.querySelectorAll('#filter-tabs button').forEach(b => {
+        b.style.fontWeight = b.id === 'tab-' + kind ? '700' : '600';
+        b.style.opacity    = b.id === 'tab-' + kind ? '1' : '.7';
+    });
+}
+</script>
+{% endblock %}

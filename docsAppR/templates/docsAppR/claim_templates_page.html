@@ -1,0 +1,355 @@
+{% extends "account/base.html" %}
+
+{% block title %}Templates — {{ client.pOwner }}{% endblock %}
+{% block page_title %}Templates — {{ client.pOwner }}{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+    --purple: #7c3aed;
+    --green:  #10b981;
+    --dark:   #0f172a;
+    --slate:  #334155;
+    --muted:  #64748b;
+    --mgray:  #94a3b8;
+    --lgray:  #f1f5f9;
+    --border: #e2e8f0;
+    --amber:  #f59e0b;
+    --radius: 12px;
+}
+
+.page-wrap { max-width: 780px; margin: 0 auto; }
+
+/* back link */
+.back-link {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted); text-decoration: none;
+    margin-bottom: 20px; transition: color .15s;
+}
+.back-link:hover { color: var(--dark); }
+
+/* hero */
+.hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-radius: var(--radius); padding: 28px 32px; color: #fff;
+    margin-bottom: 24px;
+}
+.hero h1 { font-size: 22px; font-weight: 800; margin: 0 0 4px; }
+.hero .sub { font-size: 13px; color: rgba(255,255,255,.5); margin: 0; }
+
+/* download all */
+.dl-all-card {
+    background: var(--green); border-radius: var(--radius);
+    padding: 22px 28px; margin-bottom: 24px;
+    display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+}
+.dl-all-card .icon {
+    width: 52px; height: 52px; background: rgba(255,255,255,.2);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: #fff; flex-shrink: 0;
+}
+.dl-all-card .text h2 { font-size: 16px; font-weight: 800; color: #fff; margin: 0 0 3px; }
+.dl-all-card .text p  { font-size: 12px; color: rgba(255,255,255,.75); margin: 0; }
+.dl-all-card .btn-dl {
+    margin-left: auto; display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px; background: #fff; color: var(--green);
+    border-radius: 9px; font-size: 14px; font-weight: 800;
+    text-decoration: none; transition: opacity .15s; white-space: nowrap;
+}
+.dl-all-card .btn-dl:hover { opacity: .9; color: var(--green); text-decoration: none; }
+
+/* share card */
+.share-card {
+    background: #fff; border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 22px 28px;
+    margin-bottom: 24px;
+}
+.share-card h3 {
+    font-size: 13px; font-weight: 700; color: var(--dark);
+    text-transform: uppercase; letter-spacing: .8px; margin: 0 0 6px;
+}
+.share-card .desc { font-size: 13px; color: var(--muted); margin: 0 0 14px; }
+.share-row { display: flex; gap: 10px; align-items: stretch; flex-wrap: wrap; }
+.share-input {
+    flex: 1; min-width: 0; font-size: 12px; font-family: monospace;
+    padding: 9px 14px; border: 1.5px solid var(--border); border-radius: 8px;
+    background: var(--lgray); color: var(--slate); outline: none;
+    transition: border-color .15s; cursor: text;
+}
+.share-input:focus { border-color: var(--purple); }
+.btn-copy {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 18px; background: var(--purple); color: #fff;
+    border: none; border-radius: 8px; font-size: 13px; font-weight: 700;
+    cursor: pointer; white-space: nowrap; transition: opacity .15s;
+}
+.btn-copy:hover { opacity: .88; }
+.copy-confirm {
+    font-size: 12px; color: var(--green); font-weight: 600;
+    display: none; align-items: center; gap: 5px; margin-top: 8px;
+}
+
+/* instructions card */
+.instructions-card {
+    background: #fff; border-radius: var(--radius);
+    border: 1px solid var(--border); padding: 22px 28px;
+    margin-bottom: 24px;
+}
+.instructions-card h3 {
+    font-size: 13px; font-weight: 700; color: var(--dark);
+    text-transform: uppercase; letter-spacing: .8px; margin: 0 0 14px;
+}
+.step {
+    display: flex; gap: 14px; margin-bottom: 14px; align-items: flex-start;
+}
+.step:last-child { margin-bottom: 0; }
+.step-num {
+    width: 26px; height: 26px; border-radius: 50%;
+    background: var(--purple); color: #fff;
+    font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    margin-top: 1px;
+}
+.step-text { font-size: 13px; color: var(--slate); line-height: 1.6; }
+.step-text strong { color: var(--dark); }
+
+/* file list */
+.files-card {
+    background: #fff; border-radius: var(--radius);
+    border: 1px solid var(--border); margin-bottom: 24px; overflow: hidden;
+}
+.files-header {
+    padding: 14px 20px; background: var(--lgray);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between;
+}
+.files-header h3 {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; color: var(--slate); margin: 0;
+}
+
+.folder-group { border-bottom: 1px solid var(--border); }
+.folder-group:last-child { border-bottom: none; }
+
+.folder-toggle-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 11px 20px; cursor: pointer;
+    background: #fafafa; user-select: none;
+    transition: background .1s;
+}
+.folder-toggle-row:hover { background: var(--lgray); }
+.folder-caret { font-size: 10px; color: var(--mgray); transition: transform .2s; width: 12px; }
+.folder-caret.open { transform: rotate(90deg); }
+.folder-toggle-row .fname { font-size: 13px; font-weight: 600; color: var(--slate); flex: 1; }
+.folder-toggle-row .fcount { font-size: 11px; color: var(--mgray); }
+
+.folder-files { display: none; }
+.folder-files.open { display: block; }
+
+.file-row {
+    display: flex; align-items: center; gap: 12px;
+    padding: 9px 20px 9px 42px; border-top: 1px solid var(--border);
+}
+.file-ext-badge {
+    font-size: 9px; font-weight: 800; letter-spacing: .4px;
+    padding: 2px 6px; border-radius: 4px; flex-shrink: 0; text-transform: uppercase;
+}
+.ext-xlsx { background: #d1fae5; color: #065f46; }
+.ext-xlsm { background: #dbeafe; color: #1e40af; }
+.ext-csv  { background: #fef3c7; color: #92400e; }
+.ext-pdf  { background: #fee2e2; color: #991b1b; }
+.ext-docx { background: #ede9fe; color: #5b21b6; }
+.ext-other{ background: var(--lgray); color: var(--muted); }
+
+.file-name { font-size: 13px; color: var(--dark); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.file-date { font-size: 11px; color: var(--mgray); white-space: nowrap; flex-shrink: 0; }
+
+.empty-state {
+    text-align: center; padding: 56px 20px;
+    background: #fff; border-radius: var(--radius); border: 1px solid var(--border);
+}
+.empty-state i { font-size: 40px; color: var(--mgray); margin-bottom: 12px; display: block; }
+.empty-state p  { font-size: 14px; color: var(--muted); margin-bottom: 16px; }
+.btn-back {
+    display: inline-flex; align-items: center; gap: 7px;
+    padding: 9px 20px; background: var(--purple); color: #fff;
+    border-radius: 9px; font-size: 13px; font-weight: 700;
+    text-decoration: none; transition: opacity .15s;
+}
+.btn-back:hover { opacity: .88; color: #fff; text-decoration: none; }
+
+.notice {
+    display: flex; gap: 12px; align-items: flex-start;
+    background: #fffbeb; border: 1px solid #fde68a; border-radius: 9px;
+    padding: 14px 18px; margin-bottom: 24px; font-size: 13px; color: #78350f;
+}
+.notice i { color: var(--amber); flex-shrink: 0; margin-top: 1px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="page-wrap">
+
+    <a href="{% url 'claim_detail' client.id %}" class="back-link">
+        <i class="fas fa-arrow-left"></i> Back to {{ client.pOwner }}
+    </a>
+
+    {# ── Hero ── #}
+    <div class="hero">
+        <div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+            <i class="fas fa-file-excel" style="font-size:22px;color:#6ee7b7;"></i>
+            <h1>Template Files</h1>
+        </div>
+        <p class="sub">
+            {{ client.pOwner }}{% if client.claimNumber %} &nbsp;&middot;&nbsp; Claim #{{ client.claimNumber }}{% endif %}
+            {% if client.pAddress %}&nbsp;&middot;&nbsp; {{ client.pAddress }}{% endif %}
+        </p>
+    </div>
+
+    {# ── No files ── #}
+    {% if not file_groups %}
+    <div class="empty-state">
+        <i class="fas fa-folder-open"></i>
+        <p>No template files have been generated for this claim yet.</p>
+        <a href="{% url 'claim_detail' client.id %}" class="btn-back">
+            <i class="fas fa-sync-alt"></i> Go to claim to regenerate files
+        </a>
+    </div>
+
+    {% else %}
+
+    {# ── Download all ── #}
+    <div class="dl-all-card">
+        <div class="icon"><i class="fas fa-download"></i></div>
+        <div class="text">
+            <h2>Download All Files</h2>
+            <p>{{ total_files }} file{{ total_files|pluralize }} &nbsp;&middot;&nbsp; Delivered as a single ZIP archive</p>
+        </div>
+        <a href="{% url 'excel_hub_download_zip' client.id %}" class="btn-dl">
+            <i class="fas fa-download"></i> Download ZIP
+        </a>
+    </div>
+
+    {# ── Share link for client ── #}
+    <div class="share-card">
+        <h3><i class="fas fa-share-alt me-1" style="color:var(--purple);"></i> Send to Your Client</h3>
+        <p class="desc">
+            This link lets your client download the files without logging in.
+            Copy it and send it by text, email, or however you reach them.
+            The link works for any browser and never expires.
+        </p>
+        <div class="share-row">
+            <input class="share-input" id="public-url" type="text" value="{{ public_url }}" readonly onclick="this.select()">
+            <button class="btn-copy" onclick="copyLink()">
+                <i class="fas fa-copy"></i> Copy Link
+            </button>
+        </div>
+        <div class="copy-confirm" id="copy-confirm">
+            <i class="fas fa-check-circle"></i> Copied to clipboard
+        </div>
+    </div>
+
+    {# ── How to update files ── #}
+    <div class="instructions-card">
+        <h3>How to Replace or Update a File</h3>
+        <div class="step">
+            <div class="step-num">1</div>
+            <div class="step-text">Download the files using the button above. Make your changes to any Excel file on your computer.</div>
+        </div>
+        <div class="step">
+            <div class="step-num">2</div>
+            <div class="step-text">Go back to the <a href="{% url 'claim_detail' client.id %}" style="color:var(--purple);font-weight:600;">{{ client.pOwner }} claim page</a> and click the <strong>Files</strong> tab.</div>
+        </div>
+        <div class="step">
+            <div class="step-num">3</div>
+            <div class="step-text">Open the <strong>Templates</strong> folder in the file browser. Click <strong>Upload</strong> next to that folder and select your updated file. If a file with the same name already exists, you will be asked to confirm replacing it.</div>
+        </div>
+        <div class="step">
+            <div class="step-num">4</div>
+            <div class="step-text">Come back to this page — the date next to each file below will update to confirm your new version is live.</div>
+        </div>
+    </div>
+
+    {# ── File list with dates ── #}
+    <div class="files-card">
+        <div class="files-header">
+            <h3><i class="fas fa-clock me-1" style="color:var(--mgray);"></i> File Versions &amp; Last Updated Dates</h3>
+            <span style="font-size:11px;color:var(--mgray);">{{ total_files }} file{{ total_files|pluralize }}</span>
+        </div>
+
+        {% for group in file_groups %}
+        <div class="folder-group">
+            <div class="folder-toggle-row" onclick="toggleFolder(this)">
+                <i class="fas fa-caret-right folder-caret"></i>
+                <i class="fas fa-folder" style="color:#f59e0b;font-size:13px;"></i>
+                <span class="fname">{{ group.folder_name }}</span>
+                <span class="fcount">{{ group.files|length }} file{{ group.files|length|pluralize }}</span>
+            </div>
+            <div class="folder-files">
+                {% for file in group.files %}
+                {% with ext=file.name|lower %}
+                <div class="file-row">
+                    <span class="file-ext-badge {% if '.xlsx' in ext %}ext-xlsx{% elif '.xlsm' in ext %}ext-xlsm{% elif '.csv' in ext %}ext-csv{% elif '.pdf' in ext %}ext-pdf{% elif '.doc' in ext %}ext-docx{% else %}ext-other{% endif %}">
+                        {% if '.xlsx' in ext %}xlsx{% elif '.xlsm' in ext %}xlsm{% elif '.csv' in ext %}csv{% elif '.pdf' in ext %}pdf{% elif '.doc' in ext %}docx{% else %}file{% endif %}
+                    </span>
+                    <span class="file-name" title="{{ file.name }}">{{ file.name }}</span>
+                    <span class="file-date">
+                        {% if file.modified %}
+                        <i class="fas fa-clock" style="font-size:10px;margin-right:3px;color:var(--mgray);"></i>{{ file.modified }}
+                        {% else %}
+                        <span style="color:var(--mgray);">—</span>
+                        {% endif %}
+                    </span>
+                </div>
+                {% endwith %}
+                {% endfor %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {# ── Notice ── #}
+    <div class="notice">
+        <i class="fas fa-exclamation-circle"></i>
+        <div>
+            <strong>Files regenerated automatically?</strong> If you re-generate files from the claim page, your manually uploaded versions will be replaced. Keep a local copy of any edited files before regenerating.
+        </div>
+    </div>
+
+    {% endif %}
+
+    {# ── Bottom back link ── #}
+    <div style="text-align:center;padding:10px 0 30px;">
+        <a href="{% url 'claim_detail' client.id %}" class="back-link" style="font-size:13px;font-weight:600;">
+            <i class="fas fa-arrow-left"></i> Back to {{ client.pOwner }} claim page
+        </a>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function toggleFolder(row) {
+    const caret = row.querySelector('.folder-caret');
+    const files = row.nextElementSibling;
+    const open  = files.classList.toggle('open');
+    caret.classList.toggle('open', open);
+}
+
+function copyLink() {
+    const input   = document.getElementById('public-url');
+    const confirm = document.getElementById('copy-confirm');
+    input.select();
+    navigator.clipboard.writeText(input.value).then(() => {
+        confirm.style.display = 'flex';
+        setTimeout(() => confirm.style.display = 'none', 3000);
+    }).catch(() => {
+        // fallback for older browsers
+        document.execCommand('copy');
+        confirm.style.display = 'flex';
+        setTimeout(() => confirm.style.display = 'none', 3000);
+    });
+}
+</script>
+{% endblock %}

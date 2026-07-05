@@ -1,0 +1,196 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}{{ action }} Contractor{% endblock %}
+
+{% block extra_css %}
+<style>
+.hero {
+    background: linear-gradient(135deg, #0ea5e9 0%, #38bdf8 100%);
+    border-radius: 14px; padding: 22px 28px; color: #fff;
+    margin-bottom: 22px; display: flex; align-items: center; gap: 16px;
+}
+.hero-icon { width: 46px; height: 46px; background: rgba(255,255,255,.2);
+    border-radius: 11px; display: flex; align-items: center; justify-content: center; font-size: 20px; }
+.hero h2 { font-size: 18px; font-weight: 700; margin: 0 0 3px; }
+.hero p  { font-size: 13px; opacity: .85; margin: 0; }
+
+.card { background: #fff; border-radius: 12px; padding: 26px 30px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 18px; }
+.section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 18px;
+    padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+}
+
+.field { margin-bottom: 16px; }
+.field:last-child { margin-bottom: 0; }
+
+.form-label { font-size: 12px; font-weight: 700; color: #475569; margin-bottom: 5px; display: block; }
+.form-control {
+    width: 100%; padding: 10px 13px; border: 1px solid #e2e8f0;
+    border-radius: 8px; font-size: 13px; color: #0f172a;
+    box-sizing: border-box; transition: border-color .15s;
+}
+.form-control:focus { outline: none; border-color: #0ea5e9; box-shadow: 0 0 0 3px rgba(14,165,233,.12); }
+select.form-control { cursor: pointer; }
+textarea.form-control { resize: vertical; }
+
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 10px 20px;
+    border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; text-decoration: none; transition: opacity .15s; }
+.btn:hover { opacity: .88; text-decoration: none; }
+.btn-blue  { background: #0ea5e9; color: #fff; }
+.btn-ghost { background: #f1f5f9; color: #334155; }
+
+.toggle-wrap { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.toggle-wrap label { font-size: 13px; color: #334155; cursor: pointer; }
+input[type="checkbox"] { width: 16px; height: 16px; cursor: pointer; accent-color: #0ea5e9; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="hero">
+    <div class="hero-icon"><i class="fas fa-building"></i></div>
+    <div>
+        <h2>{{ action }} Contractor</h2>
+        <p>{% if action == 'Add' %}Register a new GC, subcontractor or vendor.{% else %}Update contractor information.{% endif %}</p>
+    </div>
+</div>
+
+<form method="post">
+{% csrf_token %}
+
+<!-- Identity -->
+<div class="card">
+    <div class="section-label">Identity</div>
+
+    <div class="field">
+        <label class="form-label" for="id_name">Company Name <span style="color:#ef4444;">*</span></label>
+        <input type="text" name="name" id="id_name" class="form-control" required
+               value="{{ contractor.name|default:'' }}" placeholder="e.g. Platinum One Properties, LLC">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_ein">EIN / Tax ID</label>
+        <input type="text" name="ein" id="id_ein" class="form-control"
+               value="{{ contractor.ein|default:'' }}" placeholder="XX-XXXXXXX">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_role">Role <span style="color:#ef4444;">*</span></label>
+        <select name="role" id="id_role" class="form-control">
+            <option value="gc"            {% if contractor.role == 'gc' %}selected{% endif %}>General Contractor</option>
+            <option value="estimator"     {% if contractor.role == 'estimator' %}selected{% endif %}>Estimator / Project Manager</option>
+            <option value="packing"       {% if contractor.role == 'packing' %}selected{% endif %}>CPS Packing &amp; Evaluation</option>
+            <option value="administrative"{% if contractor.role == 'administrative' %}selected{% endif %}>Administrative Services</option>
+            <option value="storage"       {% if contractor.role == 'storage' %}selected{% endif %}>Storage</option>
+            <option value="cleaning"      {% if contractor.role == 'cleaning' %}selected{% endif %}>Contents Cleaning</option>
+            <option value="demo"          {% if contractor.role == 'demo' %}selected{% endif %}>Demo &amp; Rubbish Removal</option>
+            <option value="transport"     {% if contractor.role == 'transport' %}selected{% endif %}>Transport</option>
+            <option value="other"         {% if contractor.role == 'other' or not contractor %}selected{% endif %}>Other</option>
+        </select>
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_contact">Contact Person</label>
+        <input type="text" name="contact_person" id="id_contact" class="form-control"
+               value="{{ contractor.contact_person|default:'' }}" placeholder="Primary contact name">
+    </div>
+</div>
+
+<!-- Contact Information -->
+<div class="card">
+    <div class="section-label">Contact Information</div>
+
+    <div class="field">
+        <label class="form-label" for="id_phone">Primary Phone</label>
+        <input type="tel" name="phone" id="id_phone" class="form-control"
+               value="{{ contractor.phone|default:'' }}" placeholder="(216) 555-0100">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_phone2">Secondary Phone</label>
+        <input type="tel" name="phone2" id="id_phone2" class="form-control"
+               value="{{ contractor.phone2|default:'' }}" placeholder="(216) 555-0101">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_email">Email</label>
+        <input type="email" name="email" id="id_email" class="form-control"
+               value="{{ contractor.email|default:'' }}" placeholder="contact@company.com">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_website">Website</label>
+        <input type="url" name="website" id="id_website" class="form-control"
+               value="{{ contractor.website|default:'' }}" placeholder="https://www.company.com">
+    </div>
+</div>
+
+<!-- Address -->
+<div class="card">
+    <div class="section-label">Address</div>
+
+    <div class="field">
+        <label class="form-label" for="id_address">Street Address</label>
+        <input type="text" name="address" id="id_address" class="form-control"
+               value="{{ contractor.address|default:'' }}" placeholder="Street address">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_city">City</label>
+        <input type="text" name="city" id="id_city" class="form-control"
+               value="{{ contractor.city|default:'' }}" placeholder="Cleveland">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_state">State</label>
+        <input type="text" name="state" id="id_state" class="form-control"
+               value="{{ contractor.state|default:'' }}" placeholder="OH" maxlength="2">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_zip">ZIP Code</label>
+        <input type="text" name="zip_code" id="id_zip" class="form-control"
+               value="{{ contractor.zip_code|default:'' }}" placeholder="44128">
+    </div>
+</div>
+
+<!-- Notes & Status -->
+<div class="card">
+    <div class="section-label">Notes &amp; Status</div>
+
+    <div class="field">
+        <label class="form-label" for="id_cert">Certifications / Licenses</label>
+        <input type="text" name="certification" id="id_cert" class="form-control"
+               value="{{ contractor.certification|default:'' }}"
+               placeholder="e.g. Lead Paint Cert# R-I-18350-25-05967, IICRC WRT">
+    </div>
+
+    <div class="field">
+        <label class="form-label" for="id_notes">Notes</label>
+        <textarea name="notes" id="id_notes" class="form-control" rows="3"
+                  placeholder="Internal notes…">{{ contractor.notes|default:'' }}</textarea>
+    </div>
+
+    <div class="toggle-wrap">
+        <input type="checkbox" name="is_active" id="id_is_active"
+               {% if not contractor or contractor.is_active %}checked{% endif %}
+               value="1">
+        <label for="id_is_active">Active — appears in contractor selection menus</label>
+    </div>
+</div>
+
+<!-- Actions -->
+<div style="display:flex;gap:10px;margin-bottom:32px;">
+    <button type="submit" class="btn btn-blue">
+        <i class="fas fa-{% if action == 'Add' %}plus{% else %}save{% endif %}"></i>
+        {{ action }} Contractor
+    </button>
+    <a href="{% url 'contractor_hub:contractor_list' %}" class="btn btn-ghost">Cancel</a>
+</div>
+
+</form>
+{% endblock %}

@@ -1,11 +1,94 @@
 {% extends "account/base.html" %}
 {% load static %}
 
-{% block title %}CPS Schedule of Loss{% endblock %}
-{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss Report{% endblock %}
+{% block title %}PPR Schedule of Loss{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> PPR Schedule of Loss Report{% endblock %}
 
 {% block extra_css %}
+<!-- Driver.js spotlight tour library -->
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
 <style>
+  /* ── Tour floating button ── */
+  #tour-btn {
+    position: fixed; bottom: 28px; right: 28px; z-index: 1050;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 22px; font-weight: 700;
+    border: none; box-shadow: 0 4px 16px rgba(102,126,234,.45);
+    cursor: pointer; transition: transform .15s, box-shadow .15s;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #tour-btn:hover { transform: scale(1.1); box-shadow: 0 8px 24px rgba(102,126,234,.6); }
+  #tour-btn title { display: none; }
+
+  /* ── Welcome modal overlay ── */
+  #welcome-overlay {
+    display: none; position: fixed; inset: 0; z-index: 2000;
+    background: rgba(0,0,0,.65); align-items: center; justify-content: center;
+  }
+  #welcome-overlay.show { display: flex; }
+  #welcome-card {
+    background: #fff; border-radius: 20px; width: 90%; max-width: 540px;
+    overflow: hidden; box-shadow: 0 24px 80px rgba(0,0,0,.4);
+    animation: wc-in .25s ease;
+  }
+  @keyframes wc-in { from { opacity:0; transform:scale(.92) translateY(20px); } to { opacity:1; transform:none; } }
+  #welcome-card .wc-header {
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    padding: 32px 36px 24px; text-align: center; color: #fff;
+  }
+  #welcome-card .wc-icon { font-size: 44px; margin-bottom: 12px; }
+  #welcome-card .wc-header h2 { font-size: 22px; font-weight: 800; margin: 0 0 6px; }
+  #welcome-card .wc-header p  { opacity: .85; font-size: 14px; margin: 0; }
+  #welcome-card .wc-body { padding: 28px 36px; }
+  #welcome-card .wc-steps { list-style: none; padding: 0; margin: 0 0 24px; }
+  #welcome-card .wc-steps li {
+    display: flex; align-items: flex-start; gap: 12px;
+    font-size: 14px; color: #334155; margin-bottom: 12px;
+  }
+  #welcome-card .wc-steps li .step-num {
+    width: 26px; height: 26px; border-radius: 50%; flex-shrink: 0;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .wc-actions { display: flex; gap: 10px; }
+  .wc-actions .btn-tour  {
+    flex: 1; background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; border: none; padding: 12px; border-radius: 10px;
+    font-weight: 700; font-size: 15px; cursor: pointer;
+  }
+  .wc-actions .btn-tour:hover { opacity: .9; }
+  .wc-actions .btn-skip {
+    flex-shrink: 0; background: #f1f5f9; color: #64748b;
+    border: none; padding: 12px 18px; border-radius: 10px;
+    font-size: 14px; cursor: pointer;
+  }
+  .wc-actions .btn-skip:hover { background: #e2e8f0; }
+  /* X close button inside header */
+  .wc-x {
+    position: absolute; top: 14px; right: 16px;
+    background: rgba(255,255,255,.25); border: none;
+    color: #fff; font-size: 22px; line-height: 1; width: 32px; height: 32px;
+    border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  }
+  .wc-x:hover { background: rgba(255,255,255,.4); }
+  .wc-header { position: relative; } /* needed for absolute X */
+  /* "Don't show again" row */
+  .wc-disable { margin-top: 14px; border-top: 1px solid #f1f5f9; padding-top: 10px; }
+
+  /* ── Driver.js theme overrides ── */
+  .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
+  .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; color: #0f172a !important; }
+  .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
+  .driver-popover-next-btn {
+    background: linear-gradient(135deg, #667eea, #764ba2) !important;
+    border-color: transparent !important; border-radius: 8px !important;
+    font-weight: 700 !important; color: #fff !important;
+  }
+  .driver-popover-prev-btn { border-radius: 8px !important; color: #334155 !important; }
+  .driver-popover-progress-text { font-size: 11px !important; color: #94a3b8 !important; }
+
   .claim-card { cursor: pointer; transition: box-shadow .15s, border-color .15s; }
   .claim-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.12); border-color: #0d6efd !important; }
   .claim-card.selected { border-color: #0d6efd !important; background: #e8f0fe; }
@@ -62,14 +145,33 @@
           </div>
         </div>
         <div class="card-footer py-2">
-          <button id="btn-start" class="btn btn-primary btn-sm w-100 mb-1" disabled>
-            <i class="fas fa-play me-1"></i> Find CPS Rooms &amp; Start Report
-          </button>
-          <button type="button" class="btn btn-outline-secondary btn-sm w-100"
-                  data-bs-toggle="modal" data-bs-target="#importExcelModal">
-            <i class="fas fa-file-upload me-1"></i> Import Previous Excel Run
+          <div class="mb-2">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="small fw-semibold text-muted" style="white-space:nowrap">Pricing Mode:</span>
+              <div class="btn-group btn-group-sm w-100" role="group" id="pricing-mode-group">
+                <input type="radio" class="btn-check" name="pricing-mode" id="mode-normal" value="normal" checked>
+                <label class="btn btn-outline-secondary" for="mode-normal">
+                  <i class="fas fa-tag me-1"></i> Normal
+                </label>
+                <input type="radio" class="btn-check" name="pricing-mode" id="mode-premium" value="premium">
+                <label class="btn btn-outline-warning" for="mode-premium">
+                  <i class="fas fa-star me-1"></i> Premium
+                </label>
+              </div>
+            </div>
+            <div id="pricing-mode-hint" class="text-muted" style="font-size:.72rem; line-height:1.3; min-height:1.2em;"></div>
+          </div>
+          <button id="btn-start" class="btn btn-primary btn-sm w-100" disabled>
+            <i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report
           </button>
         </div>
+      </div>
+      {# Import button lives OUTSIDE the card so Driver.js spotlight never gets clipped by card overflow #}
+      <div class="mt-2">
+        <button id="btn-import-excel" type="button" class="btn btn-outline-secondary btn-sm w-100"
+                data-bs-toggle="modal" data-bs-target="#importExcelModal">
+          <i class="fas fa-file-upload me-1"></i> Import Previous Excel Run
+        </button>
       </div>
     </div>
 
@@ -79,7 +181,7 @@
       <!-- Rooms panel (shown after start) -->
       <div id="rooms-panel" class="card shadow-sm mb-3">
         <div class="card-header d-flex justify-content-between align-items-center">
-          <span><i class="fas fa-door-open me-1"></i> CPS Rooms
+          <span><i class="fas fa-door-open me-1"></i> PPR Rooms
             <span id="session-title" class="text-muted ms-2 small"></span>
           </span>
           <div class="d-flex align-items-center gap-2">
@@ -169,10 +271,27 @@
                         </span>
                         {% if s.status == 'complete' %}
                         <a href="{% url 'cps_report_export_pdf' s.id %}"
-                           class="btn btn-danger btn-sm py-0 px-1" style="font-size:.72rem"
+                           class="btn btn-danger btn-sm px-2"
                            onclick="event.stopPropagation()" title="Download PDF">
-                          <i class="fas fa-file-pdf"></i>
+                          <i class="fas fa-file-pdf me-1"></i> PDF
                         </a>
+                        <a href="{% url 'cps_report_export' s.id %}"
+                           class="btn btn-success btn-sm px-2"
+                           onclick="event.stopPropagation()" title="Download Excel">
+                          <i class="fas fa-file-excel me-1"></i> Excel
+                        </a>
+                        {% elif s.status == 'processing' %}
+                        <button class="btn btn-outline-danger btn-sm px-2"
+                                onclick="event.stopPropagation(); cancelSession({{ s.id }}, this)"
+                                title="Cancel stuck report">
+                          <i class="fas fa-stop me-1"></i> Cancel
+                        </button>
+                        {% elif s.status == 'error' %}
+                        <button class="btn btn-outline-warning btn-sm px-2"
+                                onclick="event.stopPropagation(); rerunSession({{ s.id }}, this)"
+                                title="Re-run this report">
+                          <i class="fas fa-rotate-right me-1"></i> Re-run
+                        </button>
                         {% endif %}
                       </div>
                     </div>
@@ -190,6 +309,53 @@
     </div>
   </div>
 </div>
+<!-- ─── Floating tour button (always visible) ─────────────────────────── -->
+<button id="tour-btn" onclick="launchTour()" title="Take the guided tour">?</button>
+
+<!-- ─── Welcome modal (shown every visit unless user opts out) ────────── -->
+<div id="welcome-overlay">
+  <div id="welcome-card">
+    <div class="wc-header">
+      <button class="wc-x" onclick="closeTourModal(false)" title="Close">×</button>
+      <div class="wc-icon">📋</div>
+      <h2>PPR Schedule of Loss</h2>
+      <p>Automated PPR replacement value reports</p>
+    </div>
+    <div class="wc-body">
+      <ul class="wc-steps">
+        <li>
+          <div class="step-num">1</div>
+          <span><strong>Search & select a claim</strong> from the left panel by name, claim #, or address</span>
+        </li>
+        <li>
+          <div class="step-num">2</div>
+          <span><strong>Click "Find PPR Rooms & Start Report"</strong> — This app will find all PPR rooms automatically</span>
+        </li>
+        <li>
+          <div class="step-num">3</div>
+          <span><strong>Watch live progress</strong> as the app prices every item room by room</span>
+        </li>
+        <li>
+          <div class="step-num">4</div>
+          <span><strong>Edit, export & share</strong> the finished report — PDF, Excel, or send a client signature link</span>
+        </li>
+      </ul>
+      <div class="wc-actions">
+        <button class="btn-tour" onclick="closeTourModal(false); launchTour()">
+          <i class="fas fa-play me-2"></i> Start Guided Tour
+        </button>
+        <button class="btn-skip" onclick="closeTourModal(false)">Skip for now</button>
+      </div>
+      <div class="wc-disable">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;cursor:pointer;">
+          <input type="checkbox" id="chk-disable-welcome" style="width:14px;height:14px;">
+          Don't show this again
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Import Excel Modal -->
 <div class="modal fade" id="importExcelModal" tabindex="-1" aria-labelledby="importExcelModalLabel" aria-hidden="true">
   <div class="modal-dialog modal-dialog-centered">
@@ -225,6 +391,158 @@
 {% endblock %}
 
 {% block extra_js %}
+<!-- Driver.js spotlight tour -->
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
+<script>
+// ── Welcome modal logic ─────────────────────────────────────────────────────
+const DISABLE_KEY = 'cps_home_disable_welcome';
+
+function closeTourModal(permanently) {
+  document.getElementById('welcome-overlay').classList.remove('show');
+  // If checkbox is checked OR caller explicitly passes true, disable forever
+  const chk = document.getElementById('chk-disable-welcome');
+  if (permanently || (chk && chk.checked)) {
+    localStorage.setItem(DISABLE_KEY, '1');
+  }
+}
+
+let driverObj = null;
+
+function launchTour() {
+  closeTourModal(false);
+
+  // ── Pre-open the first accordion panel BEFORE the driver starts ──────────
+  // Bootstrap animates from height:0 → height:auto via a CSS transition.
+  // If we open it inside onNextClick the element still has height:0 when
+  // Driver.js measures it for the spotlight → sliver-sized highlight.
+  // Opening here (and bypassing the animation by forcing height:auto) means
+  // Driver.js always sees a fully-rendered element with correct dimensions.
+  {% if grouped_sessions %}
+  (function () {
+    const firstBtn   = document.querySelector('#sessions-accordion .accordion-button');
+    const firstPanel = document.querySelector('#sessions-accordion .accordion-collapse');
+    if (firstBtn && firstPanel) {
+      firstBtn.classList.remove('collapsed');
+      firstPanel.classList.add('show');
+      firstPanel.style.height = 'auto';   // bypass animation — full height immediately
+    }
+  })();
+  {% endif %}
+
+  driverObj = window.driver.js.driver({
+    showProgress: true,
+    animate: true,
+    overlayColor: 'rgba(0,0,0,0.72)',
+    smoothScroll: true,
+    allowClose: true,   // let Escape / overlay-click also finish the tour
+    popoverClass: 'cps-tour-popover',
+    steps: [
+      {
+        popover: {
+          title: '👋 Welcome to PPR Schedule of Loss',
+          description: 'This is your AI-powered pricing system. In a few minutes you\'ll have a complete Schedule of Loss with replacement values for every PPR room. Let\'s walk through it step by step.',
+          side: 'over', align: 'center',
+          nextBtnText: 'Let\'s go →',
+        },
+      },
+      {
+        element: '#claim-search',
+        popover: {
+          title: '🔍 Step 1 — Search for a Claim',
+          description: 'Type the insured\'s name, claim number, or address here. The list updates instantly as you type.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Got it →',
+        },
+      },
+      {
+        element: '#claims-list',
+        popover: {
+          title: '📋 Step 2 — Select a Claim',
+          description: 'Matching claims appear here as cards. <strong>Click a card to select it</strong> — it highlights in blue. Each card shows the insured name, claim number, and Encircle ID.',
+          side: 'right', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '#btn-start',
+        popover: {
+          title: '🚀 Step 3 — Launch the Report',
+          description: 'Once a claim is selected, this button activates. <strong>Click "Find PPR Rooms & Start Report"</strong> — the system finds all PPR rooms in Encircle automatically and starts the AI analysis.',
+          side: 'top', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '#btn-import-excel',
+        popover: {
+          title: '📁 Import a Previous Run',
+          description: 'Already have an exported Schedule of Loss? Upload it here to create a new session pre-loaded with that data — ready to share, edit, or re-export.',
+          side: 'top', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+      {% if grouped_sessions %}
+      {
+        // Targets the first full accordion item (header + body, always rendered)
+        element: '#sessions-accordion .accordion-item:first-child',
+        popover: {
+          title: '📂 Your Report History',
+          description: 'Every report you\'ve ever run is saved here, grouped by claim. <strong>Reports are never overwritten</strong> — each run creates a new record you can compare, re-open, and download at any time.',
+          side: 'top', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        // Targets the first list-group-item inside any OPEN (.show) panel.
+        // The panel was forced open above, so this always resolves correctly.
+        element: '#sessions-accordion .accordion-collapse.show .list-group-item:first-child',
+        popover: {
+          title: '📄 Open or Download a Past Report',
+          description: '<strong>Click a run row</strong> to open the full report for viewing and editing.<br><br><span class="badge bg-danger"><i class="fas fa-file-pdf"></i> PDF</span> downloads the report instantly. <span class="badge bg-success"><i class="fas fa-file-excel"></i> Excel</span> exports the data — no need to open the session first.',
+          side: 'left', align: 'start',
+          nextBtnText: 'Finish tour ✓',
+        },
+      },
+      {% else %}
+      {
+        popover: {
+          title: '📂 Your Report History Lives Here',
+          description: 'Once you run your first report, all sessions appear here grouped by claim. Reports are never overwritten — each run is a separate record you can re-open, compare, and download at any time.',
+          side: 'over', align: 'center',
+          nextBtnText: 'Finish tour ✓',
+        },
+      },
+      {% endif %}
+    ],
+    onDestroyStarted: () => {
+      // BUG FIX: was incorrectly referencing TOUR_KEY (undefined) — now uses DISABLE_KEY
+      localStorage.setItem(DISABLE_KEY, '1');
+      driverObj.destroy();
+    },
+  });
+  driverObj.drive();
+}
+
+// Auto-show welcome modal every visit UNLESS user checked "Don't show again"
+document.addEventListener('DOMContentLoaded', () => {
+  if (!localStorage.getItem(DISABLE_KEY)) {
+    document.getElementById('welcome-overlay').classList.add('show');
+  }
+
+  // Pricing mode hint
+  const hintEl = document.getElementById('pricing-mode-hint');
+  const HINTS = {
+    normal:  'Standard retail pricing — Amazon, IKEA, Home Depot, etc.',
+    premium: 'High-end pricing — RH, Williams-Sonoma, Apple, Magnolia. No budget retailers.',
+  };
+  function updateHint() {
+    const mode = document.querySelector('input[name="pricing-mode"]:checked')?.value ?? 'normal';
+    if (hintEl) hintEl.textContent = HINTS[mode] || '';
+  }
+  document.querySelectorAll('input[name="pricing-mode"]').forEach(r => r.addEventListener('change', updateHint));
+  updateHint();
+});
+</script>
 <script>
 (function () {
   const CSRF = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
@@ -345,14 +663,18 @@
     }
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Finding CPS rooms &amp; launching…';
+    const pricingMode = document.querySelector('input[name="pricing-mode"]:checked')?.value ?? 'normal';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Finding PPR rooms &amp; launching…';
 
     try {
-      const data = await post('{% url "cps_api_start" %}', { encircle_claim_id: selectedClientId });
+      const data = await post('{% url "cps_api_start" %}', {
+        encircle_claim_id: selectedClientId,
+        pricing_mode: pricingMode,
+      });
       if (data.error) {
         showError(data.error);
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-play me-1"></i> Find CPS Rooms & Start Report';
+        btn.innerHTML = '<i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report';
         return;
       }
 
@@ -362,7 +684,7 @@
     } catch (e) {
       showError('Request failed: ' + e);
       btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-play me-1"></i> Find CPS Rooms & Start Report';
+      btn.innerHTML = '<i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report';
     }
   });
 
@@ -532,6 +854,41 @@ async function submitImport() {
     resultDiv.innerHTML = `<div class="alert alert-danger py-2 mb-0">Network error: ${e}</div>`;
     btn.disabled = false;
     btn.innerHTML = '<i class="fas fa-upload me-1"></i> Import &amp; Open Session';
+  }
+}
+
+const CSRF_TOK = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+
+async function cancelSession(sessionId, btn) {
+  if (!confirm('Cancel this stuck report? You can re-run it afterwards.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${sessionId}/cancel/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF_TOK() },
+  });
+  if ((await res.json()).success) {
+    location.reload();
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-stop me-1"></i> Cancel';
+    alert('Could not cancel. Try refreshing.');
+  }
+}
+
+async function rerunSession(sessionId, btn) {
+  if (!confirm('Re-run this report? All existing items will be cleared and re-analysed.')) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${sessionId}/rerun/`, {
+    method: 'POST', headers: { 'X-CSRFToken': CSRF_TOK() },
+  });
+  const data = await res.json();
+  if (data.success) {
+    window.location.href = data.redirect;
+  } else {
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-rotate-right me-1"></i> Re-run';
+    alert('Could not re-run. Try refreshing.');
   }
 }
 </script>

@@ -2,6 +2,9 @@
 PDF / document generation utilities.
 Extracted from docsAppR/views.py to improve manageability.
 
+Additional functions:
+    generate_demand_letter_pdf       - Professional demand-for-payment letter PDF (ReportLab)
+
 Functions:
     convert_excel_to_pdf            - Convert an Excel file to PDF (Windows or Linux)
     generate_room_list_pdf          - Generate a room-list PDF (table or list format)
@@ -23,6 +26,221 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Excel → PDF conversion
 # ---------------------------------------------------------------------------
+
+def generate_demand_letter_pdf(letter_data):
+    """
+    Generate a demand-for-payment letter PDF matching the plain Word-document style.
+
+    letter_data keys:
+        date_str, insured_name, claim_number, ins_company, property_addr,
+        re_company, ale_start, ale_end,
+        outstanding_items  (list of {'label': str, 'amount': float}),
+        disbursed_text, total_due (float),
+        contact_name, contact_phone, contact_email
+
+    Returns a BytesIO buffer containing the PDF.
+    """
+    from io import BytesIO
+    from reportlab.lib.pagesizes import letter as page_letter
+    from reportlab.lib import colors
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.lib.enums import TA_LEFT, TA_CENTER
+    from reportlab.platypus import (
+        SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, HRFlowable
+    )
+
+    buf = BytesIO()
+    doc = SimpleDocTemplate(
+        buf, pagesize=page_letter,
+        rightMargin=1.25 * inch, leftMargin=1.25 * inch,
+        topMargin=1.0 * inch, bottomMargin=1.0 * inch,
+    )
+    base = getSampleStyleSheet()
+    BLK = colors.black
+
+    # ── Styles – plain serif, black only ─────────────────────────────────────
+    co_hdr = ParagraphStyle('CoHdr', parent=base['Normal'],
+        fontSize=13, fontName='Times-Bold',
+        textColor=BLK, spaceAfter=2, alignment=TA_CENTER)
+    co_tag = ParagraphStyle('CoTag', parent=base['Normal'],
+        fontSize=10, fontName='Times-Roman',
+        textColor=BLK, spaceAfter=4, alignment=TA_CENTER)
+    doc_title = ParagraphStyle('DocTitle', parent=base['Normal'],
+        fontSize=13, fontName='Times-Bold',
+        textColor=BLK, spaceBefore=14, spaceAfter=2, alignment=TA_CENTER)
+    cert_mail = ParagraphStyle('CertMail', parent=base['Normal'],
+        fontSize=10, fontName='Times-Italic',
+        textColor=BLK, spaceAfter=12, alignment=TA_CENTER)
+    lhdr = ParagraphStyle('Lhdr', parent=base['Normal'],
+        fontSize=10, fontName='Times-Roman',
+        textColor=BLK, spaceBefore=3, spaceAfter=3, leading=15)
+    body = ParagraphStyle('Body', parent=base['Normal'],
+        fontSize=10, fontName='Times-Roman',
+        textColor=BLK, spaceBefore=8, spaceAfter=8, leading=15)
+    bullet_sty = ParagraphStyle('Bullet', parent=base['Normal'],
+        fontSize=10, fontName='Times-Roman',
+        textColor=BLK, leftIndent=24, spaceBefore=3, spaceAfter=3, leading=15)
+    sign_normal = ParagraphStyle('SignNormal', parent=base['Normal'],
+        fontSize=10, fontName='Times-Roman',
+        textColor=BLK, spaceBefore=3, spaceAfter=2, leading=15)
+    sign_bold = ParagraphStyle('SignBold', parent=base['Normal'],
+        fontSize=10, fontName='Times-Bold',
+        textColor=BLK, spaceBefore=2, spaceAfter=2, leading=15)
+    encl_sty = ParagraphStyle('Encl', parent=base['Normal'],
+        fontSize=9, fontName='Times-Italic',
+        textColor=BLK)
+
+    # ── Pull data ─────────────────────────────────────────────────────────────
+    re_co      = letter_data.get('re_company',    '')
+    insured    = letter_data.get('insured_name',  '')
+    claim_num  = letter_data.get('claim_number',  '')
+    ins_co     = letter_data.get('ins_company',   '')
+    prop_addr  = letter_data.get('property_addr', '')
+    ale_start  = letter_data.get('ale_start',     'TBD')
+    ale_end    = letter_data.get('ale_end',       'TBD')
+    total_due  = float(letter_data.get('total_due', 0))
+    date_str   = letter_data.get('date_str',      '')
+    c_name     = letter_data.get('contact_name',  '')
+    c_phone    = letter_data.get('contact_phone', '')
+    c_email    = letter_data.get('contact_email', '')
+    outstanding = letter_data.get('outstanding_items', [])
+    disb_text   = letter_data.get('disbursed_text', '')
+    total_fmt   = f'${total_due:,.2f}'
+
+    story = []
+
+    # ── Letterhead – plain, no color ──────────────────────────────────────────
+    if re_co:
+        story.append(Paragraph(re_co, co_hdr))
+    story.append(Paragraph('Additional Living Expense (ALE) Management Services', co_tag))
+    story.append(HRFlowable(width='100%', thickness=1, color=BLK, spaceAfter=12))
+
+    # ── Title ─────────────────────────────────────────────────────────────────
+    story.append(Paragraph('DEMAND FOR PAYMENT', doc_title))
+    story.append(Paragraph('Via Certified Mail – Return Receipt Requested', cert_mail))
+
+    # ── Date / To / Re header block (plain text, no colored table) ───────────
+    story.append(Paragraph(f'<b>Date:</b> {date_str}', lhdr))
+    story.append(Spacer(1, 0.04 * inch))
+    story.append(Paragraph(f'<b>TO:</b> {ins_co}', lhdr))
+    story.append(Paragraph(
+        '     Attn: Claims Department / Additional Living Expense Unit',
+        lhdr))
+    story.append(Spacer(1, 0.04 * inch))
+    story.append(Paragraph(
+        f'<b>RE:</b> Insured: {insured}  |  '
+        f'Claim #{claim_num}  |  Amount Due: {total_fmt}',
+        lhdr))
+    story.append(HRFlowable(width='100%', thickness=0.5, color=BLK,
+                             spaceBefore=10, spaceAfter=10))
+
+    # ── Opening paragraph ─────────────────────────────────────────────────────
+    ale_period = f' (ALE period: {ale_start} – {ale_end})' if ale_start != 'TBD' else ''
+    addr_part  = f', at {prop_addr}' if prop_addr else ''
+    story.append(Paragraph(
+        f'This letter serves as <b>FORMAL DEMAND FOR PAYMENT</b> of <b>{total_fmt}</b> owed to '
+        f'<b>{re_co}</b> for Additional Living Expense (ALE) brokerage services rendered for '
+        f'your insured, {insured}{addr_part}{ale_period}.',
+        body))
+
+    story.append(Paragraph(
+        f'The fully executed Engagement Agreement — already in your claim file — '
+        f'expressly provides that {re_co}’s brokerage fee “will be provided directly '
+        f'by the designated Insurance Company or other third party responsible for covering '
+        f'[the insured’s] living expenses.”',
+        body))
+
+    # ── Outstanding items table ───────────────────────────────────────────────
+    if outstanding:
+        story.append(Paragraph('<b>AMOUNT DUE (per Term Sheet / Invoice):</b>', lhdr))
+        rows = []
+        for item in outstanding:
+            rows.append([item['label'], f'${float(item["amount"]):,.2f}'])
+        rows.append(['BALANCE DUE', total_fmt])
+
+        items_tbl = Table(rows, colWidths=[4.3 * inch, 1.45 * inch])
+        items_tbl.setStyle(TableStyle([
+            ('GRID',          (0, 0), (-1, -1), 0.5, BLK),
+            ('FONTNAME',      (0, 0), (-1, -2), 'Times-Roman'),
+            ('FONTNAME',      (0, -1), (-1, -1), 'Times-Bold'),
+            ('FONTSIZE',      (0, 0), (-1, -1), 10),
+            ('ALIGN',         (1, 0), (1, -1),  'RIGHT'),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (0, -1),  8),
+            ('LEFTPADDING',   (1, 0), (1, -1),  4),
+            ('RIGHTPADDING',  (1, 0), (1, -1),  6),
+        ]))
+        story.append(items_tbl)
+        story.append(Spacer(1, 0.08 * inch))
+
+    # ── Body continued ────────────────────────────────────────────────────────
+    if disb_text:
+        story.append(Paragraph(
+            f'{ins_co} has disbursed {disb_text}. '
+            f'The above balance remains outstanding and is <b>neither disputed nor contingent</b>.',
+            body))
+
+    story.append(Paragraph(
+        f'Payment of <b>{total_fmt}</b>, payable to <b>{re_co}</b>, is demanded '
+        f'<b>immediately upon receipt of this letter</b>.',
+        body))
+
+    story.append(Paragraph(
+        'If any additional documentation (W-9, invoice, or payee verification) is required to '
+        'process disbursement, please direct that request in writing to the undersigned and it '
+        'will be provided within three (3) business days.',
+        body))
+
+    story.append(Paragraph(
+        'Should payment not be received, we may exercise any or all of the following rights:',
+        body))
+
+    remedies = [
+        'formal complaint to the state Department of Insurance for unfair claims settlement practices;',
+        "referral to counsel for civil action, with recovery of all interest, attorneys’ fees, "
+        "and costs of collection;",
+        'upon judgment, all post-judgment collection remedies available against a corporate judgment '
+        'debtor, including garnishment of accounts and levy upon commercial assets;',
+        'reporting of the delinquency to commercial credit reporting agencies; and',
+        'independent recovery actions by any subcontractors, vendors, or workers whose compensation '
+        'is dependent on disbursement of this claim.',
+    ]
+    for i, remedy in enumerate(remedies, 1):
+        roman = ['(i)', '(ii)', '(iii)', '(iv)', '(v)'][i - 1]
+        story.append(Paragraph(f'{roman}  {remedy}', bullet_sty))
+
+    contact_line = f'<b>{c_name}</b> at <b>{c_phone}</b>'
+    if c_email:
+        contact_line += f' or <b>{c_email}</b>'
+    story.append(Paragraph(
+        f'{re_co} prefers to resolve this matter administratively. '
+        f'To arrange payment or discuss this file, please contact {contact_line}.',
+        body))
+
+    story.append(Paragraph('All rights and remedies are expressly reserved.', body))
+
+    # ── Signature block ───────────────────────────────────────────────────────
+    story.append(Spacer(1, 0.25 * inch))
+    story.append(Paragraph('Sincerely,', sign_normal))
+    story.append(Spacer(1, 0.4 * inch))
+    story.append(Paragraph(c_name, sign_bold))
+    if re_co:
+        story.append(Paragraph(re_co, sign_normal))
+
+    # ── Enclosures ────────────────────────────────────────────────────────────
+    story.append(Spacer(1, 0.2 * inch))
+    story.append(HRFlowable(width='100%', thickness=0.5, color=BLK, spaceAfter=6))
+    story.append(Paragraph(
+        'Enclosures: Engagement Agreement  |  '
+        'Term Sheet  |  Monthly Short-Term Rental Agreement',
+        encl_sty))
+
+    doc.build(story)
+    buf.seek(0)
+    return buf
+
 
 def convert_excel_to_pdf(excel_path, pdf_path):
     """Convert a specific Excel sheet to PDF using the appropriate method for the OS."""

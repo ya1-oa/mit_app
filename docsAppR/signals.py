@@ -2,9 +2,77 @@
 import logging
 from django.db.models.signals import post_save
 from django.dispatch import receiver
+from django.core.mail import EmailMultiAlternatives
+from django.template.loader import render_to_string
+from django.conf import settings
 from .models import Client, ChecklistItem, Room
 
 logger = logging.getLogger(__name__)
+
+
+# ──────────────────────────────────────────────────────────────────────────────
+# ALLAUTH: Email-verified confirmation
+# Fires once when the user clicks the allauth verification link and
+# their email address is marked verified in the database.
+# ──────────────────────────────────────────────────────────────────────────────
+try:
+    from allauth.account.signals import email_confirmed
+
+    @receiver(email_confirmed)
+    def send_email_verified_confirmation(sender, request, email_address, **kwargs):
+        """
+        Send a branded confirmation email telling the user their email is
+        verified and their account is fully active.
+        """
+        user = email_address.user
+
+        # Build the login URL — fall back to a plain path if Sites aren't set up
+        try:
+            from django.contrib.sites.shortcuts import get_current_site
+            site = get_current_site(request)
+            login_url = f"https://{site.domain}/accounts/login/"
+        except Exception:
+            login_url = "/accounts/login/"
+
+        context = {
+            'username': user.get_full_name() or user.username or user.email.split('@')[0],
+            'email': email_address.email,
+            'login_url': login_url,
+        }
+
+        subject = "Your email has been verified — Welcome to Claimet!"
+        html_body = render_to_string(
+            'account/email/email_verified_confirmation.html',
+            context,
+            request=request,
+        )
+        # Plain-text fallback for email clients that don't render HTML
+        text_body = (
+            f"Hi {context['username']},\n\n"
+            f"Your email address ({email_address.email}) has been successfully verified.\n"
+            f"Your Claimet account is now fully active.\n\n"
+            f"Log in here: {login_url}\n\n"
+            f"— The Claimet Team"
+        )
+
+        try:
+            msg = EmailMultiAlternatives(
+                subject=subject,
+                body=text_body,
+                from_email=settings.DEFAULT_FROM_EMAIL,
+                to=[email_address.email],
+            )
+            msg.attach_alternative(html_body, "text/html")
+            msg.send(fail_silently=False)
+            logger.info("Sent email-verified confirmation to %s", email_address.email)
+        except Exception as exc:
+            # Never crash the verification flow if the confirmation email fails
+            logger.error("Failed to send email-verified confirmation to %s: %s",
+                         email_address.email, exc)
+
+except ImportError:
+    # allauth not installed — skip gracefully
+    logger.warning("allauth not available; email_confirmed signal not registered")
 
 @receiver(post_save, sender=Client)
 def create_client_checklist(sender, instance, created, **kwargs):

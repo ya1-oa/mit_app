@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Document Signed — Claimet</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <style>
+    body { background: #f1f5f9; display: flex; align-items: center; justify-content: center; min-height: 100vh; }
+    .card-complete {
+      background: #fff; border-radius: 1.25rem; box-shadow: 0 4px 24px rgba(0,0,0,.09);
+      padding: 3rem 2.5rem; max-width: 480px; width: 100%; text-align: center;
+    }
+    .check-circle {
+      width: 5rem; height: 5rem; background: #dcfce7; border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      margin: 0 auto 1.5rem; font-size: 2.5rem; color: #16a34a;
+    }
+    .sig-preview { max-height: 80px; max-width: 260px; border: 1px solid #e5e7eb; border-radius: .5rem; background: #fff; padding: 4px; margin-bottom: 1.5rem; }
+  </style>
+</head>
+<body>
+<div class="card-complete">
+  <div class="check-circle">✅</div>
+  <h3 class="fw-bold mb-2">{% if already_signed %}Already Signed{% else %}Document Signed!{% endif %}</h3>
+  <p class="text-muted mb-4">
+    {% if already_signed %}
+      You previously signed this document. Your signature has already been recorded.
+    {% else %}
+      Thank you, <strong>{{ sig_req.signer_name }}</strong>. Your signature has been recorded and the lease manager has been notified.
+    {% endif %}
+  </p>
+
+  {% if sig_req.signature_image %}
+  <p class="text-muted mb-1" style="font-size:.8rem; text-transform:uppercase; letter-spacing:.05em;">Your Signature</p>
+  <img src="{{ sig_req.signature_image }}" class="sig-preview" alt="Your signature">
+  {% endif %}
+
+  <div class="bg-light rounded p-3 mb-4" style="font-size:.85rem; text-align:left;">
+    <div><strong>Property:</strong> {{ lease.property_address }}</div>
+    <div><strong>Role:</strong> {{ sig_req.get_signer_role_display }}</div>
+    {% if sig_req.signed_at %}
+    <div><strong>Signed:</strong> {{ sig_req.signed_at|date:"F j, Y g:i A" }} UTC</div>
+    {% endif %}
+  </div>
+
+  <p class="text-muted" style="font-size:.78rem;">
+    <i class="bi bi-shield-check text-success me-1"></i>
+    This is a legally binding electronic signature under the ESIGN Act.
+    A copy of this record is on file with Claimet.
+  </p>
+
+  <div class="mt-2" style="color:#94a3b8; font-size:.72rem;">
+    Powered by Claimet — claimetapp.com
+  </div>
+</div>
+</body>
+</html>

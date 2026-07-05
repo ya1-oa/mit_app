@@ -27,6 +27,66 @@ from encircle.views import generate_room_entries_from_configs
 
 
 @login_required
+def activity_page(request):
+    """
+    Global system activity log — all actions across every app, newest first.
+    Supports filtering by action type and user, and pagination.
+    """
+    from docsAppR.models import SystemActivity, LeaseActivity, SentEmail
+
+    action_filter = request.GET.get('action', '')
+    user_filter   = request.GET.get('user', '')
+    page          = max(1, int(request.GET.get('page', 1)))
+    per_page      = 50
+
+    qs = SystemActivity.objects.select_related('performed_by', 'related_client', 'related_lease')
+    if action_filter:
+        qs = qs.filter(action_type=action_filter)
+    if user_filter:
+        qs = qs.filter(performed_by__email__icontains=user_filter)
+
+    total   = qs.count()
+    offset  = (page - 1) * per_page
+    activities = qs[offset: offset + per_page]
+    has_more   = offset + per_page < total
+
+    # Stats cards
+    from django.db.models import Count
+    from django.utils import timezone
+    from datetime import timedelta
+    since_24h  = timezone.now() - timedelta(hours=24)
+    since_7d   = timezone.now() - timedelta(days=7)
+
+    stats = {
+        'total':    total,
+        'today':    SystemActivity.objects.filter(created_at__gte=since_24h).count(),
+        'week':     SystemActivity.objects.filter(created_at__gte=since_7d).count(),
+        'emails':   SystemActivity.objects.filter(action_type__in=['email_sent', 'package_sent']).count(),
+        'leases':   SystemActivity.objects.filter(action_type__in=['lease_created', 'lease_status_changed']).count(),
+        'letters':  SystemActivity.objects.filter(action_type='demand_letter').count(),
+    }
+
+    from docsAppR.models import SystemActivity as SA
+    action_choices = SA.ACTION_CHOICES
+
+    context = {
+        'activities':     activities,
+        'stats':          stats,
+        'action_choices': action_choices,
+        'action_filter':  action_filter,
+        'user_filter':    user_filter,
+        'page':           page,
+        'per_page':       per_page,
+        'total':          total,
+        'has_more':       has_more,
+        'has_prev':       page > 1,
+        'next_page':      page + 1,
+        'prev_page':      page - 1,
+    }
+    return render(request, 'account/activity.html', context)
+
+
+@login_required
 def home(request):
     """
     Landing page shown after login.
@@ -137,6 +197,13 @@ def home(request):
             'url': '/cps-report/',
             'icon': 'fas fa-file-invoice-dollar',
             'color': '#059669',
+        },
+        {
+            'name': 'Accounts Receivable',
+            'description': 'Track contractor invoices and follow-up reminders',
+            'url': '/ar-tracking/',
+            'icon': 'fas fa-hand-holding-dollar',
+            'color': '#0891b2',
         },
     ]
     return render(request, 'account/home.html', {'apps': apps})

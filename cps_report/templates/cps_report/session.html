@@ -1,11 +1,41 @@
 {% extends "account/base.html" %}
 {% load static humanize %}
 
-{% block title %}CPS Report — {{ session.insured_name }}{% endblock %}
-{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Report — {{ session.insured_name }}{% endblock %}
+{% block title %}PPR Report — {{ session.insured_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> PPR Report — {{ session.insured_name }}{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
 <style>
+  /* ── Tour button ── */
+  #tour-btn {
+    position: fixed; bottom: 28px; right: 28px; z-index: 1050;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 22px; font-weight: 700;
+    border: none; box-shadow: 0 4px 16px rgba(102,126,234,.45);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform .15s;
+  }
+  #tour-btn:hover { transform: scale(1.1); }
+  .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
+  .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; }
+  .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
+  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; color: #fff !important; }
+
+  /* ── Drag-and-drop ── */
+  .item-row { cursor: default; }
+  .item-row[draggable="true"] { cursor: grab; }
+  .item-row[draggable="true"]:active { cursor: grabbing; }
+  .item-row.dragging { opacity: .35; }
+  .item-row.drag-over td { border-top: 3px solid #667eea !important; }
+  .drag-handle { color: #aaa; font-size: 13px; cursor: grab; user-select: none; letter-spacing: -2px; }
+  .drag-handle:hover { color: #667eea; }
+  /* ── Dirty room indicator ── */
+  .save-dirty { background: #fef3c7 !important; border-color: #f59e0b !important; }
+  /* ── Move item modal room list ── */
+  .move-room-btn:disabled { opacity: .4; cursor: not-allowed; }
+
   .room-section { margin-bottom: 2rem; }
   .room-header { background: #d6e4bc; font-weight: 600; padding: .5rem 1rem; border-radius: 6px 6px 0 0; border-bottom: 2px solid #a4c265; }
   .item-table th { font-size: .78rem; background: #1f3864; color: #fff; position: sticky; top: 0; }
@@ -35,10 +65,98 @@
   .sig-status-bar.unsigned { background: #fef9c3; border-top: 1px solid #fde047; color: #854d0e; }
   .sig-panel { background: #fff; border: 1px solid #e2e8f0; border-radius: 8px; padding: 1rem 1.25rem; margin-bottom: 1.25rem; }
   .sig-panel .progress { height: 8px; border-radius: 4px; }
+  /* Pulse animation for unsigned (clock) badges */
+  @keyframes pulse-clock {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(234,179,8,.5); }
+    50%       { box-shadow: 0 0 0 5px rgba(234,179,8,0); }
+  }
+  .sig-badge-unsigned {
+    animation: pulse-clock 1.8s ease-in-out infinite;
+    font-size: .82rem !important;
+    padding: .35rem .65rem !important;
+  }
+  .sig-badge-signed {
+    font-size: .82rem !important;
+    padding: .35rem .65rem !important;
+    cursor: default;
+  }
+  /* Structural items collapsible section */
+  .structural-section {
+    border: 2px solid #f59e0b;
+    border-radius: 0 0 6px 6px;
+    margin-top: -1px;
+    overflow: hidden;
+  }
+  .structural-section summary {
+    background: linear-gradient(90deg, #fffbeb, #fef3c7);
+    padding: .5rem 1rem;
+    cursor: pointer;
+    font-size: .82rem;
+    font-weight: 600;
+    color: #92400e;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    gap: .5rem;
+    user-select: none;
+  }
+  .structural-section summary::-webkit-details-marker { display: none; }
+  @keyframes glow-amber {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(245,158,11,.3); }
+    50%       { box-shadow: 0 0 8px 3px rgba(245,158,11,.25); }
+  }
+  .structural-section { animation: glow-amber 2.5s ease-in-out infinite; }
+  .structural-table th { background: #78350f !important; color: #fef3c7 !important; font-size: .76rem; }
+  .structural-table td { font-size: .80rem; background: #fffbeb; }
 </style>
 {% endblock %}
 
 {% block content %}
+<!-- Floating tour button -->
+<button id="tour-btn" onclick="launchSessionTour()" title="Explain this report">?</button>
+
+<!-- ─── Welcome modal for session page ───────────────────────────────────── -->
+<div id="welcome-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;width:90%;max-width:520px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);">
+    <!-- Header -->
+    <div style="background:linear-gradient(135deg,#059669,#1e40af);padding:28px 36px 20px;text-align:center;color:#fff;position:relative;">
+      <button onclick="closeSessionWelcome(false)" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.25);border:none;color:#fff;font-size:22px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
+      <div style="font-size:40px;margin-bottom:10px;">📄</div>
+      <h2 style="font-size:20px;font-weight:800;margin:0 0 6px;">PPR Report — {{ session.insured_name|truncatechars:30 }}</h2>
+      <p style="opacity:.85;font-size:13px;margin:0;">Your completed Schedule of Loss report</p>
+    </div>
+    <!-- Body -->
+    <div style="padding:24px 32px;">
+      <ul style="list-style:none;padding:0;margin:0 0 20px;">
+        <li style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#334155;margin-bottom:10px;">
+          <span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">✏</span>
+          <span><strong>Click any cell</strong> to edit a value inline — quantities, descriptions, and prices all update automatically</span>
+        </li>
+        <li style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#334155;margin-bottom:10px;">
+          <span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">📕</span>
+          <span><strong>Export as PDF or Excel</strong> using the buttons in the header — ready to submit or share</span>
+        </li>
+        <li style="display:flex;align-items:flex-start;gap:10px;font-size:13px;color:#334155;margin-bottom:10px;">
+          <span style="width:24px;height:24px;border-radius:50%;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0;">🔗</span>
+          <span><strong>Share Link</strong> sends a signature link to your insured — they sign each room on any device</span>
+        </li>
+      </ul>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button onclick="closeSessionWelcome(false); launchSessionTour()" style="flex:1;background:linear-gradient(135deg,#059669,#1e40af);color:#fff;border:none;padding:12px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;">
+          <i class="fas fa-play me-2"></i> Start Guided Tour
+        </button>
+        <button onclick="closeSessionWelcome(false)" style="flex-shrink:0;background:#f1f5f9;color:#64748b;border:none;padding:12px 18px;border-radius:10px;font-size:14px;cursor:pointer;">Skip</button>
+      </div>
+      <div style="border-top:1px solid #f1f5f9;padding-top:10px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;cursor:pointer;">
+          <input type="checkbox" id="chk-session-disable" style="width:14px;height:14px;">
+          Don't show this again
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="container-fluid py-3">
 
   <!-- Report Header -->
@@ -58,6 +176,11 @@
           <a href="{% url 'cps_report_summary' session.id %}" class="btn btn-outline-info btn-sm me-1">
             <i class="fas fa-table me-1"></i> Summary
           </a>
+          {% if session.pricing_mode == 'premium' %}
+          <a href="{% url 'cps_pricing_audit' session.id %}" class="btn btn-outline-warning btn-sm me-1">
+            <i class="fas fa-chart-bar me-1"></i> Pricing Audit
+          </a>
+          {% endif %}
           <a href="{% url 'cps_report_export_pdf' session.id %}" class="btn btn-danger btn-sm me-1">
             <i class="fas fa-file-pdf me-1"></i> PDF
           </a>
@@ -67,6 +190,15 @@
           <button class="btn btn-outline-primary btn-sm me-1" onclick="copyShareLink(this)" title="Copy client signature link">
             <i class="fas fa-link me-1"></i> Share Link
           </button>
+          {% if session.status == 'processing' %}
+          <button class="btn btn-outline-danger btn-sm me-1" onclick="cancelSession()" id="cancelBtn">
+            <i class="fas fa-stop me-1"></i> Cancel Report
+          </button>
+          {% elif session.status == 'error' %}
+          <button class="btn btn-outline-warning btn-sm me-1" onclick="rerunSession()" id="rerunBtn">
+            <i class="fas fa-rotate-right me-1"></i> Re-run Report
+          </button>
+          {% endif %}
           <a href="{% url 'cps_report_home' %}" class="btn btn-outline-secondary btn-sm">
             <i class="fas fa-arrow-left me-1"></i> Back
           </a>
@@ -83,13 +215,13 @@
     </div>
   </div>
 
-  <!-- Signature Status Panel -->
-  <div class="sig-panel mb-3">
-    <div class="d-flex justify-content-between align-items-center mb-2">
+  <!-- Signatures Status Section -->
+  <div class="sig-panel mb-3" id="sig-panel">
+    <div class="d-flex justify-content-between align-items-center mb-1">
       <div>
-        <i class="fas fa-signature me-2 text-primary"></i>
-        <strong>Client Signatures</strong>
-        <span class="text-muted small ms-2">{{ rooms|length }} room{{ rooms|length|pluralize }} total</span>
+        <i class="fas fa-file-signature me-2 text-primary"></i>
+        <strong>Signatures Status Section</strong>
+        <span class="text-muted small ms-2">{{ rooms|length }} room{{ rooms|length|pluralize }}</span>
       </div>
       <div class="d-flex gap-2">
         <button class="btn btn-outline-primary btn-sm" onclick="copyShareLink(this)" title="Copy client signature link">
@@ -100,19 +232,24 @@
         </button>
       </div>
     </div>
-    <div class="row g-2" id="sig-badges">
+    <p class="text-muted small mb-2" style="font-size:.78rem;">
+      <i class="fas fa-clock text-warning me-1"></i><strong>Clock</strong> = awaiting signature &nbsp;·&nbsp;
+      <i class="fas fa-pen text-success me-1"></i><strong>Pen</strong> = signed — hover a signed room to see who signed and when.
+    </p>
+    <div class="d-flex flex-wrap gap-2" id="sig-badges">
       {% for room in rooms %}
-      <div class="col-auto">
         {% if room.signature_name %}
-        <span class="badge bg-success py-1 px-2" title="Signed by {{ room.signature_name }} on {{ room.signed_at|date:'M d, Y g:i A' }}">
-          <i class="fas fa-check me-1"></i>{{ room.room_number }} {{ room.room_name }}
+        <span class="badge bg-success sig-badge-signed"
+              title="✍️ Signed by {{ room.signature_name }} on {{ room.signed_at|date:'M d, Y \a\t g:i A' }}"
+              data-bs-toggle="tooltip" data-bs-placement="top"
+              data-bs-title="Signed by {{ room.signature_name }} — {{ room.signed_at|date:'M d, Y g:i A' }}">
+          <i class="fas fa-pen me-1"></i>{{ room.room_number }} {{ room.room_name }}
         </span>
         {% else %}
-        <span class="badge bg-warning text-dark py-1 px-2">
+        <span class="badge bg-warning text-dark sig-badge-unsigned">
           <i class="fas fa-clock me-1"></i>{{ room.room_number }} {{ room.room_name }}
         </span>
         {% endif %}
-      </div>
       {% endfor %}
     </div>
   </div>
@@ -166,7 +303,7 @@
 
   <!-- Room Sections -->
   {% for room in rooms %}
-  <div class="room-section" id="room-section-{{ room.id }}">
+  <div class="room-section" id="room-section-{{ room.id }}" data-room-token="{{ room.share_token }}">
     <div class="room-header d-flex justify-content-between align-items-center">
       <span>
         {{ room.room_number }} — {{ room.room_name }}
@@ -196,7 +333,8 @@
       <table class="table table-sm table-bordered item-table mb-0" id="table-{{ room.id }}">
         <thead>
           <tr>
-            <th style="width:32px">#</th>
+            <th style="width:20px"></th>
+            <th style="width:28px">#</th>
             <th>Description</th>
             <th>Brand</th>
             <th>Condition</th>
@@ -206,12 +344,13 @@
             <th class="text-center" style="width:55px">Age Y</th>
             <th class="text-center" style="width:55px">Age M</th>
             <th class="text-end rv-col" style="width:100px">Repl. Value</th>
-            <th style="width:30px"></th>
+            <th style="width:50px"></th>
           </tr>
         </thead>
         <tbody id="tbody-{{ room.id }}">
           {% for item in room.items.all %}
-          <tr class="item-row" data-item-id="{{ item.id }}">
+          <tr class="item-row" data-item-id="{{ item.id }}" draggable="true"{% if item.structural %} data-structural="true"{% endif %}>
+            <td class="text-center"><span class="drag-handle">⣿</span></td>
             <td class="item-num"></td>
             <td class="editable-cell" contenteditable="true">{{ item.description }}</td>
             <td class="editable-cell" contenteditable="true">{{ item.brand }}</td>
@@ -228,18 +367,21 @@
             <td class="text-center editable-cell" contenteditable="true">{{ item.age_years }}</td>
             <td class="text-center editable-cell" contenteditable="true">{{ item.age_months }}</td>
             <td class="text-end rv-col editable-cell" contenteditable="true">{{ item.replacement_value_each|floatformat:2 }}</td>
-            <td class="text-center">
+            <td class="text-center" style="white-space:nowrap;">
+              <button class="btn btn-link btn-sm p-0 text-secondary me-1" onclick="openMoveModal(this)" title="Move to another room">
+                <i class="fas fa-share" style="font-size:.8em;"></i>
+              </button>
               <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
                 <i class="fas fa-times"></i>
               </button>
             </td>
           </tr>
           <tr class="notes-row" data-item-id="{{ item.id }}">
-            <td colspan="11" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
+            <td colspan="12" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
           </tr>
           {% empty %}
           <tr class="no-items-row">
-            <td colspan="11" class="text-center no-items-msg py-3">No items — click Add Item</td>
+            <td colspan="12" class="text-center no-items-msg py-3">No items — click Add Item</td>
           </tr>
           {% endfor %}
         </tbody>
@@ -252,6 +394,9 @@
         </tfoot>
       </table>
     </div>
+
+    <!-- Structural items section (populated by JS from data-structural attrs on rows) -->
+    <div id="structural-section-{{ room.id }}"></div>
 
     <!-- Per-room signature status bar -->
     {% if room.signature_name %}
@@ -268,8 +413,8 @@
     <div class="sig-status-bar unsigned" id="sig-bar-{{ room.id }}">
       <i class="fas fa-clock"></i>
       <span>Awaiting client signature</span>
-      <button onclick="copyShareLink(this)" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">
-        <i class="fas fa-link me-1"></i>Copy link to send
+      <button onclick="copyRoomLink(this, '{{ room.share_token }}')" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">
+        <i class="fas fa-link me-1"></i>Copy room link
       </button>
     </div>
     {% endif %}
@@ -280,9 +425,369 @@
   {% endfor %}
 
 </div>
+
+<!-- ─── Move Item Modal ────────────────────────────────────────────────────── -->
+<div class="modal fade" id="moveItemModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content" style="border-radius:14px;overflow:hidden;">
+      <div class="modal-header py-2" style="background:#f8fafc;border-bottom:1px solid #e2e8f0;">
+        <h6 class="modal-title mb-0">
+          <i class="fas fa-share me-2 text-primary"></i>Move Item to Room
+        </h6>
+        <button type="button" class="btn-close btn-sm" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body p-2">
+        <div class="list-group list-group-flush" id="move-room-list">
+          {% for room in rooms %}
+          <button class="list-group-item list-group-item-action py-2 px-3 move-room-btn"
+                  data-room-id="{{ room.id }}"
+                  style="font-size:.85rem;border-radius:0;">
+            <strong class="me-1">{{ room.room_number }}</strong> {{ room.room_name }}
+          </button>
+          {% endfor %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
+<script>
+// ── Bootstrap tooltips (for signed badges) ─────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[data-bs-toggle="tooltip"]').forEach(el => {
+    new bootstrap.Tooltip(el);
+  });
+});
+
+// ── Structural items: move flagged rows into a collapsed section ───────────
+document.addEventListener('DOMContentLoaded', () => {
+  document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
+    const roomId = tbody.id.replace('tbody-', '');
+    const structRows = [];
+
+    tbody.querySelectorAll('tr.item-row[data-structural="true"]').forEach(tr => {
+      const notesRow = tr.nextElementSibling?.classList.contains('notes-row')
+                       ? tr.nextElementSibling : null;
+      structRows.push({ tr, notesRow });
+    });
+
+    if (!structRows.length) return;
+
+    // Build the collapsible section
+    const wrapper = document.getElementById(`structural-section-${roomId}`);
+    if (!wrapper) return;
+
+    const details = document.createElement('details');
+    details.className = 'structural-section';
+    details.innerHTML = `
+      <summary>
+        <i class="fas fa-hard-hat me-1"></i>
+        ${structRows.length} Structural / Fixed Item${structRows.length > 1 ? 's' : ''} — AI flagged these as part of the building, not personal property.
+        <span class="ms-auto text-muted" style="font-weight:400;font-size:.76rem;">Click to review</span>
+      </summary>
+      <div style="padding:.5rem;">
+        <table class="table table-sm structural-table mb-0">
+          <thead>
+            <tr>
+              <th>#</th><th>Description</th><th>Brand</th><th>QTY</th>
+              <th class="text-end">Repl. Value</th><th></th>
+            </tr>
+          </thead>
+          <tbody id="struct-tbody-${roomId}"></tbody>
+        </table>
+        <p class="text-muted small mt-2 mb-0" style="font-size:.74rem;">
+          <i class="fas fa-info-circle me-1"></i>These items are <strong>not</strong> included in the room total.
+          Delete them or move them to confirm they are not personal property.
+        </p>
+      </div>`;
+
+    const structTbody = details.querySelector(`#struct-tbody-${roomId}`);
+    structRows.forEach(({ tr, notesRow }, i) => {
+      // Create a simplified read-only row for the structural table
+      const cells = tr.querySelectorAll('td');
+      const miniRow = document.createElement('tr');
+      miniRow.innerHTML = `
+        <td class="text-muted">${i + 1}</td>
+        <td>${cells[2]?.textContent.trim() || ''}</td>
+        <td>${cells[3]?.textContent.trim() || ''}</td>
+        <td>${cells[5]?.textContent.trim() || ''}</td>
+        <td class="text-end">${cells[10]?.textContent.trim() || ''}</td>
+        <td>
+          <button class="btn btn-link btn-sm p-0 text-danger" title="Remove" onclick="this.closest('tr').remove()">
+            <i class="fas fa-times"></i>
+          </button>
+        </td>`;
+      structTbody.appendChild(miniRow);
+
+      // Hide the original rows from the main table (don't delete — save still captures them)
+      tr.style.display = 'none';
+      if (notesRow) notesRow.style.display = 'none';
+    });
+
+    wrapper.appendChild(details);
+  });
+});
+
+// ── Signature demo animation (runs during the tour step for the sig panel) ─
+function runSigDemo() {
+  const badges = document.querySelectorAll('#sig-badges .badge');
+  if (!badges.length) return;
+
+  // Find first unsigned badge, or just use first badge
+  let demoIdx = 0;
+  badges.forEach((b, i) => { if (b.classList.contains('bg-warning') && demoIdx === 0) demoIdx = i; });
+  const badge = badges[demoIdx];
+  const origHTML  = badge.innerHTML;
+  const origClass = badge.className;
+
+  // Step 1: flash → signed (green)
+  badge.className = 'badge bg-success sig-badge-signed';
+  badge.innerHTML = '<i class="fas fa-pen me-1"></i>' + badge.textContent.trim();
+  badge.title = '✍️ Signed by John Smith — Jun 7, 2026 at 2:14 PM (demo)';
+  badge.style.transition = 'all .4s';
+
+  // Also show a visible tooltip-style callout next to it
+  const tip = document.createElement('span');
+  tip.style.cssText = 'font-size:.72rem;color:#065f46;font-weight:600;margin-left:6px;animation:fadeIn .3s;';
+  tip.textContent = '← Signed by John Smith · Jun 7, 2026';
+  badge.insertAdjacentElement('afterend', tip);
+
+  // Step 2: revert to unsigned after 3 s
+  setTimeout(() => {
+    badge.className = origClass;
+    badge.innerHTML = origHTML;
+    badge.title = '';
+    tip.remove();
+  }, 3200);
+}
+
+// ── Welcome modal ────────────────────────────────────────────────────────────
+const SESSION_DISABLE_KEY = 'cps_session_disable_welcome';
+let sessionDriver = null;
+
+function closeSessionWelcome(permanently) {
+  const overlay = document.getElementById('welcome-overlay');
+  overlay.style.display = 'none';
+  const chk = document.getElementById('chk-session-disable');
+  if (permanently || (chk && chk.checked)) {
+    localStorage.setItem(SESSION_DISABLE_KEY, '1');
+  }
+}
+
+// ── Session tour (comprehensive) ─────────────────────────────────────────────
+function launchSessionTour() {
+  // Pre-target first item row for steps that reference cells
+  const firstItemRow = document.querySelector('tr.item-row:not([style*="none"])');
+  const firstItemCells = firstItemRow ? firstItemRow.querySelectorAll('td') : [];
+
+  sessionDriver = window.driver.js.driver({
+    showProgress: true,
+    animate: true,
+    overlayColor: 'rgba(0,0,0,0.72)',
+    smoothScroll: true,
+    allowClose: true,
+    steps: [
+
+      // ── Step 1: Welcome ─────────────────────────────────────────────────
+      {
+        popover: {
+          title: '📄 Your Completed PPR Report',
+          description: 'This is the full Schedule of Loss for this claim. Every room has been analyzed by AI and each item has been priced at today\'s replacement cost.<br><br>You can <strong>edit any value inline</strong>, reorder items, export, and send to your client for signature — all from this page.',
+          side: 'over', align: 'center',
+          nextBtnText: 'Show me around →',
+        },
+      },
+
+      // ── Step 2: Grand total ──────────────────────────────────────────────
+      {
+        element: '#grand-total-banner',
+        popover: {
+          title: '💰 Grand Total Replacement Value',
+          description: 'This is the claim\'s bottom line — the total replacement cost across <strong>all rooms and all items</strong>.<br><br>It recalculates automatically any time you edit a quantity or price anywhere on the page.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 3: Export buttons ───────────────────────────────────────────
+      {
+        element: '.col-md-4.text-end',
+        popover: {
+          title: '📤 Export & Share — 4 Options',
+          description: '<strong>Summary</strong> — a condensed view of each room\'s totals. Great for a quick review before submitting.<br><br><strong>PDF</strong> — download the complete formatted PPR Report, ready to attach to a claim file.<br><br><strong>Excel</strong> — download a full spreadsheet of all rooms and items.<br><br><strong>Share Link</strong> — sends your client a unique link to review and digitally sign each room. <em>No login required on their end.</em>',
+          side: 'bottom', align: 'end',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 4: Share link (specific button) ─────────────────────────────
+      {
+        element: 'button[onclick="copyShareLink(this)"]',
+        popover: {
+          title: '🔗 Client Signature Link',
+          description: 'Click <strong>Share Link</strong> to copy a unique URL to your clipboard.<br><br>Send it to your insured by text or email. They open it on any device — phone, tablet, computer — and type their name to sign each room. <strong>No account or login required.</strong>',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 5: Signatures Status Section (with live demo) ───────────────
+      {
+        element: '#sig-panel',
+        popover: {
+          title: '✍️ Signatures Status Section',
+          description: 'Every room in the report is shown here as a badge.<br><br><span style="display:inline-block;background:#fef08a;color:#78350f;padding:2px 8px;border-radius:99px;font-size:.78rem;"><i class="fas fa-clock" style="margin-right:4px;"></i>Clock badge</span> = awaiting signature<br><br><span style="display:inline-block;background:#4ade80;color:#14532d;padding:2px 8px;border-radius:99px;font-size:.78rem;"><i class="fas fa-pen" style="margin-right:4px;"></i>Pen badge</span> = signed — hover it to see who and when.<br><br>Watch a live demo as we move to the next step →',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'See demo →',
+        },
+        onNextClick: () => {
+          runSigDemo();
+          sessionDriver.moveNext();
+        },
+      },
+
+      // ── Step 6: (stays on sig panel while demo plays) ───────────────────
+      {
+        element: '#sig-panel',
+        popover: {
+          title: '✅ Signature Status — Live Demo',
+          description: 'A room just went green above — that\'s what a <strong>signed room</strong> looks like, with the name and date visible. After 3 seconds it reverts to show an <strong>unsigned room</strong> with the pulsing clock badge.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Got it →',
+        },
+      },
+
+      // ── Step 7: Item table overview ───────────────────────────────────────
+      {
+        element: '.item-table:first-of-type',
+        popover: {
+          title: '📋 Item Table — Overview',
+          description: 'Each room has its own table of priced items. The AI has filled in descriptions, brands, quantities, and replacement values from the photos.<br><br><strong>Every cell you see highlighted in yellow when hovered is editable.</strong> Click once to edit, click away (or press Tab) to save.',
+          side: 'top', align: 'start',
+          nextBtnText: 'Walk me through a row →',
+        },
+      },
+
+      // ── Step 8: Left side of item row ─────────────────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:nth-child(1)',
+        popover: {
+          title: '⣿ Drag Handle — Left Side',
+          description: 'The <strong>⣿ grip icon</strong> on the far left lets you drag-and-drop the row to reorder items within the room. Just grab and drag up or down — item numbers update automatically.',
+          side: 'right', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 9: Description + brand ───────────────────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:nth-child(3)',
+        popover: {
+          title: '📝 Description & Brand',
+          description: '<strong>Click the Description cell</strong> to edit the item name. Below it is the Brand — click that too. Use insurance-standard descriptions like "55-inch LED Smart TV" rather than just "TV".',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 10: Qty + Age ────────────────────────────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:nth-child(6)',
+        popover: {
+          title: '🔢 Quantity & Age',
+          description: '<strong>QTY</strong> — how many of this item. Click and type a number.<br><br><strong>Age Y / Age M</strong> — the item\'s age in years and months. The AI estimates this from wear and style visible in photos. You can correct it here.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 11: Replacement value ────────────────────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:nth-child(11)',
+        popover: {
+          title: '💵 Replacement Value',
+          description: 'This is the <strong>most important column</strong> — today\'s retail replacement cost per item. The room total and grand total both derive from this.<br><br>If the AI\'s estimate is off, click and type the correct value. The totals update instantly.',
+          side: 'left', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 12: Action icons (right side of row) ─────────────────────────
+      {
+        element: 'tr.item-row:first-of-type td:last-child',
+        popover: {
+          title: '↗ Move & Delete — Right Side',
+          description: 'Two action icons on the far right of every row:<br><br><i class="fas fa-share" style="color:#667eea"></i> <strong>Share/Move icon</strong> — click to move this item to a different room. A menu appears with all rooms in the report.<br><br><i class="fas fa-times" style="color:#ef4444"></i> <strong>Delete icon</strong> — permanently removes this item from the room.',
+          side: 'left', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 13: Save button ──────────────────────────────────────────────
+      {
+        element: 'button[onclick^="saveRoom"]',
+        popover: {
+          title: '💾 Save Button — Important!',
+          description: 'After editing any items in a room, click <strong>Save</strong> to persist your changes.<br><br>When a room has <strong>unsaved edits</strong>, the Save button turns <span style="background:#fef3c7;border:1px solid #f59e0b;padding:2px 8px;border-radius:4px;font-size:.82rem;color:#92400e;"><i class="fas fa-exclamation-triangle"></i> Save</span> amber as a visual reminder.<br><br>After saving, it returns to green and shows "Saved ✓".',
+          side: 'bottom', align: 'end',
+          nextBtnText: 'Next →',
+        },
+        onNextClick: () => {
+          // Flash the save button amber to demonstrate the unsaved state
+          const saveBtn = document.querySelector('button[onclick^="saveRoom"]');
+          if (saveBtn) {
+            saveBtn.classList.add('save-dirty');
+            saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save';
+            setTimeout(() => {
+              saveBtn.classList.remove('save-dirty');
+              saveBtn.innerHTML = '<i class="fas fa-save"></i> Save';
+            }, 2500);
+          }
+          sessionDriver.moveNext();
+        },
+      },
+
+      // ── Step 14: PDF download ──────────────────────────────────────────────
+      {
+        element: 'a[href*="export-pdf"]',
+        popover: {
+          title: '📕 Download PDF Report',
+          description: 'Click here to download the <strong>complete PPR Report as a PDF</strong>. The document is formatted and print-ready — one room per page, with replacement value totals and signature lines.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Next →',
+        },
+      },
+
+      // ── Step 15: Excel download ────────────────────────────────────────────
+      {
+        element: 'a[href*="export/"]:not([href*="pdf"])',
+        popover: {
+          title: '📗 Download Excel Report',
+          description: 'Click here to download the <strong>Excel spreadsheet</strong>. The file includes all rooms and items with full pricing columns — useful for further editing, importing into other systems, or re-sending to an adjuster.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Finish tour ✓',
+        },
+      },
+
+    ],
+    onDestroyStarted: () => {
+      sessionDriver.destroy();
+    },
+  });
+  sessionDriver.drive();
+}
+
+// Auto-show welcome modal every visit UNLESS user disabled it
+document.addEventListener('DOMContentLoaded', () => {
+  if (!localStorage.getItem(SESSION_DISABLE_KEY)) {
+    const overlay = document.getElementById('welcome-overlay');
+    overlay.style.display = 'flex';
+  }
+});
+</script>
 <script>
 (function () {
   const CSRF = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
@@ -293,14 +798,13 @@
   }).then(r => r.json());
   const fmt = v => isNaN(v) ? '—' : '$' + parseFloat(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
-  // Sequential numbering across ALL rooms
+  // ── Sequential numbering across ALL rooms ──────────────────────────────────
   function renumberItems() {
     let n = 1;
     document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
       let even = false;
       tbody.querySelectorAll('tr.item-row').forEach(tr => {
         tr.querySelector('.item-num').textContent = n++;
-        // Alternating stripe via class (nth-child breaks with interleaved notes rows)
         tr.classList.toggle('even-item', even);
         const notesRow = tr.nextElementSibling;
         if (notesRow && notesRow.classList.contains('notes-row')) {
@@ -311,37 +815,166 @@
     });
   }
 
-  // Read data from an item-row; notes come from the paired notes-row beneath it
+  // ── Dirty-room tracking ─────────────────────────────────────────────────────
+  const dirtyRooms = new Set();
+  function markRoomDirty(roomId) {
+    dirtyRooms.add(String(roomId));
+    const saveBtn = document.querySelector(`button[onclick="saveRoom(${roomId})"]`);
+    if (saveBtn) {
+      saveBtn.classList.add('save-dirty');
+      saveBtn.innerHTML = '<i class="fas fa-exclamation-triangle"></i> Save';
+    }
+  }
+
+  // ── Read data from an item-row (12 columns: handle + # + 10 data + actions) ─
+  // col[0]=handle  col[1]=# col[2]=desc col[3]=brand col[4]=condition(select)
+  // col[5]=qty col[6]=retailer col[7]=purchase col[8]=ageY col[9]=ageM
+  // col[10]=rv col[11]=actions
   function getRowData(tr) {
-    const cells = tr.querySelectorAll('td');
-    const condEl = cells[3].querySelector('select');
+    const cells  = tr.querySelectorAll('td');
+    const condEl = cells[4].querySelector('select');
     const notesRow = tr.nextElementSibling;
     const notes = (notesRow && notesRow.classList.contains('notes-row'))
       ? notesRow.querySelector('td').textContent.trim()
       : '';
     return {
-      description:            cells[1].textContent.trim(),
-      brand:                  cells[2].textContent.trim(),
-      condition:              condEl ? condEl.value : cells[3].textContent.trim(),
-      qty:                    parseInt(cells[4].textContent.trim()) || 1,
-      retailer:               cells[5].textContent.trim(),
-      purchase_price_each:    parseFloat(cells[6].textContent.trim()) || 0,
-      age_years:              parseInt(cells[7].textContent.trim()) || 0,
-      age_months:             parseInt(cells[8].textContent.trim()) || 0,
-      replacement_value_each: parseFloat(cells[9].textContent.trim()) || 0,
+      description:            cells[2].textContent.trim(),
+      brand:                  cells[3].textContent.trim(),
+      condition:              condEl ? condEl.value : cells[4].textContent.trim(),
+      qty:                    parseInt(cells[5].textContent.trim()) || 1,
+      retailer:               cells[6].textContent.trim(),
+      purchase_price_each:    parseFloat(cells[7].textContent.trim()) || 0,
+      age_years:              parseInt(cells[8].textContent.trim()) || 0,
+      age_months:             parseInt(cells[9].textContent.trim()) || 0,
+      replacement_value_each: parseFloat(cells[10].textContent.trim()) || 0,
       notes,
       ai_suggested: false,
     };
   }
+
+  // ── Drag-and-drop reorder (within room) and move (across rooms) ────────────
+  let dragSrcRow  = null;
+  let dragSrcBody = null;
+
+  function initDragRow(tr) {
+    tr.setAttribute('draggable', 'true');
+    tr.addEventListener('dragstart', e => {
+      dragSrcRow  = tr;
+      dragSrcBody = tr.closest('tbody');
+      tr.classList.add('dragging');
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    tr.addEventListener('dragend', () => {
+      tr.classList.remove('dragging');
+      document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+    });
+  }
+
+  function initTbodyDrop(tbody) {
+    tbody.addEventListener('dragover', e => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
+      const target = e.target.closest('tr.item-row');
+      if (target && target !== dragSrcRow) target.classList.add('drag-over');
+    });
+
+    tbody.addEventListener('drop', e => {
+      e.preventDefault();
+      if (!dragSrcRow) return;
+
+      const targetRow  = e.target.closest('tr.item-row');
+      const targetBody = tbody;
+      const notesRow   = dragSrcRow.nextElementSibling?.classList.contains('notes-row')
+                         ? dragSrcRow.nextElementSibling : null;
+
+      if (targetRow && targetRow !== dragSrcRow) {
+        const rect = targetRow.getBoundingClientRect();
+        const after = e.clientY > rect.top + rect.height / 2;
+        const ref = after
+          ? (targetRow.nextElementSibling?.classList.contains('notes-row')
+             ? targetRow.nextElementSibling.nextSibling : targetRow.nextSibling)
+          : targetRow;
+        targetBody.insertBefore(dragSrcRow, ref);
+      } else {
+        // Dropped on empty area of target tbody
+        targetBody.appendChild(dragSrcRow);
+      }
+      if (notesRow) dragSrcRow.after(notesRow);
+
+      // Remove placeholder in target if present
+      targetBody.querySelector('.no-items-row')?.remove();
+
+      const srcId = dragSrcBody.id.replace('tbody-', '');
+      const tgtId = targetBody.id.replace('tbody-', '');
+      markRoomDirty(srcId);
+      if (srcId !== tgtId) markRoomDirty(tgtId);
+
+      renumberItems();
+      calcTotals(parseInt(srcId));
+      if (srcId !== tgtId) calcTotals(parseInt(tgtId));
+      calcGrandTotals();
+
+      dragSrcRow  = null;
+      dragSrcBody = null;
+    });
+  }
+
+  // Initialise drag on all existing rows and tbodies
+  document.querySelectorAll('tr.item-row').forEach(initDragRow);
+  document.querySelectorAll('[id^="tbody-"]').forEach(initTbodyDrop);
+
+  // ── Move-Item Modal ─────────────────────────────────────────────────────────
+  let moveSourceRow    = null;
+  let moveSourceRoomId = null;
+
+  window.openMoveModal = function(btn) {
+    const tr   = btn.closest('tr.item-row');
+    moveSourceRow    = tr;
+    moveSourceRoomId = String(tr.closest('tbody').id.replace('tbody-', ''));
+
+    document.querySelectorAll('.move-room-btn').forEach(b => {
+      const isCurrentRoom = b.dataset.roomId === moveSourceRoomId;
+      b.disabled = isCurrentRoom;
+      b.classList.toggle('text-muted', isCurrentRoom);
+      b.classList.toggle('active', false);
+    });
+    new bootstrap.Modal(document.getElementById('moveItemModal')).show();
+  };
+
+  document.querySelectorAll('.move-room-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      if (!moveSourceRow || btn.disabled) return;
+      const targetRoomId = btn.dataset.roomId;
+      const targetTbody  = document.getElementById(`tbody-${targetRoomId}`);
+
+      const notesRow = moveSourceRow.nextElementSibling?.classList.contains('notes-row')
+                       ? moveSourceRow.nextElementSibling : null;
+      targetTbody.appendChild(moveSourceRow);
+      if (notesRow) targetTbody.appendChild(notesRow);
+      targetTbody.querySelector('.no-items-row')?.remove();
+
+      markRoomDirty(moveSourceRoomId);
+      markRoomDirty(targetRoomId);
+      renumberItems();
+      calcTotals(parseInt(moveSourceRoomId));
+      calcTotals(parseInt(targetRoomId));
+      calcGrandTotals();
+
+      bootstrap.Modal.getInstance(document.getElementById('moveItemModal')).hide();
+      moveSourceRow    = null;
+      moveSourceRoomId = null;
+    });
+  });
 
   function calcTotals(roomId) {
     const tbody = document.getElementById(`tbody-${roomId}`);
     let rvTotal = 0;
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
       const cells = tr.querySelectorAll('td');
-      if (cells.length < 10) return;
-      const rv  = parseFloat(cells[9].textContent) || 0;
-      const qty = parseInt(cells[4].textContent)   || 1;
+      if (cells.length < 11) return;
+      const rv  = parseFloat(cells[10].textContent) || 0;  // col index 10 = Repl. Value
+      const qty = parseInt(cells[5].textContent)    || 1;  // col index 5  = QTY
       rvTotal += rv * qty;
     });
     const rvEl = document.getElementById(`room-rv-${roomId}`);
@@ -369,26 +1002,28 @@
   });
 
   window.removeRow = function(btn) {
-    const tr = btn.closest('tr');
-    const tbody = tr.closest('tbody');
-    // Also remove the paired notes row
+    const tr     = btn.closest('tr');
+    const tbody  = tr.closest('tbody');
+    const roomId = tbody.id.replace('tbody-', '');
     const notesRow = tr.nextElementSibling;
     if (notesRow && notesRow.classList.contains('notes-row')) notesRow.remove();
     tr.remove();
-    const roomId = tbody.id.replace('tbody-', '');
+    markRoomDirty(roomId);
     calcTotals(parseInt(roomId));
     calcGrandTotals();
     renumberItems();
   };
 
   window.addItemRow = function(roomId) {
-    const tbody = document.getElementById(`tbody-${roomId}`);
+    const tbody       = document.getElementById(`tbody-${roomId}`);
     const placeholder = tbody.querySelector('.no-items-row');
     if (placeholder) placeholder.remove();
 
-    const tr = document.createElement('tr');
-    tr.className = 'item-row';
+    const tr       = document.createElement('tr');
+    tr.className   = 'item-row';
+    tr.setAttribute('draggable', 'true');
     tr.innerHTML = `
+      <td class="text-center"><span class="drag-handle">⣿</span></td>
       <td class="item-num"></td>
       <td class="editable-cell" contenteditable="true">New Item</td>
       <td class="editable-cell" contenteditable="true"></td>
@@ -401,20 +1036,24 @@
       <td class="text-center editable-cell" contenteditable="true">0</td>
       <td class="text-center editable-cell" contenteditable="true">0</td>
       <td class="text-end rv-col editable-cell" contenteditable="true">0</td>
-      <td class="text-center">
+      <td class="text-center" style="white-space:nowrap;">
+        <button class="btn btn-link btn-sm p-0 text-secondary me-1" onclick="openMoveModal(this)" title="Move to another room">
+          <i class="fas fa-share" style="font-size:.8em;"></i>
+        </button>
         <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
           <i class="fas fa-times"></i>
         </button>
       </td>`;
 
-    const notesRow = document.createElement('tr');
+    const notesRow     = document.createElement('tr');
     notesRow.className = 'notes-row';
-    notesRow.innerHTML = `<td colspan="11" class="editable-cell" contenteditable="true"></td>`;
+    notesRow.innerHTML = `<td colspan="12" class="editable-cell" contenteditable="true"></td>`;
 
     tbody.appendChild(tr);
     tbody.appendChild(notesRow);
+    initDragRow(tr);   // wire up drag events for newly created row
+    markRoomDirty(roomId);
     renumberItems();
-    // Focus the description cell
     tr.querySelectorAll('[contenteditable]')[0].focus();
   };
 
@@ -422,7 +1061,7 @@
     const tbody = document.getElementById(`tbody-${roomId}`);
     const items = [];
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
-      if (tr.querySelectorAll('td').length >= 10) items.push(getRowData(tr));
+      if (tr.querySelectorAll('td').length >= 11) items.push(getRowData(tr));
     });
 
     const btn = event.target.closest('button');
@@ -432,22 +1071,24 @@
     try {
       const data = await post('{% url "cps_api_save_room" %}', { room_id: roomId, items });
       if (data.success) {
+        dirtyRooms.delete(String(roomId));
+        btn.classList.remove('save-dirty');
         btn.innerHTML = '<i class="fas fa-check"></i> Saved';
         btn.className = btn.className.replace('btn-success', 'btn-outline-success');
         setTimeout(() => {
           btn.innerHTML = '<i class="fas fa-save"></i> Save';
           btn.className = btn.className.replace('btn-outline-success', 'btn-success');
-          btn.disabled = false;
+          btn.disabled  = false;
         }, 2000);
       } else {
         alert('Save failed: ' + (data.error || 'unknown'));
         btn.innerHTML = '<i class="fas fa-save"></i> Save';
-        btn.disabled = false;
+        btn.disabled  = false;
       }
     } catch (e) {
       alert('Save failed: ' + e);
       btn.innerHTML = '<i class="fas fa-save"></i> Save';
-      btn.disabled = false;
+      btn.disabled  = false;
     }
   };
 
@@ -474,10 +1115,12 @@ async function clearRoomSignature(roomId, roomLabel) {
       // Update the per-room status bar
       const bar = document.getElementById(`sig-bar-${roomId}`);
       if (bar) {
+        const section = document.getElementById(`room-section-${roomId}`);
+        const roomToken = section ? section.dataset.roomToken : '';
         bar.className = 'sig-status-bar unsigned';
         bar.innerHTML = '<i class="fas fa-clock"></i><span>Awaiting client signature</span>'
-          + '<button onclick="copyShareLink(this)" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">'
-          + '<i class="fas fa-link me-1"></i>Copy link to send</button>';
+          + `<button onclick="copyRoomLink(this, '${roomToken}')" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">`
+          + '<i class="fas fa-link me-1"></i>Copy room link</button>';
       }
       // Update the top badge for this room
       document.querySelectorAll(`#sig-badges .badge`).forEach(badge => {
@@ -560,8 +1203,57 @@ function copyShareLink(btn) {
       btn.classList.replace('btn-primary', 'btn-outline-primary');
     }, 2000);
   }).catch(() => {
-    // Last resort: show the URL so they can copy manually
     prompt('Copy this link to send to your client:', SHARE_URL);
+  });
+}
+
+async function cancelSession() {
+  if (!confirm('Cancel this stuck report? You can re-run it afterwards.')) return;
+  const btn = document.getElementById('cancelBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${SESSION_ID}/cancel/`, {
+    method: 'POST', headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+  });
+  if ((await res.json()).success) location.reload();
+  else { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stop me-1"></i> Cancel Report'; alert('Could not cancel.'); }
+}
+
+async function rerunSession() {
+  if (!confirm('Re-run this report? All existing items will be cleared and re-analysed by AI.')) return;
+  const btn = document.getElementById('rerunBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  const res = await fetch(`/cps-report/session/${SESSION_ID}/rerun/`, {
+    method: 'POST', headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+  });
+  const data = await res.json();
+  if (data.success) window.location.href = data.redirect;
+  else { btn.disabled = false; btn.innerHTML = '<i class="fas fa-rotate-right me-1"></i> Re-run Report'; alert('Could not re-run.'); }
+}
+
+function copyRoomLink(btn, roomToken) {
+  const url = window.location.origin + '/cps-report/sign/room/' + roomToken + '/';
+  const doCopy = () => {
+    if (navigator.clipboard && window.isSecureContext) {
+      return navigator.clipboard.writeText(url);
+    }
+    const ta = document.createElement('textarea');
+    ta.value = url;
+    ta.style.cssText = 'position:fixed;opacity:0';
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand('copy');
+    ta.remove();
+    return Promise.resolve();
+  };
+
+  doCopy().then(() => {
+    const orig = btn.innerHTML;
+    btn.innerHTML = '<i class="fas fa-check me-1"></i> Copied!';
+    setTimeout(() => { btn.innerHTML = orig; }, 2000);
+  }).catch(() => {
+    prompt('Copy this room link to send to your client:', url);
   });
 }
 </script>

@@ -13,10 +13,11 @@ import json
 import logging
 
 from .models import Client, Room, WorkType, RoomWorkTypeValue, ChecklistItem
+from contractor_hub.models import Contractor
 # OneDrive models removed: OneDriveFolder, OneDriveFile, SyncLog
 from .forms import OneDriveClientForm, RoomSelectionForm, BulkWorkTypeForm
 # UPDATED: Use server-side tasks instead of OneDrive tasks
-from .tasks import create_server_folder_structure_task, copy_templates_to_server_task, push_claim_to_encircle_task, push_encircle_subclaim_task, push_rooms_to_encircle_task, migrate_encircle_rooms_task, generate_and_email_labels_task
+from .tasks import create_server_folder_structure_task, copy_templates_to_server_task, push_claim_to_encircle_task, push_encircle_subclaim_task, push_rooms_to_encircle_task, migrate_encircle_rooms_task, generate_and_email_labels_task, send_templates_link_task
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -27,64 +28,41 @@ logger = logging.getLogger(__name__)
 @login_required
 def claim_list(request):
     """
-    Claims list — sourced directly from the Encircle API (no local DB import).
-    Results are cached for 15 minutes so repeated page loads are instant.
-    Local Client records are cross-referenced by encircle_claim_id so claims
-    already in the system link through to the full detail/edit page.
+    Claims list — sourced from local Django Client records.
+    Encircle data is available on the detail page; the list page stays fast
+    and reliable by querying the local DB only.
     """
-    from django.core.cache import cache
-    from .encircle_client import EncircleAPIClient, EncircleDataProcessor
+    from django.db.models import Q
 
     search  = request.GET.get('search', '').strip()
-    sort_by = request.GET.get('sort', 'name')
+    sort_by = request.GET.get('sort', '-updated_at')
 
-    # ── Fetch all claims from Encircle (cached 15 min) ─────────────
-    CACHE_KEY = 'claim_list_all_encircle'
-    claims = cache.get(CACHE_KEY)
-    if claims is None:
-        try:
-            api       = EncircleAPIClient()
-            processor = EncircleDataProcessor()
-            raw       = api.get_all_claims()
-            claims    = processor.process_claims_list(raw)
-            cache.set(CACHE_KEY, claims, 900)
-        except Exception as e:
-            logger.error(f"claim_list: Encircle fetch failed: {e}", exc_info=True)
-            claims = []
+    clients = Client.objects.all()
 
     # ── Search ─────────────────────────────────────────────────────
     if search:
-        q = search.lower()
-        claims = [
-            c for c in claims
-            if q in (c.get('policyholder_name') or '').lower()
-            or q in (c.get('full_address') or '').lower()
-            or q in (c.get('policy_number') or '').lower()
-            or q in (c.get('insurance_company_name') or '').lower()
-        ]
+        clients = clients.filter(
+            Q(pOwner__icontains=search) |
+            Q(pAddress__icontains=search) |
+            Q(claimNumber__icontains=search) |
+            Q(insuranceCo_Name__icontains=search) |
+            Q(causeOfLoss__icontains=search)
+        )
 
     # ── Sort ───────────────────────────────────────────────────────
-    if sort_by == '-name':
-        claims = sorted(claims, key=lambda c: (c.get('policyholder_name') or '').lower(), reverse=True)
-    elif sort_by == '-date':
-        claims = sorted(claims, key=lambda c: c.get('date_of_loss') or '', reverse=True)
-    elif sort_by == 'date':
-        claims = sorted(claims, key=lambda c: c.get('date_of_loss') or '')
-    else:
-        claims = sorted(claims, key=lambda c: (c.get('policyholder_name') or '').lower())
-
-    # ── Cross-reference local Django clients ───────────────────────
-    local_map = dict(
-        Client.objects
-        .filter(encircle_claim_id__isnull=False)
-        .exclude(encircle_claim_id='')
-        .values_list('encircle_claim_id', 'id')
-    )
-    for c in claims:
-        c['local_client_id'] = local_map.get(str(c.get('id') or ''))
+    sort_map = {
+        'name':       'pOwner',
+        '-name':      '-pOwner',
+        'date':       'dateOfLoss',
+        '-date':      '-dateOfLoss',
+        'updated_at': 'updated_at',
+        'created_at': 'created_at',
+        '-created_at': '-created_at',
+    }
+    clients = clients.order_by(sort_map.get(sort_by, '-updated_at'))
 
     # ── Paginate ───────────────────────────────────────────────────
-    paginator = Paginator(claims, 50)
+    paginator = Paginator(clients, 30)
     page_obj  = paginator.get_page(request.GET.get('page'))
 
     return render(request, 'docsAppR/claim_list.html', {
@@ -140,6 +118,24 @@ def claim_detail(request, claim_id):
         completed = checklist_by_category[category]['completed']
         checklist_by_category[category]['percent'] = round((completed / total) * 100) if total > 0 else 0
 
+    # Get leases for this claim with their workflow tasks
+    from .models import Lease, LeaseTask
+    leases = Lease.objects.filter(client=client).prefetch_related('workflow_tasks', 'workflow_tasks__completed_by').order_by('-created_at')
+
+    # Build lease summary with task progress
+    leases_with_progress = []
+    for lease in leases:
+        tasks = lease.workflow_tasks.all()
+        completed_tasks = sum(1 for t in tasks if t.is_completed)
+        task_pct = round((completed_tasks / len(tasks)) * 100) if tasks.exists() else 0
+        leases_with_progress.append({
+            'lease': lease,
+            'tasks': tasks,
+            'completed': completed_tasks,
+            'total': tasks.count(),
+            'percent': task_pct,
+        })
+
     context = {
         'client': client,
         'rooms': rooms,
@@ -150,6 +146,8 @@ def claim_detail(request, claim_id):
         'last_modified_by': client.last_modified_by,
         'checklist_by_category': checklist_by_category,
         'checklist_items': checklist_items,
+        'leases_with_progress': leases_with_progress,
+        'contractors': Contractor.objects.filter(is_active=True).order_by('name'),
     }
 
     return render(request, 'docsAppR/claim_detail.html', context)
@@ -191,6 +189,7 @@ def create_claim_step1(request):
         'form': form,
         'client': client,
         'step': 1,
+        'contractors': Contractor.objects.filter(is_active=True).order_by('name'),
     }
 
     return render(request, 'docsAppR/create_claim_step1_full.html', context)
@@ -306,7 +305,14 @@ def save_rooms(request):
 
         # ── Separate sub-template types from primary templates ─────────────────
         # 8000s/9000s/siding go to sub-claims; primary gets the rest.
-        _SUB_TEMPLATES = {'readings_8000', 'readings_9000', 'siding_10000'}
+        # The 8000s (MC readings) and 9000s (dry-chamber readings) must NEVER be
+        # part of the basic/default room list — they only exist on their own
+        # sub-claims, created when their template is explicitly selected. We also
+        # exclude the legacy 'readings' (combined 8000+9000) and 'readings default'
+        # (8000-series stabilization) so neither can leak 8000-series entries into
+        # the primary/default claim.
+        _SUB_TEMPLATES = {'readings_8000', 'readings_9000', 'siding_10000',
+                          'readings', 'readings default'}
         primary_templates = [t for t in selected_templates if t not in _SUB_TEMPLATES]
         # Work types: 700 (HMR) gets its own sub-claim handled in Step 3;
         # exclude it from the primary entry generation here.
@@ -314,12 +320,37 @@ def save_rooms(request):
         primary_work_types = [w for w in selected_work_types
                               if str(w).strip().isdigit() and int(w) != 700]
 
-        # Fallback: if user didn't pick any primary template, default to basic
-        if not primary_templates:
+        # Fallback: only use basic if the user has actual rooms AND chose no template.
+        # If they selected only sub-templates (siding/8000s/9000s) with no base rooms,
+        # respect that choice — don't inject the 100-700s list they didn't want.
+        if not primary_templates and rooms_data:
             primary_templates = ['basic']
 
         if not rooms_data and 'siding_10000' not in selected_templates:
             return JsonResponse({'success': False, 'error': 'No rooms provided'})
+
+        # Static room names for siding claims — used as base rooms when the user
+        # selects siding_10000 without entering any rooms.  These are the clean
+        # section names that will populate Excel templates (is_encircle_entry=False).
+        _SIDING_BASE_ROOMS = [
+            'JOBSITE VERIFICATION',
+            'SOURCE OF LOSS',
+            'ROOF',
+            'PPR NON SALVAGABLES',
+            'EXTERIOR',
+            'AIR CONDITIONING',
+            'PATIO/DECK',
+            'DOOR & WINDOWS TRIM',
+            'SOFFIT & FASCIA',
+            'SDG ACCESSORIES',
+            'JOB CONDITIONS',
+            'DOWN SPOUTS & GUTTERS',
+            'ELECTRICAL ACCESSORIES',
+            'DEMO & DUMPSTER',
+            'FINAL CLN',
+            'GARAGE',
+            'ROOF ACCESSORIES',
+        ]
 
         # Split rooms by claim type
         normal_rooms = [r for r in rooms_data if r.get('claim_type', 'normal') == 'normal']
@@ -439,6 +470,18 @@ def save_rooms(request):
                 selected_work_types=primary_work_types or None,
             )
 
+            # Siding-only claim: seed the primary client with clean siding section
+            # names as base rooms (is_encircle_entry=False) so they populate Excel.
+            # Only runs when the user chose siding with no manual rooms.
+            if 'siding_10000' in selected_templates and not normal_rooms:
+                for seq, room_name in enumerate(_SIDING_BASE_ROOMS, 1):
+                    Room.objects.get_or_create(
+                        client=client,
+                        room_name=room_name,
+                        is_encircle_entry=False,
+                        defaults={'sequence': seq},
+                    )
+
             # MIT sub-claim — always uses 8000s MC Day Readings
             if mit_rooms or 'readings_8000' in selected_templates:
                 mit_client_obj = _clone_client(client, 'MIT')
@@ -514,6 +557,41 @@ def create_claim_step3(request):
     if request.method == 'POST':
         is_ajax = request.headers.get('X-Requested-With') == 'XMLHttpRequest'
         try:
+            # ── Save any ALE fields submitted from the optional step-3 section ──
+            ALE_FIELDS = [
+                'ale_lessee_name', 'ale_lessee_phone', 'ale_lessee_email',
+                'ale_lessee_home_address', 'ale_lessee_city_state_zip',
+                'ale_rental_bedrooms', 'ale_rental_months',
+                'ale_rental_amount_per_month', 'ale_rental_security_deposit',
+                'ale_rental_start_date', 'ale_rental_end_date',
+                'ale_lease_agreement_date', 'ale_inspection_fee',
+                'ale_late_fee', 'ale_late_fee_start_day', 'ale_nsf_fee', 'ale_rent_due_day',
+                'ale_lessor_name', 'ale_lessor_contact_person', 'ale_lessor_phone',
+                'ale_lessor_leased_address', 'ale_lessor_city_zip', 'ale_lessor_email',
+                'ale_lessor_mailing_address', 'ale_lessor_mailing_city_zip',
+                'ale_re_company_name', 'ale_re_contact_person', 'ale_re_phone',
+                'ale_re_mailing_address', 'ale_re_city_zip', 'ale_re_email',
+                'ale_re_owner_broker_name', 'ale_re_owner_broker_phone', 'ale_re_owner_broker_email',
+            ]
+            from django.utils.dateparse import parse_date
+            for field in ALE_FIELDS:
+                val = request.POST.get(field, '').strip()
+                if not val:
+                    continue
+                field_obj = client._meta.get_field(field)
+                ftype = field_obj.get_internal_type()
+                if ftype == 'DateField':
+                    parsed = parse_date(val)
+                    if parsed:
+                        setattr(client, field, parsed)
+                elif ftype == 'DecimalField':
+                    try:
+                        setattr(client, field, float(val))
+                    except ValueError:
+                        pass
+                else:
+                    setattr(client, field, val)
+
             client.save()
 
             # Trigger server-side background tasks
@@ -527,6 +605,8 @@ def create_claim_step3(request):
             # them directly without re-computing.
             primary_templates   = request.session.get('primary_templates', ['basic'])
             primary_work_types  = request.session.get('primary_work_types', [])
+            encircle_templates  = request.session.get('selected_templates', primary_templates)
+            selected_work_types = request.session.get('primary_work_types', [])
 
             encircle_task = push_claim_to_encircle_task.delay(
                 str(client.id), primary_templates, primary_work_types
@@ -766,16 +846,36 @@ def create_claim_step3(request):
                     except Exception:
                         sdg_sub = None
                 if sdg_sub:
+                    # Seed siding base rooms on the SDG sub-claim so Excel
+                    # templates populate with the correct section names.
+                    _SDG_ROOMS = [
+                        'JOBSITE VERIFICATION', 'SOURCE OF LOSS', 'ROOF',
+                        'PPR NON SALVAGABLES', 'EXTERIOR', 'AIR CONDITIONING',
+                        'PATIO/DECK', 'DOOR & WINDOWS TRIM', 'SOFFIT & FASCIA',
+                        'SDG ACCESSORIES', 'JOB CONDITIONS', 'DOWN SPOUTS & GUTTERS',
+                        'ELECTRICAL ACCESSORIES', 'DEMO & DUMPSTER', 'FINAL CLN',
+                        'GARAGE', 'ROOF ACCESSORIES',
+                    ]
+                    for seq, rname in enumerate(_SDG_ROOMS, 1):
+                        Room.objects.get_or_create(
+                            client=sdg_sub,
+                            room_name=rname,
+                            is_encircle_entry=False,
+                            defaults={'sequence': seq},
+                        )
                     create_server_folder_structure_task.delay(sdg_sub.id)
                     copy_templates_to_server_task.delay(sdg_sub.id)
                     encircle_sdg_task = push_claim_to_encircle_task.delay(
                         str(sdg_sub.id), ['siding_10000']
                     )
 
-            # Auto-generate and email labels for all rooms
+            # Email 1: Labels — attach generated box labels PDF
             labels_task = generate_and_email_labels_task.delay(str(client.id))
 
-            # Auto-send room list email to default recipients (synchronous)
+            # Email 2: Templates download link — goes to internal team + client email
+            templates_link_task = send_templates_link_task.delay(str(client.id))
+
+            # Email 3: Room list with worktype PDF — internal team
             email_ok, email_err = _auto_send_room_list(client)
 
             # Clear session
@@ -938,7 +1038,7 @@ def _auto_send_room_list(client, recipients=None):
     from .views import generate_room_list_email_html, generate_room_list_pdf
 
     if recipients is None:
-        recipients = ['galaxielsaga@gmail.com']  # testing: change when ready for full distribution
+        recipients = ['galaxielsaga@gmail.com', 'wsbjoe9@gmail.com']
 
     try:
         rooms = []
@@ -1102,8 +1202,9 @@ def push_rooms_to_encircle(request, claim_id):
 
     POST body (JSON):
         encircle_claim_id  – target Encircle claim id (required)
-        selected_templates – list of template keys, e.g. ["basic", "readings"]
-                             Defaults to ["basic", "readings"] if omitted.
+        selected_templates – list of template keys, e.g. ["basic"]
+                             Defaults to ["basic"] if omitted (8000s/9000s only
+                             when their template is explicitly selected).
     """
     import json
     client = get_object_or_404(Client, id=claim_id)
@@ -1117,7 +1218,7 @@ def push_rooms_to_encircle(request, claim_id):
     if not encircle_claim_id:
         return JsonResponse({'success': False, 'error': 'encircle_claim_id is required'}, status=400)
 
-    selected_templates = body.get('selected_templates') or ['basic', 'readings']
+    selected_templates = body.get('selected_templates') or ['basic']
 
     try:
         task = push_rooms_to_encircle_task.delay(
@@ -3641,3 +3742,170 @@ def excel_hub_settings(request):
         except Exception as e:
             return JsonResponse({'success': False, 'error': str(e)}, status=400)
     return JsonResponse({'emails': _eh_get_emails()})
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# PUBLIC TEMPLATES DOWNLOAD PAGE
+# Accessed via a signed token link emailed at claim creation.
+# No login required — the signed token is the access credential.
+# ══════════════════════════════════════════════════════════════════════════════
+
+def claim_templates_public(request, token):
+    """
+    Public (no-auth) page for viewing and downloading a claim's Excel templates.
+    The token is a Django-signed claim_id (salt='claim-templates-link').
+    Recipients receive this link by email when a new claim is created.
+    """
+    from django.core.signing import loads as signing_loads, BadSignature, SignatureExpired
+
+    try:
+        claim_id = signing_loads(token, salt='claim-templates-link')
+    except (BadSignature, SignatureExpired):
+        return render(request, 'docsAppR/claim_templates_public.html', {
+            'error': 'This link is invalid or has been tampered with.',
+        })
+
+    try:
+        client = Client.objects.get(id=claim_id)
+    except Client.DoesNotExist:
+        return render(request, 'docsAppR/claim_templates_public.html', {
+            'error': 'Claim not found.',
+        })
+
+    file_groups = _eh_claim_excel_files(client)
+    total_files = sum(len(g['files']) for g in file_groups)
+
+    return render(request, 'docsAppR/claim_templates_public.html', {
+        'client':      client,
+        'file_groups': file_groups,
+        'total_files': total_files,
+        'token':       token,
+    })
+
+
+def claim_templates_download(request, token, file_path):
+    """
+    Serve an individual Excel file from the public templates page.
+    file_path is URL-encoded relative path within the claim folder.
+    """
+    import urllib.parse
+    from django.http import FileResponse, Http404
+    from django.core.signing import loads as signing_loads, BadSignature
+
+    try:
+        claim_id = signing_loads(token, salt='claim-templates-link')
+        client   = Client.objects.get(id=claim_id)
+    except (BadSignature, Client.DoesNotExist):
+        raise Http404
+
+    folder_path = client.get_server_folder_path()
+    if not folder_path:
+        raise Http404
+
+    # Decode and sanitise — prevent directory traversal
+    rel = urllib.parse.unquote(file_path).replace('..', '').lstrip('/')
+    full_path = _os.path.normpath(_os.path.join(folder_path, rel))
+
+    # Must stay inside the claim folder
+    if not full_path.startswith(_os.path.normpath(folder_path)):
+        raise Http404
+
+    if not _os.path.isfile(full_path):
+        raise Http404
+
+    return FileResponse(
+        open(full_path, 'rb'),
+        as_attachment=True,
+        filename=_os.path.basename(full_path),
+    )
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# INTERNAL TEMPLATES DOWNLOAD PAGE  (login required)
+# Simple one-click file list for staff — linked from the claim detail page.
+# ══════════════════════════════════════════════════════════════════════════════
+
+@login_required
+def claim_templates_page(request, claim_id):
+    """
+    Clean page listing every Excel/template file for a claim.
+    Uses the same _eh_claim_excel_files helper as the Excel Hub and the
+    public templates page, so the file list is always consistent.
+    Each file is a direct download link via the existing download_claim_file view.
+    """
+    from django.core.signing import dumps as signing_dumps
+    from django.conf import settings
+
+    client      = get_object_or_404(Client, id=claim_id)
+    file_groups = _eh_claim_excel_files(client)
+    total_files = sum(len(g['files']) for g in file_groups)
+
+    # Build the public (no-login) shareable URL for clients
+    token       = signing_dumps(client.id, salt='claim-templates-link')
+    site_url    = getattr(settings, 'SITE_URL', 'https://claimetapp.com').rstrip('/')
+    public_url  = f"{site_url}/claims/templates/{token}/"
+
+    return render(request, 'docsAppR/claim_templates_page.html', {
+        'client':      client,
+        'file_groups': file_groups,
+        'total_files': total_files,
+        'public_url':  public_url,
+    })
+
+
+# ============================================================================
+# Encircle inbound sync — manual trigger & status API
+# ============================================================================
+
+@login_required
+@require_POST
+def trigger_encircle_sync(request):
+    """
+    POST /claims/sync-encircle/
+
+    Queues an immediate Encircle → Claimet sync via Celery.
+    Returns JSON with the Celery task ID so the caller can poll for completion.
+    """
+    from .tasks import sync_encircle_claims_task
+
+    try:
+        task = sync_encircle_claims_task.delay(triggered_by='manual')
+        return JsonResponse({
+            'success': True,
+            'message': 'Encircle sync queued. It will run in the background and '
+                       'update your claims within a few minutes.',
+            'task_id': task.id,
+        })
+    except Exception as exc:
+        logger.error("trigger_encircle_sync view error: %s", exc, exc_info=True)
+        return JsonResponse({'success': False, 'error': str(exc)}, status=500)
+
+
+@login_required
+def encircle_sync_status_api(request):
+    """
+    GET /claims/sync-encircle/status/
+
+    Returns the most recent EncircleSyncLog row as JSON.
+    Used by the dashboard's sync-status widget to poll for live updates.
+    """
+    from .models import EncircleSyncLog
+    from django.utils import timezone
+
+    log = EncircleSyncLog.objects.first()   # ordered by -started_at
+    if not log:
+        return JsonResponse({'has_log': False})
+
+    return JsonResponse({
+        'has_log':          True,
+        'log_id':           log.pk,
+        'status':           log.status,
+        'triggered_by':     log.triggered_by,
+        'started_at':       log.started_at.isoformat(),
+        'completed_at':     log.completed_at.isoformat() if log.completed_at else None,
+        'duration_seconds': log.duration_seconds,
+        'claims_processed': log.claims_processed,
+        'claims_created':   log.claims_created,
+        'claims_updated':   log.claims_updated,
+        'error_count':      log.error_count,
+    })

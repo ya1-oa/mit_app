@@ -1,5 +1,6 @@
 {% load static %}
 {% load humanize %}
+{% load my_tags %}
 <html lang="en">
 <head>
     <meta charset="UTF-8">
@@ -189,7 +190,7 @@
         <h3>{{ client.insuranceCo_Name}} Claim Number: {{ client.claimNumber}}</h3>
 
 
-     <p>THIS MONTHLY SHORT-TERM RENTAL AGREEMENT hereinafter known as the "Agreement" is made and entered into this <span class="bold">{{ document.created_at|date:"jS" }}</span> day of <span class="bold">{{ document.created_at|date:"F Y" }}</span>, by and between the Landlord and Tenant:<br>
+     <p>THIS MONTHLY SHORT-TERM RENTAL AGREEMENT hereinafter known as the "Agreement" is made and entered into this <span class="bold">{{ formatted_agreement_date }}</span>, by and between the Landlord and Tenant:<br>
     <span class="bold">{{ landlord.full_name }}, {{ landlord.address }}, {{ landlord.city }}, {{ landlord.state }} {{ landlord.zip_code }}</span><br>
     hereinafter known as the "Landlord", and the Tenant:<br>
     <span class="bold centered">{{ client.pOwner }}, {{ client.pAddress }}, {{ client.pCityStateZip }}</span><br>
@@ -212,7 +213,7 @@
             <span class="header-title">PAYMENTS</span>
             <span class="header-content"><span class="bold-underline">${{ landlord.default_rent_amount|floatformat:2|intcomma }} monthly</span></span>
         </h2>
-        <p>Tenant agrees to pay to Landlord as rent for the Property in the amount of $<span class="bold underline">{{ landlord.default_rent_amount|floatformat:2|intcomma }}</span> each month in advance on the <span class="bold">${{ landlord.default_rent_due_day }}<sup>{% if landlord.default_rent_due_day == "1" or landlord.default_rent_due_day == "21" or landlord.default_rent_due_day == "31" %}st{% elif landlord.default_rent_due_day == "2" or landlord.default_rent_due_day == "22" %}nd{% elif landlord.default_rent_due_day == "3" or landlord.default_rent_due_day == "23" %}rd{% else %}th{% endif %}</sup></span> day of each month at any other address designated by Landlord. If the Term does not start on the 1st day of the month or end on the last day of a month, the first and last month's rent will be prorated accordingly.</p>
+        <p>Tenant agrees to pay to Landlord as rent for the Property in the amount of $<span class="bold underline">{{ landlord.default_rent_amount|floatformat:2|intcomma }}</span> each month in advance on the <span class="bold">{{ landlord.default_rent_due_day }}<sup>{{ landlord.default_rent_due_day|ordinal_suffix }}</sup></span> day of each month at any other address designated by Landlord. If the Term does not start on the 1st day of the month or end on the last day of a month, the first and last month's rent will be prorated accordingly.</p>
 
         <h2 class="header-container">
             <span class="header-title">SECURITY DEPOSIT</span>
@@ -231,7 +232,7 @@
         </span> as security for the performance by Tenant of the terms under this Agreement and for any damages caused by Tenant, Tenant's family, and visitors to the Property during the term of this Agreement. The Landlord may use part or all of the security deposit to repair any damage to the Property caused by Tenant, Tenant's family, and visitors to the Property. However, the Landlord is not just limited to the security deposit amount and Tenant remains liable for any balance. Tenant shall not apply or deduct any portion of any security deposit from the last or any month's rent. Tenant shall not use or apply any such security deposit at any time in lieu of payment of rent. If Tenant breaches any terms or conditions of this Agreement, Tenant shall forfeit any deposit, as permitted by law.</p>
 
         <h2>LATE CHARGES</h2>
-        <p>Rent is due on the <span class="bold">{{ landlord.default_rent_due_day }}</span><sup><span class="bold">{% if landlord.default_rent_due_day == "1" or landlord.default_rent_due_day == "21" or landlord.default_rent_due_day == "31" %}st{% elif landlord.default_rent_due_day == "2" or landlord.default_rent_due_day == "22" %}nd{% elif landlord.default_rent_due_day == "3" or landlord.default_rent_due_day == "23" %}rd{% else %}th{% endif %}</sup></span> Day of each month, if any or all of the rent is not received by the <span class="bold">{{ landlord.default_late_fee_start_day }}<sup>{% if landlord.default_late_fee_start_day == "1" or landlord.default_late_fee_start_day == "21" or landlord.default_late_fee_start_day == "31" %}st{% elif landlord.default_late_fee_start_day == "2" or landlord.default_late_fee_start_day == "22" %}nd{% elif landlord.default_late_fee_start_day == "3" or landlord.default_late_fee_start_day == "23" %}rd{% else %}th{% endif %}</sup></span> day of the month, $<span class="bold underline">{{ landlord.default_late_fee|floatformat:2|intcomma }}</span> per-day will be charged as late fees until full rental payment is received. If rent is not received by the {{ landlord.default_eviction_day }}<sup>{% if landlord.default_eviction_day == "1" or landlord.default_eviction_day == "21" or landlord.default_eviction_day == "31" %}st{% elif landlord.default_eviction_day == "2" or landlord.default_eviction_day == "22" %}nd{% elif landlord.default_eviction_day == "3" or landlord.default_eviction_day == "23" %}rd{% else %}th{% endif %}</sup> day of the month, Tenant will be considered in breach of the Agreement and eviction proceedings will be initiated.</p>
+        <p>Rent is due on the <span class="bold">{{ landlord.default_rent_due_day }}</span><sup><span class="bold">{{ landlord.default_rent_due_day|ordinal_suffix }}</span></sup> Day of each month, if any or all of the rent is not received by the <span class="bold">{{ landlord.default_late_fee_start_day }}<sup>{{ landlord.default_late_fee_start_day|ordinal_suffix }}</sup></span> day of the month, $<span class="bold underline">{{ landlord.default_late_fee|floatformat:2|intcomma }}</span> per-day will be charged as late fees until full rental payment is received. If rent is not received by the {{ landlord.default_eviction_day }}<sup>{{ landlord.default_eviction_day|ordinal_suffix }}</sup> day of the month, Tenant will be considered in breach of the Agreement and eviction proceedings will be initiated.</p>
 
         <h2>INSUFFICIENT FUNDS</h2>
         <p>Tenant agrees to pay the charge of $<span class="bold underline">{{ landlord.default_nsf_fee|floatformat:2|intcomma }}</span> for each check given by Tenant to Landlord that is returned to Landlord for a lack of sufficient funds.</p>
@@ -342,22 +343,40 @@
     <!-- Landlord Signature -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ landlord.full_name }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Landlord's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Landlord's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.landlord %}
+                    {% include "account/_sig_mark.html" with sig=signatures.landlord %}
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.landlord.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:36px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px;">
+                {% if signatures.landlord %}{{ signatures.landlord.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
-    
+
     <!-- Tenant Signature -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ client.pOwner }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Tenant's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Tenant's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.tenant %}
+                    {% include "account/_sig_mark.html" with sig=signatures.tenant %}
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.tenant.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:36px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px;">
+                {% if signatures.tenant %}{{ signatures.tenant.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
 </div>
@@ -463,25 +482,43 @@
     <h3>CERTIFICATION OF ACCURACY</h3>
     <p>The parties certify that all statements and acknowledgments above are true and accurate to the best of their knowledge.</p>
     
-    <!-- Landlord Signature -->
+    <!-- Landlord Signature (Lead Disclosure) -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ landlord.full_name }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Landlord's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px; height: 30px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px; height: 30px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Landlord's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.landlord %}
+                    {% include "account/_sig_mark.html" with sig=signatures.landlord %}
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.landlord.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:30px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px; height:30px;">
+                {% if signatures.landlord %}{{ signatures.landlord.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
-    
-    <!-- Tenant Signature -->
+
+    <!-- Tenant Signature (Lead Disclosure) -->
     <div style="margin-bottom: 30px;">
         <div class="bold" style="margin-bottom: 5px;">Name: {{ client.pOwner }}</div>
-        <div>
-            <span style="display: inline-block; width: 120px;">Tenant's Signature:</span>
-            <div class="signature-line" style="display: inline-block; width: 300px; margin-right: 20px; height: 30px;"></div>
-            <span style="display: inline-block; width: 50px;" class="bold">Date:</span>
-            <div class="signature-date" style="display: inline-block; width: 100px; height: 30px;"></div>
+        <div style="display:flex; align-items:flex-end; gap:20px;">
+            <span style="width: 120px; flex-shrink:0;">Tenant's Signature:</span>
+            <div style="width:300px; flex-shrink:0;">
+                {% if signatures.tenant %}
+                    {% include "account/_sig_mark.html" with sig=signatures.tenant %}
+                    <div style="font-size:8px; color:#555; margin-top:1px;">Electronically signed by {{ signatures.tenant.name }}</div>
+                {% else %}
+                    <div class="signature-line" style="width:300px; height:30px;"></div>
+                {% endif %}
+            </div>
+            <span class="bold" style="flex-shrink:0;">Date:</span>
+            <div class="signature-date" style="width:100px; height:30px;">
+                {% if signatures.tenant %}{{ signatures.tenant.signed_at|date:"m/d/Y" }}{% endif %}
+            </div>
         </div>
     </div>
 

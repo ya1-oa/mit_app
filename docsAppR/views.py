@@ -764,7 +764,7 @@ def calculate_polygon_area(coordinates):
 
 
 from .forms import UploadClientForm
-
+from contractor_hub.models import Contractor
 @login_required
 def create(request):
     if request.method == "POST":
@@ -772,11 +772,15 @@ def create(request):
             return handle_excel_import(request)
         else:
             form = UploadClientForm(request.POST)
+            contractors = Contractor.objects.filter(is_active=True).order_by('name')
             if form.is_valid():
                 form.save()
                 messages.success(request, 'Client created successfully!')
                 return redirect('dashboard')
-            return render(request, 'account/create.html', {'form': form})
+            return render(request, 'account/create.html', {
+                'form': form,
+                'contractors': contractors,
+                })
     
     form = UploadClientForm()
     return render(request, 'account/create.html', {'form': form})
@@ -4181,6 +4185,13 @@ def dashboard(request):
             'percent': round((item['completed'] / item['total']) * 100, 1) if item['total'] > 0 else 0
         }
 
+    # ── Encircle sync status (latest log row) ─────────────────────────────
+    try:
+        from docsAppR.models import EncircleSyncLog
+        encircle_sync_log = EncircleSyncLog.objects.first()
+    except Exception:
+        encircle_sync_log = None
+
     context = {
         'total_claims': total_claims,
         'avg_completion': avg_completion,
@@ -4195,6 +4206,8 @@ def dashboard(request):
         'completion_distribution_json': json.dumps(completion_distribution),
         'category_stats_json': json.dumps(category_stats),
         'items_completion_json': json.dumps(items_completion),
+        # Encircle sync
+        'encircle_sync_log': encircle_sync_log,
     }
 
     return render(request, 'account/dashboard.html', context)
@@ -4393,20 +4406,29 @@ def client_list(request):
 
                 # Map Client ALE fields to Landlord fields
                 # Lessor (Landlord) Information
+                # Parse the compound "City, State ZIP" ALE strings into separate
+                # parts so each value lands in its own field instead of dumping
+                # the whole string into the City input. Uses the same canonical
+                # parser as the plug-and-play lease flow.
+                from lease_manager.views import _parse_city_state_zip
+                l_city, l_state, l_zip = _parse_city_state_zip(selected_client.ale_lessor_mailing_city_zip)
+                p_city, p_state, p_zip = _parse_city_state_zip(selected_client.ale_lessor_city_zip)
+                c_city, c_state, c_zip = _parse_city_state_zip(selected_client.ale_re_city_zip)
+
                 landlord.full_name = selected_client.ale_lessor_name or ''
                 landlord.address = selected_client.ale_lessor_mailing_address or ''
-                landlord.city = selected_client.ale_lessor_city_zip or ''  # Contains city+zip
-                landlord.state = ''  # Not directly mapped
-                landlord.zip_code = ''  # Part of city_zip
+                landlord.city = l_city
+                landlord.state = l_state
+                landlord.zip_code = l_zip
                 landlord.phone = selected_client.ale_lessor_phone or ''
                 landlord.email = selected_client.ale_lessor_email or ''
                 landlord.contact_person_1 = selected_client.ale_lessor_contact_person or ''
 
                 # Property Information (Leased Property)
                 landlord.property_address = selected_client.ale_lessor_leased_address or ''
-                landlord.property_city = ''  # Need to parse from ale_lessor_city_zip
-                landlord.property_state = ''  # Need to parse
-                landlord.property_zip = ''  # Need to parse
+                landlord.property_city = p_city
+                landlord.property_state = p_state
+                landlord.property_zip = p_zip
 
                 # Rental Terms
                 landlord.term_start_date = selected_client.ale_rental_start_date
@@ -4418,9 +4440,9 @@ def client_list(request):
                 # Real Estate Company Information
                 landlord.real_estate_company = selected_client.ale_re_company_name or ''
                 landlord.company_mailing_address = selected_client.ale_re_mailing_address or ''
-                landlord.company_city = ''  # Need to parse from ale_re_city_zip
-                landlord.company_state = ''  # Need to parse
-                landlord.company_zip = ''  # Need to parse
+                landlord.company_city = c_city
+                landlord.company_state = c_state
+                landlord.company_zip = c_zip
                 landlord.company_contact_person = selected_client.ale_re_contact_person or ''
                 landlord.company_phone = selected_client.ale_re_phone or ''
                 landlord.company_email = selected_client.ale_re_email or ''
@@ -4555,7 +4577,19 @@ def generate_all_documents(request):
         if request.POST.get('preview') == 'true':
             logger.debug("Generating HTML previews for all documents")
             previews = {}
-            
+
+            # Lease-level fields read once, BEFORE the document loop. These were
+            # previously assigned inside the loop, so when a document template
+            # was missing/skipped (continue) they stayed undefined and the Input
+            # Sheet preview below crashed with UnboundLocalError. Hoisting them
+            # here guarantees they always exist regardless of the loop outcome.
+            lease_agreement_date = request.POST.get('lease_agreement_date', '')
+            term_start_date = request.POST.get('term_start_date', '')
+            term_end_date = request.POST.get('term_end_date', '')
+            is_renewal = request.POST.get('is_renewal') == 'true'
+            exclude_security_deposit = request.POST.get('exclude_security_deposit') == 'true'
+            exclude_inspection_fee = request.POST.get('exclude_inspection_fee') == 'true'
+
             for document in documents:
                 try:
                     # Read template content

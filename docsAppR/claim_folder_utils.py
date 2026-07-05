@@ -193,7 +193,7 @@ def save_rooms_to_json(client):
             'rooms': []
         }
 
-        for room in client.rooms.all().order_by('sequence'):
+        for room in client.rooms.filter(is_encircle_entry=False).order_by('sequence'):
             room_info = {
                 'id': str(room.id),
                 'name': room.room_name,

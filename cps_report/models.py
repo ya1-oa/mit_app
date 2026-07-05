@@ -11,6 +11,11 @@ class CPSReportSession(models.Model):
         ('error', 'Error'),
     ]
 
+    PRICING_MODE_CHOICES = [
+        ('normal',  'Normal Pricing'),
+        ('premium', 'Premium / High-End Pricing'),
+    ]
+
     client = models.ForeignKey(
         'docsAppR.Client',
         on_delete=models.CASCADE,
@@ -23,6 +28,7 @@ class CPSReportSession(models.Model):
     loss_type = models.CharField(max_length=100, blank=True)
     loss_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    pricing_mode = models.CharField(max_length=16, choices=PRICING_MODE_CHOICES, default='normal')
     celery_task_id = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     share_token = models.UUIDField(default=uuid.uuid4, unique=True)
@@ -33,7 +39,7 @@ class CPSReportSession(models.Model):
         ordering = ['-updated_at']
 
     def __str__(self):
-        return f"CPS Report — {self.client.pOwner} ({self.updated_at:%Y-%m-%d})"
+        return f"PPR Schedule of Loss — {self.client.pOwner} ({self.updated_at:%Y-%m-%d})"
 
     def total_replacement_value(self):
         total = 0
@@ -49,6 +55,7 @@ class CPSReportRoom(models.Model):
         on_delete=models.CASCADE,
         related_name='rooms',
     )
+    share_token = models.UUIDField(default=uuid.uuid4, unique=True)
     room_name = models.CharField(max_length=200)
     room_number = models.CharField(max_length=20, blank=True)
     encircle_room_id = models.CharField(max_length=100, blank=True)
@@ -110,6 +117,9 @@ class CPSReportItem(models.Model):
     depreciation_pct = models.DecimalField(max_digits=5, decimal_places=2, null=True, blank=True)
     notes = models.TextField(blank=True)
     ai_suggested = models.BooleanField(default=True)
+    # Flagged by the structural-item filter in ai_analyzer — permanently attached
+    # to the building (walls, floors, fixtures, etc.) rather than personal property.
+    structural = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['order']
@@ -158,11 +168,7 @@ class CPSReportItem(models.Model):
             'age_months': self.age_months,
             'replacement_value_each': float(self.replacement_value_each) if self.replacement_value_each else None,
             'replacement_value_total': float(self.replacement_value_total) if self.replacement_value_total else None,
-            'depreciation_category': self.depreciation_category,
-            'depreciation_pct': float(self.depreciation_pct) if self.depreciation_pct else None,
-            'depreciation_amount': float(self.depreciation_amount) if self.depreciation_amount else None,
-            'acv_each': float(self.acv_each) if self.acv_each else None,
-            'acv_total': float(self.acv_total) if self.acv_total else None,
             'notes': self.notes,
             'ai_suggested': self.ai_suggested,
+            'structural': self.structural,
         }

@@ -1,0 +1,485 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sign Lease — {{ lease.property_address }}</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.css">
+  <script src="https://cdn.jsdelivr.net/npm/signature_pad@4.1.7/dist/signature_pad.umd.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/driver.js@1.3.1/dist/driver.js.iife.js"></script>
+  <style>
+    :root {
+      --brand: #2563eb;
+      --brand-dark: #1d4ed8;
+    }
+    body { background: #f1f5f9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+
+    /* Header */
+    .sign-header {
+      background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+      color: #fff; padding: 1.5rem 2rem; display: flex; align-items: center; gap: 1rem;
+    }
+    .sign-header .logo-mark {
+      width: 2.5rem; height: 2.5rem; background: var(--brand);
+      border-radius: .5rem; display: flex; align-items: center; justify-content: center;
+      font-weight: 900; font-size: 1.1rem; flex-shrink: 0;
+    }
+
+    /* Document summary card */
+    .doc-summary {
+      background: #fff; border-radius: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      padding: 2rem; margin-bottom: 1.5rem;
+    }
+    .doc-field { margin-bottom: .6rem; }
+    .doc-label { font-size: .72rem; text-transform: uppercase; letter-spacing: .06em; color: #94a3b8; font-weight: 600; }
+    .doc-value { font-size: .95rem; color: #1e293b; font-weight: 500; }
+
+    /* Signature area */
+    .sig-area {
+      background: #fff; border-radius: 1rem; box-shadow: 0 2px 12px rgba(0,0,0,.07);
+      padding: 2rem; margin-bottom: 1.5rem;
+    }
+    .canvas-wrapper {
+      position: relative;
+      border: 2px dashed #cbd5e1; border-radius: .75rem;
+      background: #fff; overflow: hidden;
+      cursor: crosshair; transition: border-color .2s;
+    }
+    .canvas-wrapper:hover, .canvas-wrapper.active { border-color: var(--brand); }
+    .canvas-wrapper .placeholder-text {
+      position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+      color: #cbd5e1; font-size: 1rem; pointer-events: none; transition: opacity .2s;
+    }
+    canvas#sig-canvas { display: block; width: 100%; height: 200px; touch-action: none; }
+
+    /* Role badge */
+    .role-badge {
+      display: inline-flex; align-items: center; gap: .4rem;
+      background: #eff6ff; color: var(--brand); border: 1px solid #bfdbfe;
+      border-radius: 99px; padding: .3rem .85rem; font-size: .8rem; font-weight: 600;
+    }
+
+    /* Sign button */
+    .btn-sign {
+      background: linear-gradient(135deg, var(--brand) 0%, var(--brand-dark) 100%);
+      color: #fff; border: none; border-radius: .75rem; padding: .9rem 2rem;
+      font-size: 1rem; font-weight: 600; width: 100%; letter-spacing: .02em;
+      transition: transform .15s, box-shadow .15s;
+      box-shadow: 0 4px 15px rgba(37,99,235,.35);
+    }
+    .btn-sign:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(37,99,235,.45); color: #fff; }
+    .btn-sign:disabled { opacity: .6; cursor: not-allowed; }
+
+    /* Legal text */
+    .legal-box {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: .75rem;
+      padding: 1rem 1.25rem; font-size: .78rem; color: #64748b; margin-bottom: 1.25rem;
+    }
+
+    /* Decline link */
+    .decline-btn { color: #ef4444; font-size: .8rem; text-decoration: none; cursor: pointer; }
+    .decline-btn:hover { text-decoration: underline; }
+
+    /* Error alert */
+    #sign-error { display: none; }
+  </style>
+</head>
+<body>
+
+<div class="sign-header">
+  <div class="logo-mark">C</div>
+  <div>
+    <div class="fw-bold" style="font-size:1.05rem;">Claimet — Electronic Signature</div>
+    <div style="font-size:.8rem; opacity:.65;">Secure &bull; ESIGN Act Compliant &bull; Legally Binding</div>
+  </div>
+</div>
+
+<div class="container" style="max-width: 680px; padding: 2rem 1rem;">
+
+  {# Your role #}
+  <div class="mb-4 text-center">
+    <div class="role-badge">
+      <i class="bi bi-person-fill"></i>
+      Signing as: {{ sig_req.get_signer_role_display }}
+    </div>
+    <div class="mt-2 text-muted" style="font-size:.85rem;">
+      Hi <strong>{{ sig_req.signer_name }}</strong> — please review the details below and sign.
+    </div>
+  </div>
+
+  {# Document summary #}
+  <div class="doc-summary">
+    <h5 class="fw-semibold mb-3"><i class="bi bi-file-earmark-text text-primary me-2"></i>Lease Agreement Summary</h5>
+    <div class="row g-3">
+      <div class="col-6">
+        <div class="doc-label">Property Address</div>
+        <div class="doc-value">{{ lease.property_address }}</div>
+        {% if lease.property_city %}
+        <div style="font-size:.8rem; color:#64748b;">{{ lease.property_city }}, {{ lease.property_state }} {{ lease.property_zip }}</div>
+        {% endif %}
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Bedrooms</div>
+        <div class="doc-value">{{ lease.bedrooms }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Monthly Rent</div>
+        <div class="doc-value">${{ lease.monthly_rent }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Lease Term</div>
+        <div class="doc-value">{{ lease.rental_months }} months</div>
+        <div style="font-size:.8rem; color:#64748b;">{{ lease.lease_start_date|default:"TBD" }} → {{ lease.lease_end_date|default:"TBD" }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Tenant</div>
+        <div class="doc-value">{{ lease.lessee_name|default:client.pOwner }}</div>
+      </div>
+      <div class="col-6">
+        <div class="doc-label">Landlord</div>
+        <div class="doc-value">{{ lease.lessor_name|default:"—" }}</div>
+      </div>
+      {% if lease.real_estate_company %}
+      <div class="col-12">
+        <div class="doc-label">Real Estate Company</div>
+        <div class="doc-value">{{ lease.real_estate_company }}</div>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# Signature area #}
+  <div class="sig-area">
+    <div class="d-flex justify-content-between align-items-start mb-1">
+      <h5 class="fw-semibold mb-0"><i class="bi bi-vector-pen text-primary me-2"></i>Your Signature</h5>
+      <button type="button" class="btn btn-sm btn-outline-primary" id="help-btn" onclick="startTour()">
+        <i class="bi bi-question-circle me-1"></i>How to sign
+      </button>
+    </div>
+    <p class="text-muted mb-3" style="font-size:.85rem;">Choose how you'd like to sign — both are legally binding.</p>
+
+    {# Mode toggle: draw vs type #}
+    <div class="btn-group w-100 mb-3" role="group" aria-label="Signature method" id="mode-toggle">
+      <button type="button" class="btn btn-outline-primary active" id="mode-draw-btn" onclick="setMode('draw')">
+        <i class="bi bi-vector-pen me-1"></i>Draw signature
+      </button>
+      <button type="button" class="btn btn-outline-primary" id="mode-type-btn" onclick="setMode('type')">
+        <i class="bi bi-keyboard me-1"></i>Type signature
+      </button>
+    </div>
+
+    {# Draw mode #}
+    <div id="draw-mode">
+      <div class="canvas-wrapper mb-3" id="canvas-wrapper">
+        <canvas id="sig-canvas"></canvas>
+        <div class="placeholder-text" id="canvas-placeholder">
+          <span><i class="bi bi-pen me-2"></i>Sign here</span>
+        </div>
+      </div>
+      <div class="d-flex gap-2 mb-4">
+        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearSignature()">
+          <i class="bi bi-arrow-counterclockwise me-1"></i>Clear
+        </button>
+      </div>
+    </div>
+
+    {# Type mode #}
+    <div id="type-mode" style="display:none;">
+      <div class="text-uppercase fw-semibold mb-1" style="font-size:.68rem; letter-spacing:.06em; color:#94a3b8;">
+        <i class="bi bi-lock-fill me-1"></i>Signature preview — display only, you can't type here
+      </div>
+      {# Clicking the preview (a common mistake) just focuses the real input below. #}
+      <div id="sig-preview" onclick="document.getElementById('typed-name').focus()"
+           title="This is a preview, not a text box — type your name in the field below"
+           style="border:2px dashed #cbd5e1; border-radius:.75rem; min-height:90px;
+            display:flex; align-items:center; justify-content:center; padding:1rem; margin-bottom:.4rem;
+            background:#f8fafc; cursor:not-allowed; user-select:none;
+            font-family:'Brush Script MT','Lucida Handwriting','Segoe Script',cursive; font-size:2rem;
+            color:#10243f;">
+        <span style="color:#cbd5e1; font-family:inherit;">Your signature appears here</span>
+      </div>
+      <p class="mb-3" style="font-size:.8rem; color:#475569;">
+        <i class="bi bi-arrow-down-circle me-1 text-primary"></i><strong>Type your name in the box below</strong> — it appears above in signature style.
+      </p>
+    </div>
+
+    {# Legal name — required for both modes #}
+    <div class="mb-4" id="name-row">
+      <label class="form-label fw-semibold" for="typed-name">
+        <i class="bi bi-pencil-fill me-1 text-primary"></i><span id="name-label-text">Type your full legal name here</span>
+      </label>
+      <input type="text" class="form-control" id="typed-name"
+             placeholder="e.g. Jane Smith"
+             autocomplete="name" spellcheck="false" oninput="updatePreview()">
+      <div class="form-text">Must match: <strong>{{ sig_req.signer_name }}</strong></div>
+    </div>
+
+    {# Legal consent #}
+    <div class="legal-box mb-4">
+      <p class="mb-2">
+        <strong>Electronic Signature Consent</strong><br>
+        By checking the box below and clicking "Sign Document," you agree that your electronic signature
+        is the legal equivalent of your handwritten signature on this lease agreement. This consent is
+        governed by the Electronic Signatures in Global and National Commerce Act (ESIGN) and the Uniform
+        Electronic Transactions Act (UETA).
+      </p>
+      <p class="mb-0" style="color:#94a3b8;">
+        Your signature, IP address, and a timestamp will be recorded as part of the legal signing record.
+      </p>
+    </div>
+
+    <div class="form-check mb-4" id="consent-row">
+      <input class="form-check-input" type="checkbox" id="agree-esign" style="width:1.15em; height:1.15em;">
+      <label class="form-check-label" for="agree-esign" style="font-size:.9rem;">
+        I understand and agree to sign this lease electronically
+      </label>
+    </div>
+
+    <div id="sign-error" class="alert alert-danger mb-3" role="alert"></div>
+
+    <button class="btn-sign" id="sign-btn" onclick="submitSignature()">
+      <span id="sign-spinner" class="spinner-border spinner-border-sm d-none me-2"></span>
+      <i class="bi bi-check-circle-fill me-2"></i>Sign Document
+    </button>
+
+    <div class="text-center mt-3">
+      <a class="decline-btn" onclick="declineSignature()">
+        <i class="bi bi-x-circle me-1"></i>I decline to sign this document
+      </a>
+    </div>
+  </div>
+
+  <div class="text-center text-muted" style="font-size:.72rem; padding-bottom:2rem;">
+    This signing link is unique to you and expires {{ sig_req.expires_at|date:"F j, Y" }}.
+    &bull; Powered by Claimet
+  </div>
+
+</div>{# /container #}
+
+{# Decline confirmation modal #}
+<div class="modal fade" id="declineModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered modal-sm">
+    <div class="modal-content">
+      <div class="modal-body text-center p-4">
+        <div style="font-size:2.5rem; margin-bottom:.75rem;">⚠️</div>
+        <h5 class="fw-semibold">Decline to sign?</h5>
+        <p class="text-muted mb-4" style="font-size:.85rem;">
+          If you decline, the lease manager will be notified. You can still sign later if you change your mind.
+        </p>
+        <div class="d-grid gap-2">
+          <button class="btn btn-danger" onclick="confirmDecline()">Yes, I Decline</button>
+          <button class="btn btn-outline-secondary" data-bs-dismiss="modal">Go Back</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+// ── Signature pad setup ──────────────────────────────────────────────────────
+const canvas  = document.getElementById('sig-canvas');
+const wrapper = document.getElementById('canvas-wrapper');
+const placeholder = document.getElementById('canvas-placeholder');
+
+function resizeCanvas() {
+  const ratio = Math.max(window.devicePixelRatio || 1, 1);
+  const w = canvas.offsetWidth;
+  const h = 200;
+  canvas.width  = w * ratio;
+  canvas.height = h * ratio;
+  canvas.getContext('2d').scale(ratio, ratio);
+  canvas.style.height = h + 'px';
+  pad.clear();
+}
+
+const pad = new SignaturePad(canvas, {
+  backgroundColor: 'rgb(255,255,255)',
+  penColor: '#1e293b',
+  minWidth: 1.5,
+  maxWidth: 3.5,
+});
+
+pad.addEventListener('beginStroke', () => {
+  wrapper.classList.add('active');
+  placeholder.style.opacity = '0';
+});
+pad.addEventListener('endStroke', () => {
+  if (pad.isEmpty()) placeholder.style.opacity = '1';
+});
+
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+function clearSignature() {
+  pad.clear();
+  placeholder.style.opacity = '1';
+  wrapper.classList.remove('active');
+}
+
+// ── Signature mode (draw vs type) ────────────────────────────────────────────
+let currentMode = 'draw';
+
+function setMode(mode) {
+  currentMode = mode;
+  const drawBtn = document.getElementById('mode-draw-btn');
+  const typeBtn = document.getElementById('mode-type-btn');
+  if (mode === 'draw') {
+    drawBtn.classList.add('active'); typeBtn.classList.remove('active');
+    document.getElementById('draw-mode').style.display = '';
+    document.getElementById('type-mode').style.display = 'none';
+    resizeCanvas();   // canvas had zero width while hidden — re-fit it
+  } else {
+    typeBtn.classList.add('active'); drawBtn.classList.remove('active');
+    document.getElementById('type-mode').style.display = '';
+    document.getElementById('draw-mode').style.display = 'none';
+    updatePreview();
+  }
+}
+
+function updatePreview() {
+  const name = document.getElementById('typed-name').value.trim();
+  const prev = document.getElementById('sig-preview');
+  if (!prev) return;
+  prev.innerHTML = name
+    ? '<span style="font-family:inherit;">' + name.replace(/</g, '&lt;') + '</span>'
+    : '<span style="color:#cbd5e1; font-family:inherit;">Your signature appears here</span>';
+}
+
+// ── Guided walkthrough (driver.js) ───────────────────────────────────────────
+// Explains the whole flow — both Draw and Type — and is shown on every load so
+// no signer is left guessing. Switching modes mid-tour reveals each field as we
+// describe it (the typed "preview" box is the #1 source of confusion).
+function startTour() {
+  if (!(window.driver && window.driver.js && window.driver.js.driver)) return;
+  const driver = window.driver.js.driver;
+  // Remember where the signer was so a replay doesn't wipe an in-progress draw.
+  const startedMode  = currentMode;
+  const savedDrawing = (!pad.isEmpty()) ? pad.toData() : null;
+  const tour = driver({
+    showProgress: true,
+    allowClose: false,                    // mandatory — no overlay/ESC dismiss
+    showButtons: ['next', 'previous'],    // no close button: must step through
+    overlayColor: '#0f172a',
+    nextBtnText: 'Next →',
+    prevBtnText: '← Back',
+    doneBtnText: 'Got it — let me sign',
+    steps: [
+      { element: '#mode-toggle', popover: {
+          title: '1. Choose how to sign',
+          description: 'Pick <b>Draw signature</b> to sign with your mouse or finger, or <b>Type signature</b> to type your name. Both are equally legal.' } },
+      { element: '#canvas-wrapper', onHighlightStarted: () => setMode('draw'), popover: {
+          title: '2a. Drawing your signature',
+          description: 'In <b>Draw</b> mode, sign inside this box with your mouse, finger, or stylus. Use <b>Clear</b> to start over.' } },
+      { element: '#sig-preview', onHighlightStarted: () => setMode('type'), popover: {
+          title: '2b. This box is just a PREVIEW',
+          description: 'In <b>Type</b> mode this large box only <b>shows</b> how your signature will look. It is <b>not</b> a text field — you cannot type in here.' } },
+      { element: '#name-row', onHighlightStarted: () => setMode('type'), popover: {
+          title: '3. Type your name HERE',
+          description: 'Type your full legal name in <b>this</b> field. It appears in the preview above and is placed on the document as your signature.' } },
+      { element: '#consent-row', popover: {
+          title: '4. Agree to e-sign',
+          description: 'Check this box to confirm you agree to sign electronically.' } },
+      { element: '#sign-btn', popover: {
+          title: '5. Finish',
+          description: 'When your signature is ready, your name is filled in, and the box is checked, click <b>Sign Document</b>.' } },
+    ],
+    onDestroyed: () => {
+      // Return the signer to the mode they came from, restoring any drawing.
+      setMode(startedMode);
+      if (startedMode === 'draw' && savedDrawing) {
+        try { pad.fromData(savedDrawing); placeholder.style.opacity = '0'; } catch (e) {}
+      }
+    },
+  });
+  tour.drive();
+}
+
+// Mandatory: run the walkthrough on every page load.
+window.addEventListener('load', () => { setTimeout(startTour, 350); });
+
+// ── Sign submit ──────────────────────────────────────────────────────────────
+async function submitSignature() {
+  const errEl   = document.getElementById('sign-error');
+  const btn     = document.getElementById('sign-btn');
+  const spinner = document.getElementById('sign-spinner');
+  errEl.style.display = 'none';
+
+  const typedName = document.getElementById('typed-name').value.trim();
+  if (!typedName) {
+    errEl.textContent = 'Please type your full legal name.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  let sigImage = '';
+  if (currentMode === 'draw') {
+    if (pad.isEmpty()) {
+      errEl.textContent = 'Please draw your signature, or switch to “Type signature”.';
+      errEl.style.display = 'block';
+      return;
+    }
+    sigImage = pad.toDataURL('image/png');
+  }
+
+  const agreed = document.getElementById('agree-esign').checked;
+  if (!agreed) {
+    errEl.textContent = 'Please check the consent box to proceed.';
+    errEl.style.display = 'block';
+    return;
+  }
+
+  btn.disabled = true;
+  spinner.classList.remove('d-none');
+
+  try {
+    const res = await fetch('{% url "lease_manager:sign_submit" sig_req.token %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        signature_type:  currentMode === 'draw' ? 'drawn' : 'typed',
+        signature_image: sigImage,
+        typed_name:      typedName,
+        agreed:          true,
+      }),
+    });
+    const data = await res.json();
+    if (data.success) {
+      window.location.href = data.redirect;
+    } else {
+      errEl.textContent = data.error || 'Something went wrong. Please try again.';
+      errEl.style.display = 'block';
+      btn.disabled = false;
+      spinner.classList.add('d-none');
+    }
+  } catch (e) {
+    errEl.textContent = 'Network error. Please check your connection and try again.';
+    errEl.style.display = 'block';
+    btn.disabled = false;
+    spinner.classList.add('d-none');
+  }
+}
+
+// ── Decline ──────────────────────────────────────────────────────────────────
+function declineSignature() {
+  new bootstrap.Modal(document.getElementById('declineModal')).show();
+}
+
+async function confirmDecline() {
+  try {
+    const res = await fetch('{% url "lease_manager:sign_decline" sig_req.token %}', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({}),
+    });
+    const data = await res.json();
+    if (data.redirect) window.location.href = data.redirect;
+  } catch (e) {
+    alert('Error recording your decline. Please try again.');
+  }
+}
+</script>
+</body>
+</html>

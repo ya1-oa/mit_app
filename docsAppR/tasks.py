@@ -1307,7 +1307,7 @@ def build_field_mapping(client):
     field_mapping['Loss of use/ ALE'] = 'Y' if getattr(client, 'lossOfUseALE', '') == 'Y' else ('TBD' if getattr(client, 'lossOfUseALE', '') == 'TBD' else 'N')
 
     # Add room data - support ALL label formats found across templates
-    rooms = client.rooms.all().prefetch_related('work_type_values__work_type').order_by('sequence')
+    rooms = client.rooms.filter(is_encircle_entry=False).prefetch_related('work_type_values__work_type').order_by('sequence')
     for idx, room in enumerate(rooms, 1):
         if idx <= 25:
             # Format 1: Room/Area 1, Room/Area 2, etc. (30-MASTER, 50-CONTRACT, etc.)
@@ -1560,7 +1560,7 @@ def create_libreoffice_macro_content(client):
     ])
 
     # Add room data to macro
-    rooms = client.rooms.all().order_by('sequence')
+    rooms = client.rooms.filter(is_encircle_entry=False).order_by('sequence')
     for idx, room in enumerate(rooms, 1):
         if idx <= 25:
             room_label = f"Room/Area {idx}"
@@ -1629,12 +1629,16 @@ def create_server_folder_structure_task(self, client_id):
         import hashlib
 
         # Create folder structure using claim_folder_utils
-        structure = get_folder_structure(f"{client.pOwner}@{client.pAddress}")
+        if client.pOwner and client.pAddress:
+            client_folder_name = f"{client.pOwner}@{client.pAddress}"
+        else:
+            client_folder_name = f"Client_{client.id}" if not client.pOwner else f"{client.pOwner}@"
+        structure = get_folder_structure(client_folder_name)
         claims_root = get_claims_root()
 
         # Create main client folder
-        client_folder_name = f"{client.pOwner}@{client.pAddress}"
-        safe_folder_name = client_folder_name.replace('/', '_').replace('\\', '_').replace(':', '_')
+        import re as _re
+        safe_folder_name = _re.sub(r'[<>:"/\\|?*]', '_', client_folder_name)
         claim_folder = os.path.join(claims_root, safe_folder_name)
 
         os.makedirs(claim_folder, exist_ok=True)
@@ -2038,7 +2042,7 @@ def populate_room_data(sheet, client, start_row, max_row):
     Populate room data into the worksheet.
     Searches for Room/Area labels in Column B and fills in room names and work type values.
     """
-    rooms = client.rooms.all().order_by('sequence')
+    rooms = client.rooms.filter(is_encircle_entry=False).order_by('sequence')
     if not rooms:
         return 0
 
@@ -2363,7 +2367,7 @@ def generate_and_email_labels_task(self, client_id):
             logger.warning(f"Could not save labels to claim folder for {client_id}: {save_exc}")
 
         # ── Build recipient list ──────────────────────────────────────────
-        recipients = ['galaxielsaga@gmail.com']
+        recipients = ['galaxielsaga@gmail.com', 'wsbjoe9@gmail.com']
 
         # ── Send email ────────────────────────────────────────────────────
         subject = f'[NEW CLAIM LABELS] {claim_name} - Wall & Box Labels'
@@ -3154,7 +3158,8 @@ def build_room_entries(room_names, configs, selected_templates=None, selected_wo
         room_names:          ordered list of room name strings
         configs:             dict  {room_name: {work_type_id: value_type, ...}}
         selected_templates:  list of 'basic', 'readings', 'readings default'
-                             Defaults to ['basic', 'readings'].
+                             Defaults to ['basic'] — 8000s/9000s readings are
+                             only generated when their template is selected.
         selected_work_types: optional list of int work type IDs to include in
                              the 'basic' template (100-700). If None, all are included.
 
@@ -3162,7 +3167,9 @@ def build_room_entries(room_names, configs, selected_templates=None, selected_wo
         list[str]  – entries ready to POST as room names to Encircle
     """
     if not selected_templates:
-        selected_templates = ['basic', 'readings']
+        # 8000s/9000s readings are NOT part of the default room list — they are
+        # only generated when their template is explicitly selected.
+        selected_templates = ['basic']
 
     # Value types that should NOT appear as a prefix in Encircle room names.
     # DAMAGED is tracked in labels but hidden from room name strings so it
@@ -3379,13 +3386,15 @@ def push_rooms_to_encircle_task(self, client_id, encircle_claim_id, selected_tem
         client_id:         UUID/int of the local Client record.
         encircle_claim_id: The target Encircle claim id (string).
         selected_templates: list of template keys — same as push_claim_to_encircle_task.
-                            Defaults to ['basic', 'readings'].
+                            Defaults to ['basic'].
     """
     from .models import Client, Room
     from .encircle_client import EncircleAPIClient
 
     if not selected_templates:
-        selected_templates = ['basic', 'readings']
+        # 8000s/9000s readings are NOT part of the default room list — they are
+        # only generated when their template is explicitly selected.
+        selected_templates = ['basic']
 
     try:
         client = Client.objects.get(id=client_id)
@@ -3740,3 +3749,217 @@ def duplicate_encircle_claim_task(self, source_claim_id, suffix='(TEST COPY)'):
         'new_claim_name': new_name,
         'rooms_copied': rooms_copied,
     }
+
+
+# ==================== TEMPLATES LINK EMAIL TASK ====================
+
+@shared_task(bind=True, max_retries=3)
+def send_templates_link_task(self, client_id):
+    """
+    Email a signed download link for this claim's Excel templates.
+
+    Sends to:
+      - The insured's own email address (client.cEmail) if available
+      - The internal notification list
+
+    The email is written in plain English so any homeowner can follow it.
+    The link works in any browser with no login required.
+    """
+    from django.conf import settings
+    from django.core.mail import EmailMessage
+    from django.core.signing import dumps as signing_dumps
+
+    INTERNAL = ['galaxielsaga@gmail.com', 'wsbjoe9@gmail.com']
+    SITE_URL  = getattr(settings, 'SITE_URL', 'https://claimetapp.com').rstrip('/')
+
+    try:
+        client = Client.objects.get(id=client_id)
+    except Client.DoesNotExist:
+        logger.error(f"send_templates_link_task: client {client_id} not found")
+        return {'success': False, 'error': 'Client not found'}
+
+    try:
+        token         = signing_dumps(client_id, salt='claim-templates-link')
+        templates_url = f"{SITE_URL}/claims/templates/{token}/"
+
+        claim_name    = client.pOwner      or f'Claim {client_id}'
+        claim_address = client.pAddress    or ''
+        claim_number  = client.claimNumber or ''
+        cause         = client.causeOfLoss or ''
+
+        recipients = list(INTERNAL)
+
+        # Subject line — personal and clear
+        subject = f'Your Claim Documents Are Ready — {claim_name}'
+
+        # Address line only if we have it
+        address_line = (
+            f'<p style="margin:0;font-size:15px;color:rgba(255,255,255,.8);">'
+            f'{claim_address}</p>'
+        ) if claim_address else ''
+
+        claim_details = ''
+        if claim_number:
+            claim_details += f'<tr><td style="padding:6px 0;color:#64748b;font-size:14px;width:140px;">Claim Number</td><td style="padding:6px 0;font-size:14px;font-family:monospace;font-weight:700;">{claim_number}</td></tr>'
+        if cause:
+            claim_details += f'<tr><td style="padding:6px 0;color:#64748b;font-size:14px;">Type of Loss</td><td style="padding:6px 0;font-size:14px;">{cause}</td></tr>'
+
+        body = f"""<!DOCTYPE html>
+<html>
+<body style="margin:0;padding:20px;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:580px;margin:0 auto;">
+
+  <!-- Header -->
+  <div style="background:linear-gradient(135deg,#0f172a 0%,#1e3a5f 100%);
+              border-radius:14px;padding:32px 36px;margin-bottom:20px;">
+    <p style="margin:0 0 4px;font-size:13px;color:rgba(255,255,255,.5);
+              letter-spacing:1px;text-transform:uppercase;">Claimet App</p>
+    <h1 style="margin:0 0 10px;font-size:24px;font-weight:800;color:#fff;line-height:1.2;">
+      Your documents<br>are ready to download.
+    </h1>
+    <p style="margin:0;font-size:15px;color:rgba(255,255,255,.75);">
+      {claim_name}
+    </p>
+    {address_line}
+  </div>
+
+  <!-- Claim info -->
+  {"<div style='background:#fff;border-radius:12px;padding:20px 24px;margin-bottom:20px;border:1px solid #e2e8f0;'><table style='width:100%;border-collapse:collapse;'>" + claim_details + "</table></div>" if claim_details else ""}
+
+  <!-- Big button -->
+  <div style="background:#fff;border-radius:12px;padding:32px 36px;
+              margin-bottom:20px;border:1px solid #e2e8f0;text-align:center;">
+    <p style="font-size:16px;font-weight:700;color:#0f172a;margin:0 0 8px;">
+      Tap the button below to get your files.
+    </p>
+    <p style="font-size:14px;color:#64748b;margin:0 0 28px;">
+      No password needed. Works on your phone, tablet, or computer.
+    </p>
+    <a href="{templates_url}"
+       style="display:inline-block;background:#10b981;color:#fff;
+              text-decoration:none;padding:18px 44px;border-radius:12px;
+              font-size:18px;font-weight:800;letter-spacing:.2px;">
+      Download My Files
+    </a>
+    <p style="font-size:12px;color:#94a3b8;margin:20px 0 0;">
+      Or copy this link into your browser:<br>
+      <span style="font-family:monospace;font-size:11px;color:#7c3aed;
+                   word-break:break-all;">{templates_url}</span>
+    </p>
+  </div>
+
+  <!-- Steps -->
+  <div style="background:#fff;border-radius:12px;padding:24px 36px;
+              margin-bottom:20px;border:1px solid #e2e8f0;">
+    <p style="font-size:13px;font-weight:700;color:#334155;margin:0 0 16px;
+              text-transform:uppercase;letter-spacing:.8px;">What to do</p>
+
+    <div style="display:flex;gap:14px;margin-bottom:14px;align-items:flex-start;">
+      <div style="width:28px;height:28px;min-width:28px;border-radius:50%;
+                  background:#7c3aed;color:#fff;font-size:13px;font-weight:800;
+                  display:flex;align-items:center;justify-content:center;
+                  line-height:28px;text-align:center;">1</div>
+      <p style="margin:4px 0 0;font-size:14px;color:#334155;">
+        <strong>Tap "Download My Files"</strong> above.
+      </p>
+    </div>
+    <div style="display:flex;gap:14px;margin-bottom:14px;align-items:flex-start;">
+      <div style="width:28px;height:28px;min-width:28px;border-radius:50%;
+                  background:#7c3aed;color:#fff;font-size:13px;font-weight:800;
+                  display:flex;align-items:center;justify-content:center;
+                  line-height:28px;text-align:center;">2</div>
+      <p style="margin:4px 0 0;font-size:14px;color:#334155;">
+        A page opens showing your files. Tap <strong>"Download ZIP"</strong> to save them all at once.
+      </p>
+    </div>
+    <div style="display:flex;gap:14px;align-items:flex-start;">
+      <div style="width:28px;height:28px;min-width:28px;border-radius:50%;
+                  background:#7c3aed;color:#fff;font-size:13px;font-weight:800;
+                  display:flex;align-items:center;justify-content:center;
+                  line-height:28px;text-align:center;">3</div>
+      <p style="margin:4px 0 0;font-size:14px;color:#334155;">
+        Open the downloaded ZIP folder — your Excel files are inside.
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <p style="text-align:center;font-size:12px;color:#94a3b8;margin:8px 0 0;">
+    Questions? Just reply to this email.
+    &nbsp;&middot;&nbsp; Claimet App &nbsp;&middot;&nbsp; claimetapp.com
+  </p>
+
+</div>
+</body>
+</html>"""
+
+        email = EmailMessage(
+            subject=subject,
+            body=body,
+            from_email=settings.DEFAULT_FROM_EMAIL,
+            to=recipients,
+        )
+        email.content_subtype = 'html'
+        email.send()
+
+        logger.info(
+            f"send_templates_link_task: sent for client {client_id} "
+            f"({claim_name}) to {recipients}"
+        )
+        return {
+            'success':       True,
+            'client_id':     client_id,
+            'recipients':    recipients,
+            'templates_url': templates_url,
+        }
+
+    except Exception as exc:
+        logger.error(
+            f"send_templates_link_task: failed for client {client_id}: {exc}",
+            exc_info=True,
+        )
+        raise self.retry(exc=exc, countdown=60)
+
+# ============================================================================
+# Encircle → Claimet inbound sync task
+# ============================================================================
+
+@shared_task(
+    bind=True,
+    name='docsAppR.tasks.sync_encircle_claims_task',
+    max_retries=2,
+    default_retry_delay=300,   # 5-minute back-off on retry
+    time_limit=1800,            # 30-minute hard kill (generous for large accounts)
+    soft_time_limit=1500,       # 25-minute soft limit → allows clean log write
+)
+def sync_encircle_claims_task(self, triggered_by='schedule'):
+    """
+    Pull all Encircle claims and upsert them into the local Client table.
+
+    Scheduled daily at 06:00 (America/New_York) via Celery Beat.
+    Can also be called manually from the admin or the manual-trigger API view.
+
+    Returns a summary dict suitable for the Celery result backend.
+    """
+    import logging
+    from .encircle_sync import run_encircle_sync
+
+    task_logger = logging.getLogger(__name__)
+    task_logger.info("sync_encircle_claims_task starting (triggered_by=%s)", triggered_by)
+
+    try:
+        log = run_encircle_sync(triggered_by=triggered_by)
+        result = {
+            'log_id':          log.pk,
+            'status':          log.status,
+            'claims_processed': log.claims_processed,
+            'claims_created':  log.claims_created,
+            'claims_updated':  log.claims_updated,
+            'error_count':     log.error_count,
+        }
+        task_logger.info("sync_encircle_claims_task finished: %s", result)
+        return result
+
+    except Exception as exc:
+        task_logger.error("sync_encircle_claims_task unhandled error: %s", exc, exc_info=True)
+        raise self.retry(exc=exc)

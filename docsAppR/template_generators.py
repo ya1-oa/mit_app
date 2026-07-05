@@ -167,7 +167,7 @@ class RoomsTemplateGenerator(BaseTemplateGenerator):
             cell.alignment = Alignment(horizontal='center', vertical='center')
 
         # Get rooms for this client
-        rooms = self.client.rooms.all().order_by('sequence')
+        rooms = self.client.rooms.filter(is_encircle_entry=False).order_by('sequence')
 
         # Write room data
         for row_num, room in enumerate(rooms, start=2):

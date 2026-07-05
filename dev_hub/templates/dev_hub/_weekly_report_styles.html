@@ -1,0 +1,73 @@
+{# Shared styles for the weekly report — used by both the on-screen detail page
+   and the WeasyPrint PDF so the two render identically. #}
+<style>
+  .wr-doc {
+    max-width: 820px; margin: 0 auto;
+    background: #fff; color: #1f2937;
+    font-family: "Segoe UI", Helvetica, Arial, sans-serif;
+    font-size: 14px; line-height: 1.55;
+    padding: 36px 44px;
+  }
+  .wr-title { font-size: 26px; font-weight: 800; color: #0f172a; margin: 0 0 2px; }
+  .wr-weekof { font-size: 15px; color: #334155; margin: 0 0 22px; }
+  .wr-weekof strong { color: #0f172a; }
+
+  .wr-h2 {
+    font-size: 17px; font-weight: 700; color: #0f172a;
+    border-bottom: 2px solid #2563eb; padding-bottom: 5px;
+    margin: 26px 0 12px;
+  }
+
+  .wr-day {
+    border: 1px solid #e5e7eb; border-radius: 8px;
+    padding: 14px 18px; margin-bottom: 14px;
+    page-break-inside: avoid;
+  }
+  .wr-day--current {
+    border: 1px solid #2563eb; border-left: 5px solid #2563eb;
+    background: #eff6ff;
+  }
+  .wr-dayname {
+    font-size: 16px; font-weight: 700; color: #1e293b;
+    margin: 0 0 8px; display: flex; align-items: center; gap: 10px;
+  }
+  .wr-day--current .wr-dayname { color: #1d4ed8; }
+  .wr-today-badge {
+    background: #2563eb; color: #fff; font-size: 10px; font-weight: 700;
+    letter-spacing: .05em; padding: 2px 8px; border-radius: 999px;
+    text-transform: uppercase;
+  }
+
+  .wr-sub {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .04em; color: #64748b; margin: 12px 0 5px;
+  }
+  .wr-list { margin: 0 0 4px; padding-left: 20px; }
+  .wr-list li { margin: 2px 0; }
+
+  .wr-check { list-style: none; margin: 0; padding: 0; }
+  .wr-check li { margin: 4px 0; padding-left: 26px; position: relative; }
+  .wr-check li::before {
+    content: "☐"; position: absolute; left: 0; top: -1px;
+    font-size: 16px; color: #94a3b8;
+  }
+  .wr-check li.done::before { content: "☑"; color: #16a34a; }
+  .wr-check li.done { color: #475569; }
+
+  .wr-deliverables { list-style: none; margin: 0; padding: 0; }
+  .wr-deliverables li { margin: 5px 0; padding-left: 26px; position: relative; }
+  .wr-deliverables li::before {
+    content: "✅"; position: absolute; left: 0; top: 0; font-size: 13px;
+  }
+
+  .wr-status-row { margin: 14px 0 4px; }
+  .wr-status {
+    display: inline-block; font-weight: 700; font-size: 13px;
+    padding: 4px 14px; border-radius: 999px;
+    background: #dcfce7; color: #15803d;
+  }
+  .wr-status.is-progress { background: #fef3c7; color: #b45309; }
+  .wr-empty { color: #94a3b8; font-style: italic; }
+
+  .wr-footer { margin-top: 24px; font-size: 11px; color: #94a3b8; text-align: center; }
+</style>

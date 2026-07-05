@@ -78,4 +78,15 @@ urlpatterns = [
     path('excel-hub/settings/', views.excel_hub_settings, name='excel_hub_settings'),
     path('excel-hub/<int:claim_id>/download/', views.excel_hub_download_zip, name='excel_hub_download_zip'),
     path('excel-hub/<int:claim_id>/send-email/', views.excel_hub_send_email, name='excel_hub_send_email'),
+
+    # Encircle inbound sync — manual trigger (staff only)
+    path('sync-encircle/', views.trigger_encircle_sync, name='trigger_encircle_sync'),
+    path('sync-encircle/status/', views.encircle_sync_status_api, name='encircle_sync_status_api'),
+
+    # Internal templates page — login required, linked from claim detail
+    path('<int:claim_id>/templates/', views.claim_templates_page, name='claim_templates_page'),
+
+    # Public templates download — no login, signed token identifies the claim
+    path('templates/<str:token>/', views.claim_templates_public, name='claim_templates_public'),
+    path('templates/<str:token>/download/<path:file_path>', views.claim_templates_download, name='claim_templates_download'),
 ]

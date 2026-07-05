@@ -6,12 +6,16 @@
     <title>Engagement Agreement</title>
     <style>
 
+        @page {
+            size: Letter;
+            margin: 0.3in 0.5in;
+        }
         body {
             font-family: 'Times New Roman', Times, serif;
             font-size: 14px;
             line-height: 1.2;  /* Reduced from 1.4 */
             margin: 0;
-            padding: 10px;  /* Reduced from 20px */
+            padding: 0;
             color: #000;
         }
         .document {
@@ -32,12 +36,12 @@
         }
         h3 {
             font-size: 13pt;
-            margin-top: 10px;  /* Reduced from 20px */
-            margin-bottom: 5px;  /* Reduced from 10px */
+            margin-top: 4px;
+            margin-bottom: 2px;
             text-align: left;
         }
         p {
-            margin: 6px 0;  /* Reduced from 12px */
+            margin: 3px 0;
             text-align: left;
             padding: 0 10px;  /* Reduced from 20px */
         }
@@ -154,22 +158,22 @@
             <p>Extensions shall require a new fully executed lease and DreamTeam Realty, Inc. shall receive an amount equivalent to 50% of the first month's rent.</p>
 
             <div class="signature-pair">
-                <p>Tenant&nbsp;__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
-                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Name: <strong>{{ client.pOwner }}</strong></p>
-                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Mailing Address: <strong>{{ client.pAddress }}, {{ client.pCityStateZip }} </strong></p>
-                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Claim Number: <strong>{{ client.claimNumber }}</strong></p>  
-                <p style="text-align: left; margin: 10px 0; padding-left: 60px;">Insurance Company: <strong>{{ client.insuranceCo_Name }}</strong></p>  
+                <p>Tenant&nbsp;{% if signatures.tenant %}{% include "account/_sig_mark.html" with sig=signatures.tenant %}{% else %}__________________________________________________{% endif %} &nbsp;&nbsp;&nbsp;&nbsp;Date {% if signatures.tenant %}{{ signatures.tenant.signed_at|date:"m/d/Y" }}{% else %}________________{% endif %}</p>
+                <p style="text-align: left; margin: 2px 0; padding-left: 60px;">Name: <strong>{{ client.pOwner }}</strong></p>
+                <p style="text-align: left; margin: 2px 0; padding-left: 60px;">Mailing Address: <strong>{{ client.pAddress }}, {{ client.pCityStateZip }} </strong></p>
+                <p style="text-align: left; margin: 2px 0; padding-left: 60px;">Claim Number: <strong>{{ client.claimNumber }}</strong></p>  
+                <p style="text-align: left; margin: 2px 0; padding-left: 60px;">Insurance Company: <strong>{{ client.insuranceCo_Name }}</strong></p>  
                 
-                <p>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
+                <div style="height:6px;"></div>
                 
-                <p>Lessor__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
-                <p style="text-align: center; margin: 10px 0;">Name: <strong>{{ landlord.full_name }}</strong></p>  <!-- Added margin reduction -->
-                <p> &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;</p>
-                <p style="text-align: center; margin: 10px 0;">Leased Property: <strong>{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }} </strong></p>
+                <p>Lessor&nbsp;{% if signatures.landlord %}{% include "account/_sig_mark.html" with sig=signatures.landlord %}{% else %}__________________________________________________{% endif %} &nbsp;&nbsp;&nbsp;&nbsp;Date {% if signatures.landlord %}{{ signatures.landlord.signed_at|date:"m/d/Y" }}{% else %}________________{% endif %}</p>
+                <p style="text-align: center; margin: 2px 0;">Name: <strong>{{ landlord.full_name }}</strong></p>  <!-- Added margin reduction -->
+                <div style="height:6px;"></div>
+                <p style="text-align: center; margin: 2px 0;">Leased Property: <strong>{{ landlord.property_address }}, {{ landlord.property_city }}, {{ landlord.property_state }} {{ landlord.property_zip }} </strong></p>
 
-                <p>Realtor__________________________________________________ &nbsp;&nbsp;&nbsp;&nbsp;Date ________________</p>
-                <p style="text-align: center; margin: 10px 0;">Name: <strong>{{ landlord.real_estate_company }}</strong></p>
-                <p style="text-align: center; margin: 10px 0;">Mailing Address: <strong>{{ landlord.company_mailing_address }}</strong></p>
+                <p>Realtor&nbsp;{% if signatures.re_company %}{% include "account/_sig_mark.html" with sig=signatures.re_company %}{% else %}__________________________________________________{% endif %} &nbsp;&nbsp;&nbsp;&nbsp;Date {% if signatures.re_company %}{{ signatures.re_company.signed_at|date:"m/d/Y" }}{% else %}________________{% endif %}</p>
+                <p style="text-align: center; margin: 2px 0;">Name: <strong>{{ landlord.real_estate_company }}</strong></p>
+                <p style="text-align: center; margin: 2px 0;">Mailing Address: <strong>{{ landlord.company_mailing_address }}</strong></p>
 
             </div>
 

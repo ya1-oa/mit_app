@@ -1,0 +1,343 @@
+{% extends "account/base.html" %}
+{% load humanize %}
+
+{% block title %}Dev Hub — Dashboard{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+    <nav aria-label="breadcrumb">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+            <li class="breadcrumb-item active">Dev Hub</li>
+        </ol>
+    </nav>
+    <h1 class="ms-3">Dev Hub</h1>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- ── Quick links ────────────────────────────────────────────────────────── -->
+<div class="d-flex flex-wrap gap-2 mb-3 justify-content-end">
+    <a href="{% url 'dev_hub:weekly_report_list' %}" class="btn btn-outline-primary btn-sm">
+        <i class="bi bi-journal-text me-1"></i>Weekly Progress Reports
+    </a>
+    <a href="{% url 'dev_hub:ai_resources' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="bi bi-cpu me-1"></i>AI Resources
+    </a>
+</div>
+
+<!-- ── Stats bar ──────────────────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+    <div class="col-6 col-md-3">
+        <div class="card p-3 text-center">
+            <div style="font-size:28px; font-weight:700; color:#1e40af;">{{ total_modules }}</div>
+            <div class="text-muted" style="font-size:13px;">Total Modules</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card p-3 text-center">
+            <div style="font-size:28px; font-weight:700; color:#16a34a;">{{ stable_count }}</div>
+            <div class="text-muted" style="font-size:13px;">Stable</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card p-3 text-center">
+            <div style="font-size:28px; font-weight:700; color:#f59e0b;">{{ in_dev_count }}</div>
+            <div class="text-muted" style="font-size:13px;">In Development</div>
+        </div>
+    </div>
+    <div class="col-6 col-md-3">
+        <div class="card p-3 text-center">
+            <form method="post" action="{% url 'dev_hub:report_adhoc' %}">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-primary btn-sm w-100">
+                    <i class="fas fa-paper-plane me-1"></i> Send Progress Report
+                </button>
+            </form>
+            <div class="text-muted mt-1" style="font-size:11px;">Ad-hoc to {{ notify_email }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Module cards ───────────────────────────────────────────────────────── -->
+<div class="row g-4">
+{% for item in module_data %}
+{% with m=item.module %}
+<div class="col-12 col-xl-6">
+    <div class="card" id="module-card-{{ m.id }}">
+        <div class="card-body p-0">
+
+            <!-- Module header -->
+            <div class="d-flex align-items-center justify-content-between p-3 border-bottom">
+                <div class="d-flex align-items-center gap-2">
+                    <a href="{% url 'dev_hub:module_detail' m.slug %}" class="fw-bold text-decoration-none text-dark fs-6">
+                        {{ m.name }}
+                    </a>
+                    <span class="badge bg-{{ m.status_color }}">{{ m.get_status_display }}</span>
+                </div>
+                <div class="d-flex gap-2">
+                    <a href="{% url 'dev_hub:module_detail' m.slug %}" class="btn btn-sm btn-outline-secondary">
+                        <i class="fas fa-external-link-alt"></i>
+                    </a>
+                </div>
+            </div>
+
+            <!-- Progress bar + stats -->
+            <div class="px-3 pt-3 pb-2">
+                <div class="d-flex justify-content-between align-items-center mb-1">
+                    <small class="text-muted">Completion</small>
+                    <small class="fw-semibold" id="pct-{{ m.id }}">{{ m.completion_pct }}%</small>
+                </div>
+                <div class="progress" style="height:8px;">
+                    <div class="progress-bar bg-primary" role="progressbar"
+                         id="bar-{{ m.id }}"
+                         style="width:{{ m.completion_pct }}%"
+                         aria-valuenow="{{ m.completion_pct }}"
+                         aria-valuemin="0" aria-valuemax="100">
+                    </div>
+                </div>
+                <div class="d-flex gap-3 mt-2" style="font-size:12px;">
+                    <span class="text-success"><i class="fas fa-check-circle me-1"></i><span id="done-{{ m.id }}">{{ m.task_counts.done }}</span> done</span>
+                    <span class="text-warning"><i class="fas fa-circle me-1"></i><span id="inprog-{{ m.id }}">{{ m.task_counts.in_progress }}</span> in progress</span>
+                    <span class="text-muted"><i class="far fa-circle me-1"></i><span id="todo-{{ m.id }}">{{ m.task_counts.todo }}</span> todo</span>
+                </div>
+            </div>
+
+            <!-- Test badges -->
+            <div class="px-3 py-2 border-top border-bottom d-flex gap-2 flex-wrap" style="background:#f8fafc;">
+                {% if m.test_coverage %}
+                    {% if m.test_coverage.unit_tested %}
+                        <span class="badge bg-success"><i class="fas fa-vial me-1"></i>Unit Tested</span>
+                    {% else %}
+                        <span class="badge bg-secondary"><i class="fas fa-vial me-1"></i>No Unit Tests</span>
+                    {% endif %}
+                    {% if m.test_coverage.human_tested %}
+                        <span class="badge bg-success"><i class="fas fa-user-check me-1"></i>Human Tested</span>
+                    {% else %}
+                        <span class="badge bg-secondary"><i class="fas fa-user-check me-1"></i>Not Human Tested</span>
+                    {% endif %}
+                    <span class="badge bg-info">{{ m.test_coverage.coverage_pct }}% coverage</span>
+                {% else %}
+                    <span class="badge bg-secondary">No coverage data</span>
+                {% endif %}
+
+                {% if item.last_report %}
+                    <span class="badge {% if item.opened %}bg-success{% else %}bg-warning text-dark{% endif %} ms-auto">
+                        <i class="fas fa-envelope me-1"></i>
+                        Report {{ item.last_report.sent_at|date:"M d" }}
+                        {% if item.opened %}• Opened{% else %}• Unread{% endif %}
+                    </span>
+                {% endif %}
+            </div>
+
+            <!-- Task checklist (top 5) -->
+            <div class="px-3 py-2" id="tasks-{{ m.id }}">
+                {% for task in m.tasks.all|slice:":5" %}
+                <div class="d-flex align-items-center gap-2 py-1 task-row" id="task-{{ task.id }}">
+                    <input type="checkbox"
+                           class="form-check-input task-checkbox flex-shrink-0"
+                           {% if task.status == 'done' %}checked{% endif %}
+                           data-task-id="{{ task.id }}"
+                           data-module-id="{{ m.id }}"
+                           style="cursor:pointer; width:16px; height:16px;">
+                    <span class="flex-grow-1 task-title {% if task.status == 'done' %}text-decoration-line-through text-muted{% endif %}"
+                          style="font-size:13px;">{{ task.title }}</span>
+                    <span class="badge bg-{{ task.status_color }} flex-shrink-0" style="font-size:10px;">
+                        {{ task.get_task_type_display }}
+                    </span>
+                    <button class="btn btn-link btn-sm p-0 flex-shrink-0 queue-btn {% if task.queue_for_weekly_report %}text-primary{% else %}text-muted{% endif %}"
+                            title="Queue for weekly report"
+                            data-task-id="{{ task.id }}"
+                            onclick="toggleQueue(this, '{{ task.id }}')">
+                        <i class="fas fa-calendar-plus" style="font-size:11px;"></i>
+                    </button>
+                    <a href="{% url 'dev_hub:notify_client' task.id %}" class="btn btn-link btn-sm p-0 flex-shrink-0 text-muted"
+                       title="Notify client about this feature">
+                        <i class="fas fa-paper-plane" style="font-size:11px;"></i>
+                    </a>
+                </div>
+                {% empty %}
+                <p class="text-muted" style="font-size:13px;">No tasks yet.</p>
+                {% endfor %}
+                {% if m.tasks.count > 5 %}
+                <a href="{% url 'dev_hub:module_detail' m.slug %}" style="font-size:12px;" class="text-primary">
+                    + {{ m.tasks.count|add:"-5" }} more tasks
+                </a>
+                {% endif %}
+            </div>
+
+            <!-- Quick-add task form -->
+            <div class="px-3 pb-3 pt-1 border-top">
+                <div class="d-flex gap-2" id="quick-add-{{ m.id }}">
+                    <input type="text" class="form-control form-control-sm quick-title"
+                           placeholder="Add a task..." style="font-size:13px;">
+                    <select class="form-select form-select-sm quick-type" style="width:110px; font-size:12px;">
+                        <option value="feature">Feature</option>
+                        <option value="bug">Bug</option>
+                        <option value="test">Test</option>
+                        <option value="secretarial">Secretarial</option>
+                    </select>
+                    <button class="btn btn-sm btn-primary"
+                            onclick="addTask({{ m.id }}, this)">
+                        <i class="fas fa-plus"></i>
+                    </button>
+                </div>
+            </div>
+
+        </div>
+    </div>
+</div>
+{% endwith %}
+{% empty %}
+<div class="col-12">
+    <div class="card p-4 text-center text-muted">
+        <p>No modules yet. <a href="/admin/dev_hub/appmodule/add/">Add one in admin</a>.</p>
+    </div>
+</div>
+{% endfor %}
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+// ── Task checkbox toggle ──────────────────────────────────────────────────
+document.querySelectorAll('.task-checkbox').forEach(cb => {
+    cb.addEventListener('change', function () {
+        const taskId   = this.dataset.taskId;
+        const moduleId = this.dataset.moduleId;
+        toggleTask(taskId, moduleId, this);
+    });
+});
+
+async function toggleTask(taskId, moduleId, checkbox) {
+    checkbox.disabled = true;
+    try {
+        const resp = await fetch(`/dev-hub/api/task/${taskId}/toggle/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+        });
+        const data = await resp.json();
+
+        // Update progress bar and counters
+        const pct = data.completion_pct;
+        document.getElementById(`pct-${moduleId}`).textContent = pct + '%';
+        document.getElementById(`bar-${moduleId}`).style.width = pct + '%';
+        document.getElementById(`bar-${moduleId}`).setAttribute('aria-valuenow', pct);
+        document.getElementById(`done-${moduleId}`).textContent    = data.task_counts.done;
+        document.getElementById(`inprog-${moduleId}`).textContent  = data.task_counts.in_progress;
+        document.getElementById(`todo-${moduleId}`).textContent    = data.task_counts.todo;
+
+        // Strike-through the title
+        const row   = document.getElementById(`task-${taskId}`);
+        const title = row ? row.querySelector('.task-title') : null;
+        if (title) {
+            if (data.status === 'done') {
+                title.classList.add('text-decoration-line-through', 'text-muted');
+            } else {
+                title.classList.remove('text-decoration-line-through', 'text-muted');
+            }
+        }
+
+        // If secretarial + notify → open compose in new tab
+        if (data.notify_redirect) {
+            window.open(data.notify_redirect, '_blank');
+        }
+    } catch (err) {
+        console.error('Toggle failed:', err);
+        checkbox.checked = !checkbox.checked; // revert
+    } finally {
+        checkbox.disabled = false;
+    }
+}
+
+// ── Queue for weekly report ───────────────────────────────────────────────
+async function toggleQueue(btn, taskId) {
+    try {
+        const resp = await fetch(`/dev-hub/api/task/${taskId}/queue/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF },
+        });
+        const data = await resp.json();
+        btn.classList.toggle('text-primary', data.queued);
+        btn.classList.toggle('text-muted', !data.queued);
+        btn.title = data.queued ? 'Remove from weekly report' : 'Queue for weekly report';
+    } catch (err) {
+        console.error('Queue toggle failed:', err);
+    }
+}
+
+// ── Quick-add task ────────────────────────────────────────────────────────
+async function addTask(moduleId, btn) {
+    const row    = document.getElementById(`quick-add-${moduleId}`);
+    const title  = row.querySelector('.quick-title').value.trim();
+    const type   = row.querySelector('.quick-type').value;
+
+    if (!title) { row.querySelector('.quick-title').focus(); return; }
+
+    btn.disabled = true;
+    try {
+        const resp = await fetch(`/dev-hub/api/module/${moduleId}/task/add/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ title, task_type: type }),
+        });
+        const data = await resp.json();
+        if (!resp.ok) { alert(data.error || 'Failed to add task'); return; }
+
+        // Inject new task row before the form
+        const tasksDiv = document.getElementById(`tasks-${moduleId}`);
+        const newRow   = document.createElement('div');
+        newRow.className = 'd-flex align-items-center gap-2 py-1 task-row';
+        newRow.id        = `task-${data.id}`;
+        newRow.innerHTML = `
+            <input type="checkbox" class="form-check-input task-checkbox flex-shrink-0"
+                   data-task-id="${data.id}" data-module-id="${moduleId}"
+                   style="cursor:pointer;width:16px;height:16px;">
+            <span class="flex-grow-1 task-title" style="font-size:13px;">${data.title}</span>
+            <span class="badge bg-secondary flex-shrink-0" style="font-size:10px;">${data.type_label}</span>
+            <button class="btn btn-link btn-sm p-0 flex-shrink-0 queue-btn text-muted"
+                    title="Queue for weekly report"
+                    data-task-id="${data.id}"
+                    onclick="toggleQueue(this,'${data.id}')">
+                <i class="fas fa-calendar-plus" style="font-size:11px;"></i>
+            </button>
+            <a href="/dev-hub/task/${data.id}/notify-client/" class="btn btn-link btn-sm p-0 flex-shrink-0 text-muted" title="Notify client">
+                <i class="fas fa-paper-plane" style="font-size:11px;"></i>
+            </a>
+        `;
+        tasksDiv.appendChild(newRow);
+
+        // Wire checkbox
+        newRow.querySelector('.task-checkbox').addEventListener('change', function () {
+            toggleTask(data.id, moduleId, this);
+        });
+
+        // Update stats
+        document.getElementById(`pct-${moduleId}`).textContent = data.completion_pct + '%';
+        document.getElementById(`bar-${moduleId}`).style.width = data.completion_pct + '%';
+        document.getElementById(`todo-${moduleId}`).textContent = data.task_counts.todo;
+
+        // Clear input
+        row.querySelector('.quick-title').value = '';
+    } catch (err) {
+        console.error('Add task failed:', err);
+    } finally {
+        btn.disabled = false;
+    }
+}
+
+// Allow Enter key in quick-add input
+document.querySelectorAll('.quick-title').forEach(input => {
+    input.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            this.closest('.d-flex').querySelector('button').click();
+        }
+    });
+});
+</script>
+{% endblock %}

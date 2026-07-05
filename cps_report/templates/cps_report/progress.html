@@ -1,11 +1,28 @@
 {% extends "account/base.html" %}
 {% load static %}
 
-{% block title %}CPS Report — Live Progress{% endblock %}
-{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> CPS Schedule of Loss — Building Report{% endblock %}
+{% block title %}PPR Report — Live Progress{% endblock %}
+{% block page_title %}<i class="fas fa-file-invoice-dollar"></i> PPR Schedule of Loss — Building Report{% endblock %}
 
 {% block extra_css %}
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.css"/>
 <style>
+  /* ── Tour button ── */
+  #tour-btn {
+    position: fixed; bottom: 28px; right: 28px; z-index: 1050;
+    width: 52px; height: 52px; border-radius: 50%;
+    background: linear-gradient(135deg, #667eea, #764ba2);
+    color: #fff; font-size: 22px; font-weight: 700;
+    border: none; box-shadow: 0 4px 16px rgba(102,126,234,.45);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    transition: transform .15s;
+  }
+  #tour-btn:hover { transform: scale(1.1); }
+  .driver-popover { border-radius: 14px !important; box-shadow: 0 20px 60px rgba(0,0,0,.3) !important; }
+  .driver-popover-title { font-size: 15px !important; font-weight: 700 !important; }
+  .driver-popover-description { font-size: 13px !important; color: #475569 !important; line-height: 1.6 !important; }
+  .driver-popover-next-btn { background: linear-gradient(135deg,#667eea,#764ba2) !important; border-color: transparent !important; border-radius: 8px !important; font-weight: 700 !important; color: #fff !important; }
+
   /* ── Stats bar ── */
   .stat-card { background:#fff; border:1px solid #e2e8f0; border-radius:10px; padding:14px 20px; text-align:center; }
   .stat-card .stat-val { font-size:1.6rem; font-weight:700; color:#1e40af; }
@@ -35,7 +52,6 @@
   .items-mini-table tr:last-child td { border-bottom:none; }
   .items-mini-table tr:nth-child(even) td { background:#f0fdf4; }
   .rv-cell  { color:#155724; font-weight:600; text-align:right; }
-  .acv-cell { color:#0c4a82; font-weight:600; text-align:right; }
   .qty-cell { text-align:center; }
 
   /* ── Done banner ── */
@@ -53,11 +69,56 @@
   .series-divider { display:flex; align-items:center; gap:10px; margin:16px 0 8px; }
   .series-divider-label { font-size:.75rem; font-weight:700; letter-spacing:.08em; text-transform:uppercase; color:#fff; background:#334155; padding:3px 12px; border-radius:20px; white-space:nowrap; }
   .series-divider-line { flex:1; height:1px; background:#e2e8f0; }
+
+  /* ── Live log panel ── */
+  #live-log-wrap { margin-bottom:16px; border:1px solid #e2e8f0; border-radius:10px; overflow:hidden; }
+  #live-log-header { background:#1e293b; color:#94a3b8; font-size:.72rem; font-weight:700; letter-spacing:.06em; text-transform:uppercase; padding:7px 14px; display:flex; align-items:center; justify-content:space-between; }
+  #live-log-header .pulse { width:8px; height:8px; border-radius:50%; background:#22c55e; display:inline-block; margin-right:7px; animation:pulse-dot 1.4s ease-in-out infinite; }
+  @keyframes pulse-dot { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.4;transform:scale(.7)} }
+  #live-log { background:#0f172a; color:#e2e8f0; font-family:monospace; font-size:.76rem; line-height:1.55; padding:10px 14px; height:160px; overflow-y:auto; }
+  #live-log .log-t { color:#64748b; margin-right:8px; }
+  #live-log .log-ok   { color:#4ade80; }
+  #live-log .log-err  { color:#f87171; }
+  #live-log .log-info { color:#e2e8f0; }
+  #live-log .log-ai   { color:#a78bfa; }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3" style="max-width:1100px">
+
+<!-- Floating tour button -->
+<button id="tour-btn" onclick="launchProgressTour()" title="Explain this page">?</button>
+
+<!-- ─── Progress page welcome modal ─────────────────────────────────────── -->
+<div id="welcome-overlay" style="display:none;position:fixed;inset:0;z-index:2000;background:rgba(0,0,0,.65);align-items:center;justify-content:center;">
+  <div style="background:#fff;border-radius:20px;width:90%;max-width:480px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.4);">
+    <div style="background:linear-gradient(135deg,#667eea,#764ba2);padding:28px 36px 20px;text-align:center;color:#fff;position:relative;">
+      <button onclick="closeProgressWelcome()" style="position:absolute;top:14px;right:16px;background:rgba(255,255,255,.25);border:none;color:#fff;font-size:22px;width:32px;height:32px;border-radius:50%;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
+      <div style="font-size:40px;margin-bottom:10px;">⚡</div>
+      <h2 style="font-size:20px;font-weight:800;margin:0 0 6px;">AI Report In Progress</h2>
+      <p style="opacity:.85;font-size:13px;margin:0;">Claude AI is analyzing your PPR rooms right now</p>
+    </div>
+    <div style="padding:24px 32px;">
+      <p style="font-size:14px;color:#475569;margin-bottom:16px;line-height:1.6;">
+        Your report is building automatically. Claude AI is reviewing photos and pricing every item it finds in each room.
+        <strong>This page updates in real time</strong> — no need to refresh.
+      </p>
+      <div style="display:flex;gap:10px;margin-bottom:14px;">
+        <button onclick="closeProgressWelcome(); launchProgressTour()" style="flex:1;background:linear-gradient(135deg,#667eea,#764ba2);color:#fff;border:none;padding:12px;border-radius:10px;font-weight:700;font-size:15px;cursor:pointer;">
+          <i class="fas fa-play me-2"></i> Explain This Page
+        </button>
+        <button onclick="closeProgressWelcome()" style="flex-shrink:0;background:#f1f5f9;color:#64748b;border:none;padding:12px 18px;border-radius:10px;font-size:14px;cursor:pointer;">Got it</button>
+      </div>
+      <div style="border-top:1px solid #f1f5f9;padding-top:10px;">
+        <label style="display:flex;align-items:center;gap:8px;font-size:12px;color:#94a3b8;cursor:pointer;">
+          <input type="checkbox" id="chk-progress-disable" style="width:14px;height:14px;">
+          Don't show this again
+        </label>
+      </div>
+    </div>
+  </div>
+</div>
 
   <!-- Done banner (hidden until complete) -->
   <div id="done-banner">
@@ -105,6 +166,15 @@
       <div id="master-bar" class="progress-bar progress-bar-striped progress-bar-animated bg-success" style="width:0%"></div>
     </div>
     <div id="status-msg"></div>
+  </div>
+
+  <!-- Live log panel -->
+  <div id="live-log-wrap">
+    <div id="live-log-header">
+      <span><span class="pulse" id="log-pulse"></span>Live Task Log</span>
+      <span id="log-count" style="color:#475569">0 events</span>
+    </div>
+    <div id="live-log"><span style="color:#475569;font-style:italic">Waiting for task to start…</span></div>
   </div>
 
   <!-- Stats row -->
@@ -165,12 +235,144 @@
 {% endblock %}
 
 {% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/driver.js@1/dist/driver.js.iife.js"></script>
+<script>
+function launchProgressTour() {
+  const d = window.driver.js.driver({
+    showProgress: true,
+    animate: true,
+    overlayColor: 'rgba(0,0,0,0.72)',
+    smoothScroll: true,
+    allowClose: false,
+    steps: [
+      {
+        popover: {
+          title: '⚡ Live AI Processing — Here\'s What You\'re Seeing',
+          description: 'Claude AI is analyzing room photos right now, identifying and pricing every item it finds. This page updates automatically — no need to refresh.',
+          side: 'over', align: 'center',
+          nextBtnText: 'Show me →',
+        },
+      },
+      {
+        element: '.progress',
+        popover: {
+          title: '📊 Master Progress Bar',
+          description: 'This bar fills as each room completes. The percentage shows how many of the total rooms have been fully analyzed.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '.row.g-2.mb-3',
+        popover: {
+          title: '📈 Live Stats',
+          description: '<strong>Rooms Done</strong> — count of finished rooms.<br><strong>Images Analyzed</strong> — total photos processed.<br><strong>Items Found</strong> — individual line items priced so far.<br><strong>Est. Replacement Value</strong> — running dollar total, updating live.',
+          side: 'bottom', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '#rooms-container .room-card:first-child',
+        popover: {
+          title: '🏠 Room Cards',
+          description: 'Each room starts <strong>grey (Pending)</strong>, turns <strong>green with a spinner</strong> while Claude is analyzing it, then shows item count and replacement value when done. <strong>Click a completed room</strong> to expand its item list.',
+          side: 'right', align: 'start',
+          nextBtnText: 'Next →',
+        },
+      },
+      {
+        element: '#done-banner',
+        popover: {
+          title: '✅ When All Rooms Finish',
+          description: 'This completion banner appears automatically when every room is done. It gives you one-click access to <strong>PDF download</strong> and <strong>Excel export</strong>. You can also open the full session to edit individual items before finalizing.',
+          side: 'bottom', align: 'center',
+          nextBtnText: 'Done!',
+        },
+      },
+    ],
+    onDestroyStarted: () => d.destroy(),
+  });
+  d.drive();
+}
+
+const PROGRESS_DISABLE_KEY = 'cps_progress_disable_welcome';
+
+function closeProgressWelcome() {
+  const overlay = document.getElementById('welcome-overlay');
+  overlay.style.display = 'none';
+  const chk = document.getElementById('chk-progress-disable');
+  if (chk && chk.checked) {
+    localStorage.setItem(PROGRESS_DISABLE_KEY, '1');
+  }
+}
+
+// Show modal every visit unless disabled
+window.addEventListener('load', () => {
+  if (!localStorage.getItem(PROGRESS_DISABLE_KEY)) {
+    document.getElementById('welcome-overlay').style.display = 'flex';
+  }
+});
+</script>
 <script>
 (function () {
   const SESSION_ID  = {{ session.id }};
   const TOTAL_ROOMS = {{ rooms|length }};
   const STATUS_URL  = `/cps-report/api/session/${SESSION_ID}/status/`;
+  const LOGS_URL    = `/cps-report/api/session/${SESSION_ID}/logs/`;
   const ITEMS_URL   = (roomId) => `/cps-report/api/room/${roomId}/items/`;
+
+  // ── Live log polling ────────────────────────────────────────────────────
+  let logOffset = 0;
+  let logTimer  = null;
+
+  function classifyLog(msg) {
+    const m = msg.toLowerCase();
+    if (m.startsWith('error') || m.includes('failed') || m.includes('error on'))
+      return 'log-err';
+    if (m.includes('claude') || m.includes('batch') || m.includes('sending'))
+      return 'log-ai';
+    if (m.includes('complete') || m.includes('done') || m.includes('ready'))
+      return 'log-ok';
+    return 'log-info';
+  }
+
+  function appendLogs(lines) {
+    if (!lines.length) return;
+    const box = document.getElementById('live-log');
+    const wasEmpty = box.querySelector('span[style]');
+    if (wasEmpty) box.innerHTML = '';
+    lines.forEach(entry => {
+      const cls = classifyLog(entry.msg);
+      const row = document.createElement('div');
+      row.innerHTML = `<span class="log-t">${entry.t}</span><span class="${cls}">${entry.msg}</span>`;
+      box.appendChild(row);
+    });
+    box.scrollTop = box.scrollHeight;
+    document.getElementById('log-count').textContent =
+      `${logOffset + lines.length} events`;
+    logOffset += lines.length;
+  }
+
+  async function pollLogs() {
+    try {
+      const r = await fetch(`${LOGS_URL}?after=${logOffset}`);
+      if (r.ok) {
+        const d = await r.json();
+        appendLogs(d.logs || []);
+      }
+    } catch (_) {}
+  }
+
+  function startLogPolling() {
+    pollLogs();
+    logTimer = setInterval(pollLogs, 2000);
+  }
+
+  function stopLogPolling() {
+    if (logTimer) { clearInterval(logTimer); logTimer = null; }
+    const pulse = document.getElementById('log-pulse');
+    if (pulse) pulse.style.animation = 'none';
+  }
 
   const fmtUsd = v => '$' + Number(v || 0).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
@@ -299,6 +501,8 @@
     if (isDone) return;
     isDone = true;
 
+    stopLogPolling();
+
     // Stop progress bar animation
     const bar = document.getElementById('master-bar');
     bar.style.width = '100%';
@@ -335,6 +539,7 @@
 
   // Start polling immediately
   poll();
+  startLogPolling();
 })();
 </script>
 {% endblock %}

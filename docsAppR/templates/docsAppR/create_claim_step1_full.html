@@ -97,8 +97,9 @@
                                 <h5 class="mb-3">Property Owner Information</h5>
                                 <div class="row mb-3">
                                     <div class="col-md-6">
-                                        <label class="form-label">{{ form.pOwner.label_tag }}</label>
+                                        <label class="form-label">{{ form.pOwner.label_tag }} <span class="text-danger">*</span></label>
                                         {{ form.pOwner }}
+                                        {% if form.pOwner.errors %}<div class="text-danger small mt-1">{{ form.pOwner.errors|striptags }}</div>{% endif %}
                                     </div>
                                     <div class="col-md-6">
                                         <label class="form-label">{{ form.cEmail.label_tag }}</label>
@@ -107,8 +108,9 @@
                                 </div>
                                 <div class="row mb-3">
                                     <div class="col-md-8">
-                                        <label class="form-label">{{ form.pAddress.label_tag }}</label>
+                                        <label class="form-label">{{ form.pAddress.label_tag }} <span class="text-danger">*</span></label>
                                         {{ form.pAddress }}
+                                        {% if form.pAddress.errors %}<div class="text-danger small mt-1">{{ form.pAddress.errors|striptags }}</div>{% endif %}
                                     </div>
                                     <div class="col-md-4">
                                         <label class="form-label">{{ form.cPhone.label_tag }}</label>
@@ -469,9 +471,28 @@
                                 </div>
                             </div>
 
-                            <!-- Contractor Tab -->
                             <div class="tab-pane fade" id="contractor" role="tabpanel">
                                 <h5 class="mb-3">Contractor Information</h5>
+                                <div class="mb-4 p-3 border rounded bg-light">
+                                    <label class="form-label fw-semibold mb-1">
+                                        <i class="fas fa-search me-1 text-primary"></i> Select from Contractor Registry
+                                    </label>
+                                    <select id="contractor-picker" class="form-select">
+                                        <option value="">— pick a contractor to auto-fill below, or type manually —</option>
+                                        {% for co in contractors %}
+                                        <option value="{{ co.pk }}"
+                                            data-name="{{ co.name }}"
+                                            data-address="{{ co.address }}"
+                                            data-city="{{ co.city }} {{ co.state }} {{ co.zip_code }}"
+                                            data-phone="{{ co.phone }}"
+                                            data-email="{{ co.email }}"
+                                            data-ein="{{ co.ein }}">
+                                            {{ co.name }}{% if co.ein %} (EIN {{ co.ein }}){% endif %}
+                                        </option>
+                                        {% endfor %}
+                                    </select>
+                                    <small class="text-muted mt-1 d-block">Selecting a contractor fills all fields below. You can still edit them after.</small>
+                                </div>
                                 <div class="row mb-3">
                                     <div class="col-md-6">
                                         <label class="form-label">{{ form.coName.label_tag }}</label>
@@ -716,6 +737,16 @@ function handleCauseOfLossChange(select) {
     }
 }
 
+document.getElementById('contractor-picker').addEventListener('change', function() {
+    const opt = this.options[this.selectedIndex];
+    if (!opt.value) return;
+    document.querySelector('[name=coName]').value     = opt.dataset.name    || '';
+    document.querySelector('[name=coAddress]').value  = opt.dataset.address || '';
+    document.querySelector('[name=coCityState]').value= opt.dataset.city    || '';
+    document.querySelector('[name=coRepPH]').value    = opt.dataset.phone   || '';
+    document.querySelector('[name=coREPEmail]').value = opt.dataset.email   || '';
+    document.querySelector('[name=TinW9]').value      = opt.dataset.ein     || '';
+});
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', function() {
     const select = document.getElementById('causeOfLossSelect');

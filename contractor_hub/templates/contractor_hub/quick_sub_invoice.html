@@ -1,0 +1,293 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Quick Sub Invoice Generator{% endblock %}
+
+{% block extra_css %}
+<style>
+.gen-hero {
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+    border-radius: 14px; padding: 28px 32px; color: #fff;
+    margin-bottom: 28px; display: flex; align-items: center; gap: 20px;
+}
+.gen-hero-icon {
+    width: 56px; height: 56px; background: rgba(255,255,255,.15);
+    border-radius: 14px; display: flex; align-items: center; justify-content: center;
+    font-size: 24px; flex-shrink: 0;
+}
+.gen-hero-text h2 { font-size: 20px; font-weight: 700; margin-bottom: 4px; }
+.gen-hero-text p  { font-size: 13px; opacity: .85; margin: 0; }
+
+.steps-row {
+    display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 28px;
+}
+.step-card {
+    background: #fff; border-radius: 12px; padding: 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); border: 1px solid #f1f5f9;
+}
+.step-num {
+    width: 32px; height: 32px; border-radius: 50%;
+    background: #7c3aed; color: #fff;
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 13px; font-weight: 700; margin-bottom: 12px;
+}
+.step-card label {
+    display: block; font-size: 12px; font-weight: 700;
+    text-transform: uppercase; letter-spacing: .8px;
+    color: #94a3b8; margin-bottom: 6px;
+}
+.step-card select {
+    width: 100%; padding: 10px 12px;
+    border: 1.5px solid #e2e8f0; border-radius: 8px;
+    font-size: 14px; color: #0f172a;
+    background: #f8fafc; appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%2394a3b8' stroke-width='2'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 12px center;
+    cursor: pointer; transition: border-color .15s;
+}
+.step-card select:focus { outline: none; border-color: #7c3aed; }
+
+.bcr-panel {
+    background: #fff; border-radius: 12px; padding: 20px 24px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08); border: 1px solid #f1f5f9;
+    margin-bottom: 28px; display: none;
+}
+.bcr-panel.visible { display: block; }
+.bcr-panel-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 14px;
+}
+.bcr-panel-header h3 {
+    font-size: 13px; font-weight: 700; color: #334155;
+    text-transform: uppercase; letter-spacing: .8px; margin: 0;
+}
+.bcr-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(110px,1fr)); gap: 10px;
+}
+.bcr-item {
+    background: #f8fafc; border-radius: 8px; padding: 10px 12px; text-align: center;
+}
+.bcr-item .val { font-size: 22px; font-weight: 700; color: #7c3aed; }
+.bcr-item .lbl { font-size: 10px; color: #94a3b8; margin-top: 2px; font-weight: 600; text-transform: uppercase; letter-spacing: .6px; }
+.bcr-item.zero .val { color: #cbd5e1; }
+
+.warn-panel {
+    background: #fffbeb; border: 1px solid #fcd34d; border-radius: 10px;
+    padding: 14px 18px; display: flex; align-items: flex-start; gap: 12px;
+    margin-bottom: 20px;
+}
+.warn-panel i { color: #f59e0b; margin-top: 2px; }
+.warn-panel p { margin: 0; font-size: 13px; color: #78350f; }
+.warn-panel a { color: #d97706; font-weight: 600; }
+
+.gen-btn-row { display: flex; align-items: center; justify-content: center; gap: 16px; }
+.btn-generate {
+    padding: 14px 40px; background: #7c3aed; color: #fff;
+    border: none; border-radius: 10px; font-size: 15px; font-weight: 700;
+    cursor: pointer; transition: opacity .15s, transform .1s;
+    display: inline-flex; align-items: center; gap: 10px;
+}
+.btn-generate:hover { opacity: .9; transform: translateY(-1px); }
+.btn-generate:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+
+.section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 14px;
+    padding-bottom: 6px; border-bottom: 1px solid #e2e8f0;
+}
+@media (max-width: 700px) { .steps-row { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+{% if messages %}
+<div style="margin-bottom:16px;">
+    {% for msg in messages %}
+    <div style="padding:10px 16px;border-radius:8px;margin-bottom:8px;
+         background:{% if 'error' in msg.tags %}#fee2e2;color:#991b1b{% else %}#d1fae5;color:#065f46{% endif %};">
+        {{ msg }}
+    </div>
+    {% endfor %}
+</div>
+{% endif %}
+
+<div class="gen-hero">
+    <div class="gen-hero-icon"><i class="fas fa-bolt"></i></div>
+    <div class="gen-hero-text">
+        <h2>Quick Sub Invoice Generator</h2>
+        <p>Select a client, subcontractor, and work type — the system builds the full Xactimate invoice automatically.</p>
+    </div>
+</div>
+
+<form method="post" id="gen-form">
+    {% csrf_token %}
+
+    <div class="section-label">3 Inputs. One Invoice.</div>
+    <div class="steps-row">
+
+        <!-- Step 1 — Client -->
+        <div class="step-card">
+            <div class="step-num">1</div>
+            <label for="id_client">Client / Insured</label>
+            <select name="client" id="id_client" required>
+                <option value="">— Select a client —</option>
+                {% for client in clients %}
+                {% with bcr=client.box_count_report %}
+                <option value="{{ client.pk }}"
+                    data-has-bcr="{% if bcr %}1{% endif %}"
+                    data-total="{% if bcr %}{{ bcr.total_boxes }}{% else %}0{% endif %}"
+                    data-small="{% if bcr %}{{ bcr.small_boxes }}{% else %}0{% endif %}"
+                    data-medium="{% if bcr %}{{ bcr.medium_boxes }}{% else %}0{% endif %}"
+                    data-large="{% if bcr %}{{ bcr.large_boxes }}{% else %}0{% endif %}"
+                    data-xl="{% if bcr %}{{ bcr.xl_items }}{% else %}0{% endif %}"
+                    data-mirror="{% if bcr %}{{ bcr.mirror_boxes }}{% else %}0{% endif %}"
+                    data-lamp="{% if bcr %}{{ bcr.lamp_boxes }}{% else %}0{% endif %}"
+                    data-tv="{% if bcr %}{{ bcr.tv_boxes }}{% else %}0{% endif %}"
+                    data-wardrobe="{% if bcr %}{{ bcr.wardrobe_boxes }}{% else %}0{% endif %}"
+                    data-mattress="{% if bcr %}{{ bcr.mattress_boxes }}{% else %}0{% endif %}"
+                    data-dishpack="{% if bcr %}{{ bcr.dishpack_boxes }}{% else %}0{% endif %}"
+                    data-glasspack="{% if bcr %}{{ bcr.glasspack_boxes }}{% else %}0{% endif %}"
+                    data-pots="{% if bcr %}{{ bcr.pots_boxes }}{% else %}0{% endif %}"
+                    data-bcr-url="{% url 'contractor_hub:box_count_report' client.pk %}"
+                    {% if request.POST.client == client.pk|stringformat:'s' %}selected{% endif %}>
+                    {{ client.pOwner|default:"(no name)" }}{% if client.claimNumber %} — #{{ client.claimNumber }}{% endif %}
+                </option>
+                {% endwith %}
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Step 2 — Subcontractor -->
+        <div class="step-card">
+            <div class="step-num">2</div>
+            <label for="id_sub">Subcontractor</label>
+            <select name="subcontractor" id="id_sub" required>
+                <option value="">— Select a sub —</option>
+                {% for sub in subs %}
+                <option value="{{ sub.pk }}" {% if request.POST.subcontractor == sub.pk|stringformat:'s' %}selected{% endif %}>
+                    {{ sub.name }}{% if sub.ein %} (EIN {{ sub.ein }}){% endif %}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <!-- Step 3 — Work Type -->
+        <div class="step-card">
+            <div class="step-num">3</div>
+            <label for="id_section_type">Work Type</label>
+            <select name="section_type" id="id_section_type" required>
+                <option value="">— Select work type —</option>
+                {% for val, label in section_choices %}
+                <option value="{{ val }}" {% if request.POST.section_type == val %}selected{% endif %}>
+                    {{ label }}
+                </option>
+                {% endfor %}
+            </select>
+        </div>
+    </div>
+
+    <!-- No BCR warning -->
+    <div id="warn-no-bcr" class="warn-panel" style="display:none;">
+        <i class="fas fa-exclamation-triangle"></i>
+        <p>
+            This client has no Box Count Report. Box counts are required to calculate line item quantities.<br>
+            <a id="warn-bcr-link" href="#">Enter or import box counts now</a> — it only takes a minute.
+        </p>
+    </div>
+
+    <!-- BCR summary panel -->
+    <div id="bcr-panel" class="bcr-panel">
+        <div class="bcr-panel-header">
+            <h3><i class="fas fa-boxes" style="margin-right:6px;color:#7c3aed;"></i>Box Count Report</h3>
+            <a id="bcr-edit-link" href="#" style="font-size:12px;color:#7c3aed;font-weight:600;">
+                <i class="fas fa-pencil-alt"></i> Edit / Import
+            </a>
+        </div>
+        <div class="bcr-grid" id="bcr-grid"></div>
+    </div>
+
+    <!-- Generate -->
+    <div class="gen-btn-row">
+        <button type="submit" class="btn-generate" id="gen-btn">
+            <i class="fas fa-file-pdf"></i> Generate Sub Invoice PDF
+        </button>
+        <a href="{% url 'contractor_hub:dashboard' %}" style="font-size:13px;color:#94a3b8;">
+            Back to dashboard
+        </a>
+    </div>
+</form>
+
+<script>
+const BOX_LABELS = {
+    small: 'Small', medium: 'Medium', large: 'Large', xl: 'XL',
+    mirror: 'Mirror', lamp: 'Lamp/Plant', tv: 'TV',
+    wardrobe: 'Wardrobe', mattress: 'Mattress', dishpack: 'Dish Pack',
+    glasspack: 'Glasspack', pots: 'Pots & Pans'
+};
+
+const clientSel = document.getElementById('id_client');
+const warnEl    = document.getElementById('warn-no-bcr');
+const warnLink  = document.getElementById('warn-bcr-link');
+const bcrPanel  = document.getElementById('bcr-panel');
+const bcrGrid   = document.getElementById('bcr-grid');
+const bcrEdit   = document.getElementById('bcr-edit-link');
+const genBtn    = document.getElementById('gen-btn');
+
+// Pre-select client from URL ?client=xx
+const urlParams = new URLSearchParams(window.location.search);
+const preClient = urlParams.get('client');
+if (preClient) {
+    for (let opt of clientSel.options) {
+        if (opt.value === preClient) { opt.selected = true; break; }
+    }
+}
+
+function updateBcrPanel() {
+    const opt = clientSel.options[clientSel.selectedIndex];
+    if (!opt || !opt.value) {
+        warnEl.style.display = 'none';
+        bcrPanel.classList.remove('visible');
+        genBtn.disabled = false;
+        return;
+    }
+
+    const hasBcr = opt.dataset.hasBcr;
+    const bcrUrl = opt.dataset.bcrUrl;
+
+    if (!hasBcr) {
+        warnEl.style.display = 'flex';
+        warnLink.href = bcrUrl;
+        bcrPanel.classList.remove('visible');
+        genBtn.disabled = true;
+        return;
+    }
+
+    warnEl.style.display = 'none';
+    genBtn.disabled = false;
+    bcrEdit.href = bcrUrl;
+
+    bcrGrid.innerHTML = '';
+    const keys = ['small','medium','large','xl','mirror','lamp','tv','wardrobe','mattress','dishpack','glasspack','pots'];
+    let total = 0;
+    keys.forEach(k => {
+        const n = parseInt(opt.dataset[k] || '0');
+        total += n;
+        const div = document.createElement('div');
+        div.className = 'bcr-item' + (n === 0 ? ' zero' : '');
+        div.innerHTML = `<div class="val">${n}</div><div class="lbl">${BOX_LABELS[k]}</div>`;
+        bcrGrid.appendChild(div);
+    });
+
+    const totDiv = document.createElement('div');
+    totDiv.className = 'bcr-item';
+    totDiv.style.background = '#ede9fe';
+    totDiv.innerHTML = `<div class="val" style="color:#6d28d9;">${total}</div><div class="lbl" style="color:#6d28d9;">Total</div>`;
+    bcrGrid.appendChild(totDiv);
+
+    bcrPanel.classList.add('visible');
+}
+
+clientSel.addEventListener('change', updateBcrPanel);
+updateBcrPanel();
+</script>
+{% endblock %}

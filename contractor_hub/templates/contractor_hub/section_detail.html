@@ -1,0 +1,531 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}{{ section.section_label }}{% endblock %}
+
+{% block extra_css %}
+<style>
+.breadcrumb { font-size: 12px; color: #94a3b8; margin-bottom: 16px; }
+.breadcrumb a { color: #7c3aed; text-decoration: none; }
+.breadcrumb a:hover { text-decoration: underline; }
+.breadcrumb span { margin: 0 6px; }
+
+.section-hero {
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+    border-radius: 14px; padding: 22px 28px; color: #fff;
+    margin-bottom: 22px; display: flex; align-items: center; gap: 16px;
+}
+.section-hero h2 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+.section-hero p  { font-size: 13px; opacity: .75; margin: 0; }
+.sec-num {
+    width: 44px; height: 44px; border-radius: 12px; background: #7c3aed;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px; font-weight: 800; flex-shrink: 0;
+}
+
+.layout { display: grid; grid-template-columns: 1fr 320px; gap: 20px; }
+@media (max-width: 900px) { .layout { grid-template-columns: 1fr; } }
+
+.card { background: #fff; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; margin-bottom: 16px; }
+.card-header { padding: 14px 18px; border-bottom: 1px solid #f1f5f9; font-size: 13px; font-weight: 700; color: #0f172a; display: flex; align-items: center; gap: 8px; }
+.card-body { padding: 18px; }
+.section-label-sm {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 1.2px; color: #94a3b8; margin-bottom: 10px;
+    padding-bottom: 5px; border-bottom: 1px solid #e2e8f0;
+}
+
+/* ── Line item table ────────────────────────────────────────────────── */
+.line-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.line-table thead th {
+    background: #f8fafc; padding: 8px 10px; text-align: left;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: #64748b; border-bottom: 1px solid #e2e8f0;
+}
+.line-table thead th.r { text-align: right; }
+.line-table tbody td { padding: 9px 10px; border-bottom: 1px solid #f8fafc; vertical-align: middle; }
+.line-table tbody tr:last-child td { border-bottom: none; }
+.line-table tbody tr:hover { background: #fafafa; }
+.line-table .td-num { text-align: right; font-family: monospace; }
+.line-table .td-mono { font-family: monospace; font-weight: 600; color: #7c3aed; font-size: 11px; }
+.bid-badge { background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+.auto-badge { background: #dbeafe; color: #1d4ed8; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+
+/* ── Add Line Form ──────────────────────────────────────────────────── */
+.add-form { background: #f8fafc; border-top: 2px solid #7c3aed; padding: 16px 18px; }
+.add-form-grid { display: grid; grid-template-columns: 80px 100px 1fr 70px 60px 90px 90px 50px auto; gap: 8px; align-items: end; }
+.form-control-sm {
+    width: 100%; padding: 7px 10px; border: 1px solid #e2e8f0;
+    border-radius: 6px; font-size: 12px; color: #0f172a;
+    box-sizing: border-box;
+}
+.form-control-sm:focus { outline: none; border-color: #7c3aed; }
+.form-label-sm { font-size: 10px; font-weight: 700; text-transform: uppercase; color: #94a3b8; margin-bottom: 3px; display: block; }
+select.form-control-sm { cursor: pointer; }
+
+/* ── Buttons ────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: none; text-decoration: none; transition: opacity .15s; }
+.btn:hover { opacity: .88; text-decoration: none; }
+.btn-purple { background: #7c3aed; color: #fff; }
+.btn-green  { background: #10b981; color: #fff; }
+.btn-ghost  { background: #f1f5f9; color: #334155; }
+.btn-danger { background: #ef4444; color: #fff; }
+.btn-sm     { padding: 5px 10px; font-size: 11px; }
+
+/* ── Rate search ────────────────────────────────────────────────────── */
+.rate-search-wrap { position: relative; }
+#rate-results {
+    position: absolute; top: 100%; left: 0; right: 0; z-index: 50;
+    background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;
+    box-shadow: 0 4px 16px rgba(0,0,0,.1); max-height: 220px; overflow-y: auto;
+    display: none;
+}
+.rate-result-item {
+    padding: 8px 12px; cursor: pointer; font-size: 12px;
+    border-bottom: 1px solid #f1f5f9;
+}
+.rate-result-item:last-child { border-bottom: none; }
+.rate-result-item:hover { background: #f3e8ff; }
+.rate-result-item .ri-code { font-family: monospace; font-weight: 700; color: #7c3aed; font-size: 11px; }
+.rate-result-item .ri-desc { color: #475569; }
+.rate-result-item .ri-rate { float: right; color: #64748b; font-family: monospace; font-size: 11px; }
+
+/* ── Subtotal chip ──────────────────────────────────────────────────── */
+.subtotal-chip {
+    display: inline-block; padding: 5px 14px; border-radius: 20px;
+    background: #f3e8ff; color: #6d28d9; font-weight: 700; font-family: monospace; font-size: 14px;
+}
+
+/* ── Bid status badge ───────────────────────────────────────────────── */
+.bid-pending  { background: #f1f5f9; color: #475569; }
+.bid-sent     { background: #dbeafe; color: #1d4ed8; }
+.bid-accepted { background: #d1fae5; color: #065f46; }
+.bid-rejected { background: #fee2e2; color: #991b1b; }
+
+/* ── Toast notification ─────────────────────────────────────────────── */
+#toast {
+    position: fixed; bottom: 28px; left: 50%; transform: translateX(-50%) translateY(20px);
+    background: #10b981; color: #fff; padding: 10px 22px; border-radius: 8px;
+    font-size: 13px; font-weight: 600; box-shadow: 0 4px 16px rgba(0,0,0,.18);
+    opacity: 0; transition: opacity .25s, transform .25s; z-index: 9999;
+    pointer-events: none; white-space: nowrap;
+}
+#toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+#toast.error { background: #ef4444; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Toast -->
+<div id="toast"></div>
+
+<!-- Breadcrumb -->
+<div class="breadcrumb">
+    <a href="{% url 'contractor_hub:dashboard' %}">Hub</a><span>›</span>
+    <a href="{% url 'contractor_hub:estimate_detail' estimate.pk %}">
+        {{ estimate.estimate_number|default:"Estimate" }}
+    </a><span>›</span>
+    {{ section.section_label }}
+</div>
+
+<!-- Hero -->
+<div class="section-hero">
+    <div class="sec-num">{{ section.order }}</div>
+    <div style="flex:1;">
+        <h2>{{ section.section_label }}</h2>
+        <p>
+            {{ estimate.client.pOwner }} &nbsp;·&nbsp;
+            {% if section.subcontractor %}
+                Sub: {{ section.subcontractor.name }}
+            {% else %}
+                GC Direct — {{ estimate.gc_contractor.name }}
+            {% endif %}
+        </p>
+    </div>
+    <div>
+        <div class="subtotal-chip" id="subtotal-chip">
+            ${{ section.section_subtotal|floatformat:2 }}
+        </div>
+    </div>
+</div>
+
+<div class="layout">
+
+<!-- ── LEFT: Line Items ───────────────────────────────────────────── -->
+<div>
+<div class="card">
+    <div class="card-header">
+        <i class="fas fa-list" style="color:#7c3aed;"></i>
+        Line Items
+        <span style="font-size:12px;color:#94a3b8;font-weight:400;">
+            ({{ line_items.count }} item{{ line_items.count|pluralize }})
+        </span>
+        <span style="margin-left:auto;">
+            {% if section.section_type in 'packing,cleaning,transport' %}
+            <form method="post"
+                  action="{% url 'contractor_hub:section_import_cps' estimate.pk section.pk %}"
+                  style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-sm">
+                    <i class="fas fa-box"></i> Import from CPS
+                </button>
+            </form>
+            {% endif %}
+        </span>
+    </div>
+
+    {% if line_items %}
+    <table class="line-table" id="line-table">
+        <thead>
+            <tr>
+                <th class="td-mono">CAT</th>
+                <th class="td-mono">SEL</th>
+                <th>Description</th>
+                <th class="r">Qty</th>
+                <th>Unit</th>
+                <th class="r">Remove $</th>
+                <th class="r">Replace $</th>
+                <th style="text-align:center;">Tax</th>
+                <th class="r">Total</th>
+                <th></th>
+            </tr>
+        </thead>
+        <tbody id="line-tbody">
+        {% for li in line_items %}
+        <tr id="li-{{ li.pk }}">
+            <td class="td-mono">{{ li.cat }}</td>
+            <td class="td-mono">
+                {{ li.sel }}
+                {% if li.is_bid_item %}<span class="bid-badge">[*]</span>{% endif %}
+                {% if li.auto_calculated %}<span class="auto-badge">AUTO</span>{% endif %}
+            </td>
+            <td>
+                {{ li.description }}
+                {% if li.calc_formula %}
+                <div style="font-size:10px;color:#94a3b8;font-family:monospace;">{{ li.calc_formula }}</div>
+                {% endif %}
+            </td>
+            <td class="td-num">{{ li.quantity|floatformat:2 }}</td>
+            <td style="color:#64748b;font-size:11px;">{{ li.unit }}</td>
+            <td class="td-num">${{ li.remove_rate|floatformat:2 }}</td>
+            <td class="td-num">${{ li.replace_rate|floatformat:2 }}</td>
+            <td style="text-align:center;font-size:11px;">{{ li.taxable|yesno:"T," }}</td>
+            <td class="td-num" id="li-total-{{ li.pk }}">${{ li.line_total|floatformat:2 }}</td>
+            <td>
+                <button class="btn btn-ghost btn-sm"
+                        onclick="deleteLine({{ li.pk }})"
+                        title="Delete">
+                    <i class="fas fa-trash-alt" style="font-size:10px;color:#ef4444;"></i>
+                </button>
+            </td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+    {% else %}
+    <div id="empty-state" style="padding:32px;text-align:center;color:#94a3b8;font-size:13px;">
+        <i class="fas fa-inbox" style="font-size:28px;display:block;margin-bottom:8px;"></i>
+        No line items yet — add one below.
+    </div>
+    {% endif %}
+
+    <!-- Add Line Form -->
+    <div class="add-form">
+        <div style="font-size:11px;font-weight:700;text-transform:uppercase;color:#7c3aed;
+                    letter-spacing:1px;margin-bottom:12px;">
+            <i class="fas fa-plus"></i> Add Line Item
+        </div>
+
+        <!-- Rate search -->
+        <div style="margin-bottom:12px;">
+            <label class="form-label-sm">Search Rate Library (optional — fills fields automatically)</label>
+            <div class="rate-search-wrap">
+                <input type="text" id="rate-search" class="form-control-sm"
+                       placeholder="Type CAT, SEL or description…"
+                       autocomplete="off" oninput="searchRates(this.value)">
+                <div id="rate-results"></div>
+            </div>
+        </div>
+
+        <div class="add-form-grid">
+            <div>
+                <label class="form-label-sm">CAT *</label>
+                <input type="text" id="add-cat" class="form-control-sm" placeholder="WTR">
+            </div>
+            <div>
+                <label class="form-label-sm">SEL *</label>
+                <input type="text" id="add-sel" class="form-control-sm" placeholder="DRY">
+            </div>
+            <div>
+                <label class="form-label-sm">Description *</label>
+                <input type="text" id="add-desc" class="form-control-sm" placeholder="Description">
+            </div>
+            <div>
+                <label class="form-label-sm">Qty *</label>
+                <input type="number" id="add-qty" class="form-control-sm" value="1" step="0.01" min="0">
+            </div>
+            <div>
+                <label class="form-label-sm">Unit</label>
+                <select id="add-unit" class="form-control-sm">
+                    <option>EA</option><option>HR</option><option>LF</option>
+                    <option>SF</option><option>CF</option><option>MO</option><option>LS</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label-sm">Remove $</label>
+                <input type="number" id="add-remove" class="form-control-sm" value="0" step="0.01" min="0">
+            </div>
+            <div>
+                <label class="form-label-sm">Replace $</label>
+                <input type="number" id="add-replace" class="form-control-sm" value="0" step="0.01" min="0">
+            </div>
+            <div>
+                <label class="form-label-sm">Tax</label>
+                <select id="add-taxable" class="form-control-sm">
+                    <option value="true">T</option>
+                    <option value="false">N</option>
+                </select>
+            </div>
+            <div>
+                <label class="form-label-sm">&nbsp;</label>
+                <button class="btn btn-purple btn-sm" onclick="addLine()" style="width:100%;padding:7px 10px;">
+                    <i class="fas fa-plus"></i> Add
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+</div>
+
+<!-- ── RIGHT: Section Settings ──────────────────────────────────────── -->
+<div>
+
+<div class="card">
+    <div class="card-header"><i class="fas fa-cog" style="color:#64748b;"></i> Section Settings</div>
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            <div style="margin-bottom:14px;">
+                <label class="form-label-sm">Subcontractor</label>
+                <select name="subcontractor" class="form-control-sm" style="width:100%;">
+                    <option value="">— GC Direct —</option>
+                    {% for sub in subs %}
+                    <option value="{{ sub.pk }}"
+                        {% if section.subcontractor_id == sub.pk %}selected{% endif %}>
+                        {{ sub.name }} ({{ sub.get_role_display }})
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="margin-bottom:14px;">
+                <label class="form-label-sm">Bid Status</label>
+                <select name="bid_status" class="form-control-sm" style="width:100%;">
+                    {% for val, lbl in section.BidStatus.choices %}
+                    <option value="{{ val }}" {% if section.bid_status == val %}selected{% endif %}>
+                        {{ lbl }}
+                    </option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div style="margin-bottom:16px;">
+                <label class="form-label-sm">Notes</label>
+                <textarea name="notes" class="form-control-sm" rows="3"
+                          style="resize:vertical;">{{ section.notes }}</textarea>
+            </div>
+            <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;">
+                <i class="fas fa-save"></i> Save Settings
+            </button>
+        </form>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-header"><i class="fas fa-calculator" style="color:#7c3aed;"></i> Section Total</div>
+    <div class="card-body" style="text-align:center;">
+        <div class="subtotal-chip" id="subtotal-side">
+            ${{ section.section_subtotal|floatformat:2 }}
+        </div>
+        <div style="font-size:11px;color:#94a3b8;margin-top:8px;">
+            {{ line_items.count }} line item{{ line_items.count|pluralize }}
+        </div>
+    </div>
+</div>
+
+<a href="{% url 'contractor_hub:estimate_detail' estimate.pk %}"
+   class="btn btn-ghost" style="width:100%;justify-content:center;margin-top:4px;">
+    <i class="fas fa-arrow-left"></i> Back to Estimate
+</a>
+
+</div><!-- /right -->
+</div><!-- /layout -->
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const SECTION_PK  = {{ section.pk }};
+const CSRF        = '{{ csrf_token }}';
+
+// ── Toast helper ──────────────────────────────────────────────────────────
+function showToast(msg, isError) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.toggle('error', !!isError);
+    t.classList.add('show');
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => t.classList.remove('show'), 2800);
+}
+const RATE_ITEMS  = [
+{% for ri in rate_items %}
+    { cat:'{{ ri.cat|escapejs }}', sel:'{{ ri.sel|escapejs }}',
+      desc:'{{ ri.description|escapejs }}',
+      unit:'{{ ri.unit|escapejs }}', remove:{{ ri.remove_rate }}, replace:{{ ri.replace_rate }},
+      taxable:{{ ri.taxable|yesno:"true,false" }} },
+{% endfor %}
+];
+
+// ── Rate library search ───────────────────────────────────────────────
+function searchRates(q) {
+    const box = document.getElementById('rate-results');
+    if (!q || q.length < 1) { box.style.display = 'none'; return; }
+    const ql = q.toLowerCase();
+    const hits = RATE_ITEMS.filter(r =>
+        r.cat.toLowerCase().includes(ql) ||
+        r.sel.toLowerCase().includes(ql) ||
+        r.desc.toLowerCase().includes(ql)
+    ).slice(0, 20);
+
+    if (!hits.length) { box.style.display = 'none'; return; }
+
+    box.innerHTML = hits.map((r, i) => {
+        const idx = RATE_ITEMS.indexOf(r);
+        return `<div class="rate-result-item" onclick="fillRateIdx(${idx})">
+            <span class="ri-code">${r.cat} ${r.sel}</span>
+            <span class="ri-rate">$${r.replace.toFixed(2)}/${r.unit}</span>
+            <div class="ri-desc">${r.desc}</div>
+        </div>`;
+    }).join('');
+    box.style.display = 'block';
+}
+
+function fillRateIdx(idx) { fillRate(RATE_ITEMS[idx]); }
+function fillRate(r) {
+    document.getElementById('add-cat').value     = r.cat;
+    document.getElementById('add-sel').value     = r.sel;
+    document.getElementById('add-desc').value    = r.desc;
+    document.getElementById('add-unit').value    = r.unit;
+    document.getElementById('add-remove').value  = r.remove;
+    document.getElementById('add-replace').value = r.replace;
+    document.getElementById('add-taxable').value = r.taxable ? 'true' : 'false';
+    document.getElementById('rate-search').value = r.cat + ' ' + r.sel;
+    document.getElementById('rate-results').style.display = 'none';
+}
+
+document.addEventListener('click', e => {
+    if (!e.target.closest('.rate-search-wrap'))
+        document.getElementById('rate-results').style.display = 'none';
+});
+
+// ── Add line item ─────────────────────────────────────────────────────
+function addLine() {
+    const cat     = document.getElementById('add-cat').value.trim().toUpperCase();
+    const sel     = document.getElementById('add-sel').value.trim().toUpperCase();
+    const desc    = document.getElementById('add-desc').value.trim();
+    const qty     = document.getElementById('add-qty').value;
+    const unit    = document.getElementById('add-unit').value;
+    const remove  = document.getElementById('add-remove').value;
+    const replace = document.getElementById('add-replace').value;
+    const taxable = document.getElementById('add-taxable').value;
+
+    if (!cat || !sel || !desc) {
+        alert('CAT, SEL and Description are required.');
+        return;
+    }
+
+    const data = new FormData();
+    data.append('section_pk', SECTION_PK);
+    data.append('cat', cat); data.append('sel', sel);
+    data.append('description', desc); data.append('quantity', qty);
+    data.append('unit', unit); data.append('remove_rate', remove);
+    data.append('replace_rate', replace); data.append('taxable', taxable);
+
+    fetch('/contractor-hub/api/lineitem/add/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF },
+        body: data,
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.error) { showToast('Error: ' + d.error, true); return; }
+
+        // Remove empty state
+        document.getElementById('empty-state')?.remove();
+
+        // Ensure table exists
+        let tbody = document.getElementById('line-tbody');
+        if (!tbody) {
+            // Create table if first row
+            location.reload();
+            return;
+        }
+
+        const total = '$' + d.line_total.toFixed(2);
+        const row = `<tr id="li-${d.id}">
+            <td class="td-mono">${cat}</td>
+            <td class="td-mono">${sel}</td>
+            <td>${desc}</td>
+            <td class="td-num">${parseFloat(qty).toFixed(2)}</td>
+            <td style="color:#64748b;font-size:11px;">${unit}</td>
+            <td class="td-num">$${parseFloat(remove).toFixed(2)}</td>
+            <td class="td-num">$${parseFloat(replace).toFixed(2)}</td>
+            <td style="text-align:center;font-size:11px;">${taxable === 'true' ? 'T' : ''}</td>
+            <td class="td-num" id="li-total-${d.id}">${total}</td>
+            <td><button class="btn btn-ghost btn-sm" onclick="deleteLine(${d.id})">
+                <i class="fas fa-trash-alt" style="font-size:10px;color:#ef4444;"></i>
+            </button></td>
+        </tr>`;
+        tbody.insertAdjacentHTML('beforeend', row);
+
+        // Clear form
+        ['add-cat','add-sel','add-desc','add-qty','add-remove','add-replace','rate-search'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) el.value = id === 'add-qty' ? '1' : '';
+        });
+
+        refreshSubtotal();
+        showToast(`✓ Line item "${desc}" added`);
+    })
+    .catch(err => { console.error(err); showToast('Network error — item may not have saved.', true); });
+}
+
+// ── Delete line item ──────────────────────────────────────────────────
+function deleteLine(pk) {
+    if (!confirm('Delete this line item?')) return;
+    fetch('/contractor-hub/api/lineitem/' + pk + '/delete/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF },
+    })
+    .then(r => r.json())
+    .then(() => {
+        document.getElementById('li-' + pk)?.remove();
+        refreshSubtotal();
+    });
+}
+
+// ── Refresh subtotal display ──────────────────────────────────────────
+function refreshSubtotal() {
+    let total = 0;
+    document.querySelectorAll('[id^="li-total-"]').forEach(el => {
+        total += parseFloat(el.textContent.replace('$','').replace(',','')) || 0;
+    });
+    const fmt = '$' + total.toFixed(2);
+    const chip = document.getElementById('subtotal-chip');
+    const side = document.getElementById('subtotal-side');
+    if (chip) chip.textContent = fmt;
+    if (side) side.textContent = fmt;
+}
+</script>
+{% endblock %}

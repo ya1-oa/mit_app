@@ -1,12 +1,19 @@
 from django.urls import path
 from . import views
+from docsAppR.guides_views import guides_home
 
 urlpatterns = [
     # Home — app grid landing page (shown after login)
     path('', views.home, name='home'),
 
+    # Global activity log
+    path('activity/', views.activity_page, name='activity_page'),
+
     # Dashboard — statistics & claims overview
     path('dashboard/', views.dashboard, name='dashboard'),
+
+    # Guides & Instructions
+    path('guides/', guides_home, name='guides'),
 
     # Auth
     path('logout/', views.logout_view, name='logout'),

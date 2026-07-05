@@ -1,8 +1,8 @@
 {% extends "account/base.html" %}
 {% load humanize %}
 
-{% block title %}CPS Summary — {{ session.insured_name|default:session.client.pOwner }}{% endblock %}
-{% block page_title %}<i class="fas fa-table"></i> CPS Summary — {{ session.insured_name|default:session.client.pOwner }}{% endblock %}
+{% block title %}PPR Summary — {{ session.insured_name|default:session.client.pOwner }}{% endblock %}
+{% block page_title %}<i class="fas fa-table"></i> PPR Summary — {{ session.insured_name|default:session.client.pOwner }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-4">
@@ -10,7 +10,7 @@
   <!-- Header bar -->
   <div class="d-flex align-items-center justify-content-between mb-4">
     <div>
-      <h2 class="mb-0">CPS Schedule of Loss — Summary</h2>
+      <h2 class="mb-0">PPR Schedule of Loss — Summary</h2>
       <p class="text-muted mb-0">
         {{ session.insured_name|default:session.client.pOwner }}
         {% if session.claim_number %} &mdash; Claim #{{ session.claim_number }}{% endif %}
@@ -48,10 +48,6 @@
           <div class="fw-semibold text-success fs-4">${{ grand_rcv|floatformat:2|intcomma }}</div>
           <div class="text-muted small">RCV Total</div>
         </div>
-        <div class="col-6 col-md-3">
-          <div class="fw-semibold text-info fs-4">${{ grand_acv|floatformat:2|intcomma }}</div>
-          <div class="text-muted small">ACV Total</div>
-        </div>
       </div>
     </div>
   </div>
@@ -67,8 +63,6 @@
               <th>Room</th>
               <th class="text-center">Items</th>
               <th class="text-end">RCV Total</th>
-              <th class="text-end">Depreciation</th>
-              <th class="text-end">ACV Total</th>
             </tr>
           </thead>
           <tbody>
@@ -85,13 +79,11 @@
                 {% endif %}
               </td>
               <td class="text-center">{{ row.item_count }}</td>
-              <td class="text-end">${{ row.rcv_total|floatformat:2|intcomma }}</td>
-              <td class="text-end text-muted">${{ row.depreciation|floatformat:2|intcomma }}</td>
-              <td class="text-end fw-semibold">${{ row.acv_total|floatformat:2|intcomma }}</td>
+              <td class="text-end fw-semibold">${{ row.rcv_total|floatformat:2|intcomma }}</td>
             </tr>
             {% empty %}
             <tr>
-              <td colspan="6" class="text-center text-muted py-4">No rooms found for this session.</td>
+              <td colspan="4" class="text-center text-muted py-4">No rooms found for this session.</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -101,8 +93,6 @@
               <td>GRAND TOTAL</td>
               <td class="text-center">{{ grand_items }}</td>
               <td class="text-end">${{ grand_rcv|floatformat:2|intcomma }}</td>
-              <td class="text-end">${{ grand_dep|floatformat:2|intcomma }}</td>
-              <td class="text-end">${{ grand_acv|floatformat:2|intcomma }}</td>
             </tr>
           </tfoot>
         </table>

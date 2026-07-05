@@ -64,6 +64,10 @@ INSTALLED_APPS = [
     'encircle',
     'box_calculator',
     'cps_report',
+    'contractor_hub',
+    'dev_hub',
+    'tasks',
+    'ar_tracking',
 
     # Auth
     #'django.contrib.sites',
@@ -91,6 +95,7 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'docsAppR.middleware.TenantMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
     'allauth.account.middleware.AccountMiddleware',
@@ -170,11 +175,13 @@ USE_TZ = True
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
-# Django Allauth settings
-SITE_ID = 1  # Required for allauth
-LOGIN_REDIRECT_URL = '/'  # Where to redirect after successful login
-ACCOUNT_EMAIL_REQUIRED = True  # Make email required field
-#settings.ACCOUNT_SIGNUP_FIELDS = ['email*', 'password1*', 'password2*']
+# Django Allauth settings (allauth 65.x format)
+SITE_ID = 1
+LOGIN_REDIRECT_URL = '/'
+ACCOUNT_SIGNUP_FIELDS         = ['email*', 'password1*', 'password2*']
+ACCOUNT_EMAIL_VERIFICATION    = 'mandatory'
+ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
+ACCOUNT_ADAPTER               = 'docsAppR.adapters.AccountAdapter'
 
 AUTH_PASSWORD_VALIDATORS = [{'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'}, {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'}, {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'}, {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'}]
 LANGUAGE_CODE = 'en-us'
@@ -197,6 +204,23 @@ EMAIL_USE_TLS = os.getenv('EMAIL_USE_TLS', 'True') == 'True'
 EMAIL_HOST_USER = os.getenv('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = os.getenv('EMAIL_HOST_PASSWORD')
 DEFAULT_FROM_EMAIL = os.getenv('DEFAULT_FROM_EMAIL', EMAIL_HOST_USER)
+
+# ── Lease / signature emails — optional dedicated sender (e.g. Outlook) ──────
+# Signature- and lease-related emails (signing invites, OTP codes, document
+# packages, and signing notifications) send from THIS account instead of the
+# default mailbox above, so they come from the firm's ALE/lease address.
+# Set these in the environment (.env). When LEASE_EMAIL_HOST_USER /
+# LEASE_EMAIL_HOST_PASSWORD are blank, those emails fall back to the default
+# connection automatically — so nothing breaks until you configure it.
+#   Outlook / Microsoft 365 business : smtp.office365.com    port 587  TLS
+#   Outlook.com (personal)           : smtp-mail.outlook.com port 587  TLS
+LEASE_EMAIL_HOST          = os.getenv('LEASE_EMAIL_HOST', 'smtp.office365.com')
+LEASE_EMAIL_PORT          = int(os.getenv('LEASE_EMAIL_PORT', '587'))
+LEASE_EMAIL_USE_TLS       = os.getenv('LEASE_EMAIL_USE_TLS', 'True') == 'True'
+LEASE_EMAIL_HOST_USER     = os.getenv('LEASE_EMAIL_HOST_USER', '')
+LEASE_EMAIL_HOST_PASSWORD = os.getenv('LEASE_EMAIL_HOST_PASSWORD', '')
+# From-address shown to recipients; defaults to the lease mailbox login.
+LEASE_FROM_EMAIL          = os.getenv('LEASE_FROM_EMAIL', '') or LEASE_EMAIL_HOST_USER
 
 AUTH_USER_MODEL = 'docsAppR.CustomUser'
 
@@ -242,14 +266,59 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 # Celery Beat Schedule
 from celery.schedules import crontab
 
+# ── Dev Hub notification email ────────────────────────────────────────────
+NOTIFY_EMAIL = os.getenv('NOTIFY_EMAIL', 'wsbjoe9@gmail.com')
+
+# ── AI cost management ─────────────────────────────────────────────────────
+# Monthly spend threshold in USD — alert email goes to NOTIFY_EMAIL when crossed
+AI_MONTHLY_BUDGET_USD   = float(os.getenv('AI_MONTHLY_BUDGET_USD', '50.0'))
+# Fraction of budget that triggers a low-balance warning (0.8 = 80%)
+AI_LOW_BALANCE_THRESHOLD = float(os.getenv('AI_LOW_BALANCE_THRESHOLD', '0.80'))
+
 CELERY_BEAT_SCHEDULE = {
     'renew-onedrive-subscriptions': {
         'task': 'docsAppR.tasks.renew_subscriptions_task',
-        'schedule': crontab(minute='*/15'),  # Every 15 minutes
+        'schedule': crontab(minute='*/15'),
     },
     'check-delta-sync': {
         'task': 'docsAppR.tasks.check_all_folders_for_changes',
-        'schedule': crontab(minute='*/5'),  # Every 5 minutes (fallback)
+        'schedule': crontab(minute='*/5'),
+    },
+    # ── Email scheduling (was completely missing — root cause of scheduling bug)
+    'process-scheduled-emails': {
+        'task': 'email_manager.tasks.send_scheduled_emails_task',
+        'schedule': crontab(minute='*'),  # poll every minute
+    },
+    # ── Dev Hub: weekly progress report — Monday 8 AM
+    'dev-hub-weekly-report': {
+        'task': 'dev_hub.tasks.send_weekly_progress_report',
+        'schedule': crontab(hour=8, minute=0, day_of_week=1),
+    },
+    # ── AI: weekly cost report — Monday 8:05 AM (5 min after progress report)
+    'ai-weekly-cost-report': {
+        'task': 'dev_hub.tasks.send_weekly_ai_cost_report',
+        'schedule': crontab(hour=8, minute=5, day_of_week=1),
+    },
+    # ── AI: low-balance check — every hour
+    'ai-budget-alert-check': {
+        'task': 'dev_hub.tasks.check_ai_budget_alert',
+        'schedule': crontab(minute=0),  # top of every hour
+    },
+    # ── Encircle → Claimet daily inbound sync — every day at 6:00 AM ET
+    'encircle-daily-sync': {
+        'task': 'docsAppR.tasks.sync_encircle_claims_task',
+        'schedule': crontab(hour=6, minute=0),
+        'kwargs': {'triggered_by': 'schedule'},
+    },
+    # ── AR: batch follow-up emails — every minute (same cadence as send_scheduled_emails_task)
+    'process-scheduled-batch-emails': {
+        'task': 'email_manager.tasks.process_scheduled_batch_emails',
+        'schedule': crontab(minute='*'),
+    },
+    # ── AR: unopened/opened follow-up trigger check — every hour
+    'check-followup-triggers': {
+        'task': 'email_manager.tasks.check_followup_triggers',
+        'schedule': crontab(minute=0),
     },
 }
 
@@ -295,6 +364,14 @@ LOGGING = {
             'formatter': 'verbose',
         },
     },
+    'root': {
+        # Catch-all: any logger without an explicit entry below (including
+        # third-party libs) emits at INFO to file + console. Without this,
+        # records propagating to the root were dropped by Python's WARNING-level
+        # "last resort" handler, so INFO logs vanished in the web process.
+        'handlers': ['file', 'console'],
+        'level': 'INFO',
+    },
     'loggers': {
         'onedrive_sync': {
             'handlers': ['file', 'console'],
@@ -302,6 +379,21 @@ LOGGING = {
             'propagate': False,
         },
         'celery': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # The application package. claims_views, tasks, encircle_sync, etc. all
+        # log under "docsAppR.*" via logging.getLogger(__name__). These were
+        # never configured, so every claim-creation and Encircle-push log line
+        # was silently discarded in the web process. Emit them explicitly.
+        'docsAppR': {
+            'handlers': ['file', 'console'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        # Surface Django request/server errors too (e.g. 500s in views).
+        'django': {
             'handlers': ['file', 'console'],
             'level': 'INFO',
             'propagate': False,

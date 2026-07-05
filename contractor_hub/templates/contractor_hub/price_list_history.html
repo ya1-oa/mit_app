@@ -1,0 +1,133 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Price List History{% endblock %}
+
+{% block extra_css %}
+<style>
+.hero {
+    background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+    border-radius: 14px; padding: 24px 28px; color: #fff;
+    margin-bottom: 24px; display: flex; align-items: center; gap: 16px;
+}
+.hero-icon { width: 48px; height: 48px; background: rgba(255,255,255,.2);
+    border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; }
+.hero h2 { font-size: 19px; font-weight: 700; margin-bottom: 3px; }
+.hero p  { font-size: 13px; opacity: .85; margin: 0; }
+
+.card { background: #fff; border-radius: 12px; box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden; }
+
+.version-table { width: 100%; border-collapse: collapse; }
+.version-table thead th {
+    background: #f8fafc; padding: 10px 16px; text-align: left;
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .8px; color: #64748b; border-bottom: 1px solid #e2e8f0;
+}
+.version-table tbody td {
+    padding: 14px 16px; border-bottom: 1px solid #f1f5f9;
+    font-size: 13px; vertical-align: middle;
+}
+.version-table tbody tr:last-child td { border-bottom: none; }
+.version-table tbody tr:hover { background: #f8fafc; }
+
+.code-badge {
+    display: inline-block; padding: 4px 10px; border-radius: 6px;
+    background: #f3e8ff; color: #6d28d9; font-family: monospace;
+    font-size: 12px; font-weight: 700;
+}
+.stat-pill {
+    display: inline-block; padding: 2px 9px; border-radius: 20px; font-size: 11px; font-weight: 700;
+}
+.pill-new    { background: #d1fae5; color: #065f46; }
+.pill-update { background: #dbeafe; color: #1d4ed8; }
+.pill-skip   { background: #f1f5f9; color: #64748b;  }
+
+.btn { display: inline-flex; align-items: center; gap: 7px; padding: 9px 18px;
+    border-radius: 8px; font-size: 13px; font-weight: 600; cursor: pointer;
+    border: none; text-decoration: none; transition: opacity .15s; }
+.btn:hover { opacity: .88; text-decoration: none; }
+.btn-green  { background: #10b981; color: #fff; }
+.btn-ghost  { background: #f1f5f9; color: #334155; }
+
+.toolbar { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<div class="hero">
+    <div class="hero-icon"><i class="fas fa-history"></i></div>
+    <div>
+        <h2>Price List History</h2>
+        <p>All imported Xactimate price lists — full audit trail of rate changes.</p>
+    </div>
+</div>
+
+<div class="toolbar">
+    <a href="{% url 'contractor_hub:price_list_import' %}" class="btn btn-green">
+        <i class="fas fa-file-import"></i> Import New Price List
+    </a>
+    <a href="{% url 'contractor_hub:dashboard' %}" class="btn btn-ghost">
+        <i class="fas fa-arrow-left"></i> Back to Hub
+    </a>
+    <span style="margin-left:auto;font-size:13px;color:#64748b;">
+        {{ versions|length }} import{{ versions|length|pluralize }} on record
+    </span>
+</div>
+
+{% if versions %}
+<div class="card">
+    <table class="version-table">
+        <thead>
+            <tr>
+                <th>Price List Code</th>
+                <th>Market</th>
+                <th>Effective Date</th>
+                <th>Source File</th>
+                <th style="text-align:center;">Total</th>
+                <th style="text-align:center;">New</th>
+                <th style="text-align:center;">Updated</th>
+                <th style="text-align:center;">Unchanged</th>
+                <th>Imported By</th>
+                <th>Imported At</th>
+            </tr>
+        </thead>
+        <tbody>
+        {% for v in versions %}
+        <tr>
+            <td><span class="code-badge">{{ v.code }}</span></td>
+            <td>{{ v.market|default:"—" }}</td>
+            <td>{{ v.effective_date|date:"M Y"|default:"—" }}</td>
+            <td style="font-size:11px;color:#64748b;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">
+                {{ v.source_file|default:"—" }}
+            </td>
+            <td style="text-align:center;font-weight:700;">{{ v.total_items }}</td>
+            <td style="text-align:center;">
+                <span class="stat-pill pill-new">{{ v.items_created }}</span>
+            </td>
+            <td style="text-align:center;">
+                <span class="stat-pill pill-update">{{ v.items_updated }}</span>
+            </td>
+            <td style="text-align:center;">
+                <span class="stat-pill pill-skip">{{ v.items_skipped }}</span>
+            </td>
+            <td style="font-size:12px;">{{ v.imported_by.get_full_name|default:v.imported_by|default:"—" }}</td>
+            <td style="font-size:12px;color:#64748b;">{{ v.imported_at|date:"M j, Y g:i A" }}</td>
+        </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% else %}
+<div style="background:#fff;border-radius:12px;padding:56px;text-align:center;color:#94a3b8;
+            box-shadow:0 1px 6px rgba(0,0,0,.07);">
+    <i class="fas fa-history" style="font-size:40px;display:block;margin-bottom:12px;"></i>
+    <div style="font-weight:600;font-size:15px;color:#475569;margin-bottom:6px;">No imports yet</div>
+    <div style="font-size:13px;margin-bottom:20px;">Import your first Xactimate price list to begin.</div>
+    <a href="{% url 'contractor_hub:price_list_import' %}" class="btn btn-green">
+        <i class="fas fa-file-import"></i> Import Price List
+    </a>
+</div>
+{% endif %}
+
+{% endblock %}

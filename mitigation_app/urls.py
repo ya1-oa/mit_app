@@ -55,4 +55,16 @@ urlpatterns = [
     # CPS Schedule of Loss Report
     path('cps-report/', include('cps_report.urls')),
 
+    # Contractor Bid Hub
+    path('contractor-hub/', include('contractor_hub.urls')),
+
+    # Accounts Receivable Tracking — invoice communication activity + follow-ups
+    path('ar-tracking/', include('ar_tracking.urls')),
+
+    # Dev Hub — internal project tracking + notification hub
+    path('dev-hub/', include('dev_hub.urls')),
+
+    # Task Manager — team to-do / kanban board
+    path('tasks/', include('tasks.urls')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

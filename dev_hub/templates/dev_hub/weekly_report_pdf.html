@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>{{ report.title }} — {{ report.week_of_display }}</title>
+  {% include "dev_hub/_weekly_report_styles.html" %}
+  <style>
+    @page { size: A4; margin: 1.4cm; }
+    body { margin: 0; background: #fff; }
+    .wr-doc { padding: 0; max-width: none; }
+  </style>
+</head>
+<body>
+  {% include "dev_hub/_weekly_report_body.html" %}
+</body>
+</html>

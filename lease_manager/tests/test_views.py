@@ -15,7 +15,7 @@ User = get_user_model()
 class LeaseManagerAuthTests(TestCase):
 
     def test_dashboard_redirects_anonymous(self):
-        response = Client().get(reverse('lease_manager'))
+        response = Client().get(reverse('lease_manager:lease_manager'))
         self.assertEqual(response.status_code, 302)
 
 
@@ -28,15 +28,15 @@ class LeaseManagerDashboardTests(TestCase):
         self.claim = ClaimClient.objects.create(pOwner='Lease Test Client')
 
     def test_dashboard_returns_200(self):
-        response = self.http.get(reverse('lease_manager'))
+        response = self.http.get(reverse('lease_manager:lease_manager'))
         self.assertEqual(response.status_code, 200)
 
     def test_dashboard_context_has_leases(self):
-        response = self.http.get(reverse('lease_manager'))
+        response = self.http.get(reverse('lease_manager:lease_manager'))
         self.assertIn('leases', response.context)
 
     def test_dashboard_shows_lease_pipeline(self):
-        response = self.http.get(reverse('lease_manager'))
+        response = self.http.get(reverse('lease_manager:lease_manager'))
         self.assertEqual(response.status_code, 200)
         # Pipeline data should be in context
         context_keys = set(response.context.keys())
@@ -46,11 +46,11 @@ class LeaseManagerDashboardTests(TestCase):
         )
 
     def test_dashboard_filters_by_status(self):
-        response = self.http.get(reverse('lease_manager'), {'status': 'active'})
+        response = self.http.get(reverse('lease_manager:lease_manager'), {'status': 'active'})
         self.assertEqual(response.status_code, 200)
 
     def test_dashboard_filters_by_date_range(self):
-        response = self.http.get(reverse('lease_manager'), {'date_range': '7'})
+        response = self.http.get(reverse('lease_manager:lease_manager'), {'date_range': '7'})
         self.assertEqual(response.status_code, 200)
 
 
@@ -67,5 +67,8 @@ class LeaseDetailTests(TestCase):
         )
 
     def test_detail_404_for_nonexistent_lease(self):
-        response = self.http.get(reverse('lease_detail', args=[99999]))
+        import uuid
+        response = self.http.get(
+            reverse('lease_manager:lease_detail', args=[uuid.uuid4()])
+        )
         self.assertEqual(response.status_code, 404)

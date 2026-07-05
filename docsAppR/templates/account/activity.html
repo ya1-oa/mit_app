@@ -1,0 +1,310 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}System Activity Log{% endblock %}
+{% block page_title %}<i class="fas fa-history"></i> System Activity{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Stats row ─────────────────────────────────────────────────────────────── */
+.act-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: 14px;
+    margin-bottom: 24px;
+}
+.act-stat {
+    background: #fff;
+    border-radius: 10px;
+    padding: 16px 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    border-left: 4px solid #e2e8f0;
+}
+.act-stat.blue   { border-left-color: #3b82f6; }
+.act-stat.green  { border-left-color: #10b981; }
+.act-stat.amber  { border-left-color: #f59e0b; }
+.act-stat.red    { border-left-color: #ef4444; }
+.act-stat.purple { border-left-color: #8b5cf6; }
+.act-stat.cyan   { border-left-color: #06b6d4; }
+.act-stat-num  { font-size: 26px; font-weight: 800; color: #0f172a; line-height: 1; }
+.act-stat-lbl  { font-size: 11px; color: #64748b; margin-top: 4px; font-weight: 500; }
+
+/* ── Filter bar ─────────────────────────────────────────────────────────────── */
+.filter-bar {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px 18px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-bottom: 20px;
+}
+.filter-bar select, .filter-bar input {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 13px;
+    min-width: 160px;
+}
+.filter-bar select:focus, .filter-bar input:focus {
+    outline: none;
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 3px rgba(13,110,253,.12);
+}
+
+/* ── Activity list ──────────────────────────────────────────────────────────── */
+.act-list {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    overflow: hidden;
+}
+.act-row {
+    display: grid;
+    grid-template-columns: 44px 1fr auto;
+    gap: 14px;
+    align-items: start;
+    padding: 14px 18px;
+    border-bottom: 1px solid #f1f5f9;
+    transition: background .1s;
+}
+.act-row:last-child { border-bottom: none; }
+.act-row:hover      { background: #fafbff; }
+
+.act-icon {
+    width: 36px; height: 36px;
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 14px;
+    flex-shrink: 0;
+}
+.act-icon.email_sent     { background: #dbeafe; color: #1e40af; }
+.act-icon.package_sent   { background: #d1fae5; color: #065f46; }
+.act-icon.demand_letter  { background: #fee2e2; color: #b91c1c; }
+.act-icon.lease_created  { background: #ede9fe; color: #5b21b6; }
+.act-icon.lease_status_changed { background: #e0f2fe; color: #0369a1; }
+.act-icon.document_generated { background: #d1fae5; color: #065f46; }
+.act-icon.pdf_generated  { background: #fee2e2; color: #b91c1c; }
+.act-icon.note_added     { background: #fef3c7; color: #92400e; }
+.act-icon.claim_created  { background: #dbeafe; color: #1e40af; }
+.act-icon.file_uploaded  { background: #e0f2fe; color: #0369a1; }
+.act-icon.login          { background: #f0fdf4; color: #166534; }
+.act-icon.ale_sync       { background: #faf5ff; color: #6d28d9; }
+.act-icon.other          { background: #f1f5f9; color: #64748b; }
+
+.act-body {}
+.act-desc {
+    font-size: 13px;
+    color: #1e293b;
+    font-weight: 500;
+    line-height: 1.4;
+    margin-bottom: 4px;
+}
+.act-meta {
+    font-size: 11px;
+    color: #94a3b8;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: center;
+}
+.act-meta a { color: #64748b; text-decoration: none; }
+.act-meta a:hover { text-decoration: underline; }
+
+.act-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    white-space: nowrap;
+}
+.act-badge.email_sent     { background: #dbeafe; color: #1e40af; }
+.act-badge.package_sent   { background: #d1fae5; color: #065f46; }
+.act-badge.demand_letter  { background: #fee2e2; color: #b91c1c; }
+.act-badge.lease_created  { background: #ede9fe; color: #5b21b6; }
+.act-badge.lease_status_changed { background: #e0f2fe; color: #0369a1; }
+.act-badge.document_generated { background: #d1fae5; color: #065f46; }
+.act-badge.pdf_generated  { background: #fee2e2; color: #991b1b; }
+.act-badge.note_added     { background: #fef3c7; color: #92400e; }
+.act-badge.claim_created  { background: #dbeafe; color: #1e40af; }
+.act-badge.file_uploaded  { background: #e0f2fe; color: #0369a1; }
+.act-badge.login          { background: #f0fdf4; color: #166534; }
+.act-badge.ale_sync       { background: #faf5ff; color: #6d28d9; }
+.act-badge.other          { background: #f1f5f9; color: #475569; }
+
+.act-time { font-size: 11px; color: #94a3b8; white-space: nowrap; align-self: start; padding-top: 3px; }
+
+/* ── Pagination ─────────────────────────────────────────────────────────────── */
+.pag-bar {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    padding: 18px;
+    border-top: 1px solid #f1f5f9;
+}
+.pag-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 7px 16px; border-radius: 7px; font-size: 13px; font-weight: 600;
+    text-decoration: none; transition: all .15s;
+    border: 1px solid #dee2e6; color: #475569;
+}
+.pag-btn:hover { background: #f8fafc; border-color: #94a3b8; color: #0f172a; }
+.pag-info { font-size: 12px; color: #64748b; }
+
+/* ── Empty ─────────────────────────────────────────────────────────────────── */
+.act-empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: #94a3b8;
+}
+.act-empty i { font-size: 3rem; margin-bottom: 14px; display: block; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+<!-- Stats Cards -->
+<div class="act-stats">
+    <div class="act-stat blue">
+        <div class="act-stat-num">{{ stats.total }}</div>
+        <div class="act-stat-lbl">Total Actions</div>
+    </div>
+    <div class="act-stat green">
+        <div class="act-stat-num">{{ stats.today }}</div>
+        <div class="act-stat-lbl">Last 24 Hours</div>
+    </div>
+    <div class="act-stat amber">
+        <div class="act-stat-num">{{ stats.week }}</div>
+        <div class="act-stat-lbl">This Week</div>
+    </div>
+    <div class="act-stat cyan">
+        <div class="act-stat-num">{{ stats.emails }}</div>
+        <div class="act-stat-lbl">Emails Sent</div>
+    </div>
+    <div class="act-stat purple">
+        <div class="act-stat-num">{{ stats.leases }}</div>
+        <div class="act-stat-lbl">Lease Actions</div>
+    </div>
+    <div class="act-stat red">
+        <div class="act-stat-num">{{ stats.letters }}</div>
+        <div class="act-stat-lbl">Demand Letters</div>
+    </div>
+</div>
+
+<!-- Filters -->
+<form method="get" class="filter-bar">
+    <select name="action" onchange="this.form.submit()">
+        <option value="">All Actions</option>
+        {% for val, lbl in action_choices %}
+        <option value="{{ val }}" {% if action_filter == val %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+    </select>
+    <input type="text" name="user" placeholder="Filter by user email…"
+           value="{{ user_filter }}" onchange="this.form.submit()">
+    {% if action_filter or user_filter %}
+    <a href="{% url 'activity_page' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-times me-1"></i> Clear
+    </a>
+    {% endif %}
+    <span class="text-muted" style="font-size:12px; margin-left:auto;">
+        {{ total }} record{{ total|pluralize }}
+    </span>
+</form>
+
+<!-- Activity List -->
+<div class="act-list">
+    {% if activities %}
+        {% for act in activities %}
+        <div class="act-row">
+
+            <!-- Icon -->
+            <div class="act-icon {{ act.action_type }}">
+                {% if act.action_type == 'email_sent' or act.action_type == 'package_sent' %}
+                    <i class="fas fa-envelope"></i>
+                {% elif act.action_type == 'demand_letter' %}
+                    <i class="fas fa-gavel"></i>
+                {% elif act.action_type == 'lease_created' %}
+                    <i class="fas fa-file-contract"></i>
+                {% elif act.action_type == 'lease_status_changed' %}
+                    <i class="fas fa-exchange-alt"></i>
+                {% elif act.action_type == 'document_generated' or act.action_type == 'pdf_generated' %}
+                    <i class="fas fa-file-pdf"></i>
+                {% elif act.action_type == 'note_added' %}
+                    <i class="fas fa-sticky-note"></i>
+                {% elif act.action_type == 'claim_created' %}
+                    <i class="fas fa-folder-plus"></i>
+                {% elif act.action_type == 'file_uploaded' %}
+                    <i class="fas fa-upload"></i>
+                {% elif act.action_type == 'login' %}
+                    <i class="fas fa-sign-in-alt"></i>
+                {% elif act.action_type == 'ale_sync' %}
+                    <i class="fas fa-sync-alt"></i>
+                {% else %}
+                    <i class="fas fa-circle-dot"></i>
+                {% endif %}
+            </div>
+
+            <!-- Body -->
+            <div class="act-body">
+                <div class="act-desc">{{ act.description }}</div>
+                <div class="act-meta">
+                    <span class="act-badge {{ act.action_type }}">{{ act.get_action_type_display }}</span>
+                    {% if act.performed_by %}
+                    <span><i class="fas fa-user fa-xs me-1"></i>{{ act.performed_by.email }}</span>
+                    {% endif %}
+                    {% if act.related_client %}
+                    <span><i class="fas fa-folder fa-xs me-1"></i>
+                        <a href="/claims/{{ act.related_client.id }}/">{{ act.related_client.pOwner }}</a>
+                    </span>
+                    {% endif %}
+                    {% if act.related_lease %}
+                    <span><i class="fas fa-file-contract fa-xs me-1"></i>
+                        <a href="/lease-manager/">Lease</a>
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Time -->
+            <div class="act-time" title="{{ act.created_at|date:'Y-m-d H:i:s' }}">
+                {{ act.created_at|timesince }} ago
+            </div>
+
+        </div>
+        {% endfor %}
+
+        <!-- Pagination -->
+        <div class="pag-bar">
+            {% if has_prev %}
+            <a href="?page={{ prev_page }}&action={{ action_filter }}&user={{ user_filter }}" class="pag-btn">
+                <i class="fas fa-chevron-left"></i> Prev
+            </a>
+            {% endif %}
+            <span class="pag-info">Page {{ page }} · {{ total }} total</span>
+            {% if has_more %}
+            <a href="?page={{ next_page }}&action={{ action_filter }}&user={{ user_filter }}" class="pag-btn">
+                Next <i class="fas fa-chevron-right"></i>
+            </a>
+            {% endif %}
+        </div>
+
+    {% else %}
+        <div class="act-empty">
+            <i class="fas fa-history"></i>
+            <p style="font-size:15px; font-weight:600; color:#64748b;">No activity recorded yet.</p>
+            <p style="font-size:13px;">Actions across all apps will appear here as they happen.</p>
+        </div>
+    {% endif %}
+</div>
+
+</div>
+{% endblock %}

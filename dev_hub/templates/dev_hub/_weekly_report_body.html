@@ -1,0 +1,87 @@
+{# The report content itself. Shared by the on-screen detail page and the PDF.
+   Expects: report, day_rows, current_day, generated_on. #}
+<div class="wr-doc">
+
+  <h1 class="wr-title">{{ report.title }}</h1>
+  <p class="wr-weekof">Week of: <strong>{{ report.week_of_display }}</strong></p>
+
+  {# ── Weekly Objectives ─────────────────────────────────────────────── #}
+  <h2 class="wr-h2">Weekly Objectives</h2>
+  {% if report.weekly_objectives %}
+    <ul class="wr-check">
+      {% for obj in report.weekly_objectives %}
+        <li class="{% if obj.done %}done{% endif %}">{{ obj.text }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="wr-empty">No weekly objectives set.</p>
+  {% endif %}
+
+  {# ── Daily breakdown (Mon–Fri) ─────────────────────────────────────── #}
+  {% for day in day_rows %}
+    <div class="wr-day {% if day.name == current_day %}wr-day--current{% endif %}">
+      <div class="wr-dayname">
+        {{ day.name }}
+        {% if day.name == current_day %}<span class="wr-today-badge">Today</span>{% endif %}
+      </div>
+
+      {% if day.objectives %}
+        <div class="wr-sub">Daily Objectives</div>
+        <ul class="wr-list">
+          {% for item in day.objectives %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if day.accomplishments %}
+        <div class="wr-sub">End of Day Progress — Accomplishments</div>
+        <ul class="wr-list">
+          {% for item in day.accomplishments %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if day.goal_progress %}
+        <div class="wr-sub">Weekly Goal Progress</div>
+        <ul class="wr-list">
+          {% for item in day.goal_progress %}<li>{{ item }}</li>{% endfor %}
+        </ul>
+      {% endif %}
+
+      {% if not day.objectives and not day.accomplishments and not day.goal_progress %}
+        <p class="wr-empty">No entries yet.</p>
+      {% endif %}
+    </div>
+  {% endfor %}
+
+  {# ── Weekly Summary ────────────────────────────────────────────────── #}
+  <h2 class="wr-h2">Weekly Summary</h2>
+
+  <div class="wr-sub">Completed Deliverables</div>
+  {% if report.completed_deliverables %}
+    <ul class="wr-deliverables">
+      {% for item in report.completed_deliverables %}<li>{{ item }}</li>{% endfor %}
+    </ul>
+  {% else %}
+    <p class="wr-empty">None recorded.</p>
+  {% endif %}
+
+  <div class="wr-status-row">
+    <div class="wr-sub">Overall Status</div>
+    <span class="wr-status {% if 'complete' not in report.overall_status|lower %}is-progress{% endif %}">
+      {{ report.overall_status }}
+    </span>
+  </div>
+
+  {# ── Next Week Priorities ──────────────────────────────────────────── #}
+  <h2 class="wr-h2">Next Week Priorities</h2>
+  {% if report.next_week_priorities %}
+    <ul class="wr-check">
+      {% for obj in report.next_week_priorities %}
+        <li class="{% if obj.done %}done{% endif %}">{{ obj.text }}</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="wr-empty">No priorities set.</p>
+  {% endif %}
+
+  <div class="wr-footer">Generated {{ generated_on }} · Internal use only</div>
+</div>

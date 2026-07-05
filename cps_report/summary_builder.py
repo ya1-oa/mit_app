@@ -2,7 +2,7 @@
 Build per-room summary views for a CPSReportSession.
 
 A "summary" condenses each room to a single row:
-  Room | # Items | RCV Total | Depreciation | ACV Total
+  Room | # Items | RCV Total
 
 Outputs: HTML context dict, PDF bytes (ReportLab), Excel bytes (openpyxl).
 """
@@ -19,30 +19,19 @@ def compute_summary(session) -> dict:
     rows = []
     grand_items = 0
     grand_rcv = 0.0
-    grand_dep = 0.0
-    grand_acv = 0.0
 
     for room in session.rooms.prefetch_related('items').order_by('order', 'room_number'):
         items = list(room.items.all())
         rcv = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in items)
-        dep = sum(
-            float(i.depreciation_amount or 0) for i in items
-            if i.depreciation_amount is not None
-        )
-        acv = rcv - dep
 
         grand_items += len(items)
         grand_rcv   += rcv
-        grand_dep   += dep
-        grand_acv   += acv
 
         rows.append({
             'room_number':    room.room_number,
             'room_name':      room.room_name,
             'item_count':     len(items),
             'rcv_total':      rcv,
-            'depreciation':   dep,
-            'acv_total':      acv,
             'status':         room.status,
             'ai_confidence':  room.ai_confidence,
         })
@@ -52,8 +41,6 @@ def compute_summary(session) -> dict:
         'rows':         rows,
         'grand_items':  grand_items,
         'grand_rcv':    grand_rcv,
-        'grand_dep':    grand_dep,
-        'grand_acv':    grand_acv,
         'generated_at': datetime.datetime.now(),
     }
 
@@ -140,8 +127,8 @@ def build_summary_pdf(session) -> bytes:
     story.append(Spacer(1, 14))
 
     # Table header
-    col_widths = [pw * 0.06, pw * 0.26, pw * 0.10, pw * 0.19, pw * 0.19, pw * 0.20]
-    hdr = ['#', 'Room', 'Items', 'RCV Total', 'Depreciation', 'ACV Total']
+    col_widths = [pw * 0.07, pw * 0.33, pw * 0.12, pw * 0.48]
+    hdr = ['#', 'Room', 'Items', 'RCV Total']
     table_data = [hdr]
 
     for row in data['rows']:
@@ -150,16 +137,12 @@ def build_summary_pdf(session) -> bytes:
             row['room_name'],
             str(row['item_count']),
             _fmt(row['rcv_total']),
-            _fmt(row['depreciation']),
-            _fmt(row['acv_total']),
         ])
 
     table_data.append([
         '', 'GRAND TOTAL',
         str(data['grand_items']),
         _fmt(data['grand_rcv']),
-        _fmt(data['grand_dep']),
-        _fmt(data['grand_acv']),
     ])
 
     tbl = Table(table_data, colWidths=col_widths, repeatRows=1)
@@ -226,20 +209,20 @@ def build_summary_excel(session) -> bytes:
 
     wb = Workbook()
     ws = wb.active
-    ws.title = 'CPS Summary'
+    ws.title = 'PPR Summary'
     ws.freeze_panes = 'A5'
 
     # Title
-    ws.merge_cells('A1:F1')
+    ws.merge_cells('A1:D1')
     c = ws['A1']
-    c.value = 'CPS Schedule of Loss — Summary'
+    c.value = 'PPR Schedule of Loss — Summary'
     c.font  = Font(bold=True, color='FFFFFF', size=14)
     c.fill  = BLUE_FILL
     c.alignment = Alignment(horizontal='center', vertical='center')
     ws.row_dimensions[1].height = 28
 
     # Meta row
-    ws.merge_cells('A2:F2')
+    ws.merge_cells('A2:D2')
     insured = session.insured_name or (session.client.pOwner if session.client else '—')
     claim   = session.claim_number or session.encircle_claim_id or '—'
     ws['A2'].value = f"Insured: {insured}   |   Claim #: {claim}"
@@ -247,7 +230,7 @@ def build_summary_excel(session) -> bytes:
     ws['A2'].fill  = PatternFill('solid', fgColor='EFF6FF')
     ws['A2'].alignment = Alignment(horizontal='center')
 
-    ws.merge_cells('A3:F3')
+    ws.merge_cells('A3:D3')
     ws['A3'].value = f"Generated: {data['generated_at'].strftime('%B %d, %Y %I:%M %p')}"
     ws['A3'].font  = Font(size=8, color='64748B')
     ws['A3'].alignment = Alignment(horizontal='center')
@@ -255,7 +238,7 @@ def build_summary_excel(session) -> bytes:
     ws.row_dimensions[4].height = 4  # spacer
 
     # Header row (row 5)
-    headers = ['Room #', 'Room Name', '# Items', 'RCV Total', 'Depreciation', 'ACV Total']
+    headers = ['Room #', 'Room Name', '# Items', 'RCV Total']
     for col, hdr in enumerate(headers, 1):
         c = ws.cell(row=5, column=col, value=hdr)
         c.font      = WHITE_BOLD
@@ -272,8 +255,6 @@ def build_summary_excel(session) -> bytes:
             row['room_name'],
             row['item_count'],
             _fmt(row['rcv_total']),
-            _fmt(row['depreciation']),
-            _fmt(row['acv_total']),
         ]
         for col, val in enumerate(vals, 1):
             c = ws.cell(row=i, column=col, value=val)
@@ -285,14 +266,12 @@ def build_summary_excel(session) -> bytes:
             )
             if fill:
                 c.fill = fill
-            # Format currency columns
             if col >= 4:
                 c.number_format = '"$"#,##0.00'
 
     # Grand total row
     gt_row = 6 + len(data['rows'])
-    gt_vals = ['', 'GRAND TOTAL', data['grand_items'],
-               _fmt(data['grand_rcv']), _fmt(data['grand_dep']), _fmt(data['grand_acv'])]
+    gt_vals = ['', 'GRAND TOTAL', data['grand_items'], _fmt(data['grand_rcv'])]
     for col, val in enumerate(gt_vals, 1):
         c = ws.cell(row=gt_row, column=col, value=val)
         c.font   = WHITE_BOLD
@@ -305,11 +284,9 @@ def build_summary_excel(session) -> bytes:
 
     # Column widths
     ws.column_dimensions['A'].width = 10
-    ws.column_dimensions['B'].width = 32
+    ws.column_dimensions['B'].width = 40
     ws.column_dimensions['C'].width = 10
-    ws.column_dimensions['D'].width = 16
-    ws.column_dimensions['E'].width = 16
-    ws.column_dimensions['F'].width = 16
+    ws.column_dimensions['D'].width = 18
 
     buf = BytesIO()
     wb.save(buf)

@@ -1,0 +1,380 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Estimate {{ estimate.estimate_number|default:estimate.pk }}{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── LAYOUT ─────────────────────────────────────────────────────────── */
+.est-layout { display: grid; grid-template-columns: 1fr 300px; gap: 20px; align-items: start; }
+@media (max-width: 900px) { .est-layout { grid-template-columns: 1fr; } }
+
+/* ── HEADER ──────────────────────────────────────────────────────────── */
+.est-header {
+    background: linear-gradient(135deg, #7c3aed 0%, #a855f7 100%);
+    border-radius: 14px; padding: 22px 28px; color: #fff;
+    margin-bottom: 20px; display: flex; align-items: center; gap: 16px;
+}
+.est-header-meta { flex: 1; }
+.est-header h2   { font-size: 20px; font-weight: 700; margin: 0 0 4px; }
+.est-header p    { font-size: 13px; opacity: .85; margin: 0; }
+.est-header-btns { display: flex; gap: 8px; flex-shrink: 0; }
+
+/* ── TOTALS SIDEBAR ──────────────────────────────────────────────────── */
+.totals-card {
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08); overflow: hidden;
+    position: sticky; top: 20px;
+}
+.totals-header { background: #7c3aed; color: #fff; padding: 14px 18px; font-size: 13px; font-weight: 700; }
+.totals-body   { padding: 16px 18px; }
+.totals-row    { display: flex; justify-content: space-between; align-items: center;
+    padding: 7px 0; border-bottom: 1px solid #f1f5f9; font-size: 13px; }
+.totals-row:last-child { border-bottom: none; }
+.totals-row.grand { font-weight: 800; font-size: 16px; color: #0f172a; padding-top: 10px; }
+.totals-row .lbl  { color: #64748b; }
+.totals-row .val  { font-family: monospace; font-weight: 600; }
+.totals-row.grand .val { color: #7c3aed; font-size: 18px; }
+
+/* ── SECTION CARDS ───────────────────────────────────────────────────── */
+.section-card {
+    background: #fff; border-radius: 12px;
+    box-shadow: 0 1px 6px rgba(0,0,0,.08); margin-bottom: 16px; overflow: hidden;
+}
+.section-card-header {
+    display: flex; align-items: center; gap: 12px;
+    padding: 14px 18px; border-bottom: 1px solid #f1f5f9; cursor: pointer;
+    user-select: none;
+}
+.section-card-header:hover { background: #fafafa; }
+.section-number {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: #f3e8ff; color: #7c3aed;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 12px; font-weight: 700; flex-shrink: 0;
+}
+.section-title-block { flex: 1; }
+.section-title { font-size: 13px; font-weight: 700; color: #0f172a; }
+.section-sub   { font-size: 11px; color: #94a3b8; margin-top: 2px; }
+.section-subtotal-chip {
+    background: #f3e8ff; color: #6d28d9;
+    padding: 4px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; font-family: monospace;
+}
+.section-collapse-icon { color: #94a3b8; transition: transform .2s; }
+.section-collapse-icon.open { transform: rotate(180deg); }
+
+/* ── XACTIMATE ESTIMATE TABLE ────────────────────────────────────────── */
+.xact-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.xact-table thead th {
+    background: #f8fafc; padding: 7px 10px; text-align: left;
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .7px; color: #64748b; border-bottom: 1px solid #e2e8f0;
+}
+.xact-table thead th.r { text-align: right; }
+.xact-table tbody td {
+    padding: 8px 10px; border-bottom: 1px solid #f8fafc; vertical-align: middle;
+}
+.xact-table tbody tr:last-child td { border-bottom: none; }
+.xact-table tbody tr:hover { background: #fafafa; }
+.xact-table tbody tr.bid-item td { font-style: italic; }
+.xact-table tbody tr.memo-row td { color: #64748b; font-style: italic; }
+
+.td-cat { font-family: monospace; font-size: 11px; font-weight: 600; color: #7c3aed; width: 50px; }
+.td-sel { font-family: monospace; font-size: 11px; width: 80px; }
+.td-desc { max-width: 280px; }
+.td-num  { text-align: right; font-family: monospace; width: 80px; }
+.td-tax  { text-align: center; width: 35px; font-size: 11px; }
+.bid-badge { background: #fef3c7; color: #92400e; padding: 1px 6px; border-radius: 4px; font-size: 10px; font-weight: 700; }
+
+.section-footer {
+    display: flex; justify-content: flex-end; align-items: center;
+    padding: 10px 18px; background: #f8fafc; border-top: 1px solid #e2e8f0;
+    gap: 16px; font-size: 13px;
+}
+.section-footer .sf-label { color: #64748b; }
+.section-footer .sf-total { font-weight: 700; font-family: monospace; color: #0f172a; }
+
+/* ── STATUS BADGE ────────────────────────────────────────────────────── */
+.badge-status { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 600; }
+.badge-draft      { background: #f1f5f9; color: #475569; }
+.badge-submitted  { background: #dbeafe; color: #1d4ed8; }
+.badge-approved   { background: #d1fae5; color: #065f46; }
+.badge-billed     { background: #fef3c7; color: #92400e; }
+.badge-paid       { background: #dcfce7; color: #14532d; }
+.badge-cancelled  { background: #fee2e2; color: #991b1b; }
+
+/* ── BUTTONS ─────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; gap: 6px;
+    padding: 8px 16px; border-radius: 8px; font-size: 12px; font-weight: 600;
+    cursor: pointer; border: none; text-decoration: none; transition: opacity .15s; }
+.btn:hover { opacity: .88; text-decoration: none; }
+.btn-purple  { background: #7c3aed; color: #fff; }
+.btn-white   { background: rgba(255,255,255,.2); color: #fff; border: 1px solid rgba(255,255,255,.4); }
+.btn-white:hover { background: rgba(255,255,255,.3); }
+.btn-ghost   { background: #f1f5f9; color: #334155; }
+.btn-sm      { padding: 5px 12px; font-size: 11px; }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Header -->
+<div class="est-header">
+    <div class="est-header-meta">
+        <h2>{{ estimate.estimate_number|default:"(No Number)" }}</h2>
+        <p>
+            {{ estimate.client.pOwner }} &nbsp;·&nbsp;
+            GC: {{ estimate.gc_contractor.name }} &nbsp;·&nbsp;
+            <span class="badge-status badge-{{ estimate.status }}">{{ estimate.get_status_display }}</span>
+            &nbsp;·&nbsp; {{ estimate.type_of_estimate }}
+            {% if estimate.date_entered %}&nbsp;·&nbsp; {{ estimate.date_entered|date:"M j, Y" }}{% endif %}
+            {% if estimate.price_list %}&nbsp;·&nbsp; Price List: <strong>{{ estimate.price_list }}</strong>{% endif %}
+        </p>
+    </div>
+    <div class="est-header-btns">
+        <a href="{% url 'contractor_hub:estimate_edit' estimate.pk %}" class="btn btn-white">
+            <i class="fas fa-edit"></i> Edit
+        </a>
+        <a href="{% url 'contractor_hub:estimate_pdf' estimate.pk %}" class="btn btn-white">
+            <i class="fas fa-file-pdf"></i> PDF
+        </a>
+        <a href="{% url 'contractor_hub:estimate_excel' estimate.pk %}" class="btn btn-white">
+            <i class="fas fa-file-excel"></i> Excel
+        </a>
+    </div>
+</div>
+
+<div class="est-layout">
+
+<!-- ── LEFT: Sections ─────────────────────────────────────────────── -->
+<div>
+
+{% for section in sections %}
+<div class="section-card" id="section-card-{{ section.pk }}">
+
+    <!-- Section Header (collapsible) -->
+    <div class="section-card-header" onclick="toggleSection({{ section.pk }})">
+        <div class="section-number">{{ section.order }}</div>
+        <div class="section-title-block">
+            <div class="section-title">{{ section.section_label }}</div>
+            <div class="section-sub">
+                {% if section.subcontractor %}
+                    <i class="fas fa-building" style="font-size:10px;"></i>
+                    {{ section.subcontractor.name }}
+                    &nbsp;·&nbsp;
+                    <span style="text-transform:capitalize;">{{ section.bid_status }}</span>
+                {% else %}
+                    <i class="fas fa-hammer" style="font-size:10px;"></i> GC Direct
+                {% endif %}
+                &nbsp;·&nbsp; {{ section.line_items.count }} line item{{ section.line_items.count|pluralize }}
+            </div>
+        </div>
+        <span class="section-subtotal-chip" id="sub-chip-{{ section.pk }}">
+            ${{ section.section_subtotal|floatformat:2 }}
+        </span>
+        <i class="fas fa-chevron-down section-collapse-icon open" id="chevron-{{ section.pk }}"></i>
+    </div>
+
+    <!-- Section Body -->
+    <div id="section-body-{{ section.pk }}">
+
+        <!-- Line Items Table -->
+        {% if section.line_items.all %}
+        <table class="xact-table">
+            <thead>
+                <tr>
+                    <th class="td-cat">CAT</th>
+                    <th class="td-sel">SEL</th>
+                    <th class="td-desc">Description</th>
+                    <th class="r" style="width:60px;">Qty</th>
+                    <th style="width:40px;">Unit</th>
+                    <th class="r">Remove</th>
+                    <th class="r">Replace</th>
+                    <th class="td-tax">Tax</th>
+                    <th class="r">Total</th>
+                    <th style="width:30px;"></th>
+                </tr>
+            </thead>
+            <tbody id="tbody-{{ section.pk }}">
+            {% for li in section.line_items.all %}
+            <tr id="li-row-{{ li.pk }}"
+                class="{% if li.is_bid_item %}bid-item{% endif %}{% if li.is_memo %}memo-row{% endif %}">
+                <td class="td-cat">{{ li.cat }}</td>
+                <td class="td-sel">
+                    {{ li.sel }}
+                    {% if li.is_bid_item %}<span class="bid-badge">[*]</span>{% endif %}
+                </td>
+                <td class="td-desc">{{ li.description }}</td>
+                <td class="td-num">{{ li.quantity|floatformat:2 }}</td>
+                <td style="font-size:11px;color:#64748b;">{{ li.unit }}</td>
+                <td class="td-num">${{ li.remove_rate|floatformat:2 }}</td>
+                <td class="td-num">${{ li.replace_rate|floatformat:2 }}</td>
+                <td class="td-tax">{{ li.taxable|yesno:"T," }}</td>
+                <td class="td-num" id="li-total-{{ li.pk }}">${{ li.line_total|floatformat:2 }}</td>
+                <td>
+                    <button class="btn btn-ghost btn-sm"
+                            onclick="deleteLine({{ li.pk }}, {{ section.pk }})"
+                            title="Delete line">
+                        <i class="fas fa-times" style="font-size:10px;color:#ef4444;"></i>
+                    </button>
+                </td>
+            </tr>
+            {% endfor %}
+            </tbody>
+        </table>
+        {% else %}
+        <div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px;">
+            No line items yet.
+        </div>
+        {% endif %}
+
+        <!-- Section Footer -->
+        <div class="section-footer">
+            <a href="{% url 'contractor_hub:section_detail' estimate.pk section.pk %}"
+               class="btn btn-ghost btn-sm">
+                <i class="fas fa-pencil-alt"></i> Manage Lines
+            </a>
+            <a href="{% url 'contractor_hub:section_invoice_pdf' estimate.pk section.pk %}"
+               class="btn btn-ghost btn-sm" target="_blank" title="Download subcontractor invoice PDF">
+                <i class="fas fa-file-invoice" style="color:#7c3aed;"></i> Sub Invoice
+            </a>
+            {% if section.section_type in 'packing,cleaning,transport' %}
+            <form method="post"
+                  action="{% url 'contractor_hub:section_import_cps' estimate.pk section.pk %}"
+                  style="display:inline;">
+                {% csrf_token %}
+                <button type="submit" class="btn btn-ghost btn-sm">
+                    <i class="fas fa-box"></i> Import from CPS
+                </button>
+            </form>
+            {% endif %}
+            <span style="flex:1;"></span>
+            <span class="sf-label">Section Subtotal:</span>
+            <span class="sf-total" id="sf-total-{{ section.pk }}">${{ section.section_subtotal|floatformat:2 }}</span>
+        </div>
+    </div><!-- /section-body -->
+
+</div><!-- /section-card -->
+{% endfor %}
+
+</div><!-- /left -->
+
+<!-- ── RIGHT: Totals Sidebar ─────────────────────────────────────────── -->
+<div>
+    <div class="totals-card">
+        <div class="totals-header"><i class="fas fa-calculator" style="margin-right:8px;"></i>Estimate Totals</div>
+        <div class="totals-body">
+            {% for section in sections %}
+            <div class="totals-row">
+                <span class="lbl" style="font-size:11px;">{{ section.order }}. {{ section.get_section_type_display }}</span>
+                <span class="val" style="font-size:12px;" id="sidebar-{{ section.pk }}">
+                    ${{ section.section_subtotal|floatformat:2 }}
+                </span>
+            </div>
+            {% endfor %}
+
+            <div style="border-top:2px solid #e2e8f0;margin:8px 0;"></div>
+
+            <div class="totals-row">
+                <span class="lbl">Line Item Total</span>
+                <span class="val" id="t-subtotal">${{ estimate.line_item_total|floatformat:2 }}</span>
+            </div>
+            <div class="totals-row">
+                <span class="lbl">Overhead ({{ estimate.overhead_pct }}%)</span>
+                <span class="val" id="t-overhead">${{ estimate.overhead_amount|floatformat:2 }}</span>
+            </div>
+            <div class="totals-row">
+                <span class="lbl">Profit ({{ estimate.profit_pct }}%)</span>
+                <span class="val" id="t-profit">${{ estimate.profit_amount|floatformat:2 }}</span>
+            </div>
+            <div class="totals-row">
+                <span class="lbl">Tax ({{ estimate.tax_rate }}%)</span>
+                <span class="val" id="t-tax">${{ estimate.tax_amount|floatformat:2 }}</span>
+            </div>
+            <div class="totals-row grand">
+                <span class="lbl">Grand Total</span>
+                <span class="val" id="t-grand">${{ estimate.grand_total|floatformat:2 }}</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Quick Info -->
+    <div style="background:#fff;border-radius:12px;padding:16px 18px;
+                box-shadow:0 1px 6px rgba(0,0,0,.08);margin-top:12px;font-size:12px;">
+        <div style="font-weight:700;color:#475569;margin-bottom:10px;font-size:11px;
+                    text-transform:uppercase;letter-spacing:1px;">Estimate Info</div>
+        <div style="display:flex;flex-direction:column;gap:6px;color:#64748b;">
+            <div>
+                <strong style="color:#334155;">Client:</strong><br>
+                {{ estimate.client.pOwner }}
+                {% if estimate.client.pAddress %}<br><span style="color:#94a3b8;">{{ estimate.client.pAddress }}</span>{% endif %}
+            </div>
+            <div><strong style="color:#334155;">GC:</strong> {{ estimate.gc_contractor.name }}</div>
+            {% if estimate.estimator %}
+            <div><strong style="color:#334155;">Estimator:</strong> {{ estimate.estimator.name }}</div>
+            {% endif %}
+            {% if estimate.price_list %}
+            <div><strong style="color:#334155;">Price List:</strong> {{ estimate.price_list }}</div>
+            {% endif %}
+            <div><strong style="color:#334155;">Created:</strong> {{ estimate.created_at|date:"M j, Y" }}</div>
+        </div>
+    </div>
+</div><!-- /right -->
+
+</div><!-- /est-layout -->
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const TOTALS_URL = '{% url "contractor_hub:api_estimate_totals" estimate.pk %}';
+const CSRF = document.querySelector('[name=csrfmiddlewaretoken]')?.value ||
+             '{{ csrf_token }}';
+
+// ── Section collapse ──────────────────────────────────────────────────
+function toggleSection(pk) {
+    const body    = document.getElementById('section-body-' + pk);
+    const chevron = document.getElementById('chevron-' + pk);
+    const open    = body.style.display !== 'none';
+    body.style.display    = open ? 'none' : '';
+    chevron.classList.toggle('open', !open);
+}
+
+// ── Delete line item ──────────────────────────────────────────────────
+function deleteLine(liPk, sectionPk) {
+    if (!confirm('Delete this line item?')) return;
+    fetch('/contractor-hub/api/lineitem/' + liPk + '/delete/', {
+        method: 'POST',
+        headers: { 'X-CSRFToken': CSRF },
+    })
+    .then(r => r.json())
+    .then(() => {
+        document.getElementById('li-row-' + liPk)?.remove();
+        refreshTotals();
+    })
+    .catch(console.error);
+}
+
+// ── Refresh totals sidebar ────────────────────────────────────────────
+function refreshTotals() {
+    fetch(TOTALS_URL)
+        .then(r => r.json())
+        .then(d => {
+            document.getElementById('t-subtotal').textContent = '$' + d.line_item_total.toFixed(2);
+            document.getElementById('t-overhead').textContent = '$' + d.overhead.toFixed(2);
+            document.getElementById('t-profit').textContent   = '$' + d.profit.toFixed(2);
+            document.getElementById('t-tax').textContent      = '$' + d.tax.toFixed(2);
+            document.getElementById('t-grand').textContent    = '$' + d.grand_total.toFixed(2);
+            d.sections.forEach(s => {
+                const chip = document.getElementById('sub-chip-' + s.id);
+                const foot = document.getElementById('sf-total-' + s.id);
+                const side = document.getElementById('sidebar-' + s.id);
+                const fmt  = '$' + s.subtotal.toFixed(2);
+                if (chip) chip.textContent = fmt;
+                if (foot) foot.textContent = fmt;
+                if (side) side.textContent = fmt;
+            });
+        })
+        .catch(console.error);
+}
+</script>
+{% endblock %}

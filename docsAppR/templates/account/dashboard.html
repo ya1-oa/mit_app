@@ -34,6 +34,224 @@
             </div>
         </div>
 
+        <!-- ══ Encircle Sync Status Widget ══════════════════════════════════ -->
+        <div id="encircle-sync-widget" style="
+            background:#fff; border:1px solid #e2e8f0; border-radius:.9rem;
+            box-shadow:0 2px 10px rgba(15,23,42,.06); padding:1.25rem 1.5rem;
+            margin-bottom:1.5rem; position:relative; overflow:hidden;
+        ">
+          <!-- accent bar -->
+          <div style="
+            position:absolute; left:0; top:0; bottom:0; width:4px;
+            background:linear-gradient(180deg,#6366f1,#8b5cf6);
+            border-radius:4px 0 0 4px;
+          "></div>
+
+          <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:.75rem;">
+            <!-- Header -->
+            <div>
+              <h3 style="margin:0 0 .25rem; font-size:1rem; font-weight:700; color:#1e293b; display:flex; align-items:center; gap:.5rem;">
+                <span style="font-size:1.2rem;">🔄</span> Encircle Sync Status
+              </h3>
+              <p style="margin:0; font-size:.78rem; color:#64748b;">
+                Auto-syncs daily at 6 AM · Keeps Claimet up-to-date with Encircle
+              </p>
+            </div>
+
+            <!-- Manual sync button -->
+            <button id="sync-trigger-btn" onclick="triggerEncircleSync()" style="
+              background:linear-gradient(135deg,#6366f1,#8b5cf6); color:#fff;
+              border:none; padding:.45rem 1rem; border-radius:.5rem; font-size:.82rem;
+              font-weight:600; cursor:pointer; display:flex; align-items:center; gap:.4rem;
+              transition:opacity .15s;
+            " title="Run sync now">
+              <span id="sync-btn-icon">⚡</span> Sync Now
+            </button>
+          </div>
+
+          <!-- Stats row -->
+          <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:.75rem; margin-top:1rem;">
+
+            <!-- Last sync -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem 1rem;">
+              <div style="font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; margin-bottom:.25rem;">Last Sync</div>
+              <div id="sync-last-time" style="font-size:.85rem; font-weight:600; color:#1e293b;">
+                {% if encircle_sync_log %}
+                  {{ encircle_sync_log.started_at|date:"M j, Y g:i A" }}
+                {% else %}
+                  Never run
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Status -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem 1rem;">
+              <div style="font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; margin-bottom:.25rem;">Status</div>
+              <div id="sync-status-badge">
+                {% if encircle_sync_log %}
+                  {% if encircle_sync_log.status == 'success' %}
+                    <span style="display:inline-flex;align-items:center;gap:.3rem;background:#dcfce7;color:#15803d;padding:.2rem .6rem;border-radius:99px;font-size:.78rem;font-weight:700;">✔ Success</span>
+                  {% elif encircle_sync_log.status == 'running' %}
+                    <span style="display:inline-flex;align-items:center;gap:.3rem;background:#dbeafe;color:#1d4ed8;padding:.2rem .6rem;border-radius:99px;font-size:.78rem;font-weight:700;" id="running-badge">⏳ Running…</span>
+                  {% elif encircle_sync_log.status == 'partial' %}
+                    <span style="display:inline-flex;align-items:center;gap:.3rem;background:#fef9c3;color:#b45309;padding:.2rem .6rem;border-radius:99px;font-size:.78rem;font-weight:700;">⚠ Partial</span>
+                  {% else %}
+                    <span style="display:inline-flex;align-items:center;gap:.3rem;background:#fee2e2;color:#b91c1c;padding:.2rem .6rem;border-radius:99px;font-size:.78rem;font-weight:700;">✖ Failed</span>
+                  {% endif %}
+                {% else %}
+                  <span style="color:#94a3b8;font-size:.82rem;">—</span>
+                {% endif %}
+              </div>
+            </div>
+
+            <!-- Processed -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem 1rem;">
+              <div style="font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; margin-bottom:.25rem;">Processed</div>
+              <div id="sync-processed" style="font-size:.9rem; font-weight:700; color:#1e293b;">
+                {% if encircle_sync_log %}{{ encircle_sync_log.claims_processed|intcomma }}{% else %}—{% endif %}
+              </div>
+            </div>
+
+            <!-- Created -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem 1rem;">
+              <div style="font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; margin-bottom:.25rem;">New Claims</div>
+              <div id="sync-created" style="font-size:.9rem; font-weight:700; color:#15803d;">
+                {% if encircle_sync_log %}+{{ encircle_sync_log.claims_created|intcomma }}{% else %}—{% endif %}
+              </div>
+            </div>
+
+            <!-- Updated -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem 1rem;">
+              <div style="font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; margin-bottom:.25rem;">Updated</div>
+              <div id="sync-updated" style="font-size:.9rem; font-weight:700; color:#2563eb;">
+                {% if encircle_sync_log %}{{ encircle_sync_log.claims_updated|intcomma }}{% else %}—{% endif %}
+              </div>
+            </div>
+
+            <!-- Errors -->
+            <div style="background:#f8fafc; border:1px solid #e2e8f0; border-radius:.6rem; padding:.75rem 1rem;">
+              <div style="font-size:.65rem; font-weight:700; text-transform:uppercase; letter-spacing:.05em; color:#94a3b8; margin-bottom:.25rem;">Errors</div>
+              <div id="sync-errors" style="font-size:.9rem; font-weight:700;
+                {% if encircle_sync_log and encircle_sync_log.error_count > 0 %}color:#b91c1c;{% else %}color:#64748b;{% endif %}">
+                {% if encircle_sync_log %}{{ encircle_sync_log.error_count }}{% else %}—{% endif %}
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Flash message row -->
+          <div id="sync-msg" style="display:none; margin-top:.75rem; font-size:.82rem; font-weight:600; padding:.4rem .75rem; border-radius:.4rem;"></div>
+        </div>
+
+        <script>
+        // ── Encircle Sync Widget JS ──────────────────────────────────────────
+        (function() {
+
+          const STATUS_URL  = '/claims/sync-encircle/status/';
+          const TRIGGER_URL = '/claims/sync-encircle/';
+          let pollTimer     = null;
+
+          // Format an ISO timestamp into something readable
+          function fmtTime(iso) {
+            if (!iso) return '—';
+            const d = new Date(iso);
+            return d.toLocaleString(undefined, {
+              month: 'short', day: 'numeric', year: 'numeric',
+              hour: 'numeric', minute: '2-digit', hour12: true
+            });
+          }
+
+          function statusBadgeHtml(status) {
+            const map = {
+              success: ['✔ Success',  '#dcfce7', '#15803d'],
+              running: ['⏳ Running…', '#dbeafe', '#1d4ed8'],
+              partial: ['⚠ Partial',  '#fef9c3', '#b45309'],
+              failed:  ['✖ Failed',   '#fee2e2', '#b91c1c'],
+            };
+            const [label, bg, fg] = map[status] || ['— Unknown', '#f1f5f9', '#475569'];
+            return `<span style="display:inline-flex;align-items:center;gap:.3rem;
+              background:${bg};color:${fg};padding:.2rem .6rem;border-radius:99px;
+              font-size:.78rem;font-weight:700;">${label}</span>`;
+          }
+
+          function showMsg(text, ok) {
+            const el = document.getElementById('sync-msg');
+            el.textContent = text;
+            el.style.background  = ok ? '#dcfce7' : '#fee2e2';
+            el.style.color       = ok ? '#15803d' : '#b91c1c';
+            el.style.display     = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 6000);
+          }
+
+          function applyLogData(log) {
+            if (!log || !log.has_log) return;
+            document.getElementById('sync-last-time').textContent = fmtTime(log.started_at);
+            document.getElementById('sync-status-badge').innerHTML = statusBadgeHtml(log.status);
+            document.getElementById('sync-processed').textContent = (log.claims_processed ?? '—').toLocaleString();
+            document.getElementById('sync-created').textContent   = log.claims_created != null ? '+' + log.claims_created.toLocaleString() : '—';
+            document.getElementById('sync-updated').textContent   = (log.claims_updated ?? '—').toLocaleString();
+            const errEl = document.getElementById('sync-errors');
+            errEl.textContent  = (log.error_count ?? '—').toString();
+            errEl.style.color  = log.error_count > 0 ? '#b91c1c' : '#64748b';
+          }
+
+          function pollStatus() {
+            fetch(STATUS_URL)
+              .then(r => r.json())
+              .then(data => {
+                applyLogData(data);
+                // If running, keep polling every 5s; otherwise stop
+                if (data.status === 'running') {
+                  pollTimer = setTimeout(pollStatus, 5000);
+                } else {
+                  clearTimeout(pollTimer);
+                }
+              })
+              .catch(() => clearTimeout(pollTimer));
+          }
+
+          window.triggerEncircleSync = function() {
+            const btn  = document.getElementById('sync-trigger-btn');
+            const icon = document.getElementById('sync-btn-icon');
+            btn.disabled   = true;
+            icon.textContent = '⏳';
+
+            const csrf = document.querySelector('[name=csrfmiddlewaretoken]');
+            const csrfToken = csrf ? csrf.value : '{{ csrf_token }}';
+
+            fetch(TRIGGER_URL, {
+              method: 'POST',
+              headers: { 'X-CSRFToken': csrfToken, 'Content-Type': 'application/json' },
+            })
+            .then(r => r.json())
+            .then(data => {
+              if (data.success) {
+                showMsg('Sync started in background — page will update automatically.', true);
+                // Start polling for status updates
+                clearTimeout(pollTimer);
+                pollTimer = setTimeout(pollStatus, 3000);
+              } else {
+                showMsg('Error: ' + (data.error || 'unknown'), false);
+                btn.disabled = false;
+                icon.textContent = '⚡';
+              }
+            })
+            .catch(err => {
+              showMsg('Network error: ' + err, false);
+              btn.disabled = false;
+              icon.textContent = '⚡';
+            });
+          };
+
+          // If a sync is currently running when the page loads, start polling
+          {% if encircle_sync_log and encircle_sync_log.status == 'running' %}
+          pollTimer = setTimeout(pollStatus, 5000);
+          {% endif %}
+
+        })();
+        </script>
+        <!-- ═════════════════════════════════════════════════════════════════ -->
+
         <!-- Charts Grid -->
         <div class="charts-grid">
             <div class="chart-card">

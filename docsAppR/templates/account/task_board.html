@@ -1,0 +1,1172 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Task Board{% endblock %}
+{% block page_title %}<i class="fas fa-tasks"></i> Task Board{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Stats ──────────────────────────────────────────────────────────────────── */
+.task-stats {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 12px;
+    margin-bottom: 20px;
+}
+.ts-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 14px 16px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    border-left: 4px solid #e2e8f0;
+    cursor: pointer;
+    transition: box-shadow .15s, transform .1s;
+}
+.ts-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.12); transform: translateY(-1px); }
+.ts-card.blue   { border-left-color: #3b82f6; }
+.ts-card.red    { border-left-color: #ef4444; }
+.ts-card.amber  { border-left-color: #f59e0b; }
+.ts-card.green  { border-left-color: #10b981; }
+.ts-card.purple { border-left-color: #8b5cf6; }
+.ts-card.cyan   { border-left-color: #06b6d4; }
+.ts-num  { font-size: 24px; font-weight: 800; color: #0f172a; line-height: 1; }
+.ts-lbl  { font-size: 11px; color: #64748b; font-weight: 500; margin-top: 3px; }
+
+/* ── Controls bar ───────────────────────────────────────────────────────────── */
+.ctrl-bar {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 18px;
+}
+.ctrl-bar select, .ctrl-bar input {
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 7px 10px;
+    font-size: 12px;
+}
+.ctrl-bar select:focus, .ctrl-bar input:focus {
+    outline: none;
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 3px rgba(13,110,253,.12);
+}
+.btn-add-task {
+    display: inline-flex;
+    align-items: center;
+    gap: 7px;
+    background: #1e40af;
+    color: #fff;
+    border: none;
+    padding: 8px 18px;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .15s;
+    white-space: nowrap;
+}
+.btn-add-task:hover { background: #1d4ed8; }
+.mine-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: #475569;
+    padding: 6px 10px;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    cursor: pointer;
+    background: #fff;
+    transition: all .1s;
+    white-space: nowrap;
+}
+.mine-toggle.active { background: #eff6ff; border-color: #3b82f6; color: #1e40af; font-weight: 600; }
+
+/* ── Kanban board ───────────────────────────────────────────────────────────── */
+.kanban {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 16px;
+    align-items: start;
+}
+@media (max-width: 1100px) { .kanban { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 640px)  { .kanban { grid-template-columns: 1fr; } }
+
+.col-wrap {}
+.col-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px 10px 12px;
+    border-radius: 10px 10px 0 0;
+    font-size: 13px;
+    font-weight: 700;
+    color: #fff;
+    margin-bottom: 0;
+}
+.col-header.todo        { background: #3b82f6; }
+.col-header.in_progress { background: #f59e0b; }
+.col-header.review      { background: #8b5cf6; }
+.col-header.done        { background: #10b981; }
+.col-header .col-count {
+    margin-left: auto;
+    background: rgba(255,255,255,.25);
+    border-radius: 20px;
+    padding: 1px 8px;
+    font-size: 11px;
+}
+
+.col-body {
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-top: none;
+    border-radius: 0 0 10px 10px;
+    min-height: 300px;
+    padding: 10px;
+}
+
+/* ── Task card ──────────────────────────────────────────────────────────────── */
+.task-card {
+    background: #fff;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin-bottom: 8px;
+    box-shadow: 0 1px 3px rgba(0,0,0,.07);
+    border-left: 4px solid #e2e8f0;
+    position: relative;
+    transition: box-shadow .15s;
+}
+.task-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.12); }
+.task-card.priority-low    { border-left-color: #10b981; }
+.task-card.priority-medium { border-left-color: #f59e0b; }
+.task-card.priority-high   { border-left-color: #ef4444; }
+.task-card.priority-urgent { border-left-color: #7c3aed; }
+.task-card.overdue { background: #fff5f5; }
+
+.task-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: #0f172a;
+    line-height: 1.4;
+    margin-bottom: 6px;
+    word-break: break-word;
+}
+.task-title.done { text-decoration: line-through; color: #94a3b8; }
+
+.task-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    align-items: center;
+    margin-bottom: 8px;
+}
+.task-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: .3px;
+}
+.badge-priority-low    { background: #d1fae5; color: #065f46; }
+.badge-priority-medium { background: #fef3c7; color: #92400e; }
+.badge-priority-high   { background: #fee2e2; color: #b91c1c; }
+.badge-priority-urgent { background: #ede9fe; color: #5b21b6; }
+
+.badge-category { background: #e0f2fe; color: #0369a1; }
+
+.task-due {
+    font-size: 10px;
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 6px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+.task-due.ok       { background: #f1f5f9; color: #475569; }
+.task-due.overdue  { background: #fee2e2; color: #b91c1c; }
+.task-due.today    { background: #fef3c7; color: #92400e; }
+.task-due.soon     { background: #fef9c3; color: #713f12; }
+
+.task-footer {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid #f1f5f9;
+}
+.task-assignee {
+    font-size: 10px;
+    color: #64748b;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+.task-assignee .avatar {
+    width: 18px; height: 18px;
+    border-radius: 50%;
+    background: #3b82f6;
+    color: #fff;
+    font-size: 8px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.task-actions {
+    display: flex;
+    gap: 3px;
+    opacity: 0;
+    transition: opacity .1s;
+}
+.task-card:hover .task-actions { opacity: 1; }
+.task-act-btn {
+    background: none;
+    border: 1px solid #e2e8f0;
+    border-radius: 4px;
+    padding: 2px 6px;
+    font-size: 10px;
+    cursor: pointer;
+    color: #64748b;
+    transition: all .1s;
+}
+.task-act-btn:hover { background: #f1f5f9; color: #0f172a; }
+.task-act-btn.del:hover { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+.task-act-btn.done-btn:hover { background: #d1fae5; border-color: #6ee7b7; color: #065f46; }
+
+/* ── Backlog section ────────────────────────────────────────────────────────── */
+.backlog-section {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.07);
+    margin-bottom: 20px;
+    overflow: hidden;
+}
+.backlog-header {
+    padding: 12px 18px;
+    background: #f8fafc;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+}
+.backlog-header h5 { margin: 0; font-size: 14px; font-weight: 600; color: #475569; }
+.backlog-body { padding: 0 18px 12px; }
+
+/* ── Add task quick-input ────────────────────────────────────────────────────── */
+.quick-add {
+    display: flex;
+    gap: 8px;
+    padding: 8px 10px;
+    background: #f8fafc;
+    border: 1px dashed #cbd5e1;
+    border-radius: 6px;
+    margin-top: 6px;
+    align-items: center;
+}
+.quick-add input {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    outline: none;
+    color: #334155;
+}
+.quick-add input::placeholder { color: #94a3b8; }
+.quick-add button {
+    border: none;
+    background: #1e40af;
+    color: #fff;
+    border-radius: 4px;
+    padding: 3px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* ── Modal ──────────────────────────────────────────────────────────────────── */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    z-index: 2000;
+    align-items: center;
+    justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal-box {
+    background: #fff;
+    border-radius: 12px;
+    width: 90%;
+    max-width: 540px;
+    max-height: 90vh;
+    overflow: hidden;
+    box-shadow: 0 20px 60px rgba(0,0,0,.3);
+    display: flex;
+    flex-direction: column;
+}
+.modal-hdr {
+    padding: 18px 20px;
+    border-bottom: 1px solid #e2e8f0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-shrink: 0;
+}
+.modal-hdr h3 { margin: 0; font-size: 15px; font-weight: 700; }
+.modal-close { margin-left: auto; background: none; border: none; font-size: 22px; cursor: pointer; color: #94a3b8; line-height: 1; }
+.modal-close:hover { color: #334155; }
+.modal-body { padding: 20px; overflow-y: auto; flex: 1; }
+.modal-ftr {
+    padding: 14px 20px;
+    border-top: 1px solid #e2e8f0;
+    display: flex;
+    gap: 8px;
+    justify-content: flex-end;
+    flex-shrink: 0;
+}
+
+.field-row { margin-bottom: 14px; }
+.field-row label { display: block; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 5px; }
+.field-row input, .field-row select, .field-row textarea {
+    width: 100%;
+    border: 1px solid #dee2e6;
+    border-radius: 6px;
+    padding: 8px 10px;
+    font-size: 13px;
+    transition: border-color .15s;
+}
+.field-row input:focus, .field-row select:focus, .field-row textarea:focus {
+    outline: none;
+    border-color: #86b7fe;
+    box-shadow: 0 0 0 3px rgba(13,110,253,.12);
+}
+.field-row textarea { min-height: 80px; resize: vertical; }
+.field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* ── Empty column ───────────────────────────────────────────────────────────── */
+.col-empty {
+    text-align: center;
+    padding: 30px 10px;
+    color: #94a3b8;
+    font-size: 12px;
+}
+.col-empty i { display: block; font-size: 28px; margin-bottom: 8px; }
+
+/* ── Completion notes display (done cards) ──────────────────────────────────── */
+.completion-block {
+    background: #f0fdf4;
+    border: 1px solid #bbf7d0;
+    border-radius: 6px;
+    padding: 7px 10px;
+    margin-top: 7px;
+    font-size: 11px;
+    color: #166534;
+    line-height: 1.5;
+}
+.completion-block .cb-label {
+    font-weight: 700;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .4px;
+    margin-bottom: 2px;
+    display: block;
+}
+.audit-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 2px 7px;
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 700;
+    margin-right: 4px;
+    margin-top: 4px;
+}
+.audit-pass   { background: #d1fae5; color: #065f46; }
+.audit-fail   { background: #fee2e2; color: #b91c1c; }
+.audit-na     { background: #f1f5f9; color: #64748b; }
+.assigned-tag {
+    display: inline-flex; align-items: center; gap: 3px;
+    font-size: 9px; color: #3b82f6; font-weight: 600;
+    padding: 1px 5px; background: #eff6ff; border-radius: 3px;
+    margin-left: 4px;
+}
+
+/* ── Complete button ────────────────────────────────────────────────────────── */
+.btn-complete {
+    background: #10b981; color: #fff; border: none;
+    border-radius: 5px; padding: 5px 12px; font-size: 11px;
+    font-weight: 700; cursor: pointer; transition: background .15s;
+    display: inline-flex; align-items: center; gap: 5px;
+}
+.btn-complete:hover { background: #059669; }
+
+/* ── Completion modal extras ────────────────────────────────────────────────── */
+.audit-section {
+    background: #eff6ff;
+    border: 1px solid #bfdbfe;
+    border-radius: 8px;
+    padding: 14px 16px;
+    margin-top: 12px;
+}
+.audit-section h6 {
+    font-size: 12px; font-weight: 700; color: #1e40af;
+    margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
+}
+.audit-radio { display: flex; gap: 14px; margin-top: 4px; }
+.audit-radio label {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 12px; font-weight: 500; cursor: pointer;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+
+<!-- Stats -->
+<div class="task-stats">
+    <div class="ts-card blue" onclick="clearFilters()">
+        <div class="ts-num">{{ stats.open }}</div>
+        <div class="ts-lbl">Open Tasks</div>
+    </div>
+    <div class="ts-card red" onclick="filterBy('overdue')">
+        <div class="ts-num">{{ stats.overdue }}</div>
+        <div class="ts-lbl">Overdue</div>
+    </div>
+    <div class="ts-card amber" onclick="filterBy('today')">
+        <div class="ts-num">{{ stats.due_today }}</div>
+        <div class="ts-lbl">Due Today</div>
+    </div>
+    <div class="ts-card green">
+        <div class="ts-num">{{ stats.done_week }}</div>
+        <div class="ts-lbl">Done This Week</div>
+    </div>
+    <div class="ts-card purple" onclick="filterByPriority('urgent')">
+        <div class="ts-num">{{ stats.urgent }}</div>
+        <div class="ts-lbl">Urgent</div>
+    </div>
+    <div class="ts-card cyan" onclick="filterMine()">
+        <div class="ts-num">{{ stats.mine }}</div>
+        <div class="ts-lbl">Assigned to Me</div>
+    </div>
+</div>
+
+<!-- Controls -->
+<div class="ctrl-bar">
+    <button class="btn-add-task" onclick="openModal()">
+        <i class="fas fa-plus"></i> New Task
+    </button>
+
+    <a href="?{% if f_mine %}mine=1&{% endif %}{% if f_priority %}priority={{ f_priority }}&{% endif %}{% if f_category %}category={{ f_category }}&{% endif %}{% if f_client %}client={{ f_client }}&{% endif %}"
+       class="mine-toggle {% if not f_mine %}active{% endif %}">All</a>
+    <a href="?mine=1{% if f_priority %}&priority={{ f_priority }}{% endif %}{% if f_category %}&category={{ f_category }}{% endif %}{% if f_client %}&client={{ f_client }}{% endif %}"
+       class="mine-toggle {% if f_mine %}active{% endif %}">
+        <i class="fas fa-user"></i> Mine only
+    </a>
+
+    <select onchange="applyFilter('priority', this.value)" style="min-width:120px;">
+        <option value="">All Priorities</option>
+        {% for val, lbl in priority_choices %}
+        <option value="{{ val }}" {% if f_priority == val %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+    </select>
+
+    <select onchange="applyFilter('category', this.value)" style="min-width:130px;">
+        <option value="">All Categories</option>
+        {% for val, lbl in category_choices %}
+        <option value="{{ val }}" {% if f_category == val %}selected{% endif %}>{{ lbl }}</option>
+        {% endfor %}
+    </select>
+
+    <select onchange="applyFilter('client', this.value)" style="min-width:160px;">
+        <option value="">All Clients</option>
+        {% for client in all_clients %}
+        <option value="{{ client.id }}" {% if f_client == client.id|stringformat:"i" %}selected{% endif %}>{{ client.pOwner }}</option>
+        {% endfor %}
+    </select>
+
+    {% if f_status or f_priority or f_mine or f_client or f_category %}
+    <a href="{% url 'tasks:board' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-times me-1"></i> Clear filters
+    </a>
+    {% endif %}
+</div>
+
+<!-- Backlog (collapsible) -->
+{% if backlog %}
+<div class="backlog-section mb-3">
+    <div class="backlog-header" onclick="toggleBacklog()">
+        <i class="fas fa-inbox text-muted"></i>
+        <h5>Backlog <span class="badge bg-secondary ms-1">{{ backlog|length }}</span></h5>
+        <i class="fas fa-chevron-down ms-auto" id="backlogChevron"></i>
+    </div>
+    <div class="backlog-body" id="backlogBody" style="display:none;">
+        <div class="row g-2 mt-2">
+            {% for task in backlog %}
+            <div class="col-md-4">
+                {% include "account/snippets/task_card.html" with task=task %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Kanban columns -->
+<div class="kanban">
+
+    <!-- To Do -->
+    <div class="col-wrap">
+        <div class="col-header todo">
+            <i class="fas fa-circle-dot"></i> To Do
+            <span class="col-count">{{ todo|length }}</span>
+        </div>
+        <div class="col-body" id="col-todo" data-status="todo">
+            {% for task in todo %}
+            <div class="task-card priority-{{ task.priority }} {% if task.is_overdue %}overdue{% endif %}"
+                 id="task-{{ task.id }}" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+                <div class="task-title">{{ task.title }}</div>
+                <div class="task-meta">
+                    <span class="task-badge badge-priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+                    {% if task.category != 'general' %}
+                    <span class="task-badge badge-category">{{ task.get_category_display }}</span>
+                    {% endif %}
+                    {% if task.due_date %}
+                    <span class="task-due {% if task.is_overdue %}overdue{% elif task.due_date == today %}today{% elif task.due_date <= week_end %}soon{% else %}ok{% endif %}">
+                        <i class="fas fa-calendar-day"></i>
+                        {% if task.is_overdue %}OVERDUE · {% endif %}{{ task.due_date|date:"M d" }}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if task.description %}
+                <div style="font-size:11px; color:#64748b; margin-bottom:6px; line-height:1.4;">{{ task.description|truncatechars:80 }}</div>
+                {% endif %}
+                <div class="task-footer">
+                    <div class="task-assignee">
+                        {% if task.assigned_to %}
+                        <span class="avatar">{{ task.assigned_to.email|first|upper }}</span>
+                        {{ task.assigned_to.email|truncatechars:16 }}
+                        {% else %}
+                        <i class="fas fa-user-slash" style="opacity:.3;"></i> Unassigned
+                        {% endif %}
+                    </div>
+                    <div class="task-actions">
+                        <button class="task-act-btn done-btn" onclick="moveTask('{{ task.id }}','in_progress')" title="Start">▶</button>
+                        <button class="task-act-btn" onclick="editTask('{{ task.id }}')" title="Edit"><i class="fas fa-pen"></i></button>
+                        <button class="task-act-btn del" onclick="deleteTask('{{ task.id }}')" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-empty"><i class="fas fa-check-circle"></i>Nothing here</div>
+            {% endfor %}
+            <div class="quick-add">
+                <input type="text" placeholder="+ Quick add…" id="quick-todo"
+                       onkeydown="if(event.key==='Enter') quickAdd('todo', this.value, this)">
+                <button onclick="quickAdd('todo', document.getElementById('quick-todo').value, document.getElementById('quick-todo'))">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- In Progress -->
+    <div class="col-wrap">
+        <div class="col-header in_progress">
+            <i class="fas fa-spinner"></i> In Progress
+            <span class="col-count">{{ in_prog|length }}</span>
+        </div>
+        <div class="col-body" id="col-in_progress" data-status="in_progress">
+            {% for task in in_prog %}
+            <div class="task-card priority-{{ task.priority }} {% if task.is_overdue %}overdue{% endif %}"
+                 id="task-{{ task.id }}" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+                <div class="task-title">{{ task.title }}</div>
+                <div class="task-meta">
+                    <span class="task-badge badge-priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+                    {% if task.category != 'general' %}
+                    <span class="task-badge badge-category">{{ task.get_category_display }}</span>
+                    {% endif %}
+                    {% if task.due_date %}
+                    <span class="task-due {% if task.is_overdue %}overdue{% elif task.due_date == today %}today{% elif task.due_date <= week_end %}soon{% else %}ok{% endif %}">
+                        <i class="fas fa-calendar-day"></i>
+                        {% if task.is_overdue %}OVERDUE · {% endif %}{{ task.due_date|date:"M d" }}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if task.description %}
+                <div style="font-size:11px; color:#64748b; margin-bottom:6px; line-height:1.4;">{{ task.description|truncatechars:80 }}</div>
+                {% endif %}
+                <div class="task-footer">
+                    <div class="task-assignee">
+                        {% if task.assigned_to %}
+                        <span class="avatar">{{ task.assigned_to.email|first|upper }}</span>
+                        {{ task.assigned_to.email|truncatechars:16 }}
+                        {% else %}
+                        <i class="fas fa-user-slash" style="opacity:.3;"></i> Unassigned
+                        {% endif %}
+                    </div>
+                    <div class="task-actions">
+                        <button class="task-act-btn done-btn" onclick="markComplete('{{ task.id }}','{{ task.category }}')" title="Mark Complete" style="color:#10b981;">✓ Done</button>
+                        <button class="task-act-btn" onclick="moveTask('{{ task.id }}','review')" title="Send to Review">⇒ Review</button>
+                        <button class="task-act-btn" onclick="editTask('{{ task.id }}')" title="Edit"><i class="fas fa-pen"></i></button>
+                        <button class="task-act-btn del" onclick="deleteTask('{{ task.id }}')" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-empty"><i class="fas fa-fire"></i>Nothing in progress</div>
+            {% endfor %}
+            <div class="quick-add">
+                <input type="text" placeholder="+ Quick add…" id="quick-in_progress"
+                       onkeydown="if(event.key==='Enter') quickAdd('in_progress', this.value, this)">
+                <button onclick="quickAdd('in_progress', document.getElementById('quick-in_progress').value, document.getElementById('quick-in_progress'))">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Review -->
+    <div class="col-wrap">
+        <div class="col-header review">
+            <i class="fas fa-eye"></i> Review
+            <span class="col-count">{{ review|length }}</span>
+        </div>
+        <div class="col-body" id="col-review" data-status="review">
+            {% for task in review %}
+            <div class="task-card priority-{{ task.priority }}"
+                 id="task-{{ task.id }}" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+                <div class="task-title">{{ task.title }}</div>
+                <div class="task-meta">
+                    <span class="task-badge badge-priority-{{ task.priority }}">{{ task.get_priority_display }}</span>
+                    {% if task.category != 'general' %}
+                    <span class="task-badge badge-category">{{ task.get_category_display }}</span>
+                    {% endif %}
+                    {% if task.due_date %}
+                    <span class="task-due {% if task.is_overdue %}overdue{% elif task.due_date == today %}today{% elif task.due_date <= week_end %}soon{% else %}ok{% endif %}">
+                        <i class="fas fa-calendar-day"></i>{{ task.due_date|date:"M d" }}
+                    </span>
+                    {% endif %}
+                </div>
+                {% if task.description %}
+                <div style="font-size:11px; color:#64748b; margin-bottom:6px; line-height:1.4;">{{ task.description|truncatechars:80 }}</div>
+                {% endif %}
+                <div class="task-footer">
+                    <div class="task-assignee">
+                        {% if task.assigned_to %}
+                        <span class="avatar">{{ task.assigned_to.email|first|upper }}</span>
+                        {{ task.assigned_to.email|truncatechars:16 }}
+                        {% else %}
+                        <i class="fas fa-user-slash" style="opacity:.3;"></i> Unassigned
+                        {% endif %}
+                    </div>
+                    <div class="task-actions">
+                        <button class="task-act-btn done-btn" onclick="markComplete('{{ task.id }}','{{ task.category }}')" title="Approve & Mark Complete" style="color:#10b981;">✓ Done</button>
+                        <button class="task-act-btn" onclick="moveTask('{{ task.id }}','in_progress')" title="Back to In Progress">↩</button>
+                        <button class="task-act-btn" onclick="editTask('{{ task.id }}')" title="Edit"><i class="fas fa-pen"></i></button>
+                        <button class="task-act-btn del" onclick="deleteTask('{{ task.id }}')" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+            </div>
+            {% empty %}
+            <div class="col-empty"><i class="fas fa-search"></i>Nothing in review</div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Done -->
+    <div class="col-wrap">
+        <div class="col-header done">
+            <i class="fas fa-check-circle"></i> Done
+            <span class="col-count">{{ done_qs|length }}</span>
+        </div>
+        <div class="col-body" id="col-done" data-status="done">
+            {% for task in done_qs %}
+            <div class="task-card priority-{{ task.priority }}" style="opacity:.7;"
+                 id="task-{{ task.id }}" data-task-id="{{ task.id }}" data-status="{{ task.status }}">
+                <div class="task-title done">{{ task.title }}</div>
+                <div class="task-meta">
+                    {% if task.category != 'general' %}
+                    <span class="task-badge badge-category">{{ task.get_category_display }}</span>
+                    {% endif %}
+                    {% if task.completed_at %}
+                    <span class="task-due ok"><i class="fas fa-check"></i> {{ task.completed_at|date:"M d" }}</span>
+                    {% endif %}
+                </div>
+                <div class="task-footer">
+                    <div class="task-assignee">
+                        {% if task.assigned_to %}
+                        <span class="avatar">{{ task.assigned_to.email|first|upper }}</span>
+                        {{ task.assigned_to.email|truncatechars:16 }}
+                        {% endif %}
+                    </div>
+                    <div class="task-actions">
+                        <button class="task-act-btn" onclick="moveTask('{{ task.id }}','todo')" title="Reopen">↩</button>
+                        <button class="task-act-btn del" onclick="deleteTask('{{ task.id }}')" title="Delete"><i class="fas fa-trash"></i></button>
+                    </div>
+                </div>
+                {% if task.completed_by or task.completion_notes or task.unit_tests_passed is not None or task.beta_tested is not None %}
+                <div class="completion-block">
+                    <span class="cb-label">✓ Completed by {{ task.completed_by.email|default:"unknown" }}</span>
+                    {% if task.completion_notes %}<div style="margin-bottom:5px;">{{ task.completion_notes }}</div>{% endif %}
+                    {% if task.category == 'development' %}
+                        <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px;">
+                            {% if task.unit_tests_passed is not None %}
+                                <span class="audit-badge {% if task.unit_tests_passed %}audit-pass{% else %}audit-fail{% endif %}">
+                                    {% if task.unit_tests_passed %}✓ Tests Passed{% else %}✗ Tests Failed{% endif %}
+                                </span>
+                            {% endif %}
+                            {% if task.beta_tested is not None %}
+                                <span class="audit-badge {% if task.beta_tested %}audit-pass{% else %}audit-fail{% endif %}">
+                                    {% if task.beta_tested %}✓ Beta Tested{% else %}✗ Not Tested{% endif %}
+                                </span>
+                            {% endif %}
+                        </div>
+                        {% if task.test_notes %}<div style="margin-top:4px;font-size:10px;color:#166534;">{{ task.test_notes|truncatechars:100 }}</div>{% endif %}
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            {% empty %}
+            <div class="col-empty"><i class="fas fa-trophy"></i>Nothing done yet</div>
+            {% endfor %}
+        </div>
+    </div>
+
+</div><!-- /kanban -->
+
+</div><!-- /container -->
+
+<!-- ── Create / Edit Modal ─────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="taskModal">
+    <div class="modal-box">
+        <div class="modal-hdr">
+            <i class="fas fa-tasks text-primary"></i>
+            <h3 id="modalTitle">New Task</h3>
+            <button class="modal-close" onclick="closeModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="editTaskId">
+
+            <div class="field-row">
+                <label>Title *</label>
+                <input type="text" id="taskTitle" placeholder="What needs to be done?" autocomplete="off">
+            </div>
+
+            <div class="field-grid">
+                <div class="field-row">
+                    <label>Status</label>
+                    <select id="taskStatus">
+                        {% for val, lbl in status_choices %}
+                        {% if val != 'cancelled' %}
+                        <option value="{{ val }}">{{ lbl }}</option>
+                        {% endif %}
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label>Priority</label>
+                    <select id="taskPriority">
+                        {% for val, lbl in priority_choices %}
+                        <option value="{{ val }}" {% if val == 'medium' %}selected{% endif %}>{{ lbl }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </div>
+
+            <div class="field-grid">
+                <div class="field-row">
+                    <label>Category</label>
+                    <select id="taskCategory">
+                        {% for val, lbl in category_choices %}
+                        <option value="{{ val }}">{{ lbl }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="field-row">
+                    <label>Due Date</label>
+                    <input type="date" id="taskDueDate">
+                </div>
+            </div>
+
+            <div class="field-row">
+                <label>Assign To</label>
+                <select id="taskAssignedTo">
+                    <option value="">— Unassigned —</option>
+                    {% for u in all_users %}
+                    <option value="{{ u.id }}">{{ u.email }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="field-row">
+                <label>Related Claim (optional)</label>
+                <select id="taskClient">
+                    <option value="">— No claim —</option>
+                    {% for c in all_clients %}
+                    <option value="{{ c.id }}">{{ c.pOwner }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <div class="field-row">
+                <label>Description</label>
+                <textarea id="taskDescription" placeholder="Optional details…"></textarea>
+            </div>
+
+            <div class="field-row">
+                <label>Notes</label>
+                <textarea id="taskNotes" placeholder="Internal notes…" style="min-height:60px;"></textarea>
+            </div>
+        </div>
+        <div class="modal-ftr">
+            <button class="btn btn-outline-secondary btn-sm" onclick="closeModal()">Cancel</button>
+            <button class="btn btn-danger btn-sm" id="deleteBtn" onclick="deleteCurrentTask()" style="display:none;">
+                <i class="fas fa-trash me-1"></i> Delete
+            </button>
+            <button class="btn btn-primary btn-sm" onclick="saveTask()">
+                <i class="fas fa-save me-1"></i> <span id="saveLabel">Create Task</span>
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Completion Modal ───────────────────────────────────────────────────── -->
+<div class="modal-overlay" id="completeModal">
+    <div class="modal-box">
+        <div class="modal-hdr">
+            <i class="fas fa-check-circle text-success"></i>
+            <h3>Mark Task Complete</h3>
+            <button class="modal-close" onclick="closeCompleteModal()">×</button>
+        </div>
+        <div class="modal-body">
+            <input type="hidden" id="completeTaskId">
+            <input type="hidden" id="completeTaskCategory">
+
+            <div class="field-row">
+                <label>Completion Notes</label>
+                <textarea id="completionNotes" placeholder="What did you do? Any blockers or notes for the assigner?" style="min-height:100px;"></textarea>
+            </div>
+
+            <!-- Code/dev task audit section -->
+            <div id="auditSection" class="audit-section" style="display:none;">
+                <h6><i class="fas fa-microscope"></i> Code Audit</h6>
+
+                <div class="field-row" style="margin-top:8px;">
+                    <label>Unit Tests</label>
+                    <div class="audit-radio">
+                        <label><input type="radio" name="unitTests" value="true"> ✓ Passed</label>
+                        <label><input type="radio" name="unitTests" value="false"> ✗ Failed</label>
+                        <label><input type="radio" name="unitTests" value="na" checked> — N/A</label>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <label>Beta Tested</label>
+                    <div class="audit-radio">
+                        <label><input type="radio" name="betaTested" value="true"> ✓ Yes</label>
+                        <label><input type="radio" name="betaTested" value="false"> ✗ No</label>
+                        <label><input type="radio" name="betaTested" value="na" checked> — N/A</label>
+                    </div>
+                </div>
+
+                <div class="field-row">
+                    <label>Test Notes</label>
+                    <textarea id="testNotes" placeholder="Details on tests run, environment, results…" style="min-height:70px;"></textarea>
+                </div>
+            </div>
+        </div>
+        <div class="modal-ftr">
+            <button class="btn btn-outline-secondary btn-sm" onclick="closeCompleteModal()">Cancel</button>
+            <button class="btn btn-success btn-sm" onclick="submitComplete()">
+                <i class="fas fa-check me-1"></i> Mark Complete
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ── Toast ──────────────────────────────────────────────────────────────── -->
+<div id="toast" style="
+    position: fixed; bottom: 24px; right: 24px;
+    background: #0f172a; color: #fff;
+    padding: 10px 18px; border-radius: 8px;
+    font-size: 13px; font-weight: 500;
+    box-shadow: 0 8px 24px rgba(0,0,0,.3);
+    display: none; z-index: 9999;
+    align-items: center; gap: 8px;
+"></div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const CSRF = '{{ csrf_token }}';
+const CLIENTS = {{ clients_json|safe }};
+const USERS   = {{ users_json|safe }};
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, ok = true) {
+    const el = document.getElementById('toast');
+    el.innerHTML = `<i class="fas fa-${ok ? 'check-circle' : 'exclamation-circle'}"></i> ${msg}`;
+    el.style.background = ok ? '#065f46' : '#b91c1c';
+    el.style.display = 'flex';
+    setTimeout(() => el.style.display = 'none', 3000);
+}
+
+// ── Modal ─────────────────────────────────────────────────────────────────────
+function openModal(prefillStatus) {
+    document.getElementById('editTaskId').value   = '';
+    document.getElementById('taskTitle').value    = '';
+    document.getElementById('taskDescription').value = '';
+    document.getElementById('taskNotes').value    = '';
+    document.getElementById('taskStatus').value   = prefillStatus || 'todo';
+    document.getElementById('taskPriority').value = 'medium';
+    document.getElementById('taskCategory').value = 'general';
+    document.getElementById('taskDueDate').value  = '';
+    document.getElementById('taskAssignedTo').value = '';
+    document.getElementById('taskClient').value   = '';
+    document.getElementById('modalTitle').textContent = 'New Task';
+    document.getElementById('saveLabel').textContent  = 'Create Task';
+    document.getElementById('deleteBtn').style.display = 'none';
+    document.getElementById('taskModal').classList.add('open');
+    setTimeout(() => document.getElementById('taskTitle').focus(), 100);
+}
+
+function closeModal() {
+    document.getElementById('taskModal').classList.remove('open');
+}
+
+document.getElementById('taskModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('taskModal')) closeModal();
+});
+
+// ── Edit task (load data into modal) ─────────────────────────────────────────
+async function editTask(id) {
+    const card = document.getElementById('task-' + id);
+    if (!card) return;
+
+    // We read from the card DOM (title, status). For full data, fetch the API.
+    try {
+        const r = await fetch(`/tasks/api/?limit=1000`, { headers: { 'X-CSRFToken': CSRF } });
+        const d = await r.json();
+        const task = d.tasks.find(t => t.id === id);
+        if (!task) { toast('Task data not found', false); return; }
+
+        document.getElementById('editTaskId').value        = id;
+        document.getElementById('taskTitle').value         = task.title;
+        document.getElementById('taskDescription').value   = task.description;
+        document.getElementById('taskNotes').value         = task.notes;
+        document.getElementById('taskStatus').value        = task.status;
+        document.getElementById('taskPriority').value      = task.priority;
+        document.getElementById('taskCategory').value      = task.category;
+        document.getElementById('taskDueDate').value       = task.due_date;
+        document.getElementById('taskAssignedTo').value    = task.assigned_to_id || '';
+        document.getElementById('taskClient').value        = task.related_client_id || '';
+        document.getElementById('modalTitle').textContent  = 'Edit Task';
+        document.getElementById('saveLabel').textContent   = 'Save Changes';
+        document.getElementById('deleteBtn').style.display = 'inline-flex';
+        document.getElementById('taskModal').classList.add('open');
+    } catch (e) {
+        toast('Error loading task: ' + e.message, false);
+    }
+}
+
+// ── Save (create or update) ────────────────────────────────────────────────
+async function saveTask() {
+    const id    = document.getElementById('editTaskId').value;
+    const title = document.getElementById('taskTitle').value.trim();
+    if (!title) { toast('Title is required', false); return; }
+
+    const body = {
+        title,
+        description:     document.getElementById('taskDescription').value,
+        notes:           document.getElementById('taskNotes').value,
+        status:          document.getElementById('taskStatus').value,
+        priority:        document.getElementById('taskPriority').value,
+        category:        document.getElementById('taskCategory').value,
+        due_date:        document.getElementById('taskDueDate').value,
+        assigned_to_id:  document.getElementById('taskAssignedTo').value || null,
+        related_client_id: document.getElementById('taskClient').value || null,
+    };
+
+    const url = id ? `/tasks/${id}/edit/` : '/tasks/create/';
+    try {
+        const r = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (d.success) {
+            toast(id ? 'Task updated' : 'Task created');
+            closeModal();
+            location.reload();
+        } else {
+            toast(d.error || 'Error saving task', false);
+        }
+    } catch (e) {
+        toast('Network error: ' + e.message, false);
+    }
+}
+
+// ── Move task between columns ──────────────────────────────────────────────
+async function moveTask(id, newStatus) {
+    try {
+        const r = await fetch(`/tasks/${id}/status/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ status: newStatus }),
+        });
+        const d = await r.json();
+        if (d.success) {
+            toast(`Moved to ${d.task.status_display}`);
+            location.reload();
+        } else {
+            toast(d.error || 'Error', false);
+        }
+    } catch (e) {
+        toast('Error: ' + e.message, false);
+    }
+}
+
+// ── Delete ─────────────────────────────────────────────────────────────────
+async function deleteTask(id) {
+    if (!confirm('Delete this task? This cannot be undone.')) return;
+    try {
+        const r = await fetch(`/tasks/${id}/delete/`, {
+            method: 'POST',
+            headers: { 'X-CSRFToken': CSRF },
+        });
+        const d = await r.json();
+        if (d.success) {
+            toast('Task deleted');
+            const el = document.getElementById('task-' + id);
+            if (el) el.remove();
+        } else {
+            toast(d.error || 'Error', false);
+        }
+    } catch (e) {
+        toast('Error: ' + e.message, false);
+    }
+}
+
+function deleteCurrentTask() {
+    const id = document.getElementById('editTaskId').value;
+    if (id) { closeModal(); deleteTask(id); }
+}
+
+// ── Quick add ──────────────────────────────────────────────────────────────
+async function quickAdd(status, title, inputEl) {
+    if (!title || !title.trim()) return;
+    try {
+        const r = await fetch('/tasks/create/', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify({ title: title.trim(), status, priority: 'medium' }),
+        });
+        const d = await r.json();
+        if (d.success) {
+            inputEl.value = '';
+            toast('Task added');
+            location.reload();
+        } else {
+            toast(d.error || 'Error', false);
+        }
+    } catch (e) {
+        toast('Error: ' + e.message, false);
+    }
+}
+
+// ── Filter helpers ─────────────────────────────────────────────────────────
+function applyFilter(key, val) {
+    const p = new URLSearchParams(window.location.search);
+    if (val) p.set(key, val); else p.delete(key);
+    window.location.search = p.toString();
+}
+function filterBy(key) { applyFilter('status_special', key); }
+function filterByPriority(p) { applyFilter('priority', p); }
+function filterMine() { applyFilter('mine', '1'); }
+function clearFilters() { window.location.href = '{% url "tasks:board" %}'; }
+
+// ── Backlog toggle ─────────────────────────────────────────────────────────
+function toggleBacklog() {
+    const body    = document.getElementById('backlogBody');
+    const chevron = document.getElementById('backlogChevron');
+    const open    = body.style.display === 'block';
+    body.style.display = open ? 'none' : 'block';
+    chevron.className  = open ? 'fas fa-chevron-down ms-auto' : 'fas fa-chevron-up ms-auto';
+}
+
+// ── Completion flow (with code audit for dev tasks) ─────────────────────────
+function markComplete(taskId, category) {
+    document.getElementById('completeTaskId').value = taskId;
+    document.getElementById('completeTaskCategory').value = category;
+    document.getElementById('completionNotes').value = '';
+    document.getElementById('testNotes').value = '';
+    document.querySelectorAll('input[name="unitTests"]').forEach(r => r.checked = false);
+    document.querySelectorAll('input[name="betaTested"]').forEach(r => r.checked = false);
+    document.querySelector('input[name="unitTests"][value="na"]').checked = true;
+    document.querySelector('input[name="betaTested"][value="na"]').checked = true;
+
+    // Show code audit section only for development tasks
+    const auditSec = document.getElementById('auditSection');
+    if (category === 'development') {
+        auditSec.style.display = 'block';
+    } else {
+        auditSec.style.display = 'none';
+    }
+
+    document.getElementById('completeModal').classList.add('open');
+    setTimeout(() => document.getElementById('completionNotes').focus(), 100);
+}
+
+function closeCompleteModal() {
+    document.getElementById('completeModal').classList.remove('open');
+}
+
+document.getElementById('completeModal').addEventListener('click', e => {
+    if (e.target === document.getElementById('completeModal')) closeCompleteModal();
+});
+
+async function submitComplete() {
+    const taskId = document.getElementById('completeTaskId').value;
+    const category = document.getElementById('completeTaskCategory').value;
+    const notes = document.getElementById('completionNotes').value.trim();
+
+    const body = { completion_notes: notes };
+
+    // Code audit fields (dev tasks only)
+    if (category === 'development') {
+        const ut = document.querySelector('input[name="unitTests"]:checked').value;
+        const bt = document.querySelector('input[name="betaTested"]:checked').value;
+        body.unit_tests_passed = ut === 'true' ? true : (ut === 'false' ? false : null);
+        body.beta_tested = bt === 'true' ? true : (bt === 'false' ? false : null);
+        body.test_notes = document.getElementById('testNotes').value.trim();
+    }
+
+    try {
+        const r = await fetch(`/tasks/${taskId}/complete/`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+            body: JSON.stringify(body),
+        });
+        const d = await r.json();
+        if (d.success) {
+            toast('Task marked complete — admin has been notified');
+            closeCompleteModal();
+            setTimeout(() => location.reload(), 800);
+        } else {
+            toast(d.error || 'Error marking complete', false);
+        }
+    } catch (e) {
+        toast('Network error: ' + e.message, false);
+    }
+}
+</script>
+{% endblock %}

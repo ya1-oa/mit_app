@@ -44,6 +44,9 @@ from docsAppR.claims_views import (
     get_claims_for_room_generator,
     get_rooms_for_generator,
     encircle_claims_simple,
+    # Encircle inbound sync
+    trigger_encircle_sync,
+    encircle_sync_status_api,
     # Claim Files page
     claim_files_page,
     send_files_link_email,
@@ -54,6 +57,11 @@ from docsAppR.claims_views import (
     excel_hub_download_all_zip,
     excel_hub_send_email,
     excel_hub_settings,
+    # Public templates download page (no login — signed token)
+    claim_templates_public,
+    claim_templates_download,
+    # Internal templates page (login required)
+    claim_templates_page,
 )
 
 from docsAppR.views import (
