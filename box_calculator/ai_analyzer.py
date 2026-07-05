@@ -13,32 +13,43 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-# ── PDF report analysis ───────────────────────────────────────────────────────
+# ── PDF report → CPS session analysis ────────────────────────────────────────
+# Output columns match BoxCalcCPSRoom exactly so results can be stored
+# directly in the CPS session and rendered/edited/exported via the CPS report.
 
-_PDF_SYSTEM_PROMPT = """You are a master moving company estimator with decades of experience \
-packing out homes for insurance mitigation claims. You know exactly how many boxes every type \
-of household item requires, and you can spot what less-experienced estimators miss.
+_PDF_SYSTEM_PROMPT = """\
+You are a master moving company estimator with 30+ years of experience packing out homes \
+for insurance mitigation claims. You read box count reports, contents lists, and scope of \
+work documents, then produce a complete, room-by-room box count estimate.
 
-Box specifications you MUST follow:
-- SMALL  (1.5 cu ft)  — books, tools, small dense items (≤20 lbs/box)
-- MEDIUM (3.0 cu ft, 20"L×16"W×15"D, ≤65 lbs) — DEFAULT for most household items
-  (clothes, toys, pantry, small electronics, general household)
-- LARGE  (4.5 cu ft)  — pillows, lampshades, lightweight bulky decor, linens
-- DISH_PACK (5.2 cu ft) — china, crystal, glassware, fragile kitchenware
-- WARDROBE (10 cu ft)  — hanging clothes: 1 wardrobe box per 2–3 linear feet of rod
-- XL_WRAP  (furniture pad-wrap, NO box) — sofas, bed frames, dressers, large appliances,
-  TVs>50", artwork>24"
+Box type definitions you MUST use:
+  small       — 1.5 cu ft  (books, tools, dense items ≤20 lbs)
+  medium      — 3.0 cu ft  (DEFAULT — general household, clothes, toys, pantry)
+  large       — 4.5 cu ft  (pillows, lampshades, lightweight bulky items, linens)
+  box_wrapped — furniture wrap + small box (mirrors, artwork, lamps, fragile décor)
+  plant_vase  — tall open-top box (floor plants, vases, tall décor)
+  tv          — flat TV box (one per flat-screen TV)
+  wardrobe    — 10 cu ft hanging box (1 per ~4 linear feet of hanging rod)
+  mattress    — flat mattress/box-spring box (one per mattress or box spring)
+  dish_pack   — 5.2 cu ft dish-pack box (china, crystal, glassware, fragile kitchenware)
+  glass_pack  — cushioned glass box (drinking glasses, stemware, vases)
+  boots_pans  — corrugated wrap bundle (cast iron, baking sheets, boots)
 
+Use MEDIUM as the default for anything that does not clearly fit another type.
 You respond ONLY with valid JSON — no markdown, no explanation."""
 
-_PDF_USER_PROMPT = """Analyze this box count report / contents document and estimate the \
-complete box count needed for a full pack-out.
-
+_PDF_USER_PROMPT = """\
 {context}
 
-{step_instruction}
+STEP 1 — Per-room base estimate:
+Read every room and its contents in the attached report. For each room estimate how many \
+boxes of each type are needed. Prefer MEDIUM as your default.
 
-Return JSON in this EXACT format:
+STEP 2 — Overview review:
+Review the document holistically for any rooms or items that may have been missed or \
+underestimated. Add those to the appropriate rooms.
+
+Return JSON in this EXACT format (use integer values, never null):
 {{
   "rooms": [
     {{
@@ -46,42 +57,39 @@ Return JSON in this EXACT format:
       "small": 0,
       "medium": 0,
       "large": 0,
-      "dish_pack": 0,
+      "box_wrapped": 0,
+      "plant_vase": 0,
+      "tv": 0,
       "wardrobe": 0,
-      "xl_wrap": 0,
-      "notes": "brief estimator notes for any unusual items or caveats"
+      "mattress": 0,
+      "dish_pack": 0,
+      "glass_pack": 0,
+      "boots_pans": 0,
+      "ai_notes": "brief room-level notes, unusual items, rebuttal points"
     }}
   ],
-  "summary": {{
-    "total_small": 0,
-    "total_medium": 0,
-    "total_large": 0,
-    "total_dish_pack": 0,
-    "total_wardrobe": 0,
-    "total_xl_wrap": 0,
-    "estimator_notes": "overall notes, items that may require rebuttal from insurer, \
-anything the adjuster might challenge"
-  }}
+  "estimator_notes": "overall notes — items the adjuster may challenge and how to defend them"
 }}"""
 
-_STEP1_INSTRUCTION = """STEP 1 — Base estimate:
-Based on the contents listed in this report, estimate how many boxes of each type are needed \
-per room. Use MEDIUM boxes as your default. Only use SMALL for genuinely heavy/dense items."""
-
-_STEP2_INSTRUCTION = """STEP 2 — Review for missed items:
-Also look at the overall context (overview photos / room totals) and add any additional \
-boxes for items that may have been missed or underestimated in the per-room breakdown."""
+_CPS_COLS = [
+    "small", "medium", "large", "box_wrapped", "plant_vase",
+    "tv", "wardrobe", "mattress", "dish_pack", "glass_pack", "boots_pans",
+]
 
 
 def analyze_pdf_report(pdf_bytes: bytes, client_context: str = '') -> dict:
     """
     Analyze an uploaded box count report PDF using Claude.
 
+    Output columns match BoxCalcCPSRoom exactly so the caller can create
+    CPS session records directly from the result.
+
     Returns:
         {
           "success": bool,
-          "rooms": [...],
-          "summary": {...},
+          "rooms": [{"name": str, "small": int, "medium": int, ...11 cols...,
+                     "ai_notes": str}],
+          "estimator_notes": str,
           "error": str | None,
         }
     """
@@ -89,24 +97,18 @@ def analyze_pdf_report(pdf_bytes: bytes, client_context: str = '') -> dict:
 
     api_key = os.getenv('ANTHROPIC_API_KEY')
     if not api_key:
-        return {"success": False, "rooms": [], "summary": {}, "error": "ANTHROPIC_API_KEY not configured"}
+        return {"success": False, "rooms": [], "estimator_notes": "",
+                "error": "ANTHROPIC_API_KEY not configured"}
 
     pdf_b64 = base64.standard_b64encode(pdf_bytes).decode('utf-8')
-
-    context_str = f"\nClient/claim context: {client_context}" if client_context else ""
+    context_str = (f"Client/claim context: {client_context}\n\n") if client_context else ""
 
     content = [
         {
             "type": "document",
             "source": {"type": "base64", "media_type": "application/pdf", "data": pdf_b64},
         },
-        {
-            "type": "text",
-            "text": _PDF_USER_PROMPT.format(
-                context=context_str,
-                step_instruction=_STEP1_INSTRUCTION + "\n\n" + _STEP2_INSTRUCTION,
-            ),
-        },
+        {"type": "text", "text": _PDF_USER_PROMPT.format(context=context_str)},
     ]
 
     try:
@@ -125,22 +127,28 @@ def analyze_pdf_report(pdf_bytes: bytes, client_context: str = '') -> dict:
         raw = raw.strip()
 
         parsed = json.loads(raw)
-        rooms = parsed.get("rooms", [])
-        summary = parsed.get("summary", {})
+        rooms = []
+        for r in parsed.get("rooms", []):
+            rooms.append({
+                "name": str(r.get("name", "Unknown Room")),
+                **{col: max(0, int(r.get(col, 0) or 0)) for col in _CPS_COLS},
+                "ai_notes": str(r.get("ai_notes", "")),
+            })
 
-        # Compute totals if Claude didn't supply them
-        if rooms and not summary.get("total_medium"):
-            for key in ["small", "medium", "large", "dish_pack", "wardrobe", "xl_wrap"]:
-                summary[f"total_{key}"] = sum(r.get(key, 0) for r in rooms)
-
-        return {"success": True, "rooms": rooms, "summary": summary, "error": None}
+        return {
+            "success": True,
+            "rooms": rooms,
+            "estimator_notes": str(parsed.get("estimator_notes", "")),
+            "error": None,
+        }
 
     except json.JSONDecodeError as e:
         logger.error(f"PDF analysis JSON parse error: {e}")
-        return {"success": False, "rooms": [], "summary": {}, "error": "AI returned invalid JSON — try again"}
+        return {"success": False, "rooms": [], "estimator_notes": "",
+                "error": "AI returned invalid JSON — try again"}
     except Exception as e:
         logger.error(f"PDF analysis error: {e}", exc_info=True)
-        return {"success": False, "rooms": [], "summary": {}, "error": str(e)}
+        return {"success": False, "rooms": [], "estimator_notes": "", "error": str(e)}
 
 VALID_CATEGORIES = [
     "books", "kitchen", "fragile_kitchen", "general", "linens",

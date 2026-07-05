@@ -1,34 +1,62 @@
 {% extends "account/base.html" %}
 {% block title %}Box Count Calculator{% endblock %}
 
+{% block extra_css %}
+<style>
+.upload-zone {
+  border: 2px dashed #cbd5e1;
+  border-radius: .75rem;
+  padding: 2.5rem 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color .15s, background .15s;
+  background: #f8fafc;
+}
+.upload-zone:hover, .upload-zone.drag-over {
+  border-color: #3b82f6;
+  background: #eff6ff;
+}
+.upload-zone.has-file {
+  border-color: #10b981;
+  background: #f0fdf4;
+}
+.step-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px; height: 28px;
+  border-radius: 50%;
+  background: #3b82f6;
+  color: #fff;
+  font-weight: 700;
+  font-size: .8rem;
+  flex-shrink: 0;
+}
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container-fluid py-4">
-  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
-    <div>
-      <h2 class="mb-0">Box Count Calculator</h2>
-      <p class="text-muted mb-0">Estimate pack-out box counts by category for any claim</p>
-    </div>
-    <div id="header-actions" style="display:none">
-      <a id="btn-report" href="#" class="btn btn-outline-secondary me-2" target="_blank">
-        <i class="fas fa-file-alt me-1"></i>Print Report
-      </a>
-      <button id="btn-save" class="btn btn-success">
-        <span id="save-spinner" class="spinner-border spinner-border-sm me-1" style="display:none"></span>
-        <i class="fas fa-save me-1"></i>Save Session
-      </button>
-    </div>
+<div class="container py-4" style="max-width:820px">
+
+  <div class="mb-4">
+    <h2 class="mb-1">Box Count Calculator</h2>
+    <p class="text-muted mb-0">
+      Upload a box count report or scope-of-work PDF — Claude reads it as a master
+      moving estimator and produces a room-by-room estimate you can edit and export to Excel.
+    </p>
   </div>
 
-  {# ── Client selector ────────────────────────────────────────────────── #}
-  <div class="card mb-4">
+  {# ── Step 1: Select Client ──────────────────────────────────────────── #}
+  <div class="card mb-3">
     <div class="card-body">
-      <label class="form-label fw-semibold">Select Client</label>
+      <div class="d-flex align-items-center gap-2 mb-2">
+        <span class="step-badge">1</span>
+        <span class="fw-semibold">Select Client</span>
+      </div>
       <select id="client-select" class="form-select form-select-lg">
         <option value="">— choose a client —</option>
         {% for c in clients %}
-        <option value="{{ c.id }}"
-                data-owner="{{ c.pOwner }}"
-                data-claim="{{ c.claimNumber|default:'' }}">
+        <option value="{{ c.id }}">
           {{ c.pOwner }}{% if c.claimNumber %} — #{{ c.claimNumber }}{% endif %}{% if c.pAddress %} &nbsp;·&nbsp; {{ c.pAddress }}{% endif %}
         </option>
         {% endfor %}
@@ -36,634 +64,187 @@
     </div>
   </div>
 
-  {# ── Tabs ────────────────────────────────────────────────────────────── #}
-  <ul class="nav nav-tabs mb-3" id="calcTabs">
-    <li class="nav-item">
-      <button class="nav-link active" data-tab="manual">
-        <i class="fas fa-list me-1"></i>Manual Calculator
-      </button>
-    </li>
-    <li class="nav-item">
-      <button class="nav-link" data-tab="ai-pdf">
-        <i class="fas fa-robot me-1"></i>AI Report Analyzer
-      </button>
-    </li>
-  </ul>
-
-  {# ── Tab: Manual Calculator ──────────────────────────────────────────── #}
-  <div id="tab-manual">
-    <div id="workspace" style="display:none">
-      <div class="row g-4">
-
-        {# Left: Room list + add items #}
-        <div class="col-lg-7">
-          <div class="d-flex justify-content-between align-items-center mb-2">
-            <h6 class="mb-0">Rooms</h6>
-            <button id="btn-add-room" class="btn btn-sm btn-outline-primary">
-              <i class="fas fa-plus me-1"></i>Add Custom Room
-            </button>
-          </div>
-          <div id="room-list"></div>
-
-          <div class="mt-3">
-            <button id="btn-calculate" class="btn btn-primary">
-              <i class="fas fa-calculator me-1"></i>Calculate Box Counts
-            </button>
-          </div>
-        </div>
-
-        {# Right: Results #}
-        <div class="col-lg-5">
-          <div class="card" id="results-card" style="display:none">
-            <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-              <span>Box Count Summary</span>
-              <span id="total-badge" class="badge bg-primary rounded-pill">0 boxes</span>
-            </div>
-            <div class="card-body p-0">
-              <table class="table table-sm mb-0" id="results-table">
-                <thead class="table-light">
-                  <tr>
-                    <th>Room</th>
-                    <th class="text-center" title="Small 1.5 cu ft">Sm</th>
-                    <th class="text-center" title="Medium 3.0 cu ft">Med</th>
-                    <th class="text-center" title="Large 4.5 cu ft">Lg</th>
-                    <th class="text-center" title="Dish Pack 5.2 cu ft">DP</th>
-                    <th class="text-center" title="Wardrobe 10 cu ft">WD</th>
-                    <th class="text-center" title="XL Furniture Wrap">XL</th>
-                    <th class="text-center fw-bold">Total</th>
-                  </tr>
-                </thead>
-                <tbody id="results-tbody"></tbody>
-                <tfoot id="results-tfoot" class="table-warning fw-bold"></tfoot>
-              </table>
-            </div>
-            <div class="card-footer text-muted small" id="cubic-feet-line"></div>
-          </div>
-
-          <div class="card mt-3">
-            <div class="card-header fw-semibold">Notes</div>
-            <div class="card-body">
-              <textarea id="session-notes" class="form-control" rows="3"
-                        placeholder="Any notes about this pack-out…"></textarea>
-            </div>
-          </div>
-        </div>
+  {# ── Step 2: Upload PDF ─────────────────────────────────────────────── #}
+  <div class="card mb-3" id="step2-card" style="opacity:.5;pointer-events:none;">
+    <div class="card-body">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="step-badge">2</span>
+        <span class="fw-semibold">Upload Box Count Report PDF</span>
+        <span class="text-muted small ms-1">— scope of work, contents list, or existing estimate</span>
       </div>
-    </div>
 
-    {# No-client placeholder #}
-    <div id="manual-placeholder" class="text-center text-muted py-5">
-      <i class="fas fa-hand-point-up fa-2x mb-2 d-block"></i>
-      Select a client above to load rooms
+      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('pdf-input').click()">
+        <input type="file" id="pdf-input" accept=".pdf" style="display:none">
+        <i class="fas fa-file-pdf fa-2x text-muted mb-2 d-block"></i>
+        <div id="upload-label" class="fw-semibold text-muted">Click to select PDF, or drag and drop</div>
+        <div class="text-muted small mt-1">Max 20 MB</div>
+      </div>
+
+      <div id="file-info" class="d-flex align-items-center gap-2 mt-2" style="display:none!important">
+        <i class="fas fa-file-pdf text-success"></i>
+        <span id="file-name" class="small fw-semibold"></span>
+        <span id="file-size" class="text-muted small"></span>
+        <button class="btn btn-sm btn-link text-danger p-0 ms-auto" id="btn-clear-file">Remove</button>
+      </div>
     </div>
   </div>
 
-  {# ── Tab: AI Report Analyzer ─────────────────────────────────────────── #}
-  <div id="tab-ai-pdf" style="display:none">
-    <div class="card mb-4">
-      <div class="card-header fw-semibold d-flex align-items-center gap-2">
-        <i class="fas fa-robot text-primary"></i>
-        AI Box Count Estimator — Upload a Report PDF
+  {# ── Step 3: Analyze ────────────────────────────────────────────────── #}
+  <div class="card mb-3" id="step3-card" style="opacity:.5;pointer-events:none;">
+    <div class="card-body">
+      <div class="d-flex align-items-center gap-2 mb-3">
+        <span class="step-badge">3</span>
+        <span class="fw-semibold">AI Analysis</span>
       </div>
-      <div class="card-body">
-        <p class="text-muted small mb-3">
-          Upload an existing box count report, contents list, or scope of work PDF.
-          Claude will read it as a <strong>master moving company estimator</strong> and produce
-          a complete room-by-room box count estimate using the two-step analysis method
-          (individual items first, then overview review for missed items).
-        </p>
-        <div class="row g-3 align-items-end">
-          <div class="col-md-8">
-            <label class="form-label fw-semibold">Upload Box Count Report / Contents PDF</label>
-            <input type="file" id="pdf-file-input" class="form-control" accept=".pdf">
-            <div class="form-text">Max 20 MB · PDF only</div>
-          </div>
-          <div class="col-md-4">
-            <button id="btn-analyze-pdf" class="btn btn-primary w-100">
-              <span id="pdf-spinner" class="spinner-border spinner-border-sm me-1" style="display:none"></span>
-              <i id="pdf-icon" class="fas fa-robot me-1"></i>
-              Analyze with AI
-            </button>
-          </div>
-        </div>
+
+      <div class="alert alert-light border mb-3" style="font-size:.82rem;">
+        <strong>How it works:</strong> Claude reads the uploaded PDF as a
+        <em>master moving company estimator</em> and applies a two-step analysis:
+        <ol class="mb-0 mt-1">
+          <li>Per-room contents analysis → box counts by type</li>
+          <li>Overview review → catch any missed items or under-estimates</li>
+        </ol>
+        Results open in the editable CPS report — same page used for photo-based estimates —
+        where you can adjust counts and export to Excel.
       </div>
+
+      <button id="btn-analyze" class="btn btn-primary btn-lg w-100" disabled>
+        <span id="analyze-spinner" class="spinner-border spinner-border-sm me-2" style="display:none"></span>
+        <i id="analyze-icon" class="fas fa-robot me-2"></i>
+        Analyze Report &amp; Generate Box Count
+      </button>
+
+      <div id="error-msg" class="alert alert-danger mt-3" style="display:none"></div>
     </div>
-
-    {# AI results — hidden until analysis completes #}
-    <div id="ai-results" style="display:none">
-      <div class="d-flex justify-content-between align-items-center mb-3">
-        <h5 class="mb-0">
-          <i class="fas fa-check-circle text-success me-2"></i>AI Estimate Complete
-        </h5>
-        <button id="btn-apply-ai" class="btn btn-success btn-sm">
-          <i class="fas fa-arrow-right me-1"></i>Apply to Manual Calculator
-        </button>
-      </div>
-
-      <div class="card mb-3">
-        <div class="card-header fw-semibold">Room-by-Room Estimate</div>
-        <div class="card-body p-0">
-          <table class="table table-sm mb-0" id="ai-results-table">
-            <thead class="table-light">
-              <tr>
-                <th>Room</th>
-                <th class="text-center" title="Small 1.5 cu ft">Sm</th>
-                <th class="text-center" title="Medium 3.0 cu ft">Med</th>
-                <th class="text-center" title="Large 4.5 cu ft">Lg</th>
-                <th class="text-center" title="Dish Pack 5.2 cu ft">DP</th>
-                <th class="text-center" title="Wardrobe 10 cu ft">WD</th>
-                <th class="text-center" title="XL Furniture Wrap">XL</th>
-                <th>Estimator Notes</th>
-              </tr>
-            </thead>
-            <tbody id="ai-results-tbody"></tbody>
-            <tfoot id="ai-results-tfoot" class="table-warning fw-bold"></tfoot>
-          </table>
-        </div>
-      </div>
-
-      <div class="card" id="ai-notes-card" style="display:none">
-        <div class="card-header fw-semibold">
-          <i class="fas fa-clipboard-list me-1"></i>Estimator Notes &amp; Rebuttal Guidance
-        </div>
-        <div class="card-body">
-          <div id="ai-estimator-notes" class="small" style="white-space:pre-wrap;"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="ai-error-msg" class="alert alert-danger" style="display:none"></div>
   </div>
 
-</div>{# end container #}
+  {# Quick link to photo-based CPS tool #}
+  <p class="text-center text-muted small mt-4">
+    Have room <strong>photos</strong> instead of a PDF?
+    <a href="{% url 'cps_home' %}">Use the photo-based CPS estimator →</a>
+  </p>
 
-{# ── Category select template (hidden, cloned via JS) ─────────────────── #}
-<template id="tpl-category-select">
-  <select class="form-select form-select-sm item-category" name="category">
-    <option value="">— category —</option>
-    {% for group, cats in category_groups.items %}
-    <optgroup label="{{ group }}">
-      {% for value, label in cats %}
-      <option value="{{ value }}">{{ label }}</option>
-      {% endfor %}
-    </optgroup>
-    {% endfor %}
-  </select>
-</template>
+</div>
+{% endblock %}
 
+{% block extra_js %}
 <script>
-// ── State ─────────────────────────────────────────────────────────────────
-let currentClientId = null;
-let sessionId       = null;
-let roomsData       = {};
-let aiRooms         = [];  // AI-estimated rooms for "apply" action
+const clientSelect = document.getElementById('client-select');
+const step2Card    = document.getElementById('step2-card');
+const step3Card    = document.getElementById('step3-card');
+const pdfInput     = document.getElementById('pdf-input');
+const uploadZone   = document.getElementById('upload-zone');
+const uploadLabel  = document.getElementById('upload-label');
+const fileInfo     = document.getElementById('file-info');
+const fileName     = document.getElementById('file-name');
+const fileSize     = document.getElementById('file-size');
+const btnClear     = document.getElementById('btn-clear-file');
+const btnAnalyze   = document.getElementById('btn-analyze');
+const errDiv       = document.getElementById('error-msg');
 
-// Items that use compartments
-const COMPARTMENT_CATS = new Set([
-  'dresser','nightstand','filing_cabinet','desk',
-  'entertainment_center','bookshelf','china_cabinet'
-]);
+let selectedClientId = null;
+let selectedFile     = null;
 
-// ── DOM refs ──────────────────────────────────────────────────────────────
-const clientSelect  = document.getElementById('client-select');
-const workspace     = document.getElementById('workspace');
-const roomList      = document.getElementById('room-list');
-const headerActions = document.getElementById('header-actions');
-const btnReport     = document.getElementById('btn-report');
-const btnSave       = document.getElementById('btn-save');
-const saveSpinner   = document.getElementById('save-spinner');
-const resultsCard   = document.getElementById('results-card');
-const manualPH      = document.getElementById('manual-placeholder');
-
-// ── Tab switching ─────────────────────────────────────────────────────────
-document.querySelectorAll('#calcTabs .nav-link').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('#calcTabs .nav-link').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    const tab = btn.dataset.tab;
-    document.getElementById('tab-manual').style.display   = tab === 'manual'   ? '' : 'none';
-    document.getElementById('tab-ai-pdf').style.display   = tab === 'ai-pdf'   ? '' : 'none';
-  });
+// ── Enable step 2 when client chosen ────────────────────────────────────────
+clientSelect.addEventListener('change', () => {
+  selectedClientId = clientSelect.value || null;
+  step2Card.style.opacity      = selectedClientId ? '1' : '.5';
+  step2Card.style.pointerEvents = selectedClientId ? '' : 'none';
+  checkReady();
 });
 
-// ── Helpers ───────────────────────────────────────────────────────────────
-function csrf() {
-  return document.cookie.split(';').map(c => c.trim())
-    .find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
-}
-
-function postJSON(url, body) {
-  return fetch(url, {
-    method: 'POST',
-    headers: {'Content-Type':'application/json','X-CSRFToken': csrf()},
-    body: JSON.stringify(body),
-  }).then(r => r.json());
-}
-
-// ── Client selection ──────────────────────────────────────────────────────
-clientSelect.addEventListener('change', async () => {
-  currentClientId = clientSelect.value;
-  if (!currentClientId) {
-    workspace.style.display = 'none';
-    manualPH.style.display = '';
-    return;
-  }
-
-  manualPH.style.display = 'none';
-  roomList.innerHTML = '<p class="text-muted"><span class="spinner-border spinner-border-sm me-2"></span>Loading rooms…</p>';
-  workspace.style.display = 'block';
-  resultsCard.style.display = 'none';
-  headerActions.style.display = 'none';
-  sessionId = null;
-  roomsData = {};
-
-  try {
-    const resp = await fetch(`/calculator/api/rooms/${currentClientId}/`);
-    if (!resp.ok) throw new Error(`Server returned ${resp.status}`);
-    const data = await resp.json();
-    if (data.error) throw new Error(data.error);
-
-    sessionId = data.session_id;
-    roomList.innerHTML = '';
-
-    if (data.rooms && data.rooms.length) {
-      data.rooms.forEach(r => renderRoom(r.name, r.items, r));
-    } else {
-      roomList.innerHTML = '<p class="text-muted small">No rooms found for this client — use "Add Custom Room" to add one, or ensure this client has been synced from Encircle.</p>';
-    }
-
-    if (sessionId) {
-      headerActions.style.display = 'flex';
-      btnReport.href = `/calculator/report/${sessionId}/`;
-    }
-  } catch (err) {
-    roomList.innerHTML = `
-      <div class="alert alert-danger">
-        <strong>Could not load rooms:</strong> ${err.message}
-        <div class="small mt-1">The box calculator database tables may need to be created. Run <code>manage.py migrate</code> on the server, then try again.</div>
-      </div>`;
-  }
+// ── File selection ───────────────────────────────────────────────────────────
+pdfInput.addEventListener('change', () => {
+  if (pdfInput.files.length) setFile(pdfInput.files[0]);
 });
 
-// ── Render a room accordion card ──────────────────────────────────────────
-function renderRoom(roomName, savedItems, roomMeta) {
-  const safeId = 'room-' + roomName.replace(/[^a-z0-9]/gi, '_');
-  const card = document.createElement('div');
-  card.className = 'card mb-2';
-  card.dataset.room = roomName;
-
-  // Build dimension badge if Encircle data is available
-  let dimBadge = '';
-  if (roomMeta && roomMeta.width && roomMeta.length) {
-    const w = parseFloat(roomMeta.width).toFixed(1);
-    const l = parseFloat(roomMeta.length).toFixed(1);
-    const area = roomMeta.area ? parseFloat(roomMeta.area).toFixed(0) + ' sq ft' : '';
-    const ch   = roomMeta.ceiling_height && roomMeta.ceiling_height !== 'N/A'
-                  ? ` · ${roomMeta.ceiling_height}H` : '';
-    dimBadge = `<span class="badge bg-light text-secondary border me-1" style="font-size:.68rem;" title="Encircle floor plan dimensions">
-      📐 ${w}' × ${l}'${area ? ' · ' + area : ''}${ch}
-    </span>`;
-  }
-
-  card.innerHTML = `
-    <div class="card-header d-flex justify-content-between align-items-center py-2 px-3"
-         style="cursor:pointer" onclick="toggleRoom('${safeId}')">
-      <div class="d-flex align-items-center gap-2 flex-wrap">
-        <span class="fw-semibold" style="font-size:.9rem;">${roomName}</span>
-        ${dimBadge}
-      </div>
-      <div class="d-flex gap-2 align-items-center flex-shrink-0">
-        <span class="badge bg-secondary item-count-badge">0 items</span>
-        <i class="fas fa-chevron-down text-muted" style="font-size:.75rem;" id="${safeId}-chevron"></i>
-      </div>
-    </div>
-    <div id="${safeId}" style="display:none">
-      <div class="card-body p-2">
-        <table class="table table-sm table-borderless mb-2" style="font-size:.82rem;">
-          <thead class="table-light">
-            <tr>
-              <th style="width:40%">Category</th>
-              <th style="width:15%" class="text-center">Qty</th>
-              <th style="width:20%" class="text-center">Compartments</th>
-              <th style="width:20%">Note</th>
-              <th style="width:5%"></th>
-            </tr>
-          </thead>
-          <tbody class="item-tbody"></tbody>
-        </table>
-        <div class="d-flex gap-2">
-          <button class="btn btn-xs btn-outline-primary" style="font-size:.75rem;padding:2px 8px;"
-                  onclick="addItemRow(this)">+ Add Item</button>
-          <button class="btn btn-xs btn-outline-secondary" style="font-size:.75rem;padding:2px 8px;"
-                  onclick="loadDefaults(this, '${roomName}')">Load Defaults</button>
-        </div>
-      </div>
-    </div>
-  `;
-  roomList.appendChild(card);
-
-  (savedItems || []).forEach(item => addItemRow(card.querySelector('button'), item));
-  updateItemBadge(card);
-}
-
-function toggleRoom(id) {
-  const el = document.getElementById(id);
-  const chevron = document.getElementById(id + '-chevron');
-  el.style.display = el.style.display === 'none' ? 'block' : 'none';
-  if (chevron) chevron.style.transform = el.style.display === 'none' ? '' : 'rotate(180deg)';
-}
-
-// ── Add an item row to a room ─────────────────────────────────────────────
-function addItemRow(triggerEl, savedItem) {
-  const card = triggerEl.closest('.card');
-  const tbody = card.querySelector('.item-tbody');
-
-  const catTpl = document.getElementById('tpl-category-select').content.cloneNode(true);
-  const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td class="ps-0"></td>
-    <td class="text-center"><input type="number" class="form-control form-control-sm item-qty" min="1" value="1" style="width:60px;margin:auto"></td>
-    <td class="text-center"><input type="number" class="form-control form-control-sm item-comp" min="0" value="0" style="width:60px;margin:auto" title="compartments / drawers / shelves"></td>
-    <td><input type="text" class="form-control form-control-sm item-note" placeholder="note…" style="font-size:.78rem;"></td>
-    <td><button class="btn btn-sm text-danger p-0" onclick="this.closest('tr').remove(); updateItemBadge(this.closest('.card'))" title="remove">×</button></td>
-  `;
-  tr.querySelector('td').appendChild(catTpl);
-
-  if (savedItem) {
-    tr.querySelector('.item-category').value = savedItem.category || '';
-    tr.querySelector('.item-qty').value       = savedItem.quantity || 1;
-    tr.querySelector('.item-comp').value      = savedItem.compartments || 0;
-    tr.querySelector('.item-note').value      = savedItem.note || '';
-  }
-
-  const catSel   = tr.querySelector('.item-category');
-  const compInput = tr.querySelector('.item-comp');
-  function toggleComp() {
-    compInput.closest('td').style.opacity = COMPARTMENT_CATS.has(catSel.value) ? '1' : '0.3';
-    if (!COMPARTMENT_CATS.has(catSel.value)) compInput.value = 0;
-  }
-  catSel.addEventListener('change', toggleComp);
-  toggleComp();
-
-  tbody.appendChild(tr);
-  updateItemBadge(card);
-  catSel.addEventListener('change', () => updateItemBadge(card));
-}
-
-function updateItemBadge(card) {
-  const rows  = card.querySelectorAll('.item-tbody tr');
-  const badge = card.querySelector('.item-count-badge');
-  if (badge) badge.textContent = `${rows.length} item${rows.length !== 1 ? 's' : ''}`;
-}
-
-// ── Load room defaults ────────────────────────────────────────────────────
-async function loadDefaults(btn, roomName) {
-  const card = btn.closest('.card');
-  const data = await postJSON('/calculator/api/defaults/', {room_name: roomName});
-  if (data.items) {
-    card.querySelector('.item-tbody').innerHTML = '';
-    data.items.forEach(item => addItemRow(btn, item));
-    updateItemBadge(card);
-  }
-}
-
-// ── Add custom room ───────────────────────────────────────────────────────
-document.getElementById('btn-add-room').addEventListener('click', () => {
-  const name = prompt('Room name:');
-  if (name && name.trim()) renderRoom(name.trim(), [], null);
+uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+uploadZone.addEventListener('drop', e => {
+  e.preventDefault();
+  uploadZone.classList.remove('drag-over');
+  const f = e.dataTransfer.files[0];
+  if (f && f.type === 'application/pdf') setFile(f);
+  else showError('Please drop a PDF file.');
 });
 
-// ── Collect room data from DOM ────────────────────────────────────────────
-function collectRooms() {
-  const rooms = [];
-  document.querySelectorAll('#room-list .card[data-room]').forEach(card => {
-    const roomName = card.dataset.room;
-    const items = [];
-    card.querySelectorAll('.item-tbody tr').forEach(tr => {
-      const cat = tr.querySelector('.item-category')?.value;
-      if (!cat) return;
-      items.push({
-        category:     cat,
-        quantity:     parseInt(tr.querySelector('.item-qty')?.value || '1'),
-        compartments: parseInt(tr.querySelector('.item-comp')?.value || '0'),
-        note:         tr.querySelector('.item-note')?.value || '',
-      });
-    });
-    rooms.push({name: roomName, items});
-  });
-  return rooms;
+btnClear.addEventListener('click', e => { e.stopPropagation(); clearFile(); });
+
+function setFile(f) {
+  if (f.size > 20 * 1024 * 1024) { showError('File must be under 20 MB.'); return; }
+  selectedFile = f;
+  uploadLabel.textContent = 'File selected';
+  fileName.textContent = f.name;
+  fileSize.textContent = (f.size / 1024).toFixed(0) + ' KB';
+  uploadZone.classList.add('has-file');
+  fileInfo.style.display = 'flex';
+  pdfInput.value = '';
+  checkReady();
 }
 
-// ── Calculate ─────────────────────────────────────────────────────────────
-document.getElementById('btn-calculate').addEventListener('click', async () => {
-  const rooms = collectRooms();
-  if (!rooms.length) { alert('Add at least one room with items.'); return; }
-
-  const data = await postJSON('/calculator/api/calculate/', {rooms});
-  if (data.error) { alert('Error: ' + data.error); return; }
-  renderResults(data.report);
-});
-
-function renderResults(report) {
-  const tbody = document.getElementById('results-tbody');
-  const tfoot = document.getElementById('results-tfoot');
-  tbody.innerHTML = '';
-
-  report.rooms.forEach(r => {
-    const t = r.totals;
-    const total = t.total_boxes + t.xl;
-    tbody.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td class="text-nowrap" style="font-size:.82rem;">${r.room}</td>
-        <td class="text-center">${t.small || ''}</td>
-        <td class="text-center">${t.medium || ''}</td>
-        <td class="text-center">${t.large || ''}</td>
-        <td class="text-center">${t.dish_pack || ''}</td>
-        <td class="text-center">${t.wardrobe || ''}</td>
-        <td class="text-center text-muted">${t.xl || ''}</td>
-        <td class="text-center fw-bold">${total || ''}</td>
-      </tr>
-    `);
-  });
-
-  const tot = report.totals;
-  const grandTotal = tot.total_boxes + tot.xl;
-  tfoot.innerHTML = `
-    <tr>
-      <td class="ps-2">TOTALS</td>
-      <td class="text-center">${tot.small || 0}</td>
-      <td class="text-center">${tot.medium || 0}</td>
-      <td class="text-center">${tot.large || 0}</td>
-      <td class="text-center">${tot.dish_pack || 0}</td>
-      <td class="text-center">${tot.wardrobe || 0}</td>
-      <td class="text-center">${tot.xl || 0}</td>
-      <td class="text-center">${grandTotal}</td>
-    </tr>
-  `;
-
-  document.getElementById('total-badge').textContent = `${tot.total_boxes} boxes + ${tot.xl} XL`;
-  document.getElementById('cubic-feet-line').textContent =
-    `Total volume: ${parseFloat(tot.total_cubic_feet || 0).toFixed(1)} cu ft`;
-
-  resultsCard.style.display = 'block';
-  resultsCard.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+function clearFile() {
+  selectedFile = null;
+  uploadZone.classList.remove('has-file');
+  uploadLabel.textContent = 'Click to select PDF, or drag and drop';
+  fileInfo.style.display = 'none';
+  checkReady();
 }
 
-// ── Save session ──────────────────────────────────────────────────────────
-btnSave.addEventListener('click', async () => {
-  if (!currentClientId) { alert('Select a client first.'); return; }
-  const rooms = collectRooms();
-  if (!rooms.length) { alert('Nothing to save.'); return; }
+function checkReady() {
+  const ready = !!(selectedClientId && selectedFile);
+  step3Card.style.opacity      = ready ? '1' : '.5';
+  step3Card.style.pointerEvents = ready ? '' : 'none';
+  btnAnalyze.disabled = !ready;
+}
 
-  saveSpinner.style.display = 'inline-block';
-  btnSave.disabled = true;
-  try {
-    const data = await postJSON('/calculator/api/save/', {
-      client_id: currentClientId,
-      rooms,
-      notes: document.getElementById('session-notes').value,
-    });
-    if (data.error) { alert('Save error: ' + data.error); return; }
-    sessionId = data.session_id;
-    headerActions.style.display = 'flex';
-    btnReport.href = `/calculator/report/${sessionId}/`;
-    if (data.report) renderResults(data.report);
-    btnSave.innerHTML = '<i class="fas fa-check me-1"></i>Saved!';
-    setTimeout(() => { btnSave.innerHTML = '<i class="fas fa-save me-1"></i>Save Session'; }, 2000);
-  } finally {
-    saveSpinner.style.display = 'none';
-    btnSave.disabled = false;
-  }
-});
-
-// ── AI PDF Analysis ───────────────────────────────────────────────────────
-document.getElementById('btn-analyze-pdf').addEventListener('click', async () => {
-  const fileInput = document.getElementById('pdf-file-input');
-  const errDiv    = document.getElementById('ai-error-msg');
-  const resultsDiv = document.getElementById('ai-results');
-  const spinner   = document.getElementById('pdf-spinner');
-  const icon      = document.getElementById('pdf-icon');
+// ── Analysis ─────────────────────────────────────────────────────────────────
+btnAnalyze.addEventListener('click', async () => {
+  if (!selectedClientId || !selectedFile) return;
 
   errDiv.style.display = 'none';
-  resultsDiv.style.display = 'none';
-
-  if (!fileInput.files.length) {
-    errDiv.textContent = 'Please select a PDF file first.';
-    errDiv.style.display = '';
-    return;
-  }
+  document.getElementById('analyze-spinner').style.display = 'inline-block';
+  document.getElementById('analyze-icon').style.display    = 'none';
+  btnAnalyze.disabled = true;
+  btnAnalyze.textContent = '';
+  btnAnalyze.insertAdjacentHTML('afterbegin',
+    '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing — this takes 15–30 seconds…');
 
   const formData = new FormData();
-  formData.append('file', fileInput.files[0]);
-  if (currentClientId) formData.append('client_id', currentClientId);
-
-  spinner.style.display = 'inline-block';
-  icon.style.display = 'none';
-  document.getElementById('btn-analyze-pdf').disabled = true;
+  formData.append('file', selectedFile);
+  formData.append('client_id', selectedClientId);
 
   try {
     const resp = await fetch('/calculator/api/analyze-pdf/', {
       method: 'POST',
-      headers: {'X-CSRFToken': csrf()},
+      headers: {'X-CSRFToken': getCsrf()},
       body: formData,
     });
     const data = await resp.json();
 
     if (!resp.ok || data.error) {
-      errDiv.textContent = 'Analysis failed: ' + (data.error || 'Unknown error');
-      errDiv.style.display = '';
+      showError('Analysis failed: ' + (data.error || 'Unknown error'));
       return;
     }
 
-    renderAiResults(data);
+    // Redirect straight to the CPS editable report
+    window.location.href = `/calculator/cps/report/${data.session_id}/`;
+
   } catch (err) {
-    errDiv.textContent = 'Network error: ' + err.message;
-    errDiv.style.display = '';
+    showError('Network error: ' + err.message);
   } finally {
-    spinner.style.display = 'none';
-    icon.style.display = 'inline-block';
-    document.getElementById('btn-analyze-pdf').disabled = false;
+    btnAnalyze.disabled = false;
+    btnAnalyze.innerHTML = '<i class="fas fa-robot me-2"></i>Analyze Report &amp; Generate Box Count';
   }
 });
 
-function renderAiResults(data) {
-  aiRooms = data.rooms || [];
-  const tbody  = document.getElementById('ai-results-tbody');
-  const tfoot  = document.getElementById('ai-results-tfoot');
-  const notesDiv = document.getElementById('ai-estimator-notes');
-  const notesCard = document.getElementById('ai-notes-card');
-
-  tbody.innerHTML = '';
-  aiRooms.forEach(r => {
-    tbody.insertAdjacentHTML('beforeend', `
-      <tr>
-        <td class="fw-semibold" style="font-size:.82rem;">${r.name}</td>
-        <td class="text-center">${r.small || ''}</td>
-        <td class="text-center">${r.medium || ''}</td>
-        <td class="text-center">${r.large || ''}</td>
-        <td class="text-center">${r.dish_pack || ''}</td>
-        <td class="text-center">${r.wardrobe || ''}</td>
-        <td class="text-center text-muted">${r.xl_wrap || ''}</td>
-        <td class="text-muted small">${r.notes || ''}</td>
-      </tr>
-    `);
-  });
-
-  const s = data.summary || {};
-  tfoot.innerHTML = `
-    <tr>
-      <td class="ps-2">TOTALS</td>
-      <td class="text-center">${s.total_small || 0}</td>
-      <td class="text-center">${s.total_medium || 0}</td>
-      <td class="text-center">${s.total_large || 0}</td>
-      <td class="text-center">${s.total_dish_pack || 0}</td>
-      <td class="text-center">${s.total_wardrobe || 0}</td>
-      <td class="text-center">${s.total_xl_wrap || 0}</td>
-      <td></td>
-    </tr>
-  `;
-
-  if (s.estimator_notes) {
-    notesDiv.textContent = s.estimator_notes;
-    notesCard.style.display = '';
-  } else {
-    notesCard.style.display = 'none';
-  }
-
-  document.getElementById('ai-results').style.display = '';
+function showError(msg) {
+  errDiv.textContent = msg;
+  errDiv.style.display = '';
 }
 
-// "Apply to Calculator" — load AI rooms into the manual calculator
-document.getElementById('btn-apply-ai').addEventListener('click', () => {
-  if (!aiRooms.length) return;
-
-  // Switch to manual tab
-  document.querySelector('[data-tab="manual"]').click();
-
-  // If no client selected, show workspace anyway
-  if (!currentClientId) {
-    workspace.style.display = 'block';
-    manualPH.style.display = 'none';
-  }
-
-  // Clear existing rooms and render AI rooms
-  roomList.innerHTML = '';
-  aiRooms.forEach(r => {
-    // Convert AI estimate format → item list format
-    const items = [];
-    const boxMap = [
-      {cat: 'general',         qty: r.medium  || 0},
-      {cat: 'books',           qty: r.small   || 0},
-      {cat: 'linens',          qty: r.large   || 0},
-      {cat: 'fragile_kitchen', qty: r.dish_pack || 0},
-      {cat: 'hanging_clothes', qty: r.wardrobe || 0},
-    ];
-    boxMap.forEach(({cat, qty}) => {
-      if (qty > 0) items.push({category: cat, quantity: qty, compartments: 0, note: 'AI estimate'});
-    });
-    if (r.xl_wrap) items.push({category: 'sofa', quantity: r.xl_wrap, compartments: 0, note: 'XL wrap items'});
-    renderRoom(r.name, items, null);
-  });
-});
+function getCsrf() {
+  return document.cookie.split(';').map(c => c.trim())
+    .find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
+}
 </script>
 {% endblock %}

@@ -12,7 +12,7 @@ urlpatterns = [
     path('api/defaults/', views.api_defaults, name='box_calc_defaults'),
     path('api/ai-analyze/', views.api_ai_analyze, name='box_calc_ai_analyze'),
     path('api/save/', views.api_save_session, name='api_save_session'),
-    path('api/analyze-pdf/', views.api_analyze_pdf, name='api_analyze_pdf'),
+    path('api/analyze-pdf/', views.api_pdf_to_cps_session, name='api_analyze_pdf'),
 
     # CPS — AI image-based box count estimation (300-series rooms)
     path('cps/', views.cps_home, name='cps_home'),

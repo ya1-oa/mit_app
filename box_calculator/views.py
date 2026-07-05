@@ -456,44 +456,72 @@ def cps_delete_room(request, room_id):
 
 @login_required
 @require_POST
-def api_analyze_pdf(request):
+def api_pdf_to_cps_session(request):
     """
-    Accept an uploaded box count report PDF and return Claude's structured
-    room-by-room box count estimates using the master estimator prompt.
+    Accept an uploaded box count report PDF, run Claude master-estimator analysis,
+    persist results as a BoxCalcCPSSession + BoxCalcCPSRoom records, and return
+    the session ID so the caller can redirect to the existing CPS report/edit page.
 
     POST: multipart/form-data
-        file        — PDF file
-        client_id   — optional int (adds claim context to prompt)
+        file       — PDF (≤20 MB)
+        client_id  — int (required)
     """
     from .ai_analyzer import analyze_pdf_report
+    from .models import BoxCalcCPSSession, BoxCalcCPSRoom
+    from .cps_analyzer import CPS_COLUMNS
 
-    pdf_file = request.FILES.get('file')
+    pdf_file  = request.FILES.get('file')
+    client_id = request.POST.get('client_id')
+
     if not pdf_file:
         return JsonResponse({'error': 'No file uploaded'}, status=400)
     if not pdf_file.name.lower().endswith('.pdf'):
         return JsonResponse({'error': 'File must be a PDF'}, status=400)
     if pdf_file.size > 20 * 1024 * 1024:
         return JsonResponse({'error': 'PDF must be under 20 MB'}, status=400)
+    if not client_id:
+        return JsonResponse({'error': 'client_id required'}, status=400)
 
-    client_context = ''
-    client_id = request.POST.get('client_id')
-    if client_id:
-        try:
-            c = Client.objects.filter(id=client_id).values('pOwner', 'claimNumber', 'pAddress').first()
-            if c:
-                parts = [c['pOwner']]
-                if c['claimNumber']:
-                    parts.append(f"Claim #{c['claimNumber']}")
-                if c['pAddress']:
-                    parts.append(c['pAddress'])
-                client_context = ' — '.join(parts)
-        except Exception:
-            pass
+    client = get_object_or_404(Client, id=client_id)
+
+    # Build context string for the prompt
+    parts = [client.pOwner]
+    if client.claimNumber:
+        parts.append(f"Claim #{client.claimNumber}")
+    if client.pAddress:
+        parts.append(client.pAddress)
+    client_context = ' — '.join(parts)
 
     try:
         pdf_bytes = pdf_file.read()
         result = analyze_pdf_report(pdf_bytes, client_context=client_context)
-        return JsonResponse(result)
     except Exception as e:
-        logger.error(f"api_analyze_pdf error: {e}", exc_info=True)
+        logger.error(f"api_pdf_to_cps_session analysis error: {e}", exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
+
+    if not result.get('success'):
+        return JsonResponse({'error': result.get('error', 'Analysis failed')}, status=500)
+
+    # Persist to CPS session — one session per client (upsert)
+    session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
+    session.notes = result.get('estimator_notes', '')
+    session.save(update_fields=['notes', 'updated_at'])
+
+    # Replace all rooms with fresh AI estimates
+    session.rooms.all().delete()
+
+    for order, room_data in enumerate(result.get('rooms', [])):
+        room_name = room_data.get('name', f'Room {order + 1}')
+        kwargs = {col: max(0, int(room_data.get(col, 0) or 0)) for col in CPS_COLUMNS}
+        BoxCalcCPSRoom.objects.create(
+            session=session,
+            room_name=room_name,
+            order=order,
+            status='complete',
+            confidence='high',
+            ai_notes=room_data.get('ai_notes', ''),
+            images_count=0,
+            **kwargs,
+        )
+
+    return JsonResponse({'success': True, 'session_id': session.id})
