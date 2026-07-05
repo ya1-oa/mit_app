@@ -12,25 +12,26 @@
   transition: border-color .15s, background .15s;
   background: #f8fafc;
 }
-.upload-zone:hover, .upload-zone.drag-over {
-  border-color: #3b82f6;
-  background: #eff6ff;
+.upload-zone:hover, .upload-zone.drag-over { border-color: #3b82f6; background: #eff6ff; }
+.upload-zone.has-file { border-color: #10b981; background: #f0fdf4; }
+
+.method-card {
+  border: 2px solid #e2e8f0;
+  border-radius: .75rem;
+  padding: 1.5rem;
+  cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
 }
-.upload-zone.has-file {
-  border-color: #10b981;
-  background: #f0fdf4;
-}
+.method-card:hover { border-color: #3b82f6; box-shadow: 0 0 0 3px #dbeafe; }
+.method-card.primary { border-color: #3b82f6; background: #eff6ff; }
+
+.room-row { border-bottom: 1px solid #f1f5f9; padding: .5rem 0; }
+.room-row:last-child { border-bottom: none; }
+
 .step-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 28px; height: 28px;
-  border-radius: 50%;
-  background: #3b82f6;
-  color: #fff;
-  font-weight: 700;
-  font-size: .8rem;
-  flex-shrink: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 28px; height: 28px; border-radius: 50%;
+  background: #3b82f6; color: #fff; font-weight: 700; font-size: .8rem; flex-shrink: 0;
 }
 </style>
 {% endblock %}
@@ -41,12 +42,12 @@
   <div class="mb-4">
     <h2 class="mb-1">Box Count Calculator</h2>
     <p class="text-muted mb-0">
-      Upload a box count report or scope-of-work PDF — Claude reads it as a master
-      moving estimator and produces a room-by-room estimate you can edit and export to Excel.
+      Automatically pull packout room photos from Encircle, or upload a PDF report — Claude
+      produces a room-by-room estimate you can edit and export to Excel.
     </p>
   </div>
 
-  {# ── Step 1: Select Client ──────────────────────────────────────────── #}
+  {# ── Step 1: Select Client ──────────────────────────────────────────────── #}
   <div class="card mb-3">
     <div class="card-body">
       <div class="d-flex align-items-center gap-2 mb-2">
@@ -56,7 +57,9 @@
       <select id="client-select" class="form-select form-select-lg">
         <option value="">— choose a client —</option>
         {% for c in clients %}
-        <option value="{{ c.id }}">
+        <option value="{{ c.id }}"
+                data-encircle-id="{{ c.encircle_claim_id|default:'' }}"
+                data-name="{{ c.pOwner }}">
           {{ c.pOwner }}{% if c.claimNumber %} — #{{ c.claimNumber }}{% endif %}{% if c.pAddress %} &nbsp;·&nbsp; {{ c.pAddress }}{% endif %}
         </option>
         {% endfor %}
@@ -64,96 +67,290 @@
     </div>
   </div>
 
-  {# ── Step 2: Upload PDF ─────────────────────────────────────────────── #}
-  <div class="card mb-3" id="step2-card" style="opacity:.5;pointer-events:none;">
+  {# ── Step 2: Choose Method ──────────────────────────────────────────────── #}
+  <div class="card mb-3" id="step2-card" style="display:none">
     <div class="card-body">
       <div class="d-flex align-items-center gap-2 mb-3">
         <span class="step-badge">2</span>
-        <span class="fw-semibold">Upload Box Count Report PDF</span>
-        <span class="text-muted small ms-1">— scope of work, contents list, or existing estimate</span>
+        <span class="fw-semibold">Choose Method</span>
       </div>
 
-      <div class="upload-zone" id="upload-zone" onclick="document.getElementById('pdf-input').click()">
-        <input type="file" id="pdf-input" accept=".pdf" style="display:none">
-        <i class="fas fa-file-pdf fa-2x text-muted mb-2 d-block"></i>
-        <div id="upload-label" class="fw-semibold text-muted">Click to select PDF, or drag and drop</div>
-        <div class="text-muted small mt-1">Max 20 MB</div>
+      {# Encircle option — only shown when client has encircle_claim_id #}
+      <div id="encircle-method-card" class="method-card primary mb-3" style="display:none" onclick="chooseEncircle()">
+        <div class="d-flex align-items-start gap-3">
+          <i class="fas fa-cloud-download-alt fa-2x text-primary mt-1"></i>
+          <div>
+            <div class="fw-bold">Auto-Download from Encircle <span class="badge bg-primary ms-1">Recommended</span></div>
+            <div class="text-muted small mt-1">
+              Automatically pulls photos from all 300-series packout rooms in Encircle,
+              then runs Claude CPS analysis on each room. No file uploads needed.
+            </div>
+          </div>
+        </div>
       </div>
 
-      <div id="file-info" class="d-flex align-items-center gap-2 mt-2" style="display:none!important">
-        <i class="fas fa-file-pdf text-success"></i>
-        <span id="file-name" class="small fw-semibold"></span>
-        <span id="file-size" class="text-muted small"></span>
-        <button class="btn btn-sm btn-link text-danger p-0 ms-auto" id="btn-clear-file">Remove</button>
+      {# PDF option — always shown #}
+      <div class="method-card" onclick="choosePdf()">
+        <div class="d-flex align-items-start gap-3">
+          <i class="fas fa-file-pdf fa-2x text-danger mt-1"></i>
+          <div>
+            <div class="fw-bold">Upload Box Count Report PDF</div>
+            <div class="text-muted small mt-1">
+              Upload a scope-of-work, contents list, or existing estimate PDF — Claude reads
+              it as a master moving estimator and generates box counts by room.
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-center mt-2">
+        <a href="{% url 'cps_home' %}" class="text-muted small">
+          Have room photos to upload manually? Use the photo-based CPS estimator →
+        </a>
       </div>
     </div>
   </div>
 
-  {# ── Step 3: Analyze ────────────────────────────────────────────────── #}
-  <div class="card mb-3" id="step3-card" style="opacity:.5;pointer-events:none;">
+  {# ── Step 3A: Encircle Progress ─────────────────────────────────────────── #}
+  <div class="card mb-3" id="encircle-panel" style="display:none">
     <div class="card-body">
       <div class="d-flex align-items-center gap-2 mb-3">
         <span class="step-badge">3</span>
-        <span class="fw-semibold">AI Analysis</span>
+        <span class="fw-semibold">Downloading &amp; Analyzing Packout Rooms</span>
       </div>
-
-      <div class="alert alert-light border mb-3" style="font-size:.82rem;">
-        <strong>How it works:</strong> Claude reads the uploaded PDF as a
-        <em>master moving company estimator</em> and applies a two-step analysis:
-        <ol class="mb-0 mt-1">
-          <li>Per-room contents analysis → box counts by type</li>
-          <li>Overview review → catch any missed items or under-estimates</li>
-        </ol>
-        Results open in the editable CPS report — same page used for photo-based estimates —
-        where you can adjust counts and export to Excel.
+      <div id="encircle-starting" class="text-center py-3">
+        <div class="spinner-border text-primary mb-2"></div>
+        <div class="text-muted small">Connecting to Encircle and finding 300-series rooms…</div>
       </div>
-
-      <button id="btn-analyze" class="btn btn-primary btn-lg w-100" disabled>
-        <span id="analyze-spinner" class="spinner-border spinner-border-sm me-2" style="display:none"></span>
-        <i id="analyze-icon" class="fas fa-robot me-2"></i>
-        Analyze Report &amp; Generate Box Count
-      </button>
-
-      <div id="error-msg" class="alert alert-danger mt-3" style="display:none"></div>
+      <div id="encircle-room-list" style="display:none">
+        <div id="room-rows"></div>
+        <div id="encircle-done" class="mt-3 text-center" style="display:none">
+          <div class="alert alert-success mb-2">All rooms analyzed!</div>
+          <a id="btn-open-report" href="#" class="btn btn-success btn-lg">
+            <i class="fas fa-table me-2"></i>Open Editable Report
+          </a>
+        </div>
+      </div>
+      <div id="encircle-error" class="alert alert-danger mt-2" style="display:none"></div>
     </div>
   </div>
 
-  {# Quick link to photo-based CPS tool #}
-  <p class="text-center text-muted small mt-4">
-    Have room <strong>photos</strong> instead of a PDF?
-    <a href="{% url 'cps_home' %}">Use the photo-based CPS estimator →</a>
-  </p>
+  {# ── Step 3B: PDF Upload & Analyze ─────────────────────────────────────── #}
+  <div id="pdf-panel" style="display:none">
+
+    <div class="card mb-3">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <span class="step-badge">3</span>
+          <span class="fw-semibold">Upload PDF Report</span>
+          <span class="text-muted small ms-1">— scope of work, contents list, or existing estimate</span>
+        </div>
+        <div class="upload-zone" id="upload-zone" onclick="document.getElementById('pdf-input').click()">
+          <input type="file" id="pdf-input" accept=".pdf" style="display:none">
+          <i class="fas fa-file-pdf fa-2x text-muted mb-2 d-block"></i>
+          <div id="upload-label" class="fw-semibold text-muted">Click to select PDF, or drag and drop</div>
+          <div class="text-muted small mt-1">Max 20 MB</div>
+        </div>
+        <div id="file-info" class="d-flex align-items-center gap-2 mt-2" style="display:none">
+          <i class="fas fa-file-pdf text-success"></i>
+          <span id="file-name" class="small fw-semibold"></span>
+          <span id="file-size" class="text-muted small"></span>
+          <button class="btn btn-sm btn-link text-danger p-0 ms-auto" id="btn-clear-file">Remove</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-3" id="pdf-analyze-card" style="opacity:.5;pointer-events:none;">
+      <div class="card-body">
+        <div class="d-flex align-items-center gap-2 mb-3">
+          <span class="step-badge">4</span>
+          <span class="fw-semibold">AI Analysis</span>
+        </div>
+        <div class="alert alert-light border mb-3" style="font-size:.82rem;">
+          <strong>How it works:</strong> Claude reads the PDF as a <em>master moving estimator</em>
+          with two-step analysis: per-room contents → overview review to catch missed items.
+          Results open in the same editable CPS report where you can adjust counts and export to Excel.
+        </div>
+        <button id="btn-analyze" class="btn btn-primary btn-lg w-100" disabled>
+          <i id="analyze-icon" class="fas fa-robot me-2"></i>
+          Analyze Report &amp; Generate Box Count
+        </button>
+        <div id="pdf-error-msg" class="alert alert-danger mt-3" style="display:none"></div>
+      </div>
+    </div>
+
+  </div>{# /pdf-panel #}
 
 </div>
 {% endblock %}
 
 {% block extra_js %}
 <script>
-const clientSelect = document.getElementById('client-select');
-const step2Card    = document.getElementById('step2-card');
-const step3Card    = document.getElementById('step3-card');
-const pdfInput     = document.getElementById('pdf-input');
-const uploadZone   = document.getElementById('upload-zone');
-const uploadLabel  = document.getElementById('upload-label');
-const fileInfo     = document.getElementById('file-info');
-const fileName     = document.getElementById('file-name');
-const fileSize     = document.getElementById('file-size');
-const btnClear     = document.getElementById('btn-clear-file');
-const btnAnalyze   = document.getElementById('btn-analyze');
-const errDiv       = document.getElementById('error-msg');
+const clientSelect  = document.getElementById('client-select');
+const step2Card     = document.getElementById('step2-card');
+const encircleCard  = document.getElementById('encircle-method-card');
+const encirclePanel = document.getElementById('encircle-panel');
+const pdfPanel      = document.getElementById('pdf-panel');
 
-let selectedClientId = null;
-let selectedFile     = null;
+let selectedClientId    = null;
+let selectedEncircleId  = null;
+let selectedFile        = null;
+let currentSessionId    = null;
+let pollIntervals       = {};  // task_id → intervalId
 
-// ── Enable step 2 when client chosen ────────────────────────────────────────
+// ── Client selection ─────────────────────────────────────────────────────────
 clientSelect.addEventListener('change', () => {
-  selectedClientId = clientSelect.value || null;
-  step2Card.style.opacity      = selectedClientId ? '1' : '.5';
-  step2Card.style.pointerEvents = selectedClientId ? '' : 'none';
-  checkReady();
+  const opt = clientSelect.selectedOptions[0];
+  selectedClientId   = clientSelect.value || null;
+  selectedEncircleId = opt ? opt.dataset.encircleId : '';
+
+  // Reset panels
+  encirclePanel.style.display = 'none';
+  pdfPanel.style.display      = 'none';
+  Object.values(pollIntervals).forEach(clearInterval);
+  pollIntervals = {};
+
+  if (!selectedClientId) {
+    step2Card.style.display = 'none';
+    return;
+  }
+
+  // Show method selector
+  step2Card.style.display = '';
+  if (selectedEncircleId) {
+    encircleCard.style.display = '';
+  } else {
+    encircleCard.style.display = 'none';
+  }
 });
 
-// ── File selection ───────────────────────────────────────────────────────────
+function chooseEncircle() {
+  pdfPanel.style.display      = 'none';
+  encirclePanel.style.display = '';
+  startEncircleDownload();
+}
+
+function choosePdf() {
+  encirclePanel.style.display = 'none';
+  pdfPanel.style.display      = '';
+}
+
+// ── Encircle auto-download ───────────────────────────────────────────────────
+async function startEncircleDownload() {
+  document.getElementById('encircle-starting').style.display = '';
+  document.getElementById('encircle-room-list').style.display = 'none';
+  document.getElementById('encircle-error').style.display = 'none';
+
+  try {
+    const resp = await fetch('/calculator/api/auto-from-encircle/', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json', 'X-CSRFToken': getCsrf()},
+      body: JSON.stringify({client_id: parseInt(selectedClientId)}),
+    });
+    const data = await resp.json();
+
+    if (!resp.ok || data.error) {
+      showEncircleError(data.error || 'Unknown error');
+      return;
+    }
+
+    currentSessionId = data.session_id;
+    document.getElementById('encircle-starting').style.display = 'none';
+    renderRoomRows(data.rooms);
+    data.rooms.forEach(r => startPolling(r.room_name, r.task_id, data.session_id));
+
+  } catch (err) {
+    showEncircleError('Network error: ' + err.message);
+  }
+}
+
+function renderRoomRows(rooms) {
+  const container = document.getElementById('room-rows');
+  container.innerHTML = '';
+  rooms.forEach(r => {
+    const row = document.createElement('div');
+    row.className = 'room-row d-flex align-items-center gap-2 px-1';
+    row.id = 'row-' + CSS.escape(r.task_id);
+    row.innerHTML = `
+      <span class="spinner-border spinner-border-sm text-primary flex-shrink-0" id="spinner-${r.task_id}"></span>
+      <i class="fas fa-check-circle text-success flex-shrink-0" id="check-${r.task_id}" style="display:none"></i>
+      <i class="fas fa-exclamation-circle text-danger flex-shrink-0" id="err-${r.task_id}" style="display:none"></i>
+      <span class="fw-semibold small">${escHtml(r.room_name)}</span>
+      <span class="text-muted small ms-auto" id="status-${r.task_id}">Pending…</span>
+    `;
+    container.appendChild(row);
+  });
+  document.getElementById('encircle-room-list').style.display = '';
+}
+
+function startPolling(roomName, taskId, sessionId) {
+  const ivId = setInterval(async () => {
+    try {
+      const resp = await fetch(`/calculator/cps/status/${taskId}/`);
+      const data = await resp.json();
+      updateRoomRow(taskId, data.state, data.room);
+      if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
+        clearInterval(ivId);
+        delete pollIntervals[taskId];
+        checkAllDone(sessionId);
+      }
+    } catch (e) {
+      // network blip — keep polling
+    }
+  }, 3000);
+  pollIntervals[taskId] = ivId;
+}
+
+function updateRoomRow(taskId, state, room) {
+  const spinner = document.getElementById('spinner-' + taskId);
+  const check   = document.getElementById('check-'   + taskId);
+  const errIcon = document.getElementById('err-'     + taskId);
+  const statusEl = document.getElementById('status-' + taskId);
+
+  if (!spinner) return;
+
+  if (state === 'SUCCESS' || (room && room.status === 'complete')) {
+    spinner.style.display = 'none';
+    check.style.display   = '';
+    const total = room ? room.total : '?';
+    statusEl.textContent = `Complete — ${total} boxes`;
+  } else if (state === 'FAILURE' || (room && room.status === 'error')) {
+    spinner.style.display  = 'none';
+    errIcon.style.display  = '';
+    statusEl.textContent   = room && room.ai_notes ? room.ai_notes : 'Error';
+    statusEl.className     = 'text-danger small ms-auto';
+  } else if (state === 'PROGRESS') {
+    statusEl.textContent = 'Analyzing…';
+  } else {
+    statusEl.textContent = 'Processing…';
+  }
+}
+
+function checkAllDone(sessionId) {
+  if (Object.keys(pollIntervals).length > 0) return;
+  // All tasks finished
+  const reportBtn = document.getElementById('btn-open-report');
+  reportBtn.href = `/calculator/cps/report/${sessionId}/`;
+  document.getElementById('encircle-done').style.display = '';
+}
+
+function showEncircleError(msg) {
+  document.getElementById('encircle-starting').style.display = 'none';
+  const el = document.getElementById('encircle-error');
+  el.textContent = msg;
+  el.style.display = '';
+}
+
+// ── PDF upload ───────────────────────────────────────────────────────────────
+const pdfInput    = document.getElementById('pdf-input');
+const uploadZone  = document.getElementById('upload-zone');
+const uploadLabel = document.getElementById('upload-label');
+const fileInfo    = document.getElementById('file-info');
+const btnClear    = document.getElementById('btn-clear-file');
+const btnAnalyze  = document.getElementById('btn-analyze');
+const pdfErrDiv   = document.getElementById('pdf-error-msg');
+const analyzeCard = document.getElementById('pdf-analyze-card');
+
 pdfInput.addEventListener('change', () => {
   if (pdfInput.files.length) setFile(pdfInput.files[0]);
 });
@@ -165,21 +362,22 @@ uploadZone.addEventListener('drop', e => {
   uploadZone.classList.remove('drag-over');
   const f = e.dataTransfer.files[0];
   if (f && f.type === 'application/pdf') setFile(f);
-  else showError('Please drop a PDF file.');
+  else showPdfError('Please drop a PDF file.');
 });
-
 btnClear.addEventListener('click', e => { e.stopPropagation(); clearFile(); });
 
 function setFile(f) {
-  if (f.size > 20 * 1024 * 1024) { showError('File must be under 20 MB.'); return; }
+  if (f.size > 20 * 1024 * 1024) { showPdfError('File must be under 20 MB.'); return; }
   selectedFile = f;
   uploadLabel.textContent = 'File selected';
-  fileName.textContent = f.name;
-  fileSize.textContent = (f.size / 1024).toFixed(0) + ' KB';
+  document.getElementById('file-name').textContent = f.name;
+  document.getElementById('file-size').textContent = (f.size / 1024).toFixed(0) + ' KB';
   uploadZone.classList.add('has-file');
   fileInfo.style.display = 'flex';
   pdfInput.value = '';
-  checkReady();
+  analyzeCard.style.opacity = '1';
+  analyzeCard.style.pointerEvents = '';
+  btnAnalyze.disabled = false;
 }
 
 function clearFile() {
@@ -187,27 +385,16 @@ function clearFile() {
   uploadZone.classList.remove('has-file');
   uploadLabel.textContent = 'Click to select PDF, or drag and drop';
   fileInfo.style.display = 'none';
-  checkReady();
+  analyzeCard.style.opacity = '.5';
+  analyzeCard.style.pointerEvents = 'none';
+  btnAnalyze.disabled = true;
 }
 
-function checkReady() {
-  const ready = !!(selectedClientId && selectedFile);
-  step3Card.style.opacity      = ready ? '1' : '.5';
-  step3Card.style.pointerEvents = ready ? '' : 'none';
-  btnAnalyze.disabled = !ready;
-}
-
-// ── Analysis ─────────────────────────────────────────────────────────────────
 btnAnalyze.addEventListener('click', async () => {
   if (!selectedClientId || !selectedFile) return;
-
-  errDiv.style.display = 'none';
-  document.getElementById('analyze-spinner').style.display = 'inline-block';
-  document.getElementById('analyze-icon').style.display    = 'none';
+  pdfErrDiv.style.display = 'none';
   btnAnalyze.disabled = true;
-  btnAnalyze.textContent = '';
-  btnAnalyze.insertAdjacentHTML('afterbegin',
-    '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing — this takes 15–30 seconds…');
+  btnAnalyze.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Analyzing — 15–30 seconds…';
 
   const formData = new FormData();
   formData.append('file', selectedFile);
@@ -220,31 +407,28 @@ btnAnalyze.addEventListener('click', async () => {
       body: formData,
     });
     const data = await resp.json();
-
-    if (!resp.ok || data.error) {
-      showError('Analysis failed: ' + (data.error || 'Unknown error'));
-      return;
-    }
-
-    // Redirect straight to the CPS editable report
+    if (!resp.ok || data.error) { showPdfError('Analysis failed: ' + (data.error || 'Unknown error')); return; }
     window.location.href = `/calculator/cps/report/${data.session_id}/`;
-
   } catch (err) {
-    showError('Network error: ' + err.message);
+    showPdfError('Network error: ' + err.message);
   } finally {
     btnAnalyze.disabled = false;
     btnAnalyze.innerHTML = '<i class="fas fa-robot me-2"></i>Analyze Report &amp; Generate Box Count';
   }
 });
 
-function showError(msg) {
-  errDiv.textContent = msg;
-  errDiv.style.display = '';
+function showPdfError(msg) {
+  pdfErrDiv.textContent = msg;
+  pdfErrDiv.style.display = '';
 }
 
+// ── Utilities ────────────────────────────────────────────────────────────────
 function getCsrf() {
   return document.cookie.split(';').map(c => c.trim())
     .find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
+}
+function escHtml(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 </script>
 {% endblock %}

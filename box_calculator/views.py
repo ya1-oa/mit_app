@@ -456,6 +456,88 @@ def cps_delete_room(request, room_id):
 
 @login_required
 @require_POST
+def api_auto_from_encircle(request):
+    """
+    Kick off automatic Encircle photo download + CPS analysis for all 300-series rooms.
+    POST body: JSON {"client_id": int}
+    Returns: {"success": true, "session_id": int, "rooms": [{"room_name": str, "task_id": str}]}
+    """
+    import re
+    from .models import BoxCalcCPSSession, BoxCalcCPSRoom
+    from .tasks import download_encircle_room_task
+
+    try:
+        data = json.loads(request.body)
+        client_id = data.get('client_id')
+    except (json.JSONDecodeError, KeyError):
+        return JsonResponse({'error': 'Invalid JSON body'}, status=400)
+
+    if not client_id:
+        return JsonResponse({'error': 'client_id required'}, status=400)
+
+    client = get_object_or_404(Client, id=client_id)
+
+    if not client.encircle_claim_id:
+        return JsonResponse({'error': 'This client has no Encircle claim ID'}, status=400)
+
+    # Fetch Encircle structure + all rooms
+    try:
+        from docsAppR.encircle_client import EncircleAPIClient
+        api = EncircleAPIClient()
+        structures = api.get_claim_structures(client.encircle_claim_id)
+        struct_list = structures.get('list') if isinstance(structures, dict) else None
+        if not struct_list:
+            return JsonResponse({'error': 'No structures found for this claim in Encircle'}, status=400)
+        structure_id = str(struct_list[0]['id'])
+        all_rooms = api.get_all_structure_rooms(client.encircle_claim_id, structure_id)
+    except Exception as e:
+        logger.error("Encircle fetch error for client %s: %s", client_id, e, exc_info=True)
+        return JsonResponse({'error': f'Encircle API error: {e}'}, status=500)
+
+    # Filter to 300-series packout rooms
+    packout_rooms = []
+    for room in all_rooms:
+        label = (room.get('label') or room.get('name') or '').strip()
+        m = re.match(r'^(\d+)', label)
+        if m and 300 <= int(m.group(1)) < 400:
+            packout_rooms.append({'id': str(room['id']), 'name': label})
+
+    if not packout_rooms:
+        return JsonResponse({'error': 'No 300-series packout rooms found in this claim'}, status=400)
+
+    # Create/upsert CPS session and clear previous run
+    session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
+    session.rooms.all().delete()
+
+    # Create pending room records and dispatch one download+analyze task per room
+    room_tasks = []
+    for order, room_info in enumerate(packout_rooms):
+        cps_room = BoxCalcCPSRoom.objects.create(
+            session=session,
+            room_name=room_info['name'],
+            order=order,
+            status='pending',
+        )
+        task = download_encircle_room_task.delay(
+            session_id=session.id,
+            room_name=room_info['name'],
+            encircle_claim_id=client.encircle_claim_id,
+            structure_id=structure_id,
+            encircle_room_id=room_info['id'],
+        )
+        cps_room.celery_task_id = task.id
+        cps_room.save(update_fields=['celery_task_id'])
+        room_tasks.append({'room_name': room_info['name'], 'task_id': task.id})
+
+    return JsonResponse({
+        'success': True,
+        'session_id': session.id,
+        'rooms': room_tasks,
+    })
+
+
+@login_required
+@require_POST
 def api_pdf_to_cps_session(request):
     """
     Accept an uploaded box count report PDF, run Claude master-estimator analysis,
