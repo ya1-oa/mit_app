@@ -168,18 +168,19 @@ class BoxCalcCPSRoom(models.Model):
     room_name  = models.CharField(max_length=120)
     order      = models.PositiveIntegerField(default=0)
 
-    # PPR box columns (direct Claude Vision estimates)
-    small      = models.PositiveIntegerField(default=0)
-    medium     = models.PositiveIntegerField(default=0)
-    large      = models.PositiveIntegerField(default=0)
-    box_wrapped = models.PositiveIntegerField(default=0)
-    plant_vase = models.PositiveIntegerField(default=0)
-    tv         = models.PositiveIntegerField(default=0)
-    wardrobe   = models.PositiveIntegerField(default=0)
-    mattress   = models.PositiveIntegerField(default=0)
-    dish_pack  = models.PositiveIntegerField(default=0)
-    glass_pack = models.PositiveIntegerField(default=0)
-    boots_pans = models.PositiveIntegerField(default=0)
+    # CPS box columns (direct Claude Vision estimates)
+    small          = models.PositiveIntegerField(default=0)
+    medium         = models.PositiveIntegerField(default=0)
+    large          = models.PositiveIntegerField(default=0)
+    box_wrapped    = models.PositiveIntegerField(default=0)   # XL Tagged/Wrapped
+    picture_mirror = models.PositiveIntegerField(default=0)   # PICTURE/MIRROR
+    plant_vase     = models.PositiveIntegerField(default=0)   # LAMP/PLANT/VASE
+    tv             = models.PositiveIntegerField(default=0)   # TV BOX
+    wardrobe       = models.PositiveIntegerField(default=0)   # Wardrobe BOX
+    mattress       = models.PositiveIntegerField(default=0)   # MATTRESS BOX
+    dish_pack      = models.PositiveIntegerField(default=0)   # DISH PACK BOX
+    glass_pack     = models.PositiveIntegerField(default=0)   # GLASS PACK BOX
+    boots_pans     = models.PositiveIntegerField(default=0)   # POTS & PANS BOX
 
     # Processing metadata
     status          = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")

@@ -33,28 +33,30 @@ CPS_COLUMNS = [
     "small",
     "medium",
     "large",
-    "box_wrapped",
-    "plant_vase",
-    "tv",
-    "wardrobe",
-    "mattress",
-    "dish_pack",
-    "glass_pack",
-    "boots_pans",
+    "box_wrapped",    # XL Tagged/Wrapped
+    "picture_mirror", # PICTURE/MIRROR
+    "plant_vase",     # LAMP/PLANT/VASE
+    "tv",             # TV BOX
+    "wardrobe",       # Wardrobe BOX
+    "mattress",       # MATTRESS BOX
+    "dish_pack",      # DISH PACK BOX
+    "glass_pack",     # GLASS PACK BOX
+    "boots_pans",     # POTS & PANS BOX
 ]
 
 CPS_COLUMN_LABELS = {
-    "small":       "Small",
-    "medium":      "Medium",
-    "large":       "Large",
-    "box_wrapped":  "Box/Wrapped",
-    "plant_vase":  "Plant/Vase",
-    "tv":          "TV",
-    "wardrobe":    "Wardrobe",
-    "mattress":    "Mattress",
-    "dish_pack":   "Dish Pack",
-    "glass_pack":  "Glass Pack",
-    "boots_pans":  "Boots & Pans",
+    "small":          "Small Box",
+    "medium":         "Medium Box",
+    "large":          "Large Box",
+    "box_wrapped":    "XL Tagged/Wrapped",
+    "picture_mirror": "Picture/Mirror",
+    "plant_vase":     "Lamp/Plant/Vase",
+    "tv":             "TV Box",
+    "wardrobe":       "Wardrobe Box",
+    "mattress":       "Mattress Box",
+    "dish_pack":      "Dish Pack Box",
+    "glass_pack":     "Glass Pack Box",
+    "boots_pans":     "Pots & Pans Box",
 }
 
 _SYSTEM_PROMPT = """\
@@ -65,17 +67,18 @@ withstand adjuster scrutiny.
 
 Box type definitions — use MEDIUM as the default for anything that does not clearly \
 fit another type:
-  small       — 1.5 cu ft, 16×12×12  (books, tools, dense items, files, canned goods)
-  medium      — 3.0 cu ft, 18×18×16  (DEFAULT — general household, folded clothes, toys, office, pantry)
-  large       — 4.5 cu ft, 18×18×24  (pillows, lampshades, light bulky items, linens, bedding)
-  box_wrapped — furniture wrap + small box (mirrors, framed artwork, lamps, fragile décor)
-  plant_vase  — tall open-top box (floor plants, floor vases, tall decorative items)
-  tv          — flat TV box (one per flat-screen TV regardless of size)
-  wardrobe    — 10 cu ft hanging box (1 per ~4 linear feet of visible hanging rod)
-  mattress    — flat mattress/box-spring box (one per mattress or box spring)
-  dish_pack   — 5.2 cu ft, 18×18×28 (china, crystal, ceramic kitchenware, fragile items)
-  glass_pack  — cushioned glass box (drinking glasses, stemware, vases, glass jars)
-  boots_pans  — corrugated wrap bundle (cast iron, baking sheets, boots/shoes, heavy cookware)
+  small          — 1.5 cu ft, 16×12×12  (books, tools, dense items, files, canned goods)
+  medium         — 3.0 cu ft, 18×18×16  (DEFAULT — general household, folded clothes, toys, office, pantry)
+  large          — 4.5 cu ft, 18×18×24  (pillows, lampshades, light bulky items, linens, bedding)
+  box_wrapped    — XL tagged/wrapped item (sofas, chairs, tables, large furniture, appliances unless disassembled)
+  picture_mirror — picture/mirror carton (framed artwork, mirrors, wall art, photos, glass pictures)
+  plant_vase     — tall open-top box (floor lamps, table lamps, floor plants, floor vases, tall decorative items)
+  tv             — flat TV box (one per flat-screen TV regardless of size)
+  wardrobe       — 10 cu ft hanging box (1 per ~4 linear feet of visible hanging rod)
+  mattress       — flat mattress/box-spring box (one per mattress or box spring)
+  dish_pack      — 5.2 cu ft, 18×18×28 (china, crystal, ceramic kitchenware, fragile items)
+  glass_pack     — cushioned glass box (drinking glasses, stemware, glass sets, crystal)
+  boots_pans     — POTS & PANS BOX (cast iron, baking sheets, boots/shoes grouped, heavy cookware)
 
 You respond ONLY with valid JSON — no markdown, no explanation outside the JSON."""
 
@@ -106,6 +109,7 @@ Return ONLY this JSON (all fields required, integers only, 0 for none):
   "medium": <int>,
   "large": <int>,
   "box_wrapped": <int>,
+  "picture_mirror": <int>,
   "plant_vase": <int>,
   "tv": <int>,
   "wardrobe": <int>,
