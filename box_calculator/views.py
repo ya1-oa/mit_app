@@ -410,6 +410,20 @@ def cps_report(request, session_id):
 
 
 @login_required
+def cps_export_pdf(request, session_id):
+    """Generate and stream the CPS box count report as PDF."""
+    from .models import BoxCalcCPSSession
+    from .pdf_builder import build_cps_pdf
+    session = get_object_or_404(BoxCalcCPSSession, id=session_id)
+    pdf_bytes = build_cps_pdf(session)
+    safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
+    filename = f"CPS_Box_Count_{safe_name}.pdf"
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
 def cps_export_excel(request, session_id):
     """Generate and stream the PPR Excel report (.xlsx)."""
     from .models import BoxCalcCPSSession

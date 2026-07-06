@@ -28,7 +28,7 @@ def process_cps_room_task(
     Updates BoxCalcCPSRoom.status through: pending → processing → complete|error.
     """
     from .models import BoxCalcCPSSession, BoxCalcCPSRoom
-    from .cps_analyzer import analyze_room_cps, CPS_COLUMNS
+    from .cps_analyzer import analyze_room_ppr, CPS_COLUMNS
 
     self.update_state(state="PROGRESS", meta={"room_name": room_name, "stage": "analyzing"})
 
@@ -46,7 +46,7 @@ def process_cps_room_task(
     cps_room.celery_task_id = self.request.id
     cps_room.save(update_fields=["status", "celery_task_id"])
 
-    result = analyze_room_cps(
+    result = analyze_room_ppr(
         room_name=room_name,
         image_paths=image_paths,
         model=model,

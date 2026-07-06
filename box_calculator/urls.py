@@ -22,6 +22,7 @@ urlpatterns = [
     path('cps/status/<str:task_id>/', views.cps_task_status, name='cps_task_status'),
     path('cps/report/<int:session_id>/', views.cps_report, name='cps_report'),
     path('cps/export/<int:session_id>/', views.cps_export_excel, name='cps_export_excel'),
+    path('cps/pdf/<int:session_id>/', views.cps_export_pdf, name='cps_export_pdf'),
     path('cps/room/<int:room_id>/update/', views.cps_update_room, name='cps_update_room'),
     path('cps/room/<int:room_id>/delete/', views.cps_delete_room, name='cps_delete_room'),
 ]

@@ -3,93 +3,283 @@
 {% block title %}CPS Box Count Report — {{ session.client.pOwner }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-  <div class="d-flex align-items-center justify-content-between mb-4">
+<div class="container-fluid py-3" id="cps-report-root">
+
+  {# ── Top bar ──────────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-2">
     <div>
-      <h2 class="mb-0">CPS Box Count Report</h2>
-      <p class="text-muted mb-0">
-        {{ session.client.pOwner }}
-        {% if session.client.claimNumber %} — Claim #{{ session.client.claimNumber }}{% endif %}
+      <h4 class="mb-0 fw-bold">CPS Box Count Report</h4>
+      <p class="text-muted mb-0" style="font-size:13px">
+        <strong>{{ session.client.pOwner }}</strong>
+        {% if session.client.claimNumber %}&nbsp;·&nbsp;Claim #{{ session.client.claimNumber }}{% endif %}
+        {% if session.client.pAddress %}&nbsp;·&nbsp;{{ session.client.pAddress }}{% endif %}
+      </p>
+      <p class="text-muted mb-0" style="font-size:11px">
+        {{ session.rooms.count }} room{{ session.rooms.count|pluralize }} &nbsp;·&nbsp;
+        Updated {{ session.updated_at|date:"M j, Y g:i A" }} &nbsp;·&nbsp;
+        <span id="save-status" class="text-muted"></span>
       </p>
     </div>
-    <div class="d-flex gap-2">
-      <a href="{% url 'cps_home' %}" class="btn btn-outline-secondary">← Back</a>
-      <a href="{% url 'cps_export_excel' session.id %}" class="btn btn-success">
-        <i class="bi bi-file-earmark-excel"></i> Export Excel
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{% url 'cps_home' %}" class="btn btn-sm btn-outline-secondary">← Back</a>
+      <a href="{% url 'cps_export_excel' session.id %}" class="btn btn-sm btn-success">
+        <i class="bi bi-file-earmark-excel me-1"></i>Excel
       </a>
-      <button onclick="window.print()" class="btn btn-outline-dark">
-        <i class="bi bi-printer"></i> Print
+      <a href="{% url 'cps_export_pdf' session.id %}" class="btn btn-sm btn-danger">
+        <i class="bi bi-file-earmark-pdf me-1"></i>PDF
+      </a>
+      <button onclick="window.print()" class="btn btn-sm btn-outline-dark no-print">
+        <i class="bi bi-printer me-1"></i>Print
       </button>
     </div>
   </div>
 
-  <div class="card">
+  {# ── Editable table ───────────────────────────────────────────────────── #}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header d-flex align-items-center justify-content-between py-2"
+         style="background:#1e3a5f; color:#fff;">
+      <span class="fw-semibold" style="font-size:13px">
+        <i class="bi bi-table me-2"></i>Box Counts — click any cell to edit
+      </span>
+      <span class="badge bg-warning text-dark" id="unsaved-badge" style="display:none">
+        Unsaved changes
+      </span>
+    </div>
     <div class="card-body p-0" style="overflow-x:auto">
-      <table class="table table-bordered table-sm mb-0" id="report-table">
-        <thead class="table-light">
-          <tr>
-            <th>Room</th>
+      <table class="table table-bordered table-sm mb-0" id="cps-table"
+             style="font-size:12.5px; min-width:900px">
+        <thead>
+          <tr style="background:#2e6da4; color:#fff;">
+            <th style="min-width:160px; padding:6px 8px;">Room / Area</th>
             {% for col in cps_columns %}
-            <th class="text-center" title="{{ cps_column_labels|get_item:col }}">
+            <th class="text-center" style="min-width:60px; padding:6px 4px; white-space:nowrap;"
+                title="{{ cps_column_labels|get_item:col }}">
               {{ cps_column_labels|get_item:col }}
             </th>
             {% endfor %}
-            <th class="text-center fw-bold">Total</th>
+            <th class="text-center fw-bold" style="min-width:52px; background:#1e3a5f;">Total</th>
+            <th class="no-print" style="width:60px; background:#1e3a5f;"></th>
           </tr>
         </thead>
-        <tbody>
+        <tbody id="cps-tbody">
           {% for room in session.rooms.all %}
-          <tr {% if room.status == 'error' %}class="table-danger"{% endif %}>
-            <td class="text-nowrap">
-              {{ room.room_name }}
+          <tr class="cps-row {% if room.status == 'error' %}table-danger{% endif %}"
+              data-room-id="{{ room.id }}"
+              data-room-name="{{ room.room_name }}">
+            <td style="padding:5px 8px;">
+              <div class="fw-semibold" style="font-size:12px">{{ room.room_name }}</div>
               {% if room.confidence %}
-              <span class="badge bg-light text-dark border ms-1" title="{{ room.ai_notes }}">
-                {{ room.confidence }}
+              <span class="badge border text-secondary" style="font-size:10px; background:#f8f9fa;">
+                {{ room.confidence }} confidence
               </span>
               {% endif %}
+              {% if room.ai_notes %}
+              <div class="text-muted" style="font-size:10px; margin-top:2px;">
+                {{ room.ai_notes|truncatechars:80 }}
+              </div>
+              {% endif %}
               {% if room.status == 'error' %}
-              <span class="badge bg-danger ms-1">error</span>
+              <span class="badge bg-danger">error</span>
               {% endif %}
             </td>
             {% for col in cps_columns %}
-            <td class="text-center">
-              {% with val=room|attr:col %}{% if val %}{{ val }}{% endif %}{% endwith %}
+            <td class="text-center p-0">
+              <input type="number" min="0" step="1"
+                     class="cps-cell-input"
+                     data-col="{{ col }}"
+                     value="{{ room|attr:col|default:0 }}"
+                     aria-label="{{ cps_column_labels|get_item:col }}">
             </td>
             {% endfor %}
-            <td class="text-center fw-semibold">
-              {% if room.total %}{{ room.total }}{% endif %}
+            <td class="text-center fw-bold cps-row-total" style="background:#eef4ff;">
+              {{ room.total|default:0 }}
+            </td>
+            <td class="text-center no-print p-1">
+              <button class="btn btn-xs btn-outline-danger cps-delete-btn"
+                      title="Remove room" style="font-size:11px; padding:2px 6px;">
+                <i class="bi bi-trash"></i>
+              </button>
             </td>
           </tr>
           {% endfor %}
         </tbody>
         <tfoot>
-          <tr class="table-warning fw-bold">
-            <td>GRAND TOTALS</td>
+          <tr style="background:#fff2cc; font-weight:bold;">
+            <td style="padding:6px 8px;">GRAND TOTALS</td>
             {% for col in cps_columns %}
-            <td class="text-center">
-              {% with val=grand_counts|get_item:col %}{% if val %}{{ val }}{% endif %}{% endwith %}
+            <td class="text-center cps-col-total" data-col="{{ col }}">
+              {{ grand_counts|get_item:col|default:0 }}
             </td>
             {% endfor %}
-            <td class="text-center">{{ grand_total }}</td>
+            <td class="text-center fw-bold" id="cps-grand-total"
+                style="background:#d9eaf7;">{{ grand_total }}</td>
+            <td class="no-print"></td>
           </tr>
         </tfoot>
       </table>
     </div>
   </div>
 
-  {% if session.rooms.all %}
-  <p class="text-muted mt-3 small">
-    {{ session.rooms.count }} room{{ session.rooms.count|pluralize }} analyzed ·
-    Generated {{ session.updated_at|date:"N j, Y g:i A" }} ·
-    AI estimates — verify before finalizing
-  </p>
+  {# ── Session notes ────────────────────────────────────────────────────── #}
+  {% if session.notes %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header py-2 fw-semibold" style="font-size:13px; background:#f8f9fa;">
+      <i class="bi bi-chat-left-text me-2 text-primary"></i>Estimator Notes
+    </div>
+    <div class="card-body py-2" style="font-size:13px; white-space:pre-wrap;">{{ session.notes }}</div>
+  </div>
   {% endif %}
-</div>
 
+</div>{# /container #}
+
+{# ── Styles ───────────────────────────────────────────────────────────────── #}
 <style>
+.cps-cell-input {
+  width: 100%;
+  min-width: 42px;
+  border: none;
+  background: transparent;
+  text-align: center;
+  font-size: 12.5px;
+  font-weight: 500;
+  padding: 6px 2px;
+  outline: none;
+  color: #212529;
+}
+.cps-cell-input:focus {
+  background: #e8f4fd;
+  border-radius: 3px;
+}
+.cps-cell-input::-webkit-inner-spin-button { opacity: 0.4; }
+
 @media print {
-  .btn, a.btn { display: none !important; }
+  .no-print, .btn, a.btn { display: none !important; }
   .card { border: none !important; box-shadow: none !important; }
+  .cps-cell-input { border: none; background: transparent; }
+  #unsaved-badge { display: none !important; }
 }
 </style>
+
+{# ── JS — inline editing + live totals ────────────────────────────────────── #}
+<script>
+(function () {
+  const tbody     = document.getElementById('cps-tbody');
+  const badge     = document.getElementById('unsaved-badge');
+  const saveStatus = document.getElementById('save-status');
+  const grandTotalEl = document.getElementById('cps-grand-total');
+
+  // Column list (must match CPS_COLUMNS in cps_analyzer.py)
+  const CPS_COLS = ["small","medium","large","box_wrapped","plant_vase","tv","wardrobe","mattress","dish_pack","glass_pack","boots_pans"];
+
+  // ── Live totals ───────────────────────────────────────────────────────────
+  function recalcRow(tr) {
+    let rowSum = 0;
+    tr.querySelectorAll('.cps-cell-input').forEach(inp => {
+      rowSum += parseInt(inp.value || 0, 10);
+    });
+    tr.querySelector('.cps-row-total').textContent = rowSum || 0;
+    return rowSum;
+  }
+
+  function recalcColTotals() {
+    const colTotals = {};
+    CPS_COLS.forEach(c => colTotals[c] = 0);
+    let grandSum = 0;
+
+    tbody.querySelectorAll('.cps-row').forEach(tr => {
+      tr.querySelectorAll('.cps-cell-input').forEach(inp => {
+        const v = parseInt(inp.value || 0, 10);
+        colTotals[inp.dataset.col] = (colTotals[inp.dataset.col] || 0) + v;
+        grandSum += v;
+      });
+    });
+
+    document.querySelectorAll('.cps-col-total').forEach(el => {
+      const col = el.dataset.col;
+      el.textContent = colTotals[col] || 0;
+    });
+    grandTotalEl.textContent = grandSum;
+  }
+
+  // ── Save a single room ────────────────────────────────────────────────────
+  const pendingTimers = {};
+
+  function schedSave(tr) {
+    const roomId = tr.dataset.roomId;
+    clearTimeout(pendingTimers[roomId]);
+    badge.style.display = '';
+    pendingTimers[roomId] = setTimeout(() => saveRoom(tr), 800);
+  }
+
+  function saveRoom(tr) {
+    const roomId = tr.dataset.roomId;
+    const payload = {};
+    tr.querySelectorAll('.cps-cell-input').forEach(inp => {
+      payload[inp.dataset.col] = parseInt(inp.value || 0, 10);
+    });
+
+    fetch(`/box-calculator/cps/room/${roomId}/update/`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '',
+      },
+      body: JSON.stringify(payload),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        saveStatus.textContent = `Saved ${tr.dataset.roomName} ✓`;
+        saveStatus.className = 'text-success';
+        // Check if any unsaved timers remain
+        if (Object.keys(pendingTimers).every(k => !pendingTimers[k])) {
+          badge.style.display = 'none';
+        }
+      } else {
+        saveStatus.textContent = `Save failed: ${data.error}`;
+        saveStatus.className = 'text-danger';
+      }
+    })
+    .catch(err => {
+      saveStatus.textContent = `Error: ${err}`;
+      saveStatus.className = 'text-danger';
+    });
+  }
+
+  // ── Delete room ───────────────────────────────────────────────────────────
+  function deleteRoom(tr) {
+    const roomId = tr.dataset.roomId;
+    const roomName = tr.dataset.roomName;
+    if (!confirm(`Remove "${roomName}" from this report?`)) return;
+
+    fetch(`/box-calculator/cps/room/${roomId}/delete/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '' },
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (data.success) {
+        tr.remove();
+        recalcColTotals();
+      }
+    });
+  }
+
+  // ── Event delegation ──────────────────────────────────────────────────────
+  tbody.addEventListener('input', e => {
+    if (!e.target.classList.contains('cps-cell-input')) return;
+    const tr = e.target.closest('tr');
+    recalcRow(tr);
+    recalcColTotals();
+    schedSave(tr);
+  });
+
+  tbody.addEventListener('click', e => {
+    if (e.target.closest('.cps-delete-btn')) {
+      deleteRoom(e.target.closest('tr'));
+    }
+  });
+
+})();
+</script>
 {% endblock %}
