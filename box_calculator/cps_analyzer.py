@@ -201,6 +201,8 @@ def analyze_room_ppr(
         "text": _USER_PROMPT.format(room_name=room_name),
     })
 
+    logger.info("Claude API call — room=%r model=%s images=%d", room_name, model, images_used)
+
     try:
         client = anthropic.Anthropic(api_key=api_key)
         response = client.messages.create(
@@ -210,6 +212,8 @@ def analyze_room_ppr(
             messages=[{"role": "user", "content": content}],
         )
         raw = response.content[0].text.strip()
+        logger.info("Claude raw response — room=%r: %s", room_name, raw[:300])
+
         if raw.startswith("```"):
             raw = raw.split("```")[1]
             if raw.startswith("json"):
@@ -219,6 +223,8 @@ def analyze_room_ppr(
         parsed = json.loads(raw)
         counts = {col: max(0, int(parsed.get(col, 0) or 0)) for col in CPS_COLUMNS}
         total = sum(counts.values())
+        logger.info("Claude parsed counts — room=%r total=%d counts=%s", room_name, total,
+                    {k: v for k, v in counts.items() if v})
 
         return {
             "success": True,
@@ -231,10 +237,10 @@ def analyze_room_ppr(
         }
 
     except json.JSONDecodeError as e:
-        logger.error("PPR analysis JSON parse error for %s: %s", room_name, e)
+        logger.error("Claude JSON parse error — room=%r raw=%r error=%s", room_name, raw[:200], e)
         return _error_result("AI returned invalid JSON — try again", images_used)
     except Exception as e:
-        logger.error("PPR analysis error for %s: %s", room_name, e, exc_info=True)
+        logger.error("Claude API error — room=%r error=%s", room_name, e, exc_info=True)
         return _error_result(str(e), images_used)
 
 

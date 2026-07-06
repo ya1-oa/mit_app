@@ -46,14 +46,23 @@ def process_cps_room_task(
     cps_room.celery_task_id = self.request.id
     cps_room.save(update_fields=["status", "celery_task_id"])
 
+    logger.info("CPS analyze start — session=%s room=%r images=%d model=%s",
+                session_id, room_name, len(image_paths), model)
+
     result = analyze_room_ppr(
         room_name=room_name,
         image_paths=image_paths,
         model=model,
     )
 
+    logger.info("CPS analyze result — session=%s room=%r success=%s total=%s confidence=%s error=%s",
+                session_id, room_name, result["success"], result.get("total"),
+                result.get("confidence"), result.get("error"))
+
     if result["success"]:
         counts = result["counts"]
+        logger.info("CPS counts — room=%r %s", room_name,
+                    " ".join(f"{k}={v}" for k, v in counts.items() if v))
         for col in CPS_COLUMNS:
             setattr(cps_room, col, counts.get(col, 0))
         cps_room.status = "complete"
@@ -61,6 +70,8 @@ def process_cps_room_task(
         cps_room.ai_notes = result["notes"]
         cps_room.images_count = result["images_used"]
     else:
+        logger.error("CPS analyze FAILED — session=%s room=%r error=%s",
+                     session_id, room_name, result.get("error"))
         cps_room.status = "error"
         cps_room.ai_notes = result.get("error", "Unknown error")
 
@@ -178,10 +189,19 @@ def download_encircle_room_task(
         return {"success": False, "error": "Photo download failed", "room_name": room_name}
 
     # ── Run CPS analysis ──────────────────────────────────────────────────────
+    logger.info("CPS Encircle analyze start — session=%s room=%r photos_downloaded=%d",
+                session_id, room_name, len(saved_paths))
+
     result = analyze_room_ppr(room_name=room_name, image_paths=saved_paths, model=model)
+
+    logger.info("CPS Encircle analyze result — session=%s room=%r success=%s total=%s confidence=%s error=%s",
+                session_id, room_name, result["success"], result.get("total"),
+                result.get("confidence"), result.get("error"))
 
     if result["success"]:
         counts = result["counts"]
+        logger.info("CPS Encircle counts — room=%r %s", room_name,
+                    " ".join(f"{k}={v}" for k, v in counts.items() if v))
         for col in CPS_COLUMNS:
             setattr(cps_room, col, counts.get(col, 0))
         cps_room.status = "complete"
@@ -189,6 +209,8 @@ def download_encircle_room_task(
         cps_room.ai_notes = result["notes"]
         cps_room.images_count = result["images_used"]
     else:
+        logger.error("CPS Encircle FAILED — session=%s room=%r error=%s",
+                     session_id, room_name, result.get("error"))
         cps_room.status = "error"
         cps_room.ai_notes = result.get("error", "Unknown error")
 
