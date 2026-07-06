@@ -15,7 +15,13 @@ All URL patterns reside in dedicated app modules:
   encircle/urls.py        → /encircle/
   dashboard/urls.py       → / (home, dashboard, misc)
 
-This file is intentionally left empty.
+This file is intentionally left empty for most routes.
+Invite management lives here since TenantInvite is a docsAppR model.
 """
 
-urlpatterns = []
+from django.urls import path
+from . import views
+
+urlpatterns = [
+    path('settings/', views.tenant_settings, name='tenant_settings'),
+]

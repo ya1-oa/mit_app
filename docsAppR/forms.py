@@ -14,9 +14,45 @@ from .models import (
     File,
     GeneratedFile,
     Room, WorkType, RoomWorkTypeValue,
+    TenantInvite,
 )
 from django.forms import inlineformset_factory
 from django.utils import timezone
+
+
+class InviteSignupForm(forms.Form):
+    """
+    Extra field bolted onto allauth's signup form.
+    Workers paste an invite code here to join their company's existing tenant.
+    Contractors leave it blank — a new tenant is created for them automatically.
+    Configured via ACCOUNT_FORMS = {'signup': 'docsAppR.forms.InviteSignupForm'}.
+    """
+    invite_code = forms.CharField(
+        required=False,
+        max_length=32,
+        label="Invite code (optional)",
+        help_text="Leave blank if you are registering a new company workspace.",
+        widget=forms.TextInput(attrs={
+            'class': 'form-control',
+            'placeholder': 'e.g. A3B7KX29WNQP',
+            'autocomplete': 'off',
+        }),
+    )
+
+    def clean_invite_code(self):
+        code = self.cleaned_data.get('invite_code', '').strip().upper()
+        if not code:
+            return code
+        try:
+            invite = TenantInvite.objects.select_related('tenant').get(code=code)
+        except TenantInvite.DoesNotExist:
+            raise forms.ValidationError("That invite code is not valid.")
+        if not invite.is_valid():
+            raise forms.ValidationError("That invite code has expired or reached its usage limit.")
+        return code
+
+    def signup(self, request, user):
+        pass
 
 class CreateUserForm(UserCreationForm):
     class Meta:

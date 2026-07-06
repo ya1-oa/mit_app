@@ -1,0 +1,15 @@
+You've been invited to join {{ tenant_name }} on Claimet App.
+
+{{ invited_by_email }} has added you to their workspace. Click the link below to create
+your account — your invite code is already included in the link.
+
+Sign up here:
+{{ signup_url }}
+
+If the link doesn't work, go to the sign-up page and enter this code manually:
+
+  {{ invite_code }}
+
+This invite is single-use. If you have any trouble, contact {{ invited_by_email }}.
+
+— The Claimet Team

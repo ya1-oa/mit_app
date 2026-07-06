@@ -4,7 +4,7 @@ from .models import (
     CustomUser, Client, Document, DocumentCategory, Landlord,
     WorkType, Room, RoomWorkTypeValue,
     SentEmail, EmailOpenEvent, GeneratedFile, UploadedAttachment, EmailCampaign,
-    EncircleSyncLog, Tenant,
+    EncircleSyncLog, Tenant, TenantInvite,
 )
 
 # Register your models here.
@@ -21,6 +21,14 @@ class TenantAdmin(admin.ModelAdmin):
     list_filter = ['status']
     search_fields = ['name', 'slug']
     readonly_fields = ['created_at', 'updated_at']
+
+
+@admin.register(TenantInvite)
+class TenantInviteAdmin(admin.ModelAdmin):
+    list_display = ['code', 'tenant', 'label', 'use_count', 'max_uses', 'expires_at', 'created_at']
+    list_filter = ['tenant']
+    search_fields = ['code', 'label', 'tenant__name']
+    readonly_fields = ['created_at', 'use_count']
 
 
 # ==================== OneDrive Integration Models ====================

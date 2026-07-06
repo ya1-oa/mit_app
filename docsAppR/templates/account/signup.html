@@ -78,7 +78,7 @@
         <div class="auth-logo">
             <div class="logo-icon"><i class="fas fa-bolt"></i></div>
             <h1>Create your account</h1>
-            <p>Join the Mitigation App team</p>
+            <p>New company? Leave invite code blank. Joining a team? Enter your invite code.</p>
         </div>
 
         {% if messages %}
@@ -117,4 +117,29 @@
         </div>
     </div>
 </div>
+
+<script>
+(function () {
+    var params = new URLSearchParams(window.location.search);
+    var code   = params.get('invite');
+    if (!code) return;
+
+    var field = document.getElementById('id_invite_code');
+    if (!field) return;
+
+    field.value = code;
+    field.setAttribute('readonly', 'readonly');
+    field.style.background    = '#f0fdf4';
+    field.style.borderColor   = '#16a34a';
+    field.style.color         = '#15803d';
+    field.style.fontWeight    = '600';
+    field.style.letterSpacing = '1px';
+
+    // Add a small "✓ Invite applied" note below the field
+    var note = document.createElement('p');
+    note.style.cssText = 'margin:4px 0 0;font-size:12px;color:#16a34a;font-weight:600;';
+    note.innerHTML = '&#10003; Invite code applied — you\'ll join your team automatically.';
+    field.parentNode.appendChild(note);
+})();
+</script>
 {% endblock %}

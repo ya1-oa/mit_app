@@ -434,12 +434,19 @@
         </a></li>
     </ul>
 
-    <!-- Right: user + logout -->
+    <!-- Right: user + settings + logout -->
     <div class="nav-right">
         <div class="nav-user">
             <span class="avatar">{{ user.email|first|upper }}</span>
             <span>{{ user.email|truncatechars:18 }}</span>
         </div>
+        {% if user.tenant %}
+        <a href="{% url 'tenant_settings' %}"
+           class="nav-btn nav-btn-outline {% if '/settings' in request.path %}active{% endif %}"
+           title="Workspace Settings">
+            <i class="fas fa-cog"></i>
+        </a>
+        {% endif %}
         <a href="{% url 'logout' %}" class="nav-btn nav-btn-outline">
             <i class="fas fa-sign-out-alt"></i> Logout
         </a>
@@ -510,6 +517,11 @@
     </a>
 
     <div class="drawer-section">Account</div>
+    {% if user.tenant %}
+    <a href="{% url 'tenant_settings' %}"        class="{% if '/settings' in request.path %}active{% endif %}"><i class="fas fa-cog"></i> Workspace Settings</a>
+    <a href="{% url 'tenant_settings' %}?tab=team"      class="{% if '/settings' in request.path and request.GET.tab == 'team' %}active{% endif %}"><i class="fas fa-users"></i> Team Members</a>
+    <a href="{% url 'tenant_settings' %}?tab=invites"   class="{% if '/settings' in request.path and request.GET.tab == 'invites' %}active{% endif %}"><i class="fas fa-link"></i> Invite Workers</a>
+    {% endif %}
     <a href="{% url 'logout' %}"><i class="fas fa-sign-out-alt"></i> Logout</a>
 </div>
 {% endif %}

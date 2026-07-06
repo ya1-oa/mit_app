@@ -14,6 +14,7 @@ import uuid
 from decimal import Decimal
 from django.db import models
 from django.conf import settings
+from docsAppR.tenancy import TenantScopedManager
 
 
 # ---------------------------------------------------------------------------
@@ -54,6 +55,10 @@ class Contractor(models.Model):
     notes           = models.TextField(blank=True)
     is_active       = models.BooleanField(default=True)
     created_at      = models.DateTimeField(auto_now_add=True)
+    tenant          = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='contractors_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['name']
@@ -240,6 +245,13 @@ class GCEstimate(models.Model):
     )
     created_at      = models.DateTimeField(auto_now_add=True)
     updated_at      = models.DateTimeField(auto_now=True)
+    tenant          = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='gc_estimates_by_tenant', db_index=True,
+    )
+
+    objects  = TenantScopedManager()
+    unscoped = models.Manager()
 
     class Meta:
         ordering = ['-created_at']
@@ -355,6 +367,10 @@ class GCSection(models.Model):
                                        default=BidStatus.PENDING)
     bid_accepted_at = models.DateTimeField(null=True, blank=True)
     notes           = models.TextField(blank=True)
+    tenant          = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='gc_sections_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['order']
@@ -424,6 +440,10 @@ class GCLineItem(models.Model):
 
     # Auto-calc flag: set True for lines that are computed from CPS box counts
     auto_calculated = models.BooleanField(default=False)
+    tenant          = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='gc_line_items_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['order']
@@ -488,6 +508,10 @@ class BoxCountReport(models.Model):
     uploaded_at    = models.DateTimeField(auto_now_add=True)
     updated_at     = models.DateTimeField(auto_now=True)
     notes          = models.TextField(blank=True)
+    tenant         = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='box_count_reports_by_tenant', db_index=True,
+    )
 
     class Meta:
         verbose_name = 'Box Count Report'

@@ -13,7 +13,7 @@ from django.core.mail import EmailMessage
 from django.core.management import call_command
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Avg, Case, Count, F, Q, When, IntegerField
-from django.http import HttpResponse, JsonResponse, HttpRequest
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse, HttpRequest
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template import Template, Context
 from django.template.loader import render_to_string
@@ -9323,3 +9323,162 @@ def scope_checklist_send_email(request):
     except Exception as e:
         logger.error(f"Error sending scope checklist email: {str(e)}")
         return JsonResponse({'success': False, 'error': str(e)}, status=500)
+
+
+# ── Workspace Settings ────────────────────────────────────────────────────────
+
+def _send_worker_invite_email(to_email, invited_by_email, tenant_name, signup_url, invite_code):
+    """Send an HTML + plain-text invite email to a prospective team member."""
+    from django.core.mail import EmailMultiAlternatives
+    from django.conf import settings as djsettings
+    from django.template.loader import render_to_string
+
+    subject = f"You've been invited to join {tenant_name} on Claimet"
+    ctx = {
+        'invited_by_email': invited_by_email,
+        'tenant_name':      tenant_name,
+        'signup_url':       signup_url,
+        'invite_code':      invite_code,
+    }
+    text_body = render_to_string('account/email/worker_invite.txt', ctx)
+    html_body = render_to_string('account/email/worker_invite.html', ctx)
+
+    try:
+        msg = EmailMultiAlternatives(
+            subject=subject,
+            body=text_body,
+            from_email=djsettings.DEFAULT_FROM_EMAIL,
+            to=[to_email],
+        )
+        msg.attach_alternative(html_body, "text/html")
+        msg.send(fail_silently=False)
+        logger.info("Worker invite email sent to %s for tenant %s", to_email, tenant_name)
+    except Exception as exc:
+        logger.error("Worker invite email FAILED to %s: %s", to_email, exc)
+        raise  # re-raise so the view can catch and show an error message
+
+
+@login_required
+def tenant_settings(request):
+    """
+    Workspace settings hub — overview, team members, and invite code management.
+    GET  → renders settings page with all three sections.
+    POST → handles invite create/delete actions and redirects back.
+    """
+    from .models import TenantInvite, CustomUser, Client
+
+    tenant = getattr(request, 'tenant', None)
+    if tenant is None:
+        return HttpResponseForbidden("No tenant associated with your account.")
+
+    is_admin = request.user.is_tenant_admin
+
+    if request.method == 'POST':
+        action = request.POST.get('action', 'create_invite')
+
+        # Only the workspace admin can manage invites / workspace settings
+        if action in ('create_invite', 'delete_invite', 'invite_by_email', 'update_workspace') \
+                and not is_admin:
+            messages.error(request, "Only the workspace admin can make changes here.")
+            return redirect('tenant_settings')
+
+        if action == 'delete_invite':
+            invite_id = request.POST.get('invite_id')
+            TenantInvite.objects.filter(pk=invite_id, tenant=tenant).delete()
+            messages.success(request, "Invite code deleted.")
+
+        elif action == 'create_invite':
+            label    = request.POST.get('label', '').strip()[:100]
+            max_uses = int(request.POST.get('max_uses', '0') or '0')
+            expires_str = request.POST.get('expires_at', '').strip()
+            expires_at  = None
+            if expires_str:
+                try:
+                    from datetime import datetime
+                    expires_at = timezone.make_aware(datetime.strptime(expires_str, '%Y-%m-%d'))
+                except ValueError:
+                    pass
+            TenantInvite.generate(
+                tenant=tenant,
+                created_by=request.user,
+                label=label,
+                max_uses=max_uses,
+                expires_at=expires_at,
+            )
+            messages.success(request, "New invite code created.")
+
+        elif action == 'update_workspace':
+            new_name = request.POST.get('workspace_name', '').strip()[:255]
+            new_contact = request.POST.get('primary_contact_email', '').strip()[:254]
+            if new_name:
+                tenant.name = new_name
+            if new_contact:
+                tenant.primary_contact_email = new_contact
+            tenant.save(update_fields=['name', 'primary_contact_email', 'updated_at'])
+            messages.success(request, "Workspace settings saved.")
+
+        elif action == 'invite_by_email':
+            recipient_email = request.POST.get('recipient_email', '').strip().lower()
+            if not recipient_email or '@' not in recipient_email:
+                messages.error(request, "Please enter a valid email address.")
+                return redirect(reverse('tenant_settings') + '?tab=invites')
+
+            # Don't re-invite someone already in this workspace
+            if CustomUser.objects.filter(email__iexact=recipient_email, tenant=tenant).exists():
+                messages.warning(request, f"{recipient_email} is already a member of this workspace.")
+                return redirect(reverse('tenant_settings') + '?tab=invites')
+
+            # Single-use code so each email invite is its own token
+            invite = TenantInvite.generate(
+                tenant=tenant,
+                created_by=request.user,
+                label=f"Email invite → {recipient_email}",
+                max_uses=1,
+            )
+
+            signup_url = request.build_absolute_uri(
+                reverse('account_signup') + f'?invite={invite.code}'
+            )
+
+            try:
+                _send_worker_invite_email(
+                    to_email=recipient_email,
+                    invited_by_email=request.user.email,
+                    tenant_name=tenant.name,
+                    signup_url=signup_url,
+                    invite_code=invite.code,
+                )
+                messages.success(request, f"Invite email sent to {recipient_email}.")
+            except Exception as exc:
+                # Code was already created — tell the user so they can share it manually
+                messages.warning(
+                    request,
+                    f"Could not send email ({exc}). "
+                    f"Share this code manually: {invite.code}"
+                )
+
+        return redirect(reverse('tenant_settings') + '?tab=invites'
+                        if action in ('invite_by_email', 'create_invite', 'delete_invite')
+                        else reverse('tenant_settings'))
+
+    # ── Data for GET ─────────────────────────────────────────────────────────
+    invites     = TenantInvite.objects.filter(tenant=tenant).select_related('created_by')
+    team_members = CustomUser.objects.filter(tenant=tenant).order_by('-is_tenant_admin', 'email')
+
+    # Quick stats — all scoped to this tenant via explicit filter
+    from contractor_hub.models import GCEstimate
+    stats = {
+        'clients':   Client.unscoped.filter(tenant=tenant).count(),
+        'estimates': GCEstimate.unscoped.filter(tenant=tenant).count(),
+        'members':   team_members.count(),
+        'invites':   invites.count(),
+    }
+
+    return render(request, 'account/tenant_settings.html', {
+        'tenant':       tenant,
+        'invites':      invites,
+        'team_members': team_members,
+        'stats':        stats,
+        'active_tab':   request.GET.get('tab', 'workspace'),
+        'is_admin':     is_admin,
+    })

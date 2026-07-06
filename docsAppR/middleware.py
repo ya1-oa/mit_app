@@ -27,7 +27,7 @@ class TenantMiddleware:
         token = None
 
         user = getattr(request, 'user', None)
-        if user is not None and user.is_authenticated and not user.is_staff:
+        if user is not None and user.is_authenticated and getattr(user, 'tenant', None) is not None:
             request.tenant = user.tenant
             if request.tenant is not None:
                 token = set_current_tenant(request.tenant.id)

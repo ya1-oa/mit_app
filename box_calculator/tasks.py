@@ -119,10 +119,15 @@ def download_encircle_room_task(
         api = EncircleAPIClient()
         all_media = api.get_room_media(encircle_claim_id, structure_id, encircle_room_id)
     except Exception as e:
+        err_str = str(e)
+        # 404 = room exists in Encircle but no photos have been uploaded yet
+        if "404" in err_str:
+            cps_room.ai_notes = "No photos uploaded to this room in Encircle"
+        else:
+            cps_room.ai_notes = f"Encircle API error: {e}"
         cps_room.status = "error"
-        cps_room.ai_notes = f"Encircle API error: {e}"
         cps_room.save()
-        return {"success": False, "error": str(e), "room_name": room_name}
+        return {"success": False, "error": err_str, "room_name": room_name}
 
     # Extract photo URLs (skip documents, audio, video)
     photo_urls = []

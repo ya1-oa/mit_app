@@ -1,0 +1,486 @@
+{% extends "account/base.html" %}
+{% load static %}
+
+{% block title %}Workspace Settings — {{ tenant.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  .settings-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+  }
+  .settings-nav .nav-link {
+    color: #475569;
+    border-radius: 8px;
+    padding: 9px 14px;
+    font-size: 13.5px;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+  .settings-nav .nav-link:hover { background: #f1f5f9; color: #1e40af; }
+  .settings-nav .nav-link.active {
+    background: #eff6ff;
+    color: #1e40af;
+    font-weight: 600;
+  }
+  .settings-nav .nav-link i { width: 16px; text-align: center; opacity: .75; }
+  .settings-nav .nav-link.active i { opacity: 1; }
+
+  .stat-card {
+    background: #fff;
+    border-radius: 10px;
+    padding: 18px 20px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.08);
+    text-align: center;
+  }
+  .stat-card .stat-num {
+    font-size: 28px;
+    font-weight: 700;
+    color: #1e40af;
+    line-height: 1.1;
+  }
+  .stat-card .stat-label {
+    font-size: 11.5px;
+    color: #64748b;
+    text-transform: uppercase;
+    letter-spacing: .7px;
+    margin-top: 4px;
+  }
+
+  .member-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f1f5f9;
+  }
+  .member-row:last-child { border-bottom: none; }
+  .member-avatar {
+    width: 34px; height: 34px;
+    background: #1e40af;
+    border-radius: 50%;
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .member-you {
+    font-size: 11px;
+    background: #eff6ff;
+    color: #1e40af;
+    border-radius: 4px;
+    padding: 2px 7px;
+    font-weight: 600;
+  }
+
+  .invite-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 0;
+    border-bottom: 1px solid #f1f5f9;
+    flex-wrap: wrap;
+  }
+  .invite-row:last-child { border-bottom: none; }
+  .invite-code {
+    font-family: 'Courier New', monospace;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: #0f172a;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    padding: 5px 10px;
+    flex-shrink: 0;
+  }
+  .copy-btn {
+    padding: 4px 10px;
+    font-size: 12px;
+    white-space: nowrap;
+  }
+  .copy-btn.copied {
+    background: #16a34a;
+    border-color: #16a34a;
+    color: #fff;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex gap-4 align-items-start" style="max-width:1000px;margin:0 auto">
+
+  {# ── Sidebar nav ───────────────────────────────────────────────────── #}
+  <div class="settings-sidebar d-none d-md-block">
+    <p class="text-muted small mb-2 ps-2" style="font-weight:600;letter-spacing:.5px;text-transform:uppercase;font-size:11px">
+      Settings
+    </p>
+    <nav class="settings-nav d-flex flex-column gap-1">
+      <a href="?tab=workspace"
+         class="nav-link {% if active_tab == 'workspace' %}active{% endif %}">
+        <i class="fas fa-building"></i> Workspace
+      </a>
+      <a href="?tab=team"
+         class="nav-link {% if active_tab == 'team' %}active{% endif %}">
+        <i class="fas fa-users"></i> Team Members
+        <span class="badge bg-secondary ms-auto" style="font-size:10px">{{ stats.members }}</span>
+      </a>
+      <a href="?tab=invites"
+         class="nav-link {% if active_tab == 'invites' %}active{% endif %}">
+        <i class="fas fa-link"></i> Invite Codes
+        <span class="badge bg-secondary ms-auto" style="font-size:10px">{{ stats.invites }}</span>
+      </a>
+    </nav>
+  </div>
+
+  {# ── Main content ──────────────────────────────────────────────────── #}
+  <div class="flex-grow-1">
+
+    {# Mobile tab bar #}
+    <ul class="nav nav-tabs d-md-none mb-3">
+      <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'workspace' %}active{% endif %}" href="?tab=workspace">Workspace</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'team' %}active{% endif %}" href="?tab=team">Team</a>
+      </li>
+      <li class="nav-item">
+        <a class="nav-link {% if active_tab == 'invites' %}active{% endif %}" href="?tab=invites">Invites</a>
+      </li>
+    </ul>
+
+    {# Flash messages #}
+    {% if messages %}
+      {% for m in messages %}
+      <div class="alert alert-{{ m.tags|default:'info' }} alert-dismissible fade show mb-3" role="alert">
+        {{ m }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+      </div>
+      {% endfor %}
+    {% endif %}
+
+
+    {# ════════════════════ WORKSPACE TAB ════════════════════ #}
+    {% if active_tab == 'workspace' %}
+
+    {# Stats row #}
+    <div class="row g-3 mb-4">
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="stat-num">{{ stats.clients }}</div>
+          <div class="stat-label">Claims</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="stat-num">{{ stats.estimates }}</div>
+          <div class="stat-label">Estimates</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="stat-num">{{ stats.members }}</div>
+          <div class="stat-label">Members</div>
+        </div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="stat-card">
+          <div class="stat-num">{{ stats.invites }}</div>
+          <div class="stat-label">Active Codes</div>
+        </div>
+      </div>
+    </div>
+
+    {# Workspace info card #}
+    <div class="card mb-4">
+      <div class="card-header d-flex align-items-center justify-content-between">
+        <span class="fw-semibold">Workspace Info</span>
+        <span class="badge {% if tenant.status == 'active' %}bg-success{% elif tenant.status == 'trial' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">
+          {{ tenant.get_status_display }}
+        </span>
+      </div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="update_workspace">
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px">Workspace name</label>
+            <input type="text" name="workspace_name" class="form-control"
+                   value="{{ tenant.name }}" maxlength="255" required>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px">Primary contact email</label>
+            <input type="email" name="primary_contact_email" class="form-control"
+                   value="{{ tenant.primary_contact_email }}" maxlength="254">
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px">Workspace ID</label>
+            <input type="text" class="form-control bg-light" value="{{ tenant.slug }}" readonly>
+            <div class="form-text">Used internally to identify your workspace. Contact support to change.</div>
+          </div>
+
+          {% if tenant.plan %}
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px">Plan</label>
+            <input type="text" class="form-control bg-light" value="{{ tenant.plan }}" readonly>
+          </div>
+          {% endif %}
+
+          <button type="submit" class="btn btn-primary btn-sm">Save Changes</button>
+        </form>
+      </div>
+    </div>
+
+    {# Quick links #}
+    <div class="card">
+      <div class="card-header fw-semibold">Quick Access</div>
+      <div class="list-group list-group-flush">
+        <a href="{% url 'claim_list' %}" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+          <i class="fas fa-folder-open text-primary"></i>
+          <div>
+            <div class="fw-semibold" style="font-size:13.5px">Claims Manager</div>
+            <div class="text-muted" style="font-size:12px">{{ stats.clients }} claim{{ stats.clients|pluralize }} in your workspace</div>
+          </div>
+          <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="{% url 'contractor_hub:dashboard' %}" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+          <i class="fas fa-hard-hat text-warning"></i>
+          <div>
+            <div class="fw-semibold" style="font-size:13.5px">Contractor Hub</div>
+            <div class="text-muted" style="font-size:12px">{{ stats.estimates }} estimate{{ stats.estimates|pluralize }}</div>
+          </div>
+          <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="?tab=team" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+          <i class="fas fa-users text-info"></i>
+          <div>
+            <div class="fw-semibold" style="font-size:13.5px">Team Members</div>
+            <div class="text-muted" style="font-size:12px">{{ stats.members }} member{{ stats.members|pluralize }} have access</div>
+          </div>
+          <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </a>
+        <a href="?tab=invites" class="list-group-item list-group-item-action d-flex align-items-center gap-3">
+          <i class="fas fa-link text-success"></i>
+          <div>
+            <div class="fw-semibold" style="font-size:13.5px">Invite Codes</div>
+            <div class="text-muted" style="font-size:12px">Share a code to let workers join your workspace</div>
+          </div>
+          <i class="fas fa-chevron-right ms-auto text-muted"></i>
+        </a>
+      </div>
+    </div>
+
+    {% endif %}{# /workspace tab #}
+
+
+    {# ════════════════════ TEAM TAB ════════════════════ #}
+    {% if active_tab == 'team' %}
+
+    <div class="d-flex align-items-center justify-content-between mb-3">
+      <h5 class="mb-0">Team Members</h5>
+      {% if is_admin %}
+      <a href="?tab=invites" class="btn btn-sm btn-primary">
+        <i class="fas fa-plus me-1"></i>Invite Worker
+      </a>
+      {% endif %}
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-body py-2">
+        {% for member in team_members %}
+        <div class="member-row">
+          <div class="member-avatar"
+               style="{% if member.is_tenant_admin %}background:#d97706{% endif %}">
+            {{ member.email|first|upper }}
+          </div>
+          <div class="flex-grow-1 overflow-hidden">
+            <div class="d-flex align-items-center gap-2">
+              <span class="fw-semibold text-truncate" style="font-size:13.5px">
+                {% if member.first_name or member.last_name %}
+                  {{ member.first_name }} {{ member.last_name }}
+                {% else %}
+                  {{ member.email|truncatechars:32 }}
+                {% endif %}
+              </span>
+              {% if member.is_tenant_admin %}
+                <span class="badge" style="background:#d97706;font-size:10px">Owner</span>
+              {% else %}
+                <span class="badge bg-secondary" style="font-size:10px">Member</span>
+              {% endif %}
+            </div>
+            <div class="text-muted" style="font-size:12px">{{ member.email }}</div>
+          </div>
+          {% if member == request.user %}
+            <span class="member-you">You</span>
+          {% endif %}
+          <div class="text-muted" style="font-size:11px;white-space:nowrap">
+            Joined {{ member.date_joined|date:"M Y" }}
+          </div>
+        </div>
+        {% empty %}
+        <p class="text-muted mb-0 py-3 text-center">No team members yet.</p>
+        {% endfor %}
+      </div>
+    </div>
+
+    {% if is_admin %}
+    <div class="alert alert-info d-flex gap-2 align-items-start" style="font-size:13px">
+      <i class="fas fa-info-circle mt-1 flex-shrink-0"></i>
+      <div>
+        Go to <a href="?tab=invites" class="alert-link">Invite Codes</a> to invite a new worker.
+        They'll get an email with a link — one click and they're in.
+      </div>
+    </div>
+    {% endif %}
+
+    {% endif %}{# /team tab #}
+
+
+    {# ════════════════════ INVITES TAB ════════════════════ #}
+    {% if active_tab == 'invites' %}
+
+    <h5 class="mb-3">Invite Team Members</h5>
+
+    {% if is_admin %}
+
+    {# ── Invite by email (admin only) ────────────────────────────────── #}
+    <div class="card mb-4" style="border:2px solid #1e40af20;">
+      <div class="card-header fw-semibold d-flex align-items-center gap-2"
+           style="background:#eff6ff;border-bottom:1px solid #bfdbfe;">
+        <i class="fas fa-envelope text-primary"></i>
+        Send Invite by Email
+      </div>
+      <div class="card-body">
+        <p class="text-muted mb-3" style="font-size:13px">
+          Enter your worker's email — we'll send them a sign-up link with the invite code pre-filled.
+          They click the link and land on the sign-up page ready to go.
+        </p>
+        <form method="post" class="d-flex gap-2 align-items-end flex-wrap">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="invite_by_email">
+          <div class="flex-grow-1" style="min-width:220px">
+            <label class="form-label fw-semibold mb-1" style="font-size:12.5px">Worker's email address</label>
+            <input type="email" name="recipient_email" class="form-control"
+                   placeholder="worker@example.com" required autocomplete="off">
+          </div>
+          <button type="submit" class="btn btn-primary" style="white-space:nowrap">
+            <i class="fas fa-paper-plane me-1"></i>Send Invite
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <h6 class="text-muted mb-2" style="font-size:12px;text-transform:uppercase;letter-spacing:.6px">
+      Or share a code manually
+    </h6>
+
+    {# Existing codes — admin can delete #}
+    {% if invites %}
+    <div class="card mb-4">
+      <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
+        Active Codes
+        <span class="badge bg-primary">{{ invites|length }}</span>
+      </div>
+      <div class="card-body py-2">
+        {% for inv in invites %}
+        <div class="invite-row">
+          <span class="invite-code" id="code-{{ inv.pk }}">{{ inv.code }}</span>
+          <button class="btn btn-sm btn-outline-secondary copy-btn"
+                  onclick="copyCode('{{ inv.code }}', this)" title="Copy code">
+            <i class="fas fa-copy me-1"></i>Copy
+          </button>
+          <div class="flex-grow-1 text-muted" style="font-size:12px">
+            {% if inv.label %}<span class="fw-semibold text-dark">{{ inv.label }}</span> · {% endif %}
+            {% if inv.expires_at %}Exp <strong>{{ inv.expires_at|date:"M j, Y" }}</strong> ·
+            {% else %}No expiry · {% endif %}
+            {{ inv.use_count }}{% if inv.max_uses %}/{{ inv.max_uses }}{% endif %} use{{ inv.use_count|pluralize }}
+          </div>
+          <form method="post" class="d-inline" onsubmit="return confirm('Delete this invite code?')">
+            {% csrf_token %}
+            <input type="hidden" name="action" value="delete_invite">
+            <input type="hidden" name="invite_id" value="{{ inv.pk }}">
+            <button class="btn btn-sm btn-outline-danger" title="Delete">
+              <i class="fas fa-trash"></i>
+            </button>
+          </form>
+        </div>
+        {% endfor %}
+      </div>
+    </div>
+    {% else %}
+    <p class="text-muted mb-4">No invite codes yet — create one below.</p>
+    {% endif %}
+
+    {# Generate new code #}
+    <div class="card">
+      <div class="card-header fw-semibold">Generate New Code</div>
+      <div class="card-body">
+        <form method="post">
+          {% csrf_token %}
+          <input type="hidden" name="action" value="create_invite">
+          <div class="mb-3">
+            <label class="form-label fw-semibold" style="font-size:13px">Label <span class="fw-normal text-muted">(optional)</span></label>
+            <input type="text" name="label" class="form-control" maxlength="100"
+                   placeholder="e.g. For John S. — field tech">
+          </div>
+          <div class="row g-3 mb-4">
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold" style="font-size:13px">Expires on <span class="fw-normal text-muted">(optional)</span></label>
+              <input type="date" name="expires_at" class="form-control">
+            </div>
+            <div class="col-sm-6">
+              <label class="form-label fw-semibold" style="font-size:13px">Max uses <span class="fw-normal text-muted">(0 = unlimited)</span></label>
+              <input type="number" name="max_uses" class="form-control" value="0" min="0">
+            </div>
+          </div>
+          <button type="submit" class="btn btn-primary">
+            <i class="fas fa-plus-circle me-1"></i>Generate Code
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <p class="text-muted mt-3" style="font-size:12.5px">
+      Share the code with your worker. At sign-up they enter it in the "Invite code" field
+      and are automatically added to <strong>{{ tenant.name }}</strong>.
+    </p>
+
+    {% else %}{# worker view — no invite management #}
+
+    <div class="card">
+      <div class="card-body text-center py-5">
+        <i class="fas fa-lock fa-2x text-muted mb-3"></i>
+        <p class="fw-semibold mb-1">Only the workspace owner can invite new members.</p>
+        <p class="text-muted mb-0" style="font-size:13px">
+          Contact <strong>{{ tenant.primary_contact_email }}</strong> to add someone to
+          <strong>{{ tenant.name }}</strong>.
+        </p>
+      </div>
+    </div>
+
+    {% endif %}{# /is_admin #}
+
+    {% endif %}{# /invites tab #}
+
+  </div>{# /main content #}
+</div>{# /flex wrapper #}
+
+<script>
+function copyCode(code, btn) {
+  navigator.clipboard.writeText(code).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = '<i class="fas fa-check me-1"></i>Copied!';
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = '<i class="fas fa-copy me-1"></i>Copy';
+    }, 1800);
+  });
+}
+</script>
+{% endblock %}

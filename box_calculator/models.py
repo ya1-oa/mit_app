@@ -1,6 +1,7 @@
 from django.db import models
 from .calculator import CATEGORY_CHOICES
 from .cps_analyzer import CPS_COLUMNS
+from docsAppR.tenancy import TenantScopedManager
 
 
 class BoxCalcSession(models.Model):
@@ -12,6 +13,13 @@ class BoxCalcSession(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     notes = models.TextField(blank=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='box_calc_sessions_by_tenant', db_index=True,
+    )
+
+    objects  = TenantScopedManager()
+    unscoped = models.Manager()
 
     class Meta:
         ordering = ['-updated_at']
@@ -51,6 +59,10 @@ class BoxCalcRoom(models.Model):
     )
     room_name = models.CharField(max_length=100)
     order = models.PositiveIntegerField(default=0)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='box_calc_rooms_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['order', 'room_name']
@@ -84,6 +96,10 @@ class BoxCalcItem(models.Model):
     note = models.CharField(max_length=255, blank=True)
     ai_suggested = models.BooleanField(default=False)
     order = models.PositiveIntegerField(default=0)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='box_calc_items_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['order', 'category']
@@ -109,6 +125,13 @@ class BoxCalcCPSSession(models.Model):
     notes = models.TextField(blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='box_calc_cps_sessions_by_tenant', db_index=True,
+    )
+
+    objects  = TenantScopedManager()
+    unscoped = models.Manager()
 
     class Meta:
         ordering = ['-updated_at']
@@ -166,6 +189,10 @@ class BoxCalcCPSRoom(models.Model):
     images_count    = models.PositiveIntegerField(default=0)
     created_at      = models.DateTimeField(auto_now_add=True)
     updated_at      = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='box_calc_cps_rooms_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['order', 'room_name']

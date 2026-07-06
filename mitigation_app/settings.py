@@ -183,6 +183,7 @@ ACCOUNT_LOGIN_METHODS         = {'email'}
 ACCOUNT_EMAIL_VERIFICATION    = 'mandatory'
 ACCOUNT_EMAIL_CONFIRMATION_EXPIRE_DAYS = 3
 ACCOUNT_ADAPTER               = 'docsAppR.adapters.AccountAdapter'
+ACCOUNT_FORMS                 = {'signup': 'docsAppR.forms.InviteSignupForm'}
 
 AUTH_PASSWORD_VALIDATORS = [{'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator'}, {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator'}, {'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator'}, {'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator'}]
 LANGUAGE_CODE = 'en-us'

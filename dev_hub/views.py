@@ -20,6 +20,7 @@ from datetime import timedelta
 from django.conf import settings
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.contrib.admin.views.decorators import staff_member_required
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template.loader import render_to_string
@@ -38,7 +39,7 @@ NOTIFY_EMAIL = getattr(settings, 'NOTIFY_EMAIL', 'wsbjoe9@gmail.com')
 # Dashboard — all modules
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 def dashboard(request):
     modules = AppModule.objects.prefetch_related(
         'tasks', 'test_coverage', 'progress_reports'
@@ -67,7 +68,7 @@ def dashboard(request):
 # Module detail
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 def module_detail(request, slug):
     module = get_object_or_404(AppModule, slug=slug)
     tasks  = module.tasks.select_related('added_by').order_by('order', 'created_at')
@@ -92,7 +93,7 @@ def module_detail(request, slug):
 # AJAX: toggle task status
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 @require_POST
 def task_toggle(request, task_id):
     """
@@ -136,7 +137,7 @@ def task_toggle(request, task_id):
 # AJAX: add task
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 @require_POST
 def task_add(request, module_id):
     module = get_object_or_404(AppModule, id=module_id)
@@ -185,7 +186,7 @@ def task_add(request, module_id):
 # AJAX: toggle queue_for_weekly_report
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 @require_POST
 def task_queue_toggle(request, task_id):
     task = get_object_or_404(DevTask, id=task_id)
@@ -198,7 +199,7 @@ def task_queue_toggle(request, task_id):
 # Ad-hoc progress report
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 @require_POST
 def report_adhoc(request):
     """
@@ -249,7 +250,7 @@ def report_adhoc(request):
 # Notify client of a specific feature — routes to email compose pre-filled
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 def notify_client(request, task_id):
     """
     Redirect to the central email compose page with context pre-filled.
@@ -264,7 +265,7 @@ def notify_client(request, task_id):
 # Save response notes on a report
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 @require_POST
 def report_response(request, report_id):
     report = get_object_or_404(ProgressReport, id=report_id)
@@ -279,7 +280,7 @@ def report_response(request, report_id):
 # Coverage update (inline from module detail)
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 @require_POST
 def coverage_update(request, module_id):
     module   = get_object_or_404(AppModule, id=module_id)
@@ -331,7 +332,7 @@ def _compose_url_for_task(task):
 # AI Resources — cost & usage dashboard
 # ---------------------------------------------------------------------------
 
-@login_required
+@staff_member_required
 def ai_resources(request):
     """
     Internal dashboard showing AI token usage, cost per operation,
@@ -428,7 +429,7 @@ def ai_resources(request):
     })
 
 
-@login_required
+@staff_member_required
 def ai_usage_data(request):
     """JSON endpoint — daily cost series for the last 30 days (chart data)."""
     from django.db.models import Sum
@@ -502,13 +503,13 @@ def _report_context(report):
     }
 
 
-@login_required
+@staff_member_required
 def weekly_report_list(request):
     reports = WeeklyReport.objects.all()
     return render(request, 'dev_hub/weekly_report_list.html', {'reports': reports})
 
 
-@login_required
+@staff_member_required
 def weekly_report_create(request):
     """Create a new report seeded with the standard team template."""
     payload = WeeklyReport.default_payload()
@@ -525,13 +526,13 @@ def weekly_report_create(request):
     return redirect('dev_hub:weekly_report_edit', report_id=report.id)
 
 
-@login_required
+@staff_member_required
 def weekly_report_detail(request, report_id):
     report = get_object_or_404(WeeklyReport, id=report_id)
     return render(request, 'dev_hub/weekly_report_detail.html', _report_context(report))
 
 
-@login_required
+@staff_member_required
 def weekly_report_edit(request, report_id):
     report = get_object_or_404(WeeklyReport, id=report_id)
 
@@ -579,7 +580,7 @@ def weekly_report_edit(request, report_id):
     return render(request, 'dev_hub/weekly_report_edit.html', context)
 
 
-@login_required
+@staff_member_required
 def weekly_report_pdf(request, report_id):
     """Render the same report to a downloadable PDF via WeasyPrint."""
     report = get_object_or_404(WeeklyReport, id=report_id)

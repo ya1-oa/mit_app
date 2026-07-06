@@ -4,6 +4,7 @@ from django.contrib.auth.base_user import BaseUserManager
 from django.forms import ModelForm
 import os
 import re
+from .tenancy import TenantScopedManager
 from django.core.validators import MinValueValidator, MaxValueValidator, FileExtensionValidator
 from django.conf import settings
 from django.utils import timezone
@@ -77,6 +78,46 @@ class Tenant(models.Model):
         return self.name
 
 
+class TenantInvite(models.Model):
+    """
+    Invite code allowing a worker/employee to join an existing tenant workspace.
+    The contractor admin generates one from their settings page and shares it.
+    """
+    tenant     = models.ForeignKey(Tenant, on_delete=models.CASCADE, related_name='invites')
+    code       = models.CharField(max_length=32, unique=True, db_index=True)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='created_invites',
+    )
+    created_at  = models.DateTimeField(auto_now_add=True)
+    expires_at  = models.DateTimeField(null=True, blank=True)
+    max_uses    = models.PositiveIntegerField(default=0, help_text="0 = unlimited")
+    use_count   = models.PositiveIntegerField(default=0)
+    label       = models.CharField(max_length=100, blank=True, help_text="Optional note (e.g. 'For John S.')")
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"{self.tenant.name} — {self.code}"
+
+    def is_valid(self):
+        if self.expires_at and timezone.now() > self.expires_at:
+            return False
+        if self.max_uses > 0 and self.use_count >= self.max_uses:
+            return False
+        return True
+
+    @classmethod
+    def generate(cls, tenant, created_by=None, **kwargs):
+        """Create a new invite with a random 12-char alphanumeric code."""
+        import secrets
+        import string
+        alphabet = string.ascii_uppercase + string.digits
+        code = ''.join(secrets.choice(alphabet) for _ in range(12))
+        return cls.objects.create(tenant=tenant, code=code, created_by=created_by, **kwargs)
+
+
 class CustomUser(AbstractUser):
     email = models.EmailField("email", unique=True)
 
@@ -90,6 +131,9 @@ class CustomUser(AbstractUser):
         'docsAppR.Tenant', on_delete=models.PROTECT, null=True, blank=True,
         related_name='users',
     )
+    # True for the account that created / owns the workspace (contractor admin).
+    # Workers added via invite are False. Staff accounts ignore this field entirely.
+    is_tenant_admin = models.BooleanField(default=False)
 
     objects = CustomUserManager()
 
@@ -332,7 +376,17 @@ class Client(models.Model):
     )
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant',
+        on_delete=models.PROTECT,
+        null=True, blank=True,
+        related_name='clients',
+        db_index=True,
+    )
+
+    objects  = TenantScopedManager()
+    unscoped = models.Manager()
+
     def update_completion_stats(self):
         """Calculate and update completion percentages"""
         from .models import ChecklistItem  # Avoid circular import
@@ -504,6 +558,10 @@ class Room(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='rooms_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['client', 'sequence', 'room_name']
@@ -541,6 +599,10 @@ class RoomWorkTypeValue(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='room_work_type_values_by_tenant', db_index=True,
+    )
 
     class Meta:
         unique_together = ['room', 'work_type']
@@ -835,7 +897,11 @@ class Landlord(models.Model):
     # Meta Information
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='landlords_by_tenant', db_index=True,
+    )
+
     def __str__(self):
         return f"{self.full_name} - {self.property_address}"
     
@@ -914,7 +980,11 @@ class Document(models.Model):
     #    blank=True,
     #    related_name='documents'
     #)
-    
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='documents_by_tenant', db_index=True,
+    )
+
     class Meta:
         ordering = ['-created_at']
         indexes = [
@@ -1018,6 +1088,11 @@ class ChecklistItem(models.Model):
         elif self.document_type.startswith('PPR'):
             self.document_category = 'PPR'
         super().save(*args, **kwargs)
+
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='checklist_items_by_tenant', db_index=True,
+    )
 
     def __str__(self):
         return f"{self.get_document_type_display()} - {self.client.pOwner}"
@@ -1125,6 +1200,10 @@ class SentEmail(models.Model):
                                                    related_name='sent_in_emails')
     uploaded_attachments = models.ManyToManyField('UploadedAttachment', blank=True,
                                                    related_name='sent_in_emails')
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='sent_emails_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['-sent_at']
@@ -1170,6 +1249,10 @@ class EmailBatch(models.Model):
                                    null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='email_batches_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -1266,6 +1349,10 @@ class GeneratedFile(models.Model):
     created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
                                    null=True, blank=True, related_name='generated_files')
     created_at = models.DateTimeField(auto_now_add=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='generated_files_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -1408,6 +1495,10 @@ class ClaimFile(models.Model):
     # Version control
     version = models.IntegerField(default=1)
     is_active = models.BooleanField(default=True, help_text="False if file is deleted")
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='claim_files_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['client', 'file_type', 'file_name']
@@ -1462,6 +1553,10 @@ class FileChangeLog(models.Model):
     old_filename = models.CharField(max_length=255, blank=True)
     new_filename = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='file_change_logs_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['-changed_at']
@@ -1600,6 +1695,10 @@ class Lease(models.Model):
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='leases_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -1726,6 +1825,10 @@ class LeaseTask(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='lease_tasks_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['lease', 'created_at']
@@ -1772,6 +1875,10 @@ class LeaseDocument(models.Model):
 
     # Timestamps
     generated_at = models.DateTimeField(auto_now_add=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='lease_documents_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['document_type']
@@ -1826,6 +1933,10 @@ class LeaseActivity(models.Model):
     )
 
     created_at = models.DateTimeField(auto_now_add=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='lease_activities_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['-created_at']
@@ -1912,6 +2023,10 @@ class LeaseStageCompletion(models.Model):
     completed_at = models.DateTimeField(null=True, blank=True)
     is_completed = models.BooleanField(default=False)
     notes = models.TextField(blank=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='lease_stage_completions_by_tenant', db_index=True,
+    )
 
     class Meta:
         unique_together = ['lease', 'stage']
@@ -1989,6 +2104,10 @@ class LeaseSignatureRequest(models.Model):
     signed_at   = models.DateTimeField(null=True, blank=True)
     declined_at = models.DateTimeField(null=True, blank=True)
     expires_at  = models.DateTimeField()  # set to sent_at + 7 days on creation
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='lease_sig_requests_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['signer_role', '-sent_at']
@@ -2245,6 +2364,10 @@ class RoomScopeChecklist(models.Model):
         blank=True,
         related_name='created_scope_checklists'
     )
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='room_scope_checklists_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['client', 'room']
@@ -2500,6 +2623,10 @@ class TaskItem(models.Model):
 
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    tenant = models.ForeignKey(
+        'docsAppR.Tenant', on_delete=models.PROTECT,
+        null=True, blank=True, related_name='task_items_by_tenant', db_index=True,
+    )
 
     class Meta:
         ordering = ['-created_at']

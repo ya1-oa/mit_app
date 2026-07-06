@@ -61,6 +61,9 @@ urlpatterns = [
     # Accounts Receivable Tracking — invoice communication activity + follow-ups
     path('ar-tracking/', include('ar_tracking.urls')),
 
+    # Tenant settings (invite code management)
+    path('', include('docsAppR.urls')),
+
     # Dev Hub — internal project tracking + notification hub
     path('dev-hub/', include('dev_hub.urls')),
 
