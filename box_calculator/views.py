@@ -270,7 +270,7 @@ def cps_session(request, client_id):
     rooms_qs = numbered_qs if numbered_qs.exists() else Room.objects.filter(client=client).order_by('sequence', 'room_name')
     ppr_rooms_qs = [r for r in rooms_qs if _is_packout_room(r.room_name)]
 
-    session = BoxCalcCPSSession.objects.filter(client=client).first()
+    session = BoxCalcCPSSession.unscoped.filter(client=client).first()
     session_data = None
     if session:
         session_data = {
@@ -329,7 +329,10 @@ def cps_upload_room(request):
         return JsonResponse({'error': 'At least one image required'}, status=400)
 
     client = get_object_or_404(Client, id=client_id)
-    session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
+    session, _ = BoxCalcCPSSession.unscoped.get_or_create(
+        client=client,
+        defaults={'tenant': getattr(request, 'tenant', None)},
+    )
 
     # Save uploaded files to temp storage
     upload_dir = pathlib.Path('/tmp') / f'cps_{session.id}_{uuid.uuid4().hex[:8]}'
@@ -399,7 +402,7 @@ def cps_report(request, session_id):
     """Render the PPR report page for a completed session."""
     from .models import BoxCalcCPSSession
     from .cps_analyzer import CPS_COLUMNS, CPS_COLUMN_LABELS
-    session = get_object_or_404(BoxCalcCPSSession, id=session_id)
+    session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     return render(request, 'box_calculator/cps_report.html', {
         'session': session,
         'cps_columns': CPS_COLUMNS,
@@ -414,7 +417,7 @@ def cps_export_pdf(request, session_id):
     """Generate and stream the CPS box count report as PDF."""
     from .models import BoxCalcCPSSession
     from .pdf_builder import build_cps_pdf
-    session = get_object_or_404(BoxCalcCPSSession, id=session_id)
+    session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     pdf_bytes = build_cps_pdf(session)
     safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
     filename = f"CPS_Box_Count_{safe_name}.pdf"
@@ -428,7 +431,7 @@ def cps_export_excel(request, session_id):
     """Generate and stream the PPR Excel report (.xlsx)."""
     from .models import BoxCalcCPSSession
     from .excel_builder import build_cps_excel
-    session = get_object_or_404(BoxCalcCPSSession, id=session_id)
+    session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     xlsx_bytes = build_cps_excel(session)
     safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
     filename = f"PPR_Box_Count_{safe_name}.xlsx"
@@ -652,7 +655,10 @@ def api_pdf_to_cps_session(request):
         return JsonResponse({'error': result.get('error', 'Analysis failed')}, status=500)
 
     # Persist to CPS session — one session per client (upsert)
-    session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
+    session, _ = BoxCalcCPSSession.unscoped.get_or_create(
+        client=client,
+        defaults={'tenant': getattr(request, 'tenant', None)},
+    )
     session.notes = result.get('estimator_notes', '')
     session.save(update_fields=['notes', 'updated_at'])
 
