@@ -33,7 +33,9 @@ def process_cps_room_task(
     self.update_state(state="PROGRESS", meta={"room_name": room_name, "stage": "analyzing"})
 
     try:
-        session = BoxCalcCPSSession.objects.get(id=session_id)
+        # Use .unscoped — TenantScopedManager returns empty queryset in Celery
+        # workers (no HTTP request → no tenant in contextvar).
+        session = BoxCalcCPSSession.unscoped.get(id=session_id)
     except BoxCalcCPSSession.DoesNotExist:
         logger.error("PPR session %s not found", session_id)
         return {"success": False, "error": "Session not found"}
@@ -115,7 +117,9 @@ def download_encircle_room_task(
     self.update_state(state="PROGRESS", meta={"room_name": room_name, "stage": "downloading"})
 
     try:
-        session = BoxCalcCPSSession.objects.get(id=session_id)
+        # Use .unscoped — TenantScopedManager returns empty queryset in Celery
+        # workers (no HTTP request → no tenant in contextvar).
+        session = BoxCalcCPSSession.unscoped.get(id=session_id)
     except BoxCalcCPSSession.DoesNotExist:
         logger.error("CPS session %s not found", session_id)
         return {"success": False, "error": "Session not found"}

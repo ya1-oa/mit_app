@@ -528,23 +528,38 @@ def api_auto_from_encircle(request):
             unique_rooms.append(r)
     packout_rooms = unique_rooms
 
-    # Create/upsert CPS session and clear previous run
+    # Create/upsert CPS session and clear previous run.
+    # Use .unscoped so this works regardless of tenant context (TenantScopedManager
+    # would filter by tenant and return nothing if tenant is null on existing rows).
     try:
-        session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)
+        session, _ = BoxCalcCPSSession.unscoped.get_or_create(
+            client=client,
+            defaults={'tenant': getattr(request, 'tenant', None)},
+        )
         session.rooms.all().delete()
     except Exception as e:
         logger.error("CPS session DB error for client %s: %s", client_id, e, exc_info=True)
         return JsonResponse({'error': f'Database error — migrations may not have run: {e}'}, status=500)
 
-    # Create pending room records and dispatch one download+analyze task per room
+    # Create pending room records and dispatch one download+analyze task per room.
+    # Use update_or_create so a duplicate room name (race condition or re-run)
+    # resets the row to pending instead of crashing with a unique constraint error.
     room_tasks = []
     try:
         for order, room_info in enumerate(packout_rooms):
-            cps_room = BoxCalcCPSRoom.objects.create(
+            cps_room, _ = BoxCalcCPSRoom.objects.update_or_create(
                 session=session,
                 room_name=room_info['name'],
-                order=order,
-                status='pending',
+                defaults={
+                    'order': order,
+                    'status': 'pending',
+                    'celery_task_id': '',
+                    'small': 0, 'medium': 0, 'large': 0, 'box_wrapped': 0,
+                    'picture_mirror': 0, 'plant_vase': 0, 'tv': 0,
+                    'wardrobe': 0, 'mattress': 0, 'dish_pack': 0,
+                    'glass_pack': 0, 'boots_pans': 0,
+                    'confidence': '', 'ai_notes': '', 'images_count': 0,
+                },
             )
             task = download_encircle_room_task.delay(
                 session_id=session.id,
