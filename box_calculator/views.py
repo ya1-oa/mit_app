@@ -532,10 +532,16 @@ def api_auto_from_encircle(request):
     # Use .unscoped so this works regardless of tenant context (TenantScopedManager
     # would filter by tenant and return nothing if tenant is null on existing rows).
     try:
-        session, _ = BoxCalcCPSSession.unscoped.get_or_create(
-            client=client,
-            defaults={'tenant': getattr(request, 'tenant', None)},
-        )
+        # filter+first avoids MultipleObjectsReturned if duplicate sessions
+        # accumulated from earlier (pre-fix) runs.
+        session = BoxCalcCPSSession.unscoped.filter(client=client).order_by('-updated_at').first()
+        if session is None:
+            session = BoxCalcCPSSession.unscoped.create(
+                client=client,
+                tenant=getattr(request, 'tenant', None),
+            )
+        # Delete stale duplicates so we always work with one session per client
+        BoxCalcCPSSession.unscoped.filter(client=client).exclude(pk=session.pk).delete()
         session.rooms.all().delete()
     except Exception as e:
         logger.error("CPS session DB error for client %s: %s", client_id, e, exc_info=True)
