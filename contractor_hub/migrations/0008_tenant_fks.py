@@ -1,20 +1,23 @@
 """
 contractor_hub tenant FK wave:
-  Wave 2 (direct Client FK): GCEstimate, BoxCountReport
+  Wave 2 (direct Client FK): GCEstimate
   Wave 3 (FK to GCEstimate): GCSection
   Wave 4 (FK to GCSection):  GCLineItem
+
+  Note: BoxCountReport is excluded — its table was absent from the DB at the
+  time this migration was authored (migration history / schema out of sync).
+  Add its tenant FK in a follow-up migration once the table is confirmed present.
 """
 from django.db import migrations, models
 import django.db.models.deletion
 
 
 def backfill_contractor_hub_tenants(apps, schema_editor):
-    Tenant        = apps.get_model('docsAppR', 'Tenant')
-    Client        = apps.get_model('docsAppR', 'Client')
-    GCEstimate    = apps.get_model('contractor_hub', 'GCEstimate')
-    BoxCountReport= apps.get_model('contractor_hub', 'BoxCountReport')
-    GCSection     = apps.get_model('contractor_hub', 'GCSection')
-    GCLineItem    = apps.get_model('contractor_hub', 'GCLineItem')
+    Tenant     = apps.get_model('docsAppR', 'Tenant')
+    Client     = apps.get_model('docsAppR', 'Client')
+    GCEstimate = apps.get_model('contractor_hub', 'GCEstimate')
+    GCSection  = apps.get_model('contractor_hub', 'GCSection')
+    GCLineItem = apps.get_model('contractor_hub', 'GCLineItem')
 
     dt = Tenant.objects.filter(slug='default').first() or Tenant.objects.first()
     if not dt:
@@ -36,8 +39,7 @@ def backfill_contractor_hub_tenants(apps, schema_editor):
         if objs:
             ModelClass.objects.bulk_update(objs, ['tenant'], batch_size=500)
 
-    _wave2(GCEstimate,     'client')
-    _wave2(BoxCountReport, 'client')
+    _wave2(GCEstimate, 'client')
 
     # Wave 3: GCSection → GCEstimate
     estimate_tenant = {
@@ -79,8 +81,6 @@ class Migration(migrations.Migration):
         # Wave 2
         migrations.AddField(model_name='gcestimate', name='tenant',
             field=models.ForeignKey(related_name='gc_estimates_by_tenant', **_FK)),
-        migrations.AddField(model_name='boxcountreport', name='tenant',
-            field=models.ForeignKey(related_name='box_count_reports_by_tenant', **_FK)),
         # Wave 3
         migrations.AddField(model_name='gcsection', name='tenant',
             field=models.ForeignKey(related_name='gc_sections_by_tenant', **_FK)),
