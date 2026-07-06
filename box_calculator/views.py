@@ -519,6 +519,15 @@ def api_auto_from_encircle(request):
     if not packout_rooms:
         return JsonResponse({'error': 'No 300-series packout rooms found in this claim'}, status=400)
 
+    # Deduplicate by room name (Encircle sometimes returns the same room more than once)
+    seen_names = set()
+    unique_rooms = []
+    for r in packout_rooms:
+        if r['name'] not in seen_names:
+            seen_names.add(r['name'])
+            unique_rooms.append(r)
+    packout_rooms = unique_rooms
+
     # Create/upsert CPS session and clear previous run
     try:
         session, _ = BoxCalcCPSSession.objects.get_or_create(client=client)

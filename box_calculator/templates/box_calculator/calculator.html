@@ -209,19 +209,18 @@ clientSelect.addEventListener('change', () => {
   // Reset panels
   encirclePanel.style.display = 'none';
   pdfPanel.style.display      = 'none';
+  step2Card.style.display     = 'none';
   Object.values(pollIntervals).forEach(clearInterval);
   pollIntervals = {};
 
-  if (!selectedClientId) {
-    step2Card.style.display = 'none';
-    return;
-  }
+  if (!selectedClientId) return;
 
-  // Show method selector
-  step2Card.style.display = '';
   if (selectedEncircleId) {
-    encircleCard.style.display = '';
+    // Auto-start Encircle download — no extra click needed
+    chooseEncircle();
   } else {
+    // No Encircle ID: show method card with only the PDF option
+    step2Card.style.display  = '';
     encircleCard.style.display = 'none';
   }
 });
@@ -313,9 +312,15 @@ function updateRoomRow(taskId, state, room) {
 
   if (state === 'SUCCESS' || (room && room.status === 'complete')) {
     spinner.style.display = 'none';
-    check.style.display   = '';
     const total = room ? room.total : '?';
-    statusEl.textContent = `Complete — ${total} boxes`;
+    if (total === 0 || total === '0') {
+      errIcon.style.display = '';
+      statusEl.textContent  = 'Complete — 0 boxes (nothing detected)';
+      statusEl.className    = 'text-warning small ms-auto';
+    } else {
+      check.style.display  = '';
+      statusEl.textContent = `Complete — ${total} boxes`;
+    }
   } else if (state === 'FAILURE' || (room && room.status === 'error')) {
     spinner.style.display  = 'none';
     errIcon.style.display  = '';

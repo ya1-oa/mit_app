@@ -189,8 +189,9 @@ def download_encircle_room_task(
         return {"success": False, "error": "Photo download failed", "room_name": room_name}
 
     # ── Run CPS analysis ──────────────────────────────────────────────────────
-    logger.info("CPS Encircle analyze start — session=%s room=%r photos_downloaded=%d",
-                session_id, room_name, len(saved_paths))
+    sizes = [(pathlib.Path(p).name, pathlib.Path(p).stat().st_size) for p in saved_paths]
+    logger.info("CPS Encircle analyze start — session=%s room=%r photos_downloaded=%d sizes=%s",
+                session_id, room_name, len(saved_paths), sizes)
 
     result = analyze_room_ppr(room_name=room_name, image_paths=saved_paths, model=model)
 
