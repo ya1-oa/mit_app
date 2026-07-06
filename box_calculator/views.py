@@ -478,7 +478,7 @@ def api_auto_from_encircle(request):
     """
     import re
     from .models import BoxCalcCPSSession, BoxCalcCPSRoom
-    from .tasks import download_encircle_room_task
+    from .tasks import process_cps_room_task
 
     try:
         data = json.loads(request.body)
@@ -508,51 +508,68 @@ def api_auto_from_encircle(request):
         logger.error("Encircle fetch error for client %s: %s", client_id, e, exc_info=True)
         return JsonResponse({'error': f'Encircle API error: {e}'}, status=500)
 
-    # Filter to 300-series packout rooms
+    # Filter to 300-series packout rooms, deduplicated
     packout_rooms = []
+    seen_names = set()
     for room in all_rooms:
         label = (room.get('label') or room.get('name') or '').strip()
         m = re.match(r'^(\d+)', label)
-        if m and 300 <= int(m.group(1)) < 400:
-            packout_rooms.append({'id': str(room['id']), 'name': label})
+        if m and 300 <= int(m.group(1)) < 400 and label not in seen_names:
+            seen_names.add(label)
+            packout_rooms.append({'name': label, 'num': m.group(1)})
 
     if not packout_rooms:
         return JsonResponse({'error': 'No 300-series packout rooms found in this claim'}, status=400)
 
-    # Deduplicate by room name (Encircle sometimes returns the same room more than once)
-    seen_names = set()
-    unique_rooms = []
-    for r in packout_rooms:
-        if r['name'] not in seen_names:
-            seen_names.add(r['name'])
-            unique_rooms.append(r)
-    packout_rooms = unique_rooms
-
-    # Create/upsert CPS session and clear previous run.
-    # Use .unscoped so this works regardless of tenant context (TenantScopedManager
-    # would filter by tenant and return nothing if tenant is null on existing rows).
+    # Fetch ALL claim media in one call — same approach as ZipMediaDownloader/claim_images app.
+    # The room-level /rooms/{id}/media endpoint returns 404 for rooms without directly
+    # attached media; claim-level media is the correct source with room labels as metadata.
     try:
-        # filter+first avoids MultipleObjectsReturned if duplicate sessions
-        # accumulated from earlier (pre-fix) runs.
+        all_claim_media = api.get_all_claim_media(client.encircle_claim_id)
+    except Exception as e:
+        logger.error("Encircle media fetch error for client %s: %s", client_id, e, exc_info=True)
+        return JsonResponse({'error': f'Encircle media API error: {e}'}, status=500)
+
+    # Group download_uris by 3-digit room number prefix (same label-matching logic
+    # as ZipMediaDownloader._should_download: check item['labels'] for the room name).
+    media_by_room_num: dict[str, list[str]] = {}
+    for item in all_claim_media:
+        ct = (item.get('content_type') or '').lower().split(';')[0].strip()
+        if not ct.startswith('image/'):
+            continue
+        url = item.get('download_uri')
+        if not url:
+            continue
+        for label in item.get('labels', []):
+            m = re.match(r'^(\d+)', (label or '').strip())
+            if m:
+                media_by_room_num.setdefault(m.group(1), []).append(url)
+                break
+
+    logger.info("CPS Encircle media — claim=%s total_images=%d rooms_with_media=%s",
+                client.encircle_claim_id, len(all_claim_media),
+                {k: len(v) for k, v in media_by_room_num.items()})
+
+    # Create/upsert session (unscoped — TenantScopedManager returns empty qs in non-request contexts)
+    try:
         session = BoxCalcCPSSession.unscoped.filter(client=client).order_by('-updated_at').first()
         if session is None:
             session = BoxCalcCPSSession.unscoped.create(
                 client=client,
                 tenant=getattr(request, 'tenant', None),
             )
-        # Delete stale duplicates so we always work with one session per client
         BoxCalcCPSSession.unscoped.filter(client=client).exclude(pk=session.pk).delete()
         session.rooms.all().delete()
     except Exception as e:
         logger.error("CPS session DB error for client %s: %s", client_id, e, exc_info=True)
-        return JsonResponse({'error': f'Database error — migrations may not have run: {e}'}, status=500)
+        return JsonResponse({'error': f'Database error: {e}'}, status=500)
 
-    # Create pending room records and dispatch one download+analyze task per room.
-    # Use update_or_create so a duplicate room name (race condition or re-run)
-    # resets the row to pending instead of crashing with a unique constraint error.
+    # Create room rows and dispatch process_cps_room_task with photo URLs directly.
+    # process_cps_room_task already handles http(s) URLs in _image_to_base64.
     room_tasks = []
     try:
         for order, room_info in enumerate(packout_rooms):
+            photo_urls = media_by_room_num.get(room_info['num'], [])[:5]
             cps_room, _ = BoxCalcCPSRoom.objects.update_or_create(
                 session=session,
                 room_name=room_info['name'],
@@ -567,18 +584,16 @@ def api_auto_from_encircle(request):
                     'confidence': '', 'ai_notes': '', 'images_count': 0,
                 },
             )
-            task = download_encircle_room_task.delay(
+            task = process_cps_room_task.delay(
                 session_id=session.id,
                 room_name=room_info['name'],
-                encircle_claim_id=client.encircle_claim_id,
-                structure_id=structure_id,
-                encircle_room_id=room_info['id'],
+                image_paths=photo_urls,  # URLs — _image_to_base64 handles http://
             )
             cps_room.celery_task_id = task.id
             cps_room.save(update_fields=['celery_task_id'])
             room_tasks.append({'room_name': room_info['name'], 'task_id': task.id})
     except Exception as e:
-        logger.error("Error dispatching Encircle tasks for client %s: %s", client_id, e, exc_info=True)
+        logger.error("Error dispatching CPS tasks for client %s: %s", client_id, e, exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)
 
     return JsonResponse({
