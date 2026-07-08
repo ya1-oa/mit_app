@@ -1,4 +1,8 @@
+import uuid
+
+from django.conf import settings
 from django.db import models
+
 from .calculator import CATEGORY_CHOICES
 from .cps_analyzer import CPS_COLUMNS
 from docsAppR.tenancy import TenantScopedManager
@@ -235,3 +239,44 @@ class BoxCalcCPSRoom(models.Model):
             "counts": counts,
             "total": self.total,
         }
+
+
+class BoxCalcCPSReport(models.Model):
+    """
+    A saved export (PDF or Excel) of a BoxCalcCPSSession.
+
+    Created automatically when the user exports from the report page or via bulk export.
+    File bytes stored in the DB so no filesystem management is needed.  The UUID
+    primary key is the stable URL identifier.
+    """
+    FORMAT_PDF   = 'pdf'
+    FORMAT_EXCEL = 'excel'
+    FORMAT_CHOICES = [('pdf', 'PDF'), ('excel', 'Excel')]
+
+    id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    session    = models.ForeignKey(
+        BoxCalcCPSSession, on_delete=models.CASCADE, related_name='saved_reports',
+    )
+    format     = models.CharField(max_length=10, choices=FORMAT_CHOICES)
+    filename   = models.CharField(max_length=255)
+    file_data  = models.BinaryField()
+    file_size  = models.PositiveIntegerField(default=0)
+    created_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, on_delete=models.SET_NULL,
+        null=True, blank=True, related_name='cps_reports',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.filename
+
+    @property
+    def mime_type(self) -> str:
+        return (
+            'application/pdf'
+            if self.format == self.FORMAT_PDF
+            else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+        )

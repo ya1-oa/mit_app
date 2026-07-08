@@ -249,11 +249,18 @@ def report_view(request, session_id):
 
 @login_required
 def cps_home(request):
-    """PPR landing page — select a client and manage room photo uploads."""
-    from .models import BoxCalcCPSSession
+    """PPR landing page — single-client workspace + bulk export table."""
+    from .models import BoxCalcCPSSession, BoxCalcCPSReport
     clients = Client.objects.order_by('pOwner').values('id', 'pOwner', 'pAddress', 'claimNumber', 'encircle_claim_id')
+    sessions = (
+        BoxCalcCPSSession.unscoped
+        .select_related('client')
+        .prefetch_related('rooms', 'saved_reports')
+        .order_by('-updated_at')
+    )
     return render(request, 'box_calculator/cps.html', {
         'clients': list(clients),
+        'sessions': sessions,
     })
 
 
@@ -405,6 +412,7 @@ def cps_report(request, session_id):
     session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     primary_rooms   = session.rooms.exclude(room_name__startswith='[OVERVIEW]').order_by('order', 'room_name')
     overview_rooms  = session.rooms.filter(room_name__startswith='[OVERVIEW]').order_by('order', 'room_name')
+    saved_reports   = session.saved_reports.order_by('-created_at')
     return render(request, 'box_calculator/cps_report.html', {
         'session': session,
         'primary_rooms':  primary_rooms,
@@ -415,18 +423,27 @@ def cps_report(request, session_id):
         'grand_total':     session.grand_total,
         'overview_counts': session.overview_counts,
         'overview_total':  session.overview_total,
+        'saved_reports':   saved_reports,
     })
 
 
 @login_required
 def cps_export_pdf(request, session_id):
-    """Generate and stream the CPS box count report as PDF."""
-    from .models import BoxCalcCPSSession
+    """Generate, save, and stream the CPS box count report as PDF."""
+    from .models import BoxCalcCPSSession, BoxCalcCPSReport
     from .pdf_builder import build_cps_pdf
     session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     pdf_bytes = build_cps_pdf(session)
     safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
     filename = f"CPS_Box_Count_{safe_name}.pdf"
+    BoxCalcCPSReport.objects.create(
+        session=session,
+        format=BoxCalcCPSReport.FORMAT_PDF,
+        filename=filename,
+        file_data=pdf_bytes,
+        file_size=len(pdf_bytes),
+        created_by=request.user,
+    )
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
@@ -434,18 +451,108 @@ def cps_export_pdf(request, session_id):
 
 @login_required
 def cps_export_excel(request, session_id):
-    """Generate and stream the PPR Excel report (.xlsx)."""
-    from .models import BoxCalcCPSSession
+    """Generate, save, and stream the PPR Excel report (.xlsx)."""
+    from .models import BoxCalcCPSSession, BoxCalcCPSReport
     from .excel_builder import build_cps_excel
     session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     xlsx_bytes = build_cps_excel(session)
     safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
     filename = f"PPR_Box_Count_{safe_name}.xlsx"
+    BoxCalcCPSReport.objects.create(
+        session=session,
+        format=BoxCalcCPSReport.FORMAT_EXCEL,
+        filename=filename,
+        file_data=xlsx_bytes,
+        file_size=len(xlsx_bytes),
+        created_by=request.user,
+    )
     response = HttpResponse(
         xlsx_bytes,
         content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     )
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
+def cps_saved_report(request, report_id):
+    """Serve a previously saved CPS report (PDF or Excel) from the database."""
+    from .models import BoxCalcCPSReport
+    report = get_object_or_404(BoxCalcCPSReport, id=report_id)
+    response = HttpResponse(bytes(report.file_data), content_type=report.mime_type)
+    response['Content-Disposition'] = f'attachment; filename="{report.filename}"'
+    return response
+
+
+@login_required
+@require_POST
+def cps_bulk_export(request):
+    """
+    Generate a ZIP of PDF or Excel reports for multiple CPS sessions.
+    POST JSON: {"session_ids": [1, 2, 3], "format": "pdf"|"excel"}
+    Saves each report to BoxCalcCPSReport and streams a ZIP back.
+    """
+    import io
+    import zipfile
+    from .models import BoxCalcCPSSession, BoxCalcCPSReport
+
+    try:
+        body = json.loads(request.body)
+    except json.JSONDecodeError:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+    session_ids = body.get('session_ids', [])
+    fmt = body.get('format', 'pdf').lower()
+    if fmt not in ('pdf', 'excel'):
+        return JsonResponse({'error': 'format must be pdf or excel'}, status=400)
+    if not session_ids:
+        return JsonResponse({'error': 'No sessions selected'}, status=400)
+
+    sessions = list(BoxCalcCPSSession.unscoped.filter(id__in=session_ids).select_related('client'))
+    if not sessions:
+        return JsonResponse({'error': 'No matching sessions found'}, status=404)
+
+    if fmt == 'pdf':
+        from .pdf_builder import build_cps_pdf
+    else:
+        from .excel_builder import build_cps_excel
+
+    zip_buf = io.BytesIO()
+    with zipfile.ZipFile(zip_buf, 'w', zipfile.ZIP_DEFLATED) as zf:
+        seen_names: dict[str, int] = {}
+        for session in sessions:
+            safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
+            if fmt == 'pdf':
+                file_bytes = build_cps_pdf(session)
+                base_filename = f"CPS_Box_Count_{safe_name}.pdf"
+                report_format = BoxCalcCPSReport.FORMAT_PDF
+            else:
+                file_bytes = build_cps_excel(session)
+                base_filename = f"PPR_Box_Count_{safe_name}.xlsx"
+                report_format = BoxCalcCPSReport.FORMAT_EXCEL
+
+            # Deduplicate filenames within the ZIP
+            if base_filename in seen_names:
+                seen_names[base_filename] += 1
+                name, ext = base_filename.rsplit('.', 1)
+                zip_entry = f"{name}_{seen_names[base_filename]}.{ext}"
+            else:
+                seen_names[base_filename] = 0
+                zip_entry = base_filename
+
+            zf.writestr(zip_entry, file_bytes)
+            BoxCalcCPSReport.objects.create(
+                session=session,
+                format=report_format,
+                filename=base_filename,
+                file_data=file_bytes,
+                file_size=len(file_bytes),
+                created_by=request.user,
+            )
+
+    zip_bytes = zip_buf.getvalue()
+    response = HttpResponse(zip_bytes, content_type='application/zip')
+    response['Content-Disposition'] = 'attachment; filename="CPS_Reports.zip"'
     return response
 
 

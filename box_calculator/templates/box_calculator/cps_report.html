@@ -34,6 +34,33 @@
     </div>
   </div>
 
+  {# ── Saved reports ────────────────────────────────────────────────────── #}
+  {% if saved_reports %}
+  <div class="card shadow-sm mb-3">
+    <div class="card-header py-2 fw-semibold d-flex align-items-center gap-2" style="font-size:13px; background:#f8f9fa;">
+      <i class="bi bi-archive text-primary"></i> Saved Exports
+      <span class="badge bg-secondary ms-1">{{ saved_reports.count }}</span>
+    </div>
+    <div class="card-body py-2 px-3">
+      <div class="d-flex flex-wrap gap-2">
+        {% for rpt in saved_reports %}
+        <a href="{% url 'cps_saved_report' rpt.id %}"
+           class="btn btn-sm {% if rpt.format == 'pdf' %}btn-outline-danger{% else %}btn-outline-success{% endif %} d-flex align-items-center gap-1"
+           title="Generated {{ rpt.created_at|date:'M j, Y g:i A' }}">
+          {% if rpt.format == 'pdf' %}
+            <i class="bi bi-file-earmark-pdf"></i>
+          {% else %}
+            <i class="bi bi-file-earmark-excel"></i>
+          {% endif %}
+          {{ rpt.filename }}
+          <span class="text-muted ms-1" style="font-size:10px;">{{ rpt.created_at|date:"M j g:i A" }}</span>
+        </a>
+        {% endfor %}
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {# ── Editable table ───────────────────────────────────────────────────── #}
   <div class="card shadow-sm mb-3">
     <div class="card-header d-flex align-items-center justify-content-between py-2"

@@ -33,6 +33,79 @@
     </div>
   </div>
 
+  <!-- ── Bulk Export ───────────────────────────────────────────────────── -->
+  {% if sessions %}
+  <div class="card mb-4">
+    <div class="card-header d-flex align-items-center justify-content-between py-2"
+         style="background:#1e3a5f; color:#fff;">
+      <span class="fw-semibold" style="font-size:13px;">
+        <i class="bi bi-collection me-2"></i>Bulk Export
+      </span>
+      <div class="d-flex align-items-center gap-2 no-print">
+        <select id="bulk-format" class="form-select form-select-sm" style="width:auto;">
+          <option value="pdf">PDF</option>
+          <option value="excel">Excel</option>
+        </select>
+        <button id="btn-bulk-zip" class="btn btn-sm btn-warning fw-semibold" disabled>
+          <i class="bi bi-file-earmark-zip me-1"></i>Download ZIP
+        </button>
+      </div>
+    </div>
+    <div class="table-responsive">
+      <table class="table table-sm table-hover table-bordered mb-0" style="font-size:12.5px;">
+        <thead style="background:#2e6da4; color:#fff;">
+          <tr>
+            <th style="width:36px; padding:6px 8px;">
+              <input type="checkbox" id="bulk-select-all" title="Select all">
+            </th>
+            <th>Client</th>
+            <th>Claim #</th>
+            <th class="text-center">Rooms</th>
+            <th>Last Updated</th>
+            <th>Saved Exports</th>
+            <th class="text-center">Open Report</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for s in sessions %}
+          <tr>
+            <td class="text-center" style="padding:6px 8px;">
+              <input type="checkbox" class="bulk-check" value="{{ s.id }}">
+            </td>
+            <td class="fw-semibold">{{ s.client.pOwner }}</td>
+            <td class="text-muted">{{ s.client.claimNumber|default:"—" }}</td>
+            <td class="text-center">
+              {% with primary=s.rooms.all|length %}
+                {{ primary }}
+              {% endwith %}
+            </td>
+            <td class="text-muted" style="font-size:11px;">{{ s.updated_at|date:"M j, Y g:i A" }}</td>
+            <td>
+              {% for rpt in s.saved_reports.all|slice:":4" %}
+              <a href="{% url 'cps_saved_report' rpt.id %}"
+                 class="badge {% if rpt.format == 'pdf' %}bg-danger{% else %}bg-success{% endif %} text-decoration-none me-1"
+                 title="{{ rpt.filename }} — {{ rpt.created_at|date:'M j g:i A' }}">
+                {% if rpt.format == 'pdf' %}<i class="bi bi-file-earmark-pdf"></i> PDF{% else %}<i class="bi bi-file-earmark-excel"></i> XLS{% endif %}
+              </a>
+              {% empty %}
+              <span class="text-muted" style="font-size:11px;">none yet</span>
+              {% endfor %}
+            </td>
+            <td class="text-center">
+              <a href="{% url 'cps_report' s.id %}" class="btn btn-xs btn-outline-primary"
+                 style="font-size:11px; padding:2px 8px;">
+                <i class="bi bi-pencil-square"></i> Edit
+              </a>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div id="bulk-status" class="px-3 py-2 text-muted" style="font-size:12px; display:none;"></div>
+  </div>
+  {% endif %}
+
   <!-- Main CPS workspace -->
   <div id="cps-workspace" style="display:none">
     <div class="row g-3 mb-4">
@@ -297,5 +370,71 @@ async function deleteRoom(roomId, roomName) {
 function getCsrf() {
   return document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
 }
+
+// ── Bulk Export ────────────────────────────────────────────────────────────
+(function () {
+  const selectAll  = document.getElementById('bulk-select-all');
+  const btnZip     = document.getElementById('btn-bulk-zip');
+  const bulkStatus = document.getElementById('bulk-status');
+  const checks     = () => Array.from(document.querySelectorAll('.bulk-check'));
+
+  if (!selectAll) return;   // no sessions → bulk section not rendered
+
+  function updateZipBtn() {
+    const any = checks().some(c => c.checked);
+    btnZip.disabled = !any;
+  }
+
+  selectAll.addEventListener('change', () => {
+    checks().forEach(c => c.checked = selectAll.checked);
+    updateZipBtn();
+  });
+
+  document.querySelectorAll('.bulk-check').forEach(c =>
+    c.addEventListener('change', () => {
+      selectAll.indeterminate = checks().some(c => c.checked) && !checks().every(c => c.checked);
+      selectAll.checked = checks().every(c => c.checked);
+      updateZipBtn();
+    })
+  );
+
+  btnZip.addEventListener('click', async () => {
+    const ids = checks().filter(c => c.checked).map(c => c.value);
+    if (!ids.length) return;
+    const fmt = document.getElementById('bulk-format').value;
+
+    btnZip.disabled = true;
+    btnZip.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating…';
+    bulkStatus.style.display = '';
+    bulkStatus.textContent = `Generating ${ids.length} ${fmt.toUpperCase()} report${ids.length > 1 ? 's' : ''}…`;
+
+    try {
+      const resp = await fetch('/calculator/cps/bulk-export/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
+        body: JSON.stringify({ session_ids: ids.map(Number), format: fmt }),
+      });
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({}));
+        throw new Error(err.error || `HTTP ${resp.status}`);
+      }
+      const blob = await resp.blob();
+      const url  = URL.createObjectURL(blob);
+      const a    = document.createElement('a');
+      a.href = url;
+      a.download = `CPS_Reports_${fmt.toUpperCase()}.zip`;
+      a.click();
+      URL.revokeObjectURL(url);
+      bulkStatus.textContent = `✓ ZIP ready — ${ids.length} report${ids.length > 1 ? 's' : ''} saved to history.`;
+      // Refresh the page after a moment so saved-reports badges update
+      setTimeout(() => location.reload(), 1500);
+    } catch (err) {
+      bulkStatus.textContent = `Error: ${err.message}`;
+    } finally {
+      btnZip.disabled = false;
+      btnZip.innerHTML = '<i class="bi bi-file-earmark-zip me-1"></i>Download ZIP';
+    }
+  });
+})();
 </script>
 {% endblock %}
