@@ -249,19 +249,19 @@ def report_view(request, session_id):
 
 @login_required
 def cps_home(request):
-    """PPR landing page — single-client workspace + bulk export table."""
-    from .models import BoxCalcCPSSession, BoxCalcCPSReport
-    clients = Client.objects.order_by('pOwner').values('id', 'pOwner', 'pAddress', 'claimNumber', 'encircle_claim_id')
-    sessions = (
-        BoxCalcCPSSession.unscoped
-        .select_related('client')
-        .prefetch_related('rooms', 'saved_reports')
-        .order_by('-updated_at')
-    )
-    return render(request, 'box_calculator/cps.html', {
-        'clients': list(clients),
-        'sessions': sessions,
-    })
+    """CPS home — multi-claim generate + bulk export."""
+    from .models import BoxCalcCPSSession
+    sessions_by_client = {
+        s.client_id: s
+        for s in BoxCalcCPSSession.unscoped
+            .select_related('client')
+            .prefetch_related('rooms', 'saved_reports')
+    }
+    rows = [
+        {'client': c, 'session': sessions_by_client.get(c.id)}
+        for c in Client.objects.order_by('pOwner')
+    ]
+    return render(request, 'box_calculator/cps.html', {'rows': rows})
 
 
 @login_required

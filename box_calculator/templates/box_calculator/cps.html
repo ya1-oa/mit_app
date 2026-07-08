@@ -2,439 +2,382 @@
 {% block title %}CPS Box Count — AI Estimator{% endblock %}
 
 {% block content %}
-<div class="container-fluid py-4">
-  <div class="d-flex align-items-center justify-content-between mb-4">
+<div class="container-fluid py-3">
+
+  {# ── Header ──────────────────────────────────────────────────────────────── #}
+  <div class="d-flex align-items-start justify-content-between mb-3 flex-wrap gap-2">
     <div>
-      <h2 class="mb-0">CPS Box Count</h2>
-      <p class="text-muted mb-0">AI-powered box count estimation from room photos (300-series rooms)</p>
+      <h4 class="mb-0 fw-bold">CPS Box Count</h4>
+      <p class="text-muted mb-0" style="font-size:13px">
+        Select claims → Generate from Encircle → Export
+      </p>
     </div>
-    <div id="cps-actions" style="display:none!important">
-      <a id="btn-report" class="btn btn-outline-secondary me-2" href="#" target="_blank">View Report</a>
-      <a id="btn-excel" class="btn btn-success" href="#" target="_blank">
-        <i class="bi bi-file-earmark-excel"></i> Export Excel
-      </a>
-    </div>
-  </div>
-
-  <!-- Client selector -->
-  <div class="card mb-4">
-    <div class="card-body">
-      <label class="form-label fw-semibold">Select Client</label>
-      <select id="client-select" class="form-select form-select-lg">
-        <option value="">— choose a client —</option>
-        {% for c in clients %}
-        <option value="{{ c.id }}"
-                data-claim="{{ c.claimNumber|default:'' }}"
-                data-encircle="{{ c.encircle_claim_id|default:'' }}">
-          {{ c.pOwner }}{% if c.claimNumber %} — #{{ c.claimNumber }}{% endif %}
-        </option>
-        {% endfor %}
-      </select>
-    </div>
-  </div>
-
-  <!-- ── Bulk Export ───────────────────────────────────────────────────── -->
-  {% if sessions %}
-  <div class="card mb-4">
-    <div class="card-header d-flex align-items-center justify-content-between py-2"
-         style="background:#1e3a5f; color:#fff;">
-      <span class="fw-semibold" style="font-size:13px;">
-        <i class="bi bi-collection me-2"></i>Bulk Export
-      </span>
-      <div class="d-flex align-items-center gap-2 no-print">
-        <select id="bulk-format" class="form-select form-select-sm" style="width:auto;">
+    <div class="d-flex gap-2 flex-wrap align-items-center">
+      <button id="btn-generate" class="btn btn-primary" disabled>
+        <i class="bi bi-lightning-charge-fill me-1"></i>Generate CPS
+      </button>
+      <div class="input-group input-group-sm" style="width:auto">
+        <select id="export-format" class="form-select">
           <option value="pdf">PDF</option>
           <option value="excel">Excel</option>
         </select>
-        <button id="btn-bulk-zip" class="btn btn-sm btn-warning fw-semibold" disabled>
-          <i class="bi bi-file-earmark-zip me-1"></i>Download ZIP
+        <button id="btn-export-zip" class="btn btn-success" disabled>
+          <i class="bi bi-file-earmark-zip me-1"></i>Export ZIP
         </button>
       </div>
     </div>
+  </div>
+
+  {# ── Claims table ─────────────────────────────────────────────────────────── #}
+  <div class="card shadow-sm mb-3">
     <div class="table-responsive">
-      <table class="table table-sm table-hover table-bordered mb-0" style="font-size:12.5px;">
-        <thead style="background:#2e6da4; color:#fff;">
+      <table class="table table-sm table-hover table-bordered mb-0" style="font-size:12.5px; min-width:800px">
+        <thead style="background:#2e6da4; color:#fff; position:sticky; top:0; z-index:1">
           <tr>
-            <th style="width:36px; padding:6px 8px;">
-              <input type="checkbox" id="bulk-select-all" title="Select all">
+            <th style="width:36px; padding:6px 8px">
+              <input type="checkbox" id="select-all" title="Select all with Encircle ID">
             </th>
-            <th>Client</th>
-            <th>Claim #</th>
-            <th class="text-center">Rooms</th>
-            <th>Last Updated</th>
-            <th>Saved Exports</th>
-            <th class="text-center">Open Report</th>
+            <th style="padding:6px 8px">Client</th>
+            <th style="padding:6px 8px">Claim #</th>
+            <th class="text-center" style="min-width:110px; padding:6px 8px">Status</th>
+            <th class="text-center" style="padding:6px 8px">Rooms</th>
+            <th class="text-center" style="padding:6px 8px">Total Boxes</th>
+            <th style="padding:6px 8px">Last Generated</th>
+            <th style="padding:6px 8px">Saved Reports</th>
+            <th style="padding:6px 8px"></th>
           </tr>
         </thead>
-        <tbody>
-          {% for s in sessions %}
-          <tr>
-            <td class="text-center" style="padding:6px 8px;">
-              <input type="checkbox" class="bulk-check" value="{{ s.id }}">
+        <tbody id="cps-tbody">
+          {% for row in rows %}
+          <tr id="client-row-{{ row.client.id }}"
+              data-client-id="{{ row.client.id }}"
+              data-session-id="{{ row.session.id|default:'' }}">
+            <td class="text-center" style="vertical-align:middle; padding:5px 8px">
+              <input type="checkbox" class="row-check" value="{{ row.client.id }}"
+                {% if not row.client.encircle_claim_id %}disabled title="No Encircle claim ID linked"{% endif %}>
             </td>
-            <td class="fw-semibold">{{ s.client.pOwner }}</td>
-            <td class="text-muted">{{ s.client.claimNumber|default:"—" }}</td>
-            <td class="text-center">
-              {% with primary=s.rooms.all|length %}
-                {{ primary }}
-              {% endwith %}
+            <td style="vertical-align:middle; padding:5px 8px">
+              <span class="fw-semibold">{{ row.client.pOwner }}</span>
             </td>
-            <td class="text-muted" style="font-size:11px;">{{ s.updated_at|date:"M j, Y g:i A" }}</td>
-            <td>
-              {% for rpt in s.saved_reports.all|slice:":4" %}
-              <a href="{% url 'cps_saved_report' rpt.id %}"
-                 class="badge {% if rpt.format == 'pdf' %}bg-danger{% else %}bg-success{% endif %} text-decoration-none me-1"
-                 title="{{ rpt.filename }} — {{ rpt.created_at|date:'M j g:i A' }}">
-                {% if rpt.format == 'pdf' %}<i class="bi bi-file-earmark-pdf"></i> PDF{% else %}<i class="bi bi-file-earmark-excel"></i> XLS{% endif %}
-              </a>
-              {% empty %}
-              <span class="text-muted" style="font-size:11px;">none yet</span>
-              {% endfor %}
+            <td class="text-muted" style="vertical-align:middle; padding:5px 8px">
+              {{ row.client.claimNumber|default:"—" }}
             </td>
-            <td class="text-center">
-              <a href="{% url 'cps_report' s.id %}" class="btn btn-xs btn-outline-primary"
+            <td class="text-center status-cell" style="vertical-align:middle; padding:5px 8px">
+              {% if not row.client.encircle_claim_id %}
+                <span class="badge bg-secondary">No Encircle</span>
+              {% elif row.session %}
+                <span class="badge bg-success">Complete</span>
+              {% else %}
+                <span class="badge border text-secondary bg-light">No session</span>
+              {% endif %}
+            </td>
+            <td class="text-center room-count-cell" style="vertical-align:middle; padding:5px 8px">
+              {% if row.session %}{{ row.session.rooms.count }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="text-center total-boxes-cell" style="vertical-align:middle; padding:5px 8px">
+              {% if row.session %}<strong>{{ row.session.grand_total }}</strong>{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="updated-cell" style="vertical-align:middle; padding:5px 8px; font-size:11px; color:#6c757d">
+              {% if row.session %}{{ row.session.updated_at|date:"M j, Y g:i A" }}{% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td class="exports-cell" style="vertical-align:middle; padding:5px 8px">
+              {% if row.session %}
+                {% for rpt in row.session.saved_reports.all|slice:":4" %}
+                <a href="{% url 'cps_saved_report' rpt.id %}"
+                   class="badge {% if rpt.format == 'pdf' %}bg-danger{% else %}bg-success{% endif %} text-decoration-none me-1"
+                   title="{{ rpt.filename }} — {{ rpt.created_at|date:'M j g:i A' }}">
+                  {% if rpt.format == 'pdf' %}PDF{% else %}XLS{% endif %}
+                </a>
+                {% empty %}
+                <span class="text-muted" style="font-size:11px">none</span>
+                {% endfor %}
+              {% else %}<span class="text-muted">—</span>{% endif %}
+            </td>
+            <td style="vertical-align:middle; padding:5px 8px; white-space:nowrap">
+              {% if row.session %}
+              <a href="{% url 'cps_report' row.session.id %}"
+                 class="btn btn-outline-primary"
                  style="font-size:11px; padding:2px 8px;">
                 <i class="bi bi-pencil-square"></i> Edit
               </a>
+              {% endif %}
             </td>
+          </tr>
+          {% empty %}
+          <tr>
+            <td colspan="9" class="text-center text-muted py-4">No clients found</td>
           </tr>
           {% endfor %}
         </tbody>
       </table>
     </div>
-    <div id="bulk-status" class="px-3 py-2 text-muted" style="font-size:12px; display:none;"></div>
   </div>
-  {% endif %}
 
-  <!-- Main CPS workspace -->
-  <div id="cps-workspace" style="display:none">
-    <div class="row g-3 mb-4">
-      <!-- Left: Upload panel -->
-      <div class="col-lg-4">
-        <div class="card h-100">
-          <div class="card-header fw-semibold">Upload Room Photos</div>
-          <div class="card-body">
-            <div class="mb-3">
-              <label class="form-label">Room Name</label>
-              <select id="room-select" class="form-select">
-                <option value="">— select room —</option>
-              </select>
-              <input id="room-name-custom" class="form-control mt-2" placeholder="Or type custom room name…" style="display:none">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">Photos <small class="text-muted">(up to 5, JPEG/PNG/WebP)</small></label>
-              <input id="image-input" type="file" class="form-control" multiple accept="image/*">
-            </div>
-            <div class="mb-3">
-              <label class="form-label">AI Model</label>
-              <select id="model-select" class="form-select form-select-sm">
-                <option value="claude-haiku-4-5-20251001">claude-haiku-4-5 (fast)</option>
-                <option value="claude-sonnet-4-6">claude-sonnet-4-6 (accurate)</option>
-              </select>
-            </div>
-            <button id="btn-upload" class="btn btn-primary w-100" disabled>
-              <span id="upload-spinner" class="spinner-border spinner-border-sm me-2" style="display:none"></span>
-              Analyze Room
-            </button>
-          </div>
-        </div>
-      </div>
-
-      <!-- Right: Live summary table -->
-      <div class="col-lg-8">
-        <div class="card h-100">
-          <div class="card-header fw-semibold d-flex justify-content-between align-items-center">
-            Box Count Summary
-            <span id="room-count-badge" class="badge bg-secondary">0 rooms</span>
-          </div>
-          <div class="card-body p-0" style="overflow-x:auto">
-            <table class="table table-sm table-bordered table-hover mb-0" id="cps-table">
-              <thead class="table-light">
-                <tr>
-                  <th>Room</th>
-                  <th title="Small 1.5 cu ft">Sm</th>
-                  <th title="Medium 3.0 cu ft">Med</th>
-                  <th title="Large 4.5 cu ft">Lg</th>
-                  <th title="Box/Wrapped">BW</th>
-                  <th title="Plant/Vase">PV</th>
-                  <th title="TV box">TV</th>
-                  <th title="Wardrobe">WD</th>
-                  <th title="Mattress">Mat</th>
-                  <th title="Dish Pack">DP</th>
-                  <th title="Glass Pack">GP</th>
-                  <th title="Boots & Pans">B&P</th>
-                  <th><strong>Total</strong></th>
-                  <th></th>
-                </tr>
-              </thead>
-              <tbody id="cps-tbody">
-                <tr id="cps-empty-row">
-                  <td colspan="14" class="text-center text-muted py-4">
-                    Upload room photos to begin estimating
-                  </td>
-                </tr>
-              </tbody>
-              <tfoot id="cps-tfoot" style="display:none">
-                <tr class="table-warning fw-bold" id="cps-totals-row">
-                  <td>GRAND TOTALS</td>
-                  <td id="gt-small">0</td>
-                  <td id="gt-medium">0</td>
-                  <td id="gt-large">0</td>
-                  <td id="gt-box_wrapped">0</td>
-                  <td id="gt-plant_vase">0</td>
-                  <td id="gt-tv">0</td>
-                  <td id="gt-wardrobe">0</td>
-                  <td id="gt-mattress">0</td>
-                  <td id="gt-dish_pack">0</td>
-                  <td id="gt-glass_pack">0</td>
-                  <td id="gt-boots_pans">0</td>
-                  <td id="gt-total">0</td>
-                  <td></td>
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
-      </div>
+  {# ── Generation progress ───────────────────────────────────────────────── #}
+  <div id="gen-panel" class="card shadow-sm mb-3" style="display:none">
+    <div class="card-header py-2 d-flex align-items-center justify-content-between"
+         style="background:#1e3a5f; color:#fff; font-size:13px">
+      <span class="fw-semibold">
+        <i class="bi bi-lightning-charge-fill text-warning me-1"></i>Generation Progress
+      </span>
+      <span id="gen-summary" style="font-size:12px; opacity:.8"></span>
     </div>
+    <div id="gen-body" class="card-body py-2 px-3" style="font-size:12.5px"></div>
   </div>
+
 </div>
 
 <script>
-const CPS_COLS = ['small','medium','large','box_wrapped','plant_vase','tv','wardrobe','mattress','dish_pack','glass_pack','boots_pans'];
-let sessionId = null;
-let roomData = {};
-let pendingTasks = {};
-let pollInterval = null;
+const BC = '/box-calculator/';
 
-const clientSelect  = document.getElementById('client-select');
-const roomSelect    = document.getElementById('room-select');
-const imageInput    = document.getElementById('image-input');
-const btnUpload     = document.getElementById('btn-upload');
-const uploadSpinner = document.getElementById('upload-spinner');
-const workspace     = document.getElementById('cps-workspace');
-const cpsActions    = document.getElementById('cps-actions');
-const btnReport     = document.getElementById('btn-report');
-const btnExcel      = document.getElementById('btn-excel');
+// client_id → { sessionId, tasks: {task_id: 'pending'|'complete'|'error'}, done, total }
+const clientTasks = {};
+const pollTimers  = {};
 
-clientSelect.addEventListener('change', async () => {
-  const clientId = clientSelect.value;
-  if (!clientId) { workspace.style.display = 'none'; return; }
-  workspace.style.display = 'block';
-  roomSelect.innerHTML = '<option value="">— loading rooms… —</option>';
-  const data = await fetch(`/calculator/cps/session/${clientId}/`).then(r => r.json());
-  sessionId = data.session?.id || null;
-
-  roomSelect.innerHTML = '<option value="">— select room —</option>';
-  (data.available_rooms || []).forEach(r => {
-    const opt = document.createElement('option');
-    opt.value = r.name;
-    opt.textContent = r.name;
-    roomSelect.appendChild(opt);
-  });
-
-  if (data.session) {
-    sessionId = data.session.id;
-    (data.session.rooms || []).forEach(r => {
-      roomData[r.room_name] = r;
-      renderRow(r);
-    });
-    updateTotals();
-    updateActions();
-  }
+// ── Selection ──────────────────────────────────────────────────────────────
+const selectAllEl = document.getElementById('select-all');
+selectAllEl.addEventListener('change', () => {
+  document.querySelectorAll('.row-check:not(:disabled)').forEach(c => c.checked = selectAllEl.checked);
+  refreshButtons();
 });
+document.querySelectorAll('.row-check').forEach(c => c.addEventListener('change', () => {
+  const enabled = document.querySelectorAll('.row-check:not(:disabled)');
+  const checked = document.querySelectorAll('.row-check:checked');
+  selectAllEl.indeterminate = checked.length > 0 && checked.length < enabled.length;
+  selectAllEl.checked = enabled.length > 0 && checked.length === enabled.length;
+  refreshButtons();
+}));
 
-roomSelect.addEventListener('change', updateUploadBtn);
-imageInput.addEventListener('change', updateUploadBtn);
-
-function updateUploadBtn() {
-  const hasRoom  = roomSelect.value || document.getElementById('room-name-custom').value.trim();
-  const hasFiles = imageInput.files.length > 0;
-  btnUpload.disabled = !(hasRoom && hasFiles);
+function checkedIds() {
+  return Array.from(document.querySelectorAll('.row-check:checked')).map(c => c.value);
 }
 
-btnUpload.addEventListener('click', async () => {
-  const roomName = roomSelect.value || document.getElementById('room-name-custom').value.trim();
-  if (!roomName || !imageInput.files.length) return;
+function refreshButtons() {
+  const ids = checkedIds();
+  document.getElementById('btn-generate').disabled = ids.length === 0;
+  const anySession = ids.some(id => document.getElementById(`client-row-${id}`)?.dataset?.sessionId);
+  document.getElementById('btn-export-zip').disabled = !anySession;
+}
 
-  btnUpload.disabled = true;
-  uploadSpinner.style.display = 'inline-block';
+// ── Generate ───────────────────────────────────────────────────────────────
+document.getElementById('btn-generate').addEventListener('click', async () => {
+  const ids = checkedIds();
+  if (!ids.length) return;
 
-  const fd = new FormData();
-  fd.append('client_id', clientSelect.value);
-  fd.append('room_name', roomName);
-  fd.append('model', document.getElementById('model-select').value);
-  for (const f of imageInput.files) fd.append('images', f);
+  const panel = document.getElementById('gen-panel');
+  const body  = document.getElementById('gen-body');
+  panel.style.display = '';
+  body.innerHTML = '';
+  document.getElementById('gen-summary').textContent = `0 / ${ids.length} complete`;
+  document.getElementById('btn-generate').disabled = true;
+
+  // Kick off all clients in parallel
+  Promise.all(ids.map(startGen));
+});
+
+async function startGen(clientId) {
+  const tr   = document.getElementById(`client-row-${clientId}`);
+  const name = tr.querySelector('.fw-semibold').textContent.trim();
+  const body = document.getElementById('gen-body');
+
+  // Client progress section
+  const sec = document.createElement('div');
+  sec.id = `gen-sec-${clientId}`;
+  sec.className = 'mb-3 pb-2 border-bottom';
+  sec.innerHTML = `
+    <div class="d-flex align-items-center gap-2 mb-1">
+      <span class="spinner-border spinner-border-sm text-primary flex-shrink-0" id="gen-spinner-${clientId}"></span>
+      <span class="fw-semibold">${esc(name)}</span>
+      <span id="gen-label-${clientId}" class="text-muted" style="font-size:11px">Fetching Encircle media…</span>
+    </div>
+    <div id="gen-rooms-${clientId}" class="d-flex flex-wrap gap-1 ms-4"></div>`;
+  body.appendChild(sec);
+
+  setStatus(clientId, 'processing', 'Analyzing…');
 
   try {
-    const resp = await fetch('/calculator/cps/upload/', {method:'POST', body:fd, headers:{'X-CSRFToken': getCsrf()}});
+    const resp = await fetch(`${BC}api/auto-from-encircle/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ client_id: parseInt(clientId) }),
+    });
     const data = await resp.json();
-    if (data.error) { alert('Error: ' + data.error); return; }
-    sessionId = data.session_id;
-    pendingTasks[data.task_id] = roomName;
-    roomData[roomName] = {room_name: roomName, status:'processing', counts:{}, total:0};
-    renderRow(roomData[roomName]);
-    startPolling();
-    updateActions();
+
+    if (!data.success) {
+      finishSpinner(clientId, false);
+      document.getElementById(`gen-label-${clientId}`).textContent = ` Error: ${data.error}`;
+      setStatus(clientId, 'error', data.error || 'Error');
+      bumpSummary();
+      return;
+    }
+
+    tr.dataset.sessionId = data.session_id;
+    document.getElementById(`gen-label-${clientId}`).textContent =
+      ` ${data.rooms.length} rooms queued…`;
+
+    const roomsDiv = document.getElementById(`gen-rooms-${clientId}`);
+    clientTasks[clientId] = { sessionId: data.session_id, tasks: {}, done: 0, total: data.rooms.length };
+
+    data.rooms.forEach(r => {
+      clientTasks[clientId].tasks[r.task_id] = 'pending';
+      const pill = document.createElement('span');
+      pill.id    = `pill-${r.task_id}`;
+      pill.className = 'badge bg-secondary';
+      pill.style.fontSize = '10px';
+      pill.title = r.room_name;
+      pill.textContent = r.room_name.startsWith('[OVERVIEW]')
+        ? '⊙ ' + r.room_name.slice(12)
+        : r.room_name;
+      roomsDiv.appendChild(pill);
+    });
+
+    pollClient(clientId);
+
+  } catch (err) {
+    finishSpinner(clientId, false);
+    document.getElementById(`gen-label-${clientId}`).textContent = ` Network error: ${err.message}`;
+    setStatus(clientId, 'error', 'Network error');
+    bumpSummary();
+  }
+}
+
+function pollClient(clientId) {
+  const iv = setInterval(async () => {
+    const state   = clientTasks[clientId];
+    const pending = Object.entries(state.tasks).filter(([, s]) => s === 'pending');
+    if (!pending.length) { clearInterval(iv); return; }
+
+    await Promise.all(pending.map(async ([taskId]) => {
+      try {
+        const d = await fetch(`${BC}cps/status/${taskId}/`).then(r => r.json());
+        if (d.state === 'SUCCESS') {
+          state.tasks[taskId] = 'complete';
+          state.done++;
+          const pill = document.getElementById(`pill-${taskId}`);
+          if (pill) {
+            pill.className = 'badge bg-success';
+            if (d.room?.total) pill.textContent += ` ·${d.room.total}`;
+          }
+        } else if (d.state === 'FAILURE') {
+          state.tasks[taskId] = 'error';
+          state.done++;
+          const pill = document.getElementById(`pill-${taskId}`);
+          if (pill) pill.className = 'badge bg-danger';
+        }
+      } catch {}
+    }));
+
+    document.getElementById(`gen-label-${clientId}`).textContent =
+      ` ${state.done} / ${state.total} rooms done`;
+
+    if (Object.values(state.tasks).every(s => s !== 'pending')) {
+      clearInterval(iv);
+      const errors = Object.values(state.tasks).filter(s => s === 'error').length;
+      finishSpinner(clientId, errors === 0);
+      setStatus(clientId, errors ? 'warn' : 'complete', errors ? `${errors} error(s)` : null);
+      refreshRowFromSession(clientId, state.sessionId);
+      bumpSummary();
+    }
+  }, 3000);
+  pollTimers[clientId] = iv;
+}
+
+function bumpSummary() {
+  const total = Object.keys(clientTasks).length;
+  const done  = Object.values(clientTasks)
+    .filter(s => Object.values(s.tasks).every(t => t !== 'pending')).length;
+  document.getElementById('gen-summary').textContent = `${done} / ${total} complete`;
+  if (done === total) {
+    document.getElementById('btn-generate').disabled = false;
+    refreshButtons();
+  }
+}
+
+async function refreshRowFromSession(clientId, sessionId) {
+  try {
+    const data = await fetch(`${BC}cps/session/${clientId}/`).then(r => r.json());
+    const tr   = document.getElementById(`client-row-${clientId}`);
+    if (!data.session || !tr) return;
+    const rooms   = data.session.rooms || [];
+    const primary = rooms.filter(r => !r.room_name.startsWith('[OVERVIEW]'));
+    const total   = primary.reduce((s, r) => s + (r.total || 0), 0);
+
+    tr.querySelector('.room-count-cell').textContent = primary.length;
+    tr.querySelector('.total-boxes-cell').innerHTML  = `<strong>${total}</strong>`;
+    tr.querySelector('.updated-cell').textContent    = 'just now';
+    tr.querySelector('.exports-cell').innerHTML =
+      '<span class="text-muted" style="font-size:11px">none (export to save)</span>';
+    const lastCell = tr.querySelector('td:last-child');
+    if (!lastCell.querySelector('a')) {
+      lastCell.innerHTML =
+        `<a href="${BC}cps/report/${sessionId}/" class="btn btn-outline-primary" style="font-size:11px;padding:2px 8px">` +
+        `<i class="bi bi-pencil-square"></i> Edit</a>`;
+    }
+  } catch {}
+}
+
+// ── Export ZIP ─────────────────────────────────────────────────────────────
+document.getElementById('btn-export-zip').addEventListener('click', async () => {
+  const ids = checkedIds();
+  const sessionIds = ids
+    .map(id => document.getElementById(`client-row-${id}`)?.dataset?.sessionId)
+    .filter(Boolean).map(Number);
+
+  if (!sessionIds.length) { alert('No completed sessions in selection.'); return; }
+
+  const fmt = document.getElementById('export-format').value;
+  const btn = document.getElementById('btn-export-zip');
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Building…';
+
+  try {
+    const resp = await fetch(`${BC}cps/bulk-export/`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrf() },
+      body: JSON.stringify({ session_ids: sessionIds, format: fmt }),
+    });
+    if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || `HTTP ${resp.status}`);
+    const blob = await resp.blob();
+    const a = Object.assign(document.createElement('a'), {
+      href: URL.createObjectURL(blob), download: 'CPS_Reports.zip',
+    });
+    a.click(); URL.revokeObjectURL(a.href);
+    // Reload after a beat so saved-report badges update
+    setTimeout(() => location.reload(), 1400);
+  } catch (err) {
+    alert(`Export failed: ${err.message}`);
   } finally {
-    btnUpload.disabled = false;
-    uploadSpinner.style.display = 'none';
-    imageInput.value = '';
-    updateUploadBtn();
+    btn.disabled = false;
+    btn.innerHTML = '<i class="bi bi-file-earmark-zip me-1"></i>Export ZIP';
+    refreshButtons();
   }
 });
 
-function startPolling() {
-  if (pollInterval) return;
-  pollInterval = setInterval(pollTasks, 3000);
+// ── Helpers ────────────────────────────────────────────────────────────────
+function setStatus(clientId, type, text) {
+  const cell = document.querySelector(`#client-row-${clientId} .status-cell`);
+  if (!cell) return;
+  const cls = { processing: 'bg-warning text-dark', complete: 'bg-success', warn: 'bg-warning text-dark', error: 'bg-danger' };
+  const lbl = { processing: 'Analyzing…', complete: 'Complete', warn: text, error: text || 'Error' };
+  cell.innerHTML = `<span class="badge ${cls[type]}">${lbl[type]}</span>`;
 }
 
-async function pollTasks() {
-  if (!Object.keys(pendingTasks).length) { clearInterval(pollInterval); pollInterval = null; return; }
-  for (const [taskId, roomName] of Object.entries(pendingTasks)) {
-    const data = await fetch(`/calculator/cps/status/${taskId}/`).then(r => r.json());
-    if (data.state === 'SUCCESS' || data.state === 'FAILURE') {
-      delete pendingTasks[taskId];
-      if (data.room) { roomData[roomName] = data.room; renderRow(data.room); updateTotals(); }
-    }
+function finishSpinner(clientId, ok) {
+  const el = document.getElementById(`gen-spinner-${clientId}`);
+  if (el) {
+    el.className = '';
+    el.innerHTML = ok
+      ? '<i class="bi bi-check-circle-fill text-success"></i>'
+      : '<i class="bi bi-exclamation-circle-fill text-warning"></i>';
   }
 }
 
-function renderRow(room) {
-  document.getElementById('cps-empty-row')?.remove();
-  document.getElementById('cps-tfoot').style.display = '';
-  const tbody = document.getElementById('cps-tbody');
-  const existingRow = document.getElementById(`row-${CSS.escape(room.room_name)}`);
-  const counts = room.counts || {};
-  const total  = room.total || 0;
-  const statusBadge = room.status === 'processing'
-    ? '<span class="spinner-border spinner-border-sm"></span>'
-    : room.status === 'error'
-    ? '<span class="badge bg-danger">err</span>'
-    : room.confidence
-    ? `<span class="badge bg-light text-dark border">${room.confidence}</span>`
-    : '';
-
-  const cells = CPS_COLS.map(c => `<td>${counts[c] || ''}</td>`).join('');
-  const html = `<tr id="row-${room.room_name}">
-    <td class="text-nowrap">${room.room_name} ${statusBadge}</td>
-    ${cells}
-    <td><strong>${total || ''}</strong></td>
-    <td>
-      <button class="btn btn-xs btn-outline-danger py-0 px-1"
-        onclick="deleteRoom(${room.id}, '${room.room_name}')">×</button>
-    </td>
-  </tr>`;
-  if (existingRow) { existingRow.outerHTML = html; } else { tbody.insertAdjacentHTML('beforeend', html); }
-  updateRoomBadge();
+function esc(s) {
+  return s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
-
-function updateTotals() {
-  const totals = Object.fromEntries(CPS_COLS.map(c => [c, 0]));
-  let grandTotal = 0;
-  for (const r of Object.values(roomData)) {
-    if (r.status !== 'complete') continue;
-    CPS_COLS.forEach(c => { totals[c] += (r.counts?.[c] || 0); });
-    grandTotal += r.total || 0;
-  }
-  CPS_COLS.forEach(c => { document.getElementById(`gt-${c}`).textContent = totals[c] || ''; });
-  document.getElementById('gt-total').textContent = grandTotal || '';
+function csrf() {
+  return document.cookie.split(';').map(c=>c.trim())
+    .find(c=>c.startsWith('csrftoken='))?.split('=')[1] || '';
 }
-
-function updateRoomBadge() {
-  document.getElementById('room-count-badge').textContent = `${Object.keys(roomData).length} rooms`;
-}
-
-function updateActions() {
-  if (sessionId) {
-    cpsActions.style.display = 'flex';
-    btnReport.href = `/calculator/cps/report/${sessionId}/`;
-    btnExcel.href  = `/calculator/cps/export/${sessionId}/`;
-  }
-}
-
-async function deleteRoom(roomId, roomName) {
-  if (!confirm(`Remove ${roomName}?`)) return;
-  await fetch(`/calculator/cps/room/${roomId}/delete/`, {method:'POST', headers:{'X-CSRFToken': getCsrf()}});
-  document.getElementById(`row-${roomName}`)?.remove();
-  delete roomData[roomName];
-  updateTotals();
-  updateRoomBadge();
-  if (!Object.keys(roomData).length) {
-    document.getElementById('cps-tbody').innerHTML =
-      '<tr id="cps-empty-row"><td colspan="14" class="text-center text-muted py-4">Upload room photos to begin estimating</td></tr>';
-    document.getElementById('cps-tfoot').style.display = 'none';
-  }
-}
-
-function getCsrf() {
-  return document.cookie.split(';').map(c => c.trim()).find(c => c.startsWith('csrftoken='))?.split('=')[1] || '';
-}
-
-// ── Bulk Export ────────────────────────────────────────────────────────────
-(function () {
-  const selectAll  = document.getElementById('bulk-select-all');
-  const btnZip     = document.getElementById('btn-bulk-zip');
-  const bulkStatus = document.getElementById('bulk-status');
-  const checks     = () => Array.from(document.querySelectorAll('.bulk-check'));
-
-  if (!selectAll) return;   // no sessions → bulk section not rendered
-
-  function updateZipBtn() {
-    const any = checks().some(c => c.checked);
-    btnZip.disabled = !any;
-  }
-
-  selectAll.addEventListener('change', () => {
-    checks().forEach(c => c.checked = selectAll.checked);
-    updateZipBtn();
-  });
-
-  document.querySelectorAll('.bulk-check').forEach(c =>
-    c.addEventListener('change', () => {
-      selectAll.indeterminate = checks().some(c => c.checked) && !checks().every(c => c.checked);
-      selectAll.checked = checks().every(c => c.checked);
-      updateZipBtn();
-    })
-  );
-
-  btnZip.addEventListener('click', async () => {
-    const ids = checks().filter(c => c.checked).map(c => c.value);
-    if (!ids.length) return;
-    const fmt = document.getElementById('bulk-format').value;
-
-    btnZip.disabled = true;
-    btnZip.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Generating…';
-    bulkStatus.style.display = '';
-    bulkStatus.textContent = `Generating ${ids.length} ${fmt.toUpperCase()} report${ids.length > 1 ? 's' : ''}…`;
-
-    try {
-      const resp = await fetch('/calculator/cps/bulk-export/', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-CSRFToken': getCsrf() },
-        body: JSON.stringify({ session_ids: ids.map(Number), format: fmt }),
-      });
-      if (!resp.ok) {
-        const err = await resp.json().catch(() => ({}));
-        throw new Error(err.error || `HTTP ${resp.status}`);
-      }
-      const blob = await resp.blob();
-      const url  = URL.createObjectURL(blob);
-      const a    = document.createElement('a');
-      a.href = url;
-      a.download = `CPS_Reports_${fmt.toUpperCase()}.zip`;
-      a.click();
-      URL.revokeObjectURL(url);
-      bulkStatus.textContent = `✓ ZIP ready — ${ids.length} report${ids.length > 1 ? 's' : ''} saved to history.`;
-      // Refresh the page after a moment so saved-reports badges update
-      setTimeout(() => location.reload(), 1500);
-    } catch (err) {
-      bulkStatus.textContent = `Error: ${err.message}`;
-    } finally {
-      btnZip.disabled = false;
-      btnZip.innerHTML = '<i class="bi bi-file-earmark-zip me-1"></i>Download ZIP';
-    }
-  });
-})();
 </script>
 {% endblock %}
