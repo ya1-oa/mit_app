@@ -403,12 +403,18 @@ def cps_report(request, session_id):
     from .models import BoxCalcCPSSession
     from .cps_analyzer import CPS_COLUMNS, CPS_COLUMN_LABELS
     session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
+    primary_rooms   = session.rooms.exclude(room_name__startswith='[OVERVIEW]').order_by('order', 'room_name')
+    overview_rooms  = session.rooms.filter(room_name__startswith='[OVERVIEW]').order_by('order', 'room_name')
     return render(request, 'box_calculator/cps_report.html', {
         'session': session,
+        'primary_rooms':  primary_rooms,
+        'overview_rooms': overview_rooms,
         'cps_columns': CPS_COLUMNS,
         'cps_column_labels': CPS_COLUMN_LABELS,
-        'grand_counts': session.grand_counts,
-        'grand_total': session.grand_total,
+        'grand_counts':    session.grand_counts,
+        'grand_total':     session.grand_total,
+        'overview_counts': session.overview_counts,
+        'overview_total':  session.overview_total,
     })
 
 
@@ -511,18 +517,31 @@ def api_auto_from_encircle(request):
         logger.error("Encircle fetch error for client %s: %s", client_id, e, exc_info=True)
         return JsonResponse({'error': f'Encircle API error: {e}'}, status=500)
 
-    # Filter to 300-series packout rooms, deduplicated
-    packout_rooms = []
-    seen_names = set()
+    # Collect 300-series (packout) and 100-series (overview) rooms — both deduplicated
+    rooms_300, seen_300 = [], set()
+    rooms_100, seen_100 = [], set()
     for room in all_rooms:
         label = (room.get('label') or room.get('name') or '').strip()
         m = re.match(r'^(\d+)', label)
-        if m and 300 <= int(m.group(1)) < 400 and label not in seen_names:
-            seen_names.add(label)
-            packout_rooms.append({'name': label, 'num': m.group(1)})
+        if not m:
+            continue
+        num = int(m.group(1))
+        if 300 <= num < 400 and label not in seen_300:
+            seen_300.add(label)
+            rooms_300.append({'name': label, 'num': m.group(1)})
+        elif 100 <= num < 200 and label not in seen_100:
+            seen_100.add(label)
+            rooms_100.append({'name': label, 'num': m.group(1)})
 
-    if not packout_rooms:
-        return JsonResponse({'error': 'No 300-series packout rooms found in this claim'}, status=400)
+    # Primary: 300-series if present, else fall back to 100-series overview shots
+    if rooms_300:
+        primary_rooms = rooms_300
+        supplemental_overview = rooms_100  # cross-check with wide-angle shots
+    elif rooms_100:
+        primary_rooms = rooms_100          # no 300-series — use overviews as primary
+        supplemental_overview = []
+    else:
+        return JsonResponse({'error': 'No 300-series or 100-series packout rooms found in this claim'}, status=400)
 
     # Fetch ALL claim media in one call — same approach as ZipMediaDownloader/claim_images app.
     # The room-level /rooms/{id}/media endpoint returns 404 for rooms without directly
@@ -553,6 +572,9 @@ def api_auto_from_encircle(request):
                 client.encircle_claim_id, len(all_claim_media),
                 {k: len(v) for k, v in media_by_room_num.items()})
 
+    # Filter supplemental overview rooms to only those that have actual photos in Encircle
+    supplemental_overview = [r for r in supplemental_overview if media_by_room_num.get(r['num'])]
+
     # Create/upsert session (unscoped — TenantScopedManager returns empty qs in non-request contexts)
     try:
         session = BoxCalcCPSSession.unscoped.filter(client=client).order_by('-updated_at').first()
@@ -569,32 +591,55 @@ def api_auto_from_encircle(request):
 
     # Create room rows and dispatch process_cps_room_task with photo URLs directly.
     # process_cps_room_task already handles http(s) URLs in _image_to_base64.
+    _ROOM_DEFAULTS = lambda order: {
+        'order': order,
+        'status': 'pending',
+        'celery_task_id': '',
+        'small': 0, 'medium': 0, 'large': 0, 'box_wrapped': 0,
+        'picture_mirror': 0, 'plant_vase': 0, 'tv': 0,
+        'wardrobe': 0, 'mattress': 0, 'dish_pack': 0,
+        'glass_pack': 0, 'boots_pans': 0,
+        'confidence': '', 'ai_notes': '', 'images_count': 0,
+    }
     room_tasks = []
     try:
-        for order, room_info in enumerate(packout_rooms):
+        # Primary rooms (300-series, or 100-series when no 300s)
+        for order, room_info in enumerate(primary_rooms):
             photo_urls = media_by_room_num.get(room_info['num'], [])[:5]
             cps_room, _ = BoxCalcCPSRoom.objects.update_or_create(
                 session=session,
                 room_name=room_info['name'],
-                defaults={
-                    'order': order,
-                    'status': 'pending',
-                    'celery_task_id': '',
-                    'small': 0, 'medium': 0, 'large': 0, 'box_wrapped': 0,
-                    'picture_mirror': 0, 'plant_vase': 0, 'tv': 0,
-                    'wardrobe': 0, 'mattress': 0, 'dish_pack': 0,
-                    'glass_pack': 0, 'boots_pans': 0,
-                    'confidence': '', 'ai_notes': '', 'images_count': 0,
-                },
+                defaults=_ROOM_DEFAULTS(order),
             )
             task = process_cps_room_task.delay(
                 session_id=session.id,
                 room_name=room_info['name'],
-                image_paths=photo_urls,  # URLs — _image_to_base64 handles http://
+                image_paths=photo_urls,
             )
             cps_room.celery_task_id = task.id
             cps_room.save(update_fields=['celery_task_id'])
             room_tasks.append({'room_name': room_info['name'], 'task_id': task.id})
+
+        # Supplemental overview rooms (100-series when 300-series are primary).
+        # Claude uses the wide-angle overview prompt to catch items missed in individual shots.
+        for i, room_info in enumerate(supplemental_overview):
+            photo_urls = media_by_room_num.get(room_info['num'], [])[:5]
+            ov_name = f"[OVERVIEW] {room_info['name']}"
+            cps_room, _ = BoxCalcCPSRoom.objects.update_or_create(
+                session=session,
+                room_name=ov_name,
+                defaults=_ROOM_DEFAULTS(len(primary_rooms) + i),
+            )
+            task = process_cps_room_task.delay(
+                session_id=session.id,
+                room_name=ov_name,
+                image_paths=photo_urls,
+                is_overview=True,
+            )
+            cps_room.celery_task_id = task.id
+            cps_room.save(update_fields=['celery_task_id'])
+            room_tasks.append({'room_name': ov_name, 'task_id': task.id})
+
     except Exception as e:
         logger.error("Error dispatching CPS tasks for client %s: %s", client_id, e, exc_info=True)
         return JsonResponse({'error': str(e)}, status=500)

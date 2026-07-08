@@ -141,12 +141,28 @@ class BoxCalcCPSSession(models.Model):
 
     @property
     def grand_total(self) -> int:
-        return sum(r.total for r in self.rooms.all())
+        return sum(r.total for r in self.rooms.all() if not r.room_name.startswith('[OVERVIEW]'))
 
     @property
     def grand_counts(self) -> dict:
         totals = {col: 0 for col in CPS_COLUMNS}
         for room in self.rooms.all():
+            if room.room_name.startswith('[OVERVIEW]'):
+                continue
+            for col in CPS_COLUMNS:
+                totals[col] += getattr(room, col, 0) or 0
+        return totals
+
+    @property
+    def overview_total(self) -> int:
+        return sum(r.total for r in self.rooms.all() if r.room_name.startswith('[OVERVIEW]'))
+
+    @property
+    def overview_counts(self) -> dict:
+        totals = {col: 0 for col in CPS_COLUMNS}
+        for room in self.rooms.all():
+            if not room.room_name.startswith('[OVERVIEW]'):
+                continue
             for col in CPS_COLUMNS:
                 totals[col] += getattr(room, col, 0) or 0
         return totals

@@ -21,11 +21,13 @@ def process_cps_room_task(
     room_name: str,
     image_paths: list[str],
     model: str = "claude-haiku-4-5-20251001",
+    is_overview: bool = False,
 ) -> dict:
     """
     Analyze uploaded room images and store PPR box count estimates.
 
     Updates BoxCalcCPSRoom.status through: pending → processing → complete|error.
+    is_overview=True uses the wide-angle overview prompt focused on catching missed items.
     """
     from .models import BoxCalcCPSSession, BoxCalcCPSRoom
     from .cps_analyzer import analyze_room_ppr, CPS_COLUMNS
@@ -48,13 +50,14 @@ def process_cps_room_task(
     cps_room.celery_task_id = self.request.id
     cps_room.save(update_fields=["status", "celery_task_id"])
 
-    logger.info("CPS analyze start — session=%s room=%r images=%d model=%s",
-                session_id, room_name, len(image_paths), model)
+    logger.info("CPS analyze start — session=%s room=%r images=%d model=%s overview=%s",
+                session_id, room_name, len(image_paths), model, is_overview)
 
     result = analyze_room_ppr(
         room_name=room_name,
         image_paths=image_paths,
         model=model,
+        is_overview=is_overview,
     )
 
     logger.info("CPS analyze result — session=%s room=%r success=%s total=%s confidence=%s error=%s",

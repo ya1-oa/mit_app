@@ -268,19 +268,36 @@ async function startEncircleDownload() {
 function renderRoomRows(rooms) {
   const container = document.getElementById('room-rows');
   container.innerHTML = '';
-  rooms.forEach(r => {
+
+  const primary  = rooms.filter(r => !r.room_name.startsWith('[OVERVIEW]'));
+  const overview = rooms.filter(r =>  r.room_name.startsWith('[OVERVIEW]'));
+
+  function addRow(r) {
+    const isOv = r.room_name.startsWith('[OVERVIEW]');
+    const displayName = isOv ? r.room_name.slice(12) : r.room_name;
     const row = document.createElement('div');
-    row.className = 'room-row d-flex align-items-center gap-2 px-1';
+    row.className = 'room-row d-flex align-items-center gap-2 px-1' + (isOv ? ' text-info' : '');
     row.id = 'row-' + CSS.escape(r.task_id);
     row.innerHTML = `
-      <span class="spinner-border spinner-border-sm text-primary flex-shrink-0" id="spinner-${r.task_id}"></span>
-      <i class="fas fa-check-circle text-success flex-shrink-0" id="check-${r.task_id}" style="display:none"></i>
+      <span class="spinner-border spinner-border-sm ${isOv ? 'text-info' : 'text-primary'} flex-shrink-0" id="spinner-${r.task_id}"></span>
+      <i class="fas fa-check-circle ${isOv ? 'text-info' : 'text-success'} flex-shrink-0" id="check-${r.task_id}" style="display:none"></i>
       <i class="fas fa-exclamation-circle text-danger flex-shrink-0" id="err-${r.task_id}" style="display:none"></i>
-      <span class="fw-semibold small">${escHtml(r.room_name)}</span>
+      <span class="fw-semibold small">${escHtml(displayName)}</span>
       <span class="text-muted small ms-auto" id="status-${r.task_id}">Pending…</span>
     `;
     container.appendChild(row);
-  });
+  }
+
+  primary.forEach(addRow);
+
+  if (overview.length) {
+    const divider = document.createElement('div');
+    divider.className = 'px-1 pt-2 pb-1';
+    divider.innerHTML = '<span class="badge bg-info text-dark" style="font-size:10px;"><i class="bi bi-eye me-1"></i>Overview Check (100-series)</span>';
+    container.appendChild(divider);
+    overview.forEach(addRow);
+  }
+
   document.getElementById('encircle-room-list').style.display = '';
 }
 

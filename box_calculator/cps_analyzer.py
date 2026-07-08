@@ -82,6 +82,41 @@ fit another type:
 
 You respond ONLY with valid JSON — no markdown, no explanation outside the JSON."""
 
+_OVERVIEW_PROMPT = """\
+These are OVERVIEW / WIDE-ANGLE photos of the space labeled {room_name}.
+
+You are cross-checking a detailed per-room CPS (Contents Processing Sheet) estimate. \
+Your job is to CATCH ITEMS THAT ARE EASILY MISSED when field agents photograph individual \
+corners or closets: large furniture visible from across the room, items stacked near \
+doorways, décor on high shelves, pieces partially hidden behind other items, and anything \
+a photographer focusing on one area at a time might skip.
+
+Focus on:
+- Large furniture pieces visible in the wide shot that are often under-counted
+- High-shelf items only visible from a distance
+- Transition-space items (hallways, doorway areas, landing piles)
+- Background items partially occluded in individual close-up shots
+
+Count what you can confidently see. Return 0 for any category where nothing is clearly visible.
+
+Return ONLY this JSON (all fields required, integers only, 0 for none):
+{{
+  "small": <int>,
+  "medium": <int>,
+  "large": <int>,
+  "box_wrapped": <int>,
+  "picture_mirror": <int>,
+  "plant_vase": <int>,
+  "tv": <int>,
+  "wardrobe": <int>,
+  "mattress": <int>,
+  "dish_pack": <int>,
+  "glass_pack": <int>,
+  "boots_pans": <int>,
+  "confidence": "high" | "medium" | "low",
+  "notes": "<focus on items likely missed in individual close-up shots>"
+}}"""
+
 _USER_PROMPT = """\
 These photos show a {room_name} that needs to be fully packed out for an insurance claim.
 
@@ -151,6 +186,7 @@ def analyze_room_ppr(
     room_name: str,
     image_paths: list[str],
     model: str = "claude-haiku-4-5-20251001",
+    is_overview: bool = False,
 ) -> dict:
     """
     Analyze room images and return PPR box count estimates.
@@ -196,12 +232,13 @@ def analyze_room_ppr(
     if not content:
         return _error_result("Could not load any images", 0)
 
+    prompt_template = _OVERVIEW_PROMPT if is_overview else _USER_PROMPT
     content.append({
         "type": "text",
-        "text": _USER_PROMPT.format(room_name=room_name),
+        "text": prompt_template.format(room_name=room_name),
     })
 
-    logger.info("Claude API call — room=%r model=%s images=%d", room_name, model, images_used)
+    logger.info("Claude API call — room=%r model=%s images=%d overview=%s", room_name, model, images_used, is_overview)
 
     try:
         client = anthropic.Anthropic(api_key=api_key)

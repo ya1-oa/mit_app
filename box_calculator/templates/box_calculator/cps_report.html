@@ -15,7 +15,7 @@
         {% if session.client.pAddress %}&nbsp;·&nbsp;{{ session.client.pAddress }}{% endif %}
       </p>
       <p class="text-muted mb-0" style="font-size:11px">
-        {{ session.rooms.count }} room{{ session.rooms.count|pluralize }} &nbsp;·&nbsp;
+        {{ primary_rooms.count }} packout room{{ primary_rooms.count|pluralize }}{% if overview_rooms.count %} + {{ overview_rooms.count }} overview check{% endif %} &nbsp;·&nbsp;
         Updated {{ session.updated_at|date:"M j, Y g:i A" }} &nbsp;·&nbsp;
         <span id="save-status" class="text-muted"></span>
       </p>
@@ -62,7 +62,7 @@
           </tr>
         </thead>
         <tbody id="cps-tbody">
-          {% for room in session.rooms.all %}
+          {% for room in primary_rooms %}
           <tr class="cps-row {% if room.status == 'error' %}table-danger{% endif %}"
               data-room-id="{{ room.id }}"
               data-room-name="{{ room.room_name }}">
@@ -102,10 +102,72 @@
             </td>
           </tr>
           {% endfor %}
+
+          {# ── Overview check rows (100-series) ───────────────────────────── #}
+          {% if overview_rooms %}
+          <tr class="overview-section-header" style="background:#e8f4f8;">
+            <td colspan="{{ cps_columns|length|add:3 }}" style="padding:5px 8px; font-size:11px; color:#0d6efd; font-weight:600; letter-spacing:.04em;">
+              <i class="bi bi-eye me-1"></i>OVERVIEW CHECK — 100-SERIES WIDE-ANGLE SHOTS
+              <span class="fw-normal text-muted ms-2" style="font-size:10px;">Compare against individual room counts above to catch missed items — do not add to grand total</span>
+            </td>
+          </tr>
+          {% for room in overview_rooms %}
+          <tr class="cps-row overview-row {% if room.status == 'error' %}table-danger{% endif %}"
+              data-room-id="{{ room.id }}"
+              data-room-name="{{ room.room_name }}">
+            <td style="padding:5px 8px;">
+              <div class="fw-semibold" style="font-size:12px; color:#0d6efd;">
+                {{ room.room_name|slice:"12:" }}
+              </div>
+              {% if room.confidence %}
+              <span class="badge border" style="font-size:10px; background:#e8f4f8; color:#0d6efd;">
+                {{ room.confidence }} confidence
+              </span>
+              {% endif %}
+              {% if room.ai_notes %}
+              <div class="text-muted" style="font-size:10px; margin-top:2px;">
+                {{ room.ai_notes|truncatechars:80 }}
+              </div>
+              {% endif %}
+              {% if room.status == 'error' %}
+              <span class="badge bg-danger">error</span>
+              {% endif %}
+            </td>
+            {% for col in cps_columns %}
+            <td class="text-center p-0">
+              <input type="number" min="0" step="1"
+                     class="cps-cell-input overview-cell"
+                     data-col="{{ col }}"
+                     value="{{ room|attr:col|default:0 }}"
+                     aria-label="{{ cps_column_labels|get_item:col }}">
+            </td>
+            {% endfor %}
+            <td class="text-center fw-bold cps-row-total" style="background:#ddf0f8;">
+              {{ room.total|default:0 }}
+            </td>
+            <td class="text-center no-print p-1">
+              <button class="btn btn-xs btn-outline-danger cps-delete-btn"
+                      title="Remove room" style="font-size:11px; padding:2px 6px;">
+                <i class="bi bi-trash"></i>
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+          <tr style="background:#ddf0f8; font-weight:600; font-size:12px; color:#0d6efd;">
+            <td style="padding:5px 8px;">OVERVIEW TOTALS <span class="fw-normal text-muted" style="font-size:10px;">(reference only)</span></td>
+            {% for col in cps_columns %}
+            <td class="text-center" data-col="{{ col }}">
+              {{ overview_counts|get_item:col|default:0 }}
+            </td>
+            {% endfor %}
+            <td class="text-center fw-bold" style="background:#b8e2f2;">{{ overview_total }}</td>
+            <td class="no-print"></td>
+          </tr>
+          {% endif %}
         </tbody>
         <tfoot>
           <tr style="background:#fff2cc; font-weight:bold;">
-            <td style="padding:6px 8px;">GRAND TOTALS</td>
+            <td style="padding:6px 8px;">GRAND TOTALS <span class="fw-normal text-muted" style="font-size:10px;">(packout rooms only)</span></td>
             {% for col in cps_columns %}
             <td class="text-center cps-col-total" data-col="{{ col }}">
               {{ grand_counts|get_item:col|default:0 }}
