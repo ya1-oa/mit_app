@@ -473,8 +473,6 @@
         <div class="card-body">
             <div class="row work-types-container">
                 {% for work_type in work_types %}
-                {# 8000-series (8100-8400 MC Day Readings) only show when the 8000s
-                   template is selected — hidden by default. #}
                 <div class="col-md-3 mb-2{% if work_type.work_type_id >= 8000 %} wt-8000-series{% endif %}"{% if work_type.work_type_id >= 8000 %} style="display:none;"{% endif %}>
                     <label class="form-label small mb-1">
                         <span class="badge bg-dark">{{ work_type.work_type_id }}</span>
