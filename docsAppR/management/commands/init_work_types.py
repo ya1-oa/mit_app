@@ -18,11 +18,11 @@ class Command(BaseCommand):
             (600, 'Mitigation', 5, False),
             (700, 'HMR', 6, False),
 
-            # Day-specific MC readings (6100-6400)
-            (6100, 'DAY 1 MC Readings', 7, False),
-            (6200, 'DAY 2 MC Readings', 8, False),
-            (6300, 'DAY 3 MC Readings', 9, False),
-            (6400, 'DAY 4 MC Readings', 10, False),
+            # MC Day Readings (8000-series, renamed from 6000s by migration 0022)
+            (8100, 'MC DAY 1', 7, False),
+            (8200, 'MC DAY 2', 8, False),
+            (8300, 'MC DAY 3', 9, False),
+            (8400, 'MC DAY 4', 10, False),
         ]
 
         created_count = 0
