@@ -67,33 +67,6 @@
     max-width: 90%;
 }
 
-/* Preset room quick-add */
-.preset-group-header {
-    font-size: 0.72rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    padding: 6px 10px 4px;
-    border-radius: 4px 4px 0 0;
-    margin-bottom: 6px;
-}
-.preset-group-wtr  { background: #e8f4fd; color: #0c5aab; border-left: 4px solid #0c5aab; }
-.preset-group-mit  { background: #e8f8f0; color: #0a5c35; border-left: 4px solid #198754; }
-.preset-group-rht  { background: #fff4e5; color: #7a3c00; border-left: 4px solid #f0a030; }
-
-.preset-btn {
-    font-size: 0.78rem;
-    padding: 3px 10px;
-    margin: 2px;
-    white-space: nowrap;
-}
-.preset-btn-wtr { border-color: #0c5aab; color: #0c5aab; }
-.preset-btn-wtr:hover { background: #0c5aab; color: #fff; }
-.preset-btn-mit { border-color: #198754; color: #198754; }
-.preset-btn-mit:hover { background: #198754; color: #fff; }
-.preset-btn-rht { border-color: #f0a030; color: #7a3c00; }
-.preset-btn-rht:hover { background: #f0a030; color: #fff; }
-
 /* Room claim-type badges */
 .claim-type-badge {
     font-size: 0.68rem;
@@ -181,67 +154,6 @@
                                         <i class="fas fa-download"></i> Load Rooms
                                     </button>
                                 </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <!-- Quick Add Default Rooms -->
-                    <div class="card mb-4">
-                        <div class="card-header bg-light d-flex justify-content-between align-items-center"
-                             style="cursor:pointer;" data-bs-toggle="collapse" data-bs-target="#presetRoomsPanel">
-                            <h6 class="mb-0">
-                                <i class="fas fa-bolt text-warning"></i> Quick Add: Default Room Groups
-                            </h6>
-                            <small class="text-muted">Click to expand</small>
-                        </div>
-                        <div class="collapse" id="presetRoomsPanel">
-                            <div class="card-body pt-2 pb-3">
-
-                                <!-- 0.xx WTR General Items — shown ABOVE 100s-700s in scope -->
-                                <div class="preset-group-header preset-group-wtr mb-1">
-                                    <i class="fas fa-tint me-1"></i> WTR General Items (0.07 – 0.14)
-                                </div>
-                                <div class="mb-3 d-flex flex-wrap">
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('DRYING CHAMBER # 1','normal')">Drying Chamber #1</button>
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('DRYING CHAMBER # 2','normal')">Drying Chamber #2</button>
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('DRYING CHAMBER # 3','normal')">Drying Chamber #3</button>
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('INTERIOR GENERAL WTR ITEMS','normal')">Interior General WTR Items</button>
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('ADMINISTRATION EXPENSES','normal')">Administration Expenses</button>
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('PERSONAL PROTECTION EQUIPMENT PPE','normal')">PPE</button>
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('ELECTRICAL','normal')">Electrical</button>
-                                    <button class="btn btn-sm btn-outline-primary preset-btn preset-btn-wtr" onclick="addPresetRoom('EXHAUST SYSTEM SET UP (per level)','normal')">Exhaust System Setup</button>
-                                    <button class="btn btn-sm btn-outline-secondary preset-btn" style="font-size:0.73rem;" onclick="addAllWtrGeneral()">
-                                        <i class="fas fa-plus-circle"></i> Add All WTR General
-                                    </button>
-                                </div>
-
-                                <!-- 8000s → MIT sub-claim -->
-                                <div class="preset-group-header preset-group-mit mb-1">
-                                    <i class="fas fa-fan me-1"></i> 8000s — Mitigation Equipment
-                                    <span class="badge badge-mit ms-2">Saves to separate MIT claim</span>
-                                </div>
-                                <div class="mb-3 d-flex flex-wrap">
-                                    <button class="btn btn-sm btn-outline-success preset-btn preset-btn-mit" onclick="addPresetRoom('8100 DEHUMIDIFIER (LGR)','mit')">8100 Dehumidifier</button>
-                                    <button class="btn btn-sm btn-outline-success preset-btn preset-btn-mit" onclick="addPresetRoom('8200 AIR MOVER','mit')">8200 Air Mover</button>
-                                    <button class="btn btn-sm btn-outline-success preset-btn preset-btn-mit" onclick="addPresetRoom('8300 AIR SCRUBBER / HEPA','mit')">8300 Air Scrubber</button>
-                                    <button class="btn btn-sm btn-outline-success preset-btn preset-btn-mit" onclick="addPresetRoom('8400 DESICCANT DEHUMIDIFIER','mit')">8400 Desiccant</button>
-                                    <button class="btn btn-sm btn-outline-success preset-btn preset-btn-mit" onclick="addPresetRoom('8500 MOISTURE BARRIER','mit')">8500 Moisture Barrier</button>
-                                    <button class="btn btn-sm btn-outline-success preset-btn preset-btn-mit" onclick="addPresetRoom('8600 INJECTION DRYING SYSTEM','mit')">8600 Injection Drying</button>
-                                </div>
-
-                                <!-- 9000s → RHT sub-claim -->
-                                <div class="preset-group-header preset-group-rht mb-1">
-                                    <i class="fas fa-thermometer-half me-1"></i> 9000s — RH/T Monitoring
-                                    <span class="badge badge-rht ms-2">Saves to separate RHT claim</span>
-                                </div>
-                                <div class="d-flex flex-wrap">
-                                    <button class="btn btn-sm btn-outline-warning preset-btn preset-btn-rht" onclick="addPresetRoom('9100 RH/T MONITORING - LEVEL 1','rht')">9100 Monitoring L1</button>
-                                    <button class="btn btn-sm btn-outline-warning preset-btn preset-btn-rht" onclick="addPresetRoom('9200 RH/T MONITORING - LEVEL 2','rht')">9200 Monitoring L2</button>
-                                    <button class="btn btn-sm btn-outline-warning preset-btn preset-btn-rht" onclick="addPresetRoom('9300 RH/T MONITORING - LEVEL 3','rht')">9300 Monitoring L3</button>
-                                    <button class="btn btn-sm btn-outline-warning preset-btn preset-btn-rht" onclick="addPresetRoom('9400 FINAL RH/T MONITORING','rht')">9400 Final Monitoring</button>
-                                    <button class="btn btn-sm btn-outline-warning preset-btn preset-btn-rht" onclick="addPresetRoom('9500 MOISTURE READINGS LOG','rht')">9500 Moisture Log</button>
-                                </div>
-
                             </div>
                         </div>
                     </div>
@@ -583,26 +495,6 @@ $(document).ready(function() {
                 document.getElementById('add-room-btn-wrapper').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
             }, 100);
         }
-    }
-
-    // Add a preset room (from Quick Add panel)
-    function addPresetRoom(name, claimType) {
-        addRoom({ name: name, claim_type: claimType }, claimType);
-    }
-
-    // Add all WTR General (0.07–0.14) rooms at once
-    function addAllWtrGeneral() {
-        const rooms = [
-            'DRYING CHAMBER # 1',
-            'DRYING CHAMBER # 2',
-            'DRYING CHAMBER # 3',
-            'INTERIOR GENERAL WTR ITEMS',
-            'ADMINISTRATION EXPENSES',
-            'PERSONAL PROTECTION EQUIPMENT PPE',
-            'ELECTRICAL',
-            'EXHAUST SYSTEM SET UP (per level)',
-        ];
-        rooms.forEach(name => addRoom({ name }, 'normal'));
     }
 
     // Delete room
