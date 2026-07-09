@@ -254,29 +254,48 @@ def load_rooms_from_claim(request):
 
     try:
         source_client = Client.unscoped.get(id=source_claim_id)
-        # Only load base rooms (is_encircle_entry=False); skip generated numbered entries
-        source_rooms = (
+
+        # ── Tier 1: base rooms from wizard (preferred) ────────────────────────
+        base_rooms_qs = (
             Room.objects
             .filter(client=source_client, is_encircle_entry=False)
             .prefetch_related('work_type_values__work_type')
+            .order_by('sequence')
         )
 
         rooms_data = []
-        for room in source_rooms:
+        for room in base_rooms_qs:
             work_types = {}
             for wt_value in room.work_type_values.all():
                 work_types[wt_value.work_type.work_type_id] = wt_value.value_type
-
             rooms_data.append({
                 'sequence': room.sequence,
                 'name': room.room_name,
-                'work_types': work_types
+                'work_types': work_types,
             })
+
+        # ── Tier 2: CPS session rooms (Encircle-synced claims) ───────────────
+        if not rooms_data:
+            from box_calculator.models import BoxCalcCPSSession
+            cps_session = (
+                BoxCalcCPSSession.unscoped
+                .filter(client=source_client)
+                .order_by('-updated_at')
+                .first()
+            )
+            if cps_session:
+                for seq, cps_room in enumerate(
+                    cps_session.rooms.all().order_by('order', 'room_name'), start=1
+                ):
+                    name = cps_room.room_name
+                    if name.startswith('[OVERVIEW]'):
+                        name = name[10:].strip()
+                    rooms_data.append({'sequence': seq, 'name': name, 'work_types': {}})
 
         return JsonResponse({
             'success': True,
             'rooms': rooms_data,
-            'message': f'Loaded {len(rooms_data)} rooms from {source_client.pOwner}'
+            'message': f'Loaded {len(rooms_data)} rooms from {source_client.pOwner}',
         })
 
     except Client.DoesNotExist:
