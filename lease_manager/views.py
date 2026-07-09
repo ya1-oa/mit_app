@@ -699,7 +699,7 @@ def lease_manager(request):
     total_completed = Lease.objects.filter(status='completed').count()
     total_expired   = Lease.objects.filter(lease_end_date__lt=today).exclude(status__in=['completed', 'cancelled']).count()
 
-    clients_with_leases = Client.objects.filter(leases__isnull=False).distinct().prefetch_related(
+    clients_with_leases = Client.unscoped.filter(leases__isnull=False).distinct().prefetch_related(
         'leases', 'leases__documents'
     ).annotate(
         lease_count=Count('leases', distinct=True),
@@ -727,7 +727,7 @@ def lease_manager(request):
         'total_expired':        total_expired,
         'total_non_cancelled':  total_non_cancelled,
         'clients_with_leases':  clients_with_leases,
-        'all_clients':          Client.objects.all().order_by('pOwner'),
+        'all_clients':          Client.unscoped.all().order_by('pOwner'),
         'status_choices':       Lease.LEASE_STATUS_CHOICES,
         'current_status_filter': status_filter,
         'current_client_filter': client_filter,
@@ -759,7 +759,7 @@ def create_draft_lease(request):
         if not client_id and not client_name:
             return JsonResponse({'error': 'client_id or client_name required'}, status=400)
 
-        client = Client.objects.get(id=client_id) if client_id else Client.objects.get(pOwner=client_name)
+        client = Client.unscoped.get(id=client_id) if client_id else Client.unscoped.get(pOwner=client_name)
 
         existing = Lease.objects.filter(client=client, status='draft').first()
         if existing:

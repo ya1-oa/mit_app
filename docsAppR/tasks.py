@@ -2960,7 +2960,7 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None, select
     from .encircle_client import EncircleAPIClient
 
     try:
-        client = Client.objects.get(id=client_id)
+        client = Client.unscoped.get(id=client_id)
     except Client.DoesNotExist:
         logger.error(f"push_claim_to_encircle_task: Client {client_id} not found")
         return {'success': False, 'error': f'Client {client_id} not found'}
@@ -3016,7 +3016,7 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None, select
             # triggering a spurious third concurrent regenerate_client_excel_files task.
             try:
                 from django.utils import timezone as _tz
-                Client.objects.filter(id=client_id).update(
+                Client.unscoped.filter(id=client_id).update(
                     encircle_claim_id=encircle_claim_id,
                     encircle_synced_at=_tz.now(),
                 )
@@ -3106,7 +3106,7 @@ def push_claim_to_encircle_task(self, client_id, selected_templates=None, select
 
     # ── 5. Save Encircle id back to the Client ─────────────────────────────
     try:
-        Client.objects.filter(id=client_id).update(
+        Client.unscoped.filter(id=client_id).update(
             encircle_claim_id=encircle_claim_id,
             encircle_synced_at=tz.now(),
         )

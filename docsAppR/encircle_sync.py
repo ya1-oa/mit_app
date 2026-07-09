@@ -187,8 +187,8 @@ def upsert_client_from_encircle(encircle_data: dict) -> tuple[object, bool]:
     if not enc_id:
         raise ValueError("Encircle claim has no id — skipping")
 
-    # Check for existing record
-    existing = Client.objects.filter(encircle_claim_id=enc_id).first()
+    # Check for existing record (unscoped — this runs in background sync, no tenant contextvar)
+    existing = Client.unscoped.filter(encircle_claim_id=enc_id).first()
     is_new = existing is None
 
     fields = _build_client_fields(encircle_data, is_new=is_new)
@@ -213,12 +213,71 @@ def upsert_client_from_encircle(encircle_data: dict) -> tuple[object, bool]:
         # folder/template/Encircle-push tasks). .update() writes the same
         # columns directly to the DB without triggering signals, mirroring the
         # bypass already used in push_claim_to_encircle_task.
-        Client.objects.filter(pk=existing.pk).update(**fields)
+        Client.unscoped.filter(pk=existing.pk).update(**fields)
         # Refresh the in-memory instance so callers see the new values.
         for attr, val in fields.items():
             setattr(existing, attr, val)
         logger.debug("Updated Client %s from Encircle claim %s", existing.pk, enc_id)
         return existing, False
+
+
+# ---------------------------------------------------------------------------
+# Room sync helper
+# ---------------------------------------------------------------------------
+
+def _sync_rooms_from_encircle(client, enc_id: str, api) -> int:
+    """
+    Fetch rooms for a single Encircle claim and replace the client's base rooms.
+
+    Deletes all existing is_encircle_entry=False rooms for the client, then
+    recreates them from the Encircle rooms API.  The formatted Encircle entry
+    strings (is_encircle_entry=True) are left untouched — they are rebuilt at
+    push time from the base rooms.
+
+    Returns the number of rooms written.
+    """
+    from .models import Room
+
+    structures_resp = api.get_claim_structures(enc_id)
+    structures = structures_resp.get('list', []) if isinstance(structures_resp, dict) else []
+    if not structures:
+        logger.debug("Encircle claim %s has no structures — skipping room sync", enc_id)
+        return 0
+
+    structure_id = str(structures[0].get('id', '')).strip()
+    if not structure_id:
+        logger.warning("Encircle claim %s: first structure has no id — skipping room sync", enc_id)
+        return 0
+
+    rooms = api.get_all_structure_rooms(enc_id, structure_id)
+    if not rooms:
+        logger.debug("Encircle claim %s structure %s has no rooms", enc_id, structure_id)
+        return 0
+
+    # Wipe stale base rooms and rebuild from Encircle
+    Room.objects.filter(client=client, is_encircle_entry=False).delete()
+
+    new_rooms = []
+    for seq, room_data in enumerate(rooms, start=1):
+        name = (room_data.get('name') or room_data.get('room_name') or '').strip()
+        if not name:
+            continue
+        new_rooms.append(Room(
+            client=client,
+            room_name=name,
+            sequence=seq,
+            is_encircle_entry=False,
+            tenant=client.tenant,
+        ))
+
+    if new_rooms:
+        Room.objects.bulk_create(new_rooms)
+
+    logger.info(
+        "Room sync: %d rooms written for Encircle claim %s (client %s)",
+        len(new_rooms), enc_id, client.pk,
+    )
+    return len(new_rooms)
 
 
 # ---------------------------------------------------------------------------
@@ -277,7 +336,16 @@ def run_encircle_sync(triggered_by: str = 'schedule') -> 'EncircleSyncLog':
 
                 # ── Upsert inside a savepoint so one bad record is isolated ──
                 with transaction.atomic():
-                    _, created = upsert_client_from_encircle(detail)
+                    client, created = upsert_client_from_encircle(detail)
+
+                # Room sync is outside the client upsert transaction so an API
+                # failure here doesn't roll back the client record.
+                try:
+                    _sync_rooms_from_encircle(client, enc_id, api)
+                except Exception as room_exc:
+                    logger.warning(
+                        "Room sync failed for Encircle claim %s: %s", enc_id, room_exc
+                    )
 
                 if created:
                     created_count += 1
