@@ -165,7 +165,7 @@ def create_claim_step1(request):
 
     if client_id:
         try:
-            client = Client.objects.get(id=client_id)
+            client = Client.unscoped.get(id=client_id)
         except Client.DoesNotExist:
             request.session.pop('creating_claim_id', None)
 
@@ -174,7 +174,11 @@ def create_claim_step1(request):
 
         if form.is_valid():
             client = form.save(commit=False)
-            # OneDrive sync status removed
+            # Assign tenant so TenantScopedManager can find this client in later steps
+            if not getattr(client, 'tenant_id', None):
+                user_tenant = getattr(request.user, 'tenant', None)
+                if user_tenant:
+                    client.tenant = user_tenant
             client.save()
 
             # Store client ID in session
@@ -209,7 +213,7 @@ def create_claim_step2(request):
         return redirect('create_claim_step1')
 
     try:
-        client = Client.objects.get(id=client_id)
+        client = Client.unscoped.get(id=client_id)
     except Client.DoesNotExist:
         request.session.pop('creating_claim_id', None)
         messages.error(request, 'Client not found. Please start over.')
@@ -249,7 +253,7 @@ def load_rooms_from_claim(request):
         return JsonResponse({'success': False, 'error': 'No source claim selected'})
 
     try:
-        source_client = Client.objects.get(id=source_claim_id)
+        source_client = Client.unscoped.get(id=source_claim_id)
         # Only load base rooms (is_encircle_entry=False); skip generated numbered entries
         source_rooms = (
             Room.objects
@@ -296,7 +300,7 @@ def save_rooms(request):
         return JsonResponse({'success': False, 'error': 'No active claim creation session'})
 
     try:
-        client = Client.objects.get(id=client_id)
+        client = Client.unscoped.get(id=client_id)
         rooms_data = json.loads(request.POST.get('rooms_data', '[]'))
 
         # Template + work-type selections (now submitted from Step 2)
@@ -545,7 +549,7 @@ def create_claim_step3(request):
         return redirect('create_claim_step1')
 
     try:
-        client = Client.objects.get(id=client_id)
+        client = Client.unscoped.get(id=client_id)
     except Client.DoesNotExist:
         request.session.pop('creating_claim_id', None)
         messages.error(request, 'Client not found. Please start over.')
@@ -2907,7 +2911,7 @@ def bulk_rename_db_rooms(request):
         return JsonResponse({'success': False, 'error': 'room_names must be a non-empty list'}, status=400)
 
     try:
-        client = Client.objects.get(id=client_id)
+        client = Client.unscoped.get(id=client_id)
         rooms  = list(Room.objects.filter(client=client).order_by('sequence', 'id'))
 
         renamed = 0
