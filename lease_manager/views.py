@@ -159,7 +159,7 @@ def _ale_to_lease_fields(client):
         'lessor_contact_email':    client.ale_lessor_email           or '',
 
         # ── Property (the leased address) ────────────────────────────────
-        'property_address': client.ale_lessor_leased_address or client.pAddress or '',
+        'property_address': client.ale_lessor_leased_address or '',
         'property_city':    prop_city,
         'property_state':   prop_state,
         'property_zip':     prop_zip,
