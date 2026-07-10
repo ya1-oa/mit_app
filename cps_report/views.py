@@ -119,7 +119,7 @@ def api_search_clients(request):
 @login_required
 def session_view(request, session_id):
     """View / manage an existing CPS report session."""
-    session = get_object_or_404(CPSReportSession, id=session_id)
+    session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
     rooms = session.rooms.prefetch_related('items').order_by('order', 'room_number')
     share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')
     other_sessions = (
@@ -161,21 +161,22 @@ def api_start_session(request):
 
         # Find existing Client by encircle_claim_id, or create a minimal stub
         # so CPSReportSession has an FK to attach to.
-        client = Client.objects.filter(encircle_claim_id=encircle_claim_id).first()
+        # Use unscoped so pre-tenant-migration clients (tenant_id=NULL) are found.
+        client = Client.unscoped.filter(encircle_claim_id=encircle_claim_id).first()
         if not client:
             from docsAppR.encircle_client import EncircleAPIClient as _API, EncircleDataProcessor as _P
             _api = _API()
             try:
                 details   = _api.get_claim_details(encircle_claim_id)
                 processed = _P.process_claim_details(details)
-                client = Client.objects.create(
+                client = Client.unscoped.create(
                     encircle_claim_id = encircle_claim_id,
                     pOwner            = processed.get('policyholder_name') or '',
                     pAddress          = processed.get('full_address') or '',
                     claimNumber       = processed.get('policy_number') or '',
                 )
             except Exception:
-                client = Client.objects.create(encircle_claim_id=encircle_claim_id)
+                client = Client.unscoped.create(encircle_claim_id=encircle_claim_id)
 
         # Fetch rooms from Encircle
         from docsAppR.encircle_client import EncircleAPIClient
@@ -814,11 +815,12 @@ def api_import_excel(request):
             claim_number = m.group(1).strip()
 
         # ── Find or create Client ─────────────────────────────────────────────
+        # Use unscoped so pre-tenant-migration clients (tenant_id=NULL) are found.
         client = None
         if encircle_claim_id:
-            client = Client.objects.filter(encircle_claim_id=encircle_claim_id).first()
+            client = Client.unscoped.filter(encircle_claim_id=encircle_claim_id).first()
         if not client:
-            client = Client.objects.create(
+            client = Client.unscoped.create(
                 encircle_claim_id=encircle_claim_id or 'imported',
                 pOwner=insured_name,
                 claimNumber=claim_number,
