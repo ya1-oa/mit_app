@@ -34,8 +34,18 @@ Project Specific Imports
 """
 from .config.excel_mappings import SCOPE_FORM_MAPPINGS
 from .forms import ClientForm, CreateUserForm, UploadClientForm, UploadFilesForm, LandlordForm, EmailForm, EmailScheduleForm
-from .models import ChecklistItem, Client, File, Document, Landlord, SentEmail, EmailSchedule, EmailOpenEvent, DocumentCategory, ReadingImage, Room, WorkType, RoomWorkTypeValue, Lease, LeaseDocument, LeaseActivity
+from .models import ChecklistItem, Client, File, Document, Landlord, SentEmail, EmailSchedule, EmailOpenEvent, DocumentCategory, ReadingImage, Room, WorkType, RoomWorkTypeValue, Lease, LeaseDocument, LeaseActivity, Tenant
 from automations.tasks import RoomTemplateAutomation
+
+
+def get_current_tenant_from_request(request):
+    """
+    Get the current tenant from the request.
+    Returns None if user is not authenticated or has no tenant.
+    """
+    if request.user.is_authenticated and getattr(request.user, 'tenant', None):
+        return request.user.tenant
+    return None
 
 """
 Python Standard Library
@@ -5245,9 +5255,16 @@ def generate_all_documents(request):
                     except (ValueError, TypeError):
                         return default
 
+                # Get the current user's tenant for scoping
+                if request.user.is_authenticated and getattr(request.user, 'tenant', None):
+                    tenant = request.user.tenant
+                else:
+                    tenant = None
+                
                 # Create the Lease record with all form data
                 lease = Lease.objects.create(
                     client=client,
+                    tenant=tenant,  # Set tenant FK for multi-tenant isolation
                     # Lessor Information
                     lessor_name=request.POST.get('full_name', ''),
                     lessor_address=request.POST.get('address', ''),
@@ -5317,11 +5334,14 @@ def generate_all_documents(request):
 
                 # Create LeaseDocument records and log activity for each document
                 pdf_paths = getattr(request, '_generated_pdf_paths', {})
+                current_tenant = get_current_tenant_from_request(request)
+                
                 for document in documents:
                     doc_type = document_type_map.get(document.name, 'engagement_agreement')
                     file_path = pdf_paths.get(document.name, '')
                     LeaseDocument.objects.create(
                         lease=lease,
+                        tenant=current_tenant,
                         document_type=doc_type,
                         document_name=f"{document.name} - {client_name}",
                         file_path=file_path,
@@ -5329,6 +5349,7 @@ def generate_all_documents(request):
                     # Log activity for each document created
                     LeaseActivity.objects.create(
                         lease=lease,
+                        tenant=current_tenant,
                         activity_type='document_created',
                         description=f'Created {document.name} for {client_name}',
                         performed_by=request.user if request.user.is_authenticated else None
@@ -5338,6 +5359,7 @@ def generate_all_documents(request):
                 input_sheet_path = pdf_paths.get('Input Sheet', '')
                 LeaseDocument.objects.create(
                     lease=lease,
+                    tenant=current_tenant,
                     document_type='input_sheet',
                     document_name=f"Input Sheet - {client_name}",
                     file_path=input_sheet_path,
@@ -5345,6 +5367,7 @@ def generate_all_documents(request):
                 # Log activity for input sheet
                 LeaseActivity.objects.create(
                     lease=lease,
+                    tenant=current_tenant,
                     activity_type='document_created',
                     description=f'Created Input Sheet for {client_name}',
                     performed_by=request.user if request.user.is_authenticated else None
@@ -8448,18 +8471,22 @@ def create_draft_lease(request):
         )
 
         # Create stage completion records for all stages
+        current_tenant = get_current_tenant_from_request(request)
         stage_assignments = PipelineStageAssignment.objects.all()
         for assignment in stage_assignments:
             LeaseStageCompletion.objects.create(
                 lease=lease,
+                tenant=current_tenant,
                 stage=assignment.stage,
                 assigned_user=assignment.assigned_user,
                 is_completed=False
             )
 
         # Mark draft stage as completed since we just created it
+        current_tenant = get_current_tenant_from_request(request)
         draft_completion = LeaseStageCompletion.objects.filter(
             lease=lease,
+            tenant=current_tenant,
             stage='draft'
         ).first()
         if draft_completion:

@@ -1578,6 +1578,10 @@ class Lease(models.Model):
     Contains all the data from the lease generation form.
     Multiple documents belong to one lease.
     """
+    
+    # Use TenantScopedManager for automatic tenant filtering
+    objects = TenantScopedManager()
+    unscoped = models.Manager()
 
     LEASE_STATUS_CHOICES = [
         ('draft', 'Draft'),
@@ -1799,6 +1803,11 @@ class LeaseTask(models.Model):
     Tracks workflow steps for each lease (ALE temporary housing process).
     Allows field users to check off tasks on mobile as work progresses.
     """
+    
+    # Use TenantScopedManager for automatic tenant filtering
+    objects = TenantScopedManager()
+    unscoped = models.Manager()
+
     TASK_CHOICES = [
         ('draft', 'Draft Lease Created'),
         ('send_for_signature', 'Send for Signature'),
@@ -1854,6 +1863,10 @@ class LeaseTask(models.Model):
 
 class LeaseDocument(models.Model):
     """Individual documents that belong to a Lease"""
+    
+    # Use TenantScopedManager for automatic tenant filtering
+    objects = TenantScopedManager()
+    unscoped = models.Manager()
 
     DOCUMENT_TYPES = [
         ('engagement_agreement', 'Engagement Agreement'),
@@ -1889,6 +1902,10 @@ class LeaseDocument(models.Model):
 
 class LeaseActivity(models.Model):
     """Track all activity related to leases"""
+    
+    # Use TenantScopedManager for automatic tenant filtering
+    objects = TenantScopedManager()
+    unscoped = models.Manager()
 
     ACTIVITY_TYPES = [
         # Status-aligned activities (match LEASE_STATUS_CHOICES)
