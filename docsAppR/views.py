@@ -4597,11 +4597,56 @@ def generate_all_documents(request):
             logger.error(f"Error fetching models: {str(e)}")
             return HttpResponse("Error loading client or documents", status=404)
 
+        # ── Persist lease form data back to Client ALE fields ────────────────
+        # This runs on every preview and final generation so the data the user
+        # types in the Document Generator is immediately available to Lease
+        # Manager auto-fill and subsequent re-opens of this form.
+        def _csz(city, state, zp):
+            cs = ', '.join(p for p in [city or '', state or ''] if p)
+            return f'{cs} {zp}'.strip() if zp else cs
+
+        _ale_updates = {}
+        _f = request.POST.get
+        if _f('full_name'):          _ale_updates['ale_lessor_name']             = _f('full_name')
+        if _f('address'):            _ale_updates['ale_lessor_mailing_address']  = _f('address')
+        if _f('phone'):              _ale_updates['ale_lessor_phone']            = _f('phone')
+        if _f('email'):              _ale_updates['ale_lessor_email']            = _f('email')
+        if _f('contact_person_1'):   _ale_updates['ale_lessor_contact_person']   = _f('contact_person_1')
+        if _f('property_address'):   _ale_updates['ale_lessor_leased_address']   = _f('property_address')
+        _mail_csz = _csz(_f('city'), _f('state'), _f('zip_code'))
+        if _mail_csz:                _ale_updates['ale_lessor_mailing_city_zip'] = _mail_csz
+        _prop_csz = _csz(_f('property_city'), _f('property_state'), _f('property_zip'))
+        if _prop_csz:                _ale_updates['ale_lessor_city_zip']         = _prop_csz
+        try:
+            from django.utils.dateparse import parse_date as _pdp
+            if _f('term_start_date'): _ale_updates['ale_rental_start_date'] = _pdp(_f('term_start_date'))
+            if _f('term_end_date'):   _ale_updates['ale_rental_end_date']   = _pdp(_f('term_end_date'))
+        except Exception:
+            pass
+        try:
+            if _f('default_rent_amount'):
+                _ale_updates['ale_rental_amount_per_month'] = float(_f('default_rent_amount'))
+        except Exception:
+            pass
+        if _f('real_estate_company'):     _ale_updates['ale_re_company_name']     = _f('real_estate_company')
+        if _f('company_mailing_address'): _ale_updates['ale_re_mailing_address']  = _f('company_mailing_address')
+        if _f('company_contact_person'):  _ale_updates['ale_re_contact_person']   = _f('company_contact_person')
+        if _f('company_phone'):           _ale_updates['ale_re_phone']            = _f('company_phone')
+        if _f('company_email'):           _ale_updates['ale_re_email']            = _f('company_email')
+        _re_csz = _csz(_f('company_city'), _f('company_state'), _f('company_zip'))
+        if _re_csz:                       _ale_updates['ale_re_city_zip']         = _re_csz
+        if _f('broker_name'):   _ale_updates['ale_re_owner_broker_name']  = _f('broker_name')
+        if _f('broker_phone'):  _ale_updates['ale_re_owner_broker_phone'] = _f('broker_phone')
+        if _f('broker_email'):  _ale_updates['ale_re_owner_broker_email'] = _f('broker_email')
+        if _ale_updates:
+            Client.unscoped.filter(pk=client.pk).update(**_ale_updates)
+            logger.debug("ALE sync: %d field(s) written for client %s", len(_ale_updates), client.pk)
+
         # Date formatting function
         def clean_and_format_date(date_str):
             if not date_str:
                 return ""
-            
+
             try:
                 cleaned = re.sub(r'[^\d/-]', '', str(date_str))
                 date_obj = parse_date(cleaned)
