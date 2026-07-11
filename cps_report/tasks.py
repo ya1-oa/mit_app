@@ -6,6 +6,60 @@ from celery import shared_task
 logger = logging.getLogger(__name__)
 
 
+def _send_signing_notification(room, client_email=None):
+    """
+    Send email notification when a CPS Report room is signed.
+    Uses the dedicated lease mailbox if configured, otherwise falls back to default.
+    """
+    from docsAppR.models import Client
+    from django.core.mail import EmailMessage
+    from .email_utils import get_lease_email_connection, get_lease_from_email
+    
+    # Use tenant owner email (client.email or client.pEmail) for production
+    # TEMPORARY: For testing, use your email until tenant email is available
+    if not client_email:
+        try:
+            client = room.session.client
+            client_email = getattr(client, 'email', None) or getattr(client, 'pEmail', None)
+        except Exception:
+            pass
+    
+    # TEMPORARY OVERRIDE - Remove this block when ready to use tenant emails
+    if not client_email:
+        # TODO: Replace with tenant owner email from settings
+        # Example in Django settings.py: TEMP_NOTIFICATION_EMAIL = 'galaxielsaga@gmail.com'
+        logger.warning(f"No email address found for CPS session {room.session.id}, using default notification email")
+        client_email = getattr(settings, 'TEMP_NOTIFICATION_EMAIL', 'galaxielsaga@gmail.com')
+    
+    try:
+        connection = get_lease_email_connection()
+        
+        subject = f"CPS Report Room Signed: {room.room_number} {room.room_name}"
+        
+        body_text = (
+            f"A room in your CPS report has been signed.\n\n"
+            f"Room: {room.room_number} {room.room_name}\n"
+            f"Signed by: {room.signature_name}\n"
+            f"Signed at: {room.signed_at.strftime('%B %d, %Y at %I:%M %p')}\n\n"
+            f"Session ID: {room.session.id}\n"
+            f"View your report: /cps-report/session/{room.session.id}/"
+        )
+        
+        email = EmailMessage(
+            subject=subject,
+            body=body_text,
+            from_email=get_lease_from_email(),
+            to=[client_email],
+            connection=connection,
+        )
+        email.send()
+        logger.info(f"Sent signing notification for room {room.id} to {client_email}")
+        return True
+    except Exception as exc:
+        logger.error(f"Failed to send signing notification for room {room.id}: {exc}")
+        return False
+
+
 def _session_log(session_id, msg):
     """Append a timestamped log line to Redis so the progress page can show it live."""
     from django.core.cache import cache
@@ -174,3 +228,26 @@ def process_cps_session_task(self, session_id):
     from .views import _auto_generate_summary
     _auto_generate_summary(session)
     log("Done. Report ready for download.")
+
+
+@shared_task(bind=True, max_retries=2, default_retry_delay=120)
+def send_cps_room_signing_notification(self, room_id, client_email=None):
+    """
+    Send email notification when a CPS Report room is signed.
+    Called from views after a room signature is saved.
+    """
+    from .models import CPSReportRoom
+    
+    try:
+        room = CPSReportRoom.objects.get(id=room_id)
+    except CPSReportRoom.DoesNotExist:
+        logger.error('send_cps_room_signing_notification: Room %s not found', room_id)
+        return
+    
+    success = _send_signing_notification(room, client_email)
+    
+    if success:
+        logger.info(f"Successfully sent signing notification for room {room_id}")
+    else:
+        logger.warning(f"Failed to send signing notification for room {room_id}, retrying...")
+        raise self.retry(exc=Exception("Email sending failed"), max_retries=self.max_retries + 1)

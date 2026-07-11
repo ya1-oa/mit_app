@@ -1171,6 +1171,16 @@ def sign_submit(request, token):
         ),
     )
 
+    # Trigger client notification asynchronously for this signature
+    client_email = None
+    try:
+        client_email = getattr(lease.client, 'pEmail', None) or getattr(lease.client, 'email', None)
+    except Exception:
+        pass
+    
+    from .tasks import send_lease_individual_signature_notification_task
+    send_lease_individual_signature_notification_task.delay(str(sig_req.id), client_email)
+
     # Check if all parties have signed
     all_reqs = lease.signature_requests.all()
     if all_reqs.exists() and all(r.status == 'signed' for r in all_reqs):
@@ -1182,7 +1192,15 @@ def sign_submit(request, token):
             activity_type='signed',
             description='All parties have signed — lease is fully executed.',
         )
-        _notify_all_signed(lease)
+        # Trigger client notification asynchronously
+        client_email = None
+        try:
+            client_email = getattr(lease.client, 'pEmail', None) or getattr(lease.client, 'email', None)
+        except Exception:
+            pass
+        
+        from .tasks import send_lease_signature_notification_task
+        send_lease_signature_notification_task.delay(str(lease.id), client_email)
 
     _notify_staff_signature(sig_req, lease)
 
@@ -1448,6 +1466,137 @@ def _notify_staff_signature(sig_req, lease):
         ).send()
     except Exception as exc:
         logger.error('notify_staff_signature failed: %s', exc)
+
+
+@require_POST
+def api_sign(request, token):
+    """
+    AJAX POST from the signing canvas page.
+    Body JSON: { signature_image, typed_name, agreed }
+    """
+    from .signature_utils import build_signature_context
+    
+    sig_req = get_object_or_404(LeaseSignatureRequest, token=token)
+    
+    # Prevent signing if already finalized
+    if sig_req.status in ('signed', 'declined', 'expired'):
+        return JsonResponse({'error': 'This request is already finalised.'}, status=400)
+
+    # OTP verification is mandatory
+    if not sig_req.is_otp_verified:
+        return JsonResponse({'error': 'Identity not verified. Please complete verification first.'}, status=403)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'Invalid request body'}, status=400)
+
+    sig_type   = (body.get('signature_type') or '').strip().lower()
+    sig_image  = (body.get('signature_image') or '').strip()
+    typed_name = (body.get('typed_name') or '').strip()
+    agreed     = bool(body.get('agreed', False))
+
+    # Signer chooses how to sign: draw a signature or type their legal name.
+    # Infer the mode if the client didn't send one explicitly.
+    if sig_type not in ('typed', 'drawn'):
+        sig_type = 'drawn' if sig_image.startswith('data:image/') else 'typed'
+
+    # Enforce required fields based on signature type
+    if sig_type == 'typed':
+        if not typed_name:
+            return JsonResponse({'error': 'Please type your full legal name.'}, status=400)
+        if not agreed:
+            return JsonResponse({'error': 'You must agree to sign electronically.'}, status=400)
+    else:  # drawn
+        if not sig_image or not sig_image.startswith('data:image/'):
+            return JsonResponse({'error': 'Please draw your signature, or switch to typing your name.'}, status=400)
+        if not agreed:
+            return JsonResponse({'error': 'You must agree to sign electronically.'}, status=400)
+
+    # Optional: validate typed_name matches signer_name (case-insensitive, whitespace-stripped)
+    if sig_type == 'typed' and typed_name.lower() != sig_req.signer_name.lower():
+        logger.warning(
+            f"Typed name '{typed_name}' does not match expected name '{sig_req.signer_name}' "
+            f"for signer {sig_req.id}."
+        )
+
+    # Optional: validate signature image dimensions if it's a drawn signature
+    if sig_type == 'drawn' and build_signature_context(sig_req):
+        canvas = document.getElementById('signature-canvas')
+        if canvas:
+            w = canvas.width
+            h = canvas.height
+            if w < 100 or h < 50:
+                return JsonResponse(
+                    {'error': 'Signature is too small. Please draw a larger signature.'},
+                    status=400)
+
+    # Build the full context needed to render the signature onto the lease PDFs
+    build_signature_context(sig_req)
+
+    ip = (
+        request.META.get('HTTP_X_FORWARDED_FOR', '').split(',')[0].strip()
+        or request.META.get('REMOTE_ADDR', '')
+    ) or None
+    ua = request.META.get('HTTP_USER_AGENT', '')
+
+    sig_req.signature_image = sig_image
+    sig_req.typed_name      = typed_name
+    sig_req.agreed_to_esign = True
+    sig_req.ip_address      = ip
+    sig_req.user_agent      = ua
+    sig_req.status          = 'signed'
+    sig_req.signed_at       = timezone.now()
+    sig_req.save()
+
+    lease = sig_req.lease
+    LeaseActivity.objects.create(
+        lease=lease,
+        activity_type='signed',
+        description=(
+            f'{sig_req.get_signer_role_display()} "{sig_req.signer_name}" '
+            f'signed electronically (IP: {ip})'
+        ),
+    )
+
+    # Trigger client notification asynchronously for this signature
+    client_email = None
+    try:
+        client_email = getattr(lease.client, 'pEmail', None) or getattr(lease.client, 'email', None)
+    except Exception:
+        pass
+    
+    from .tasks import send_lease_individual_signature_notification_task
+    send_lease_individual_signature_notification_task.delay(str(sig_req.id), client_email)
+
+    # Check if all parties have signed
+    all_reqs = lease.signature_requests.all()
+    if all_reqs.exists() and all(r.status == 'signed' for r in all_reqs):
+        lease.status    = 'signed'
+        lease.signed_at = timezone.now()
+        lease.save(update_fields=['status', 'signed_at', 'updated_at'])
+        LeaseActivity.objects.create(
+            lease=lease,
+            activity_type='signed',
+            description='All parties have signed — lease is fully executed.',
+        )
+        # Trigger client notification asynchronously for all signatures complete
+        from .tasks import send_lease_signature_notification_task
+        client_email = getattr(lease.client, 'pEmail', None) or getattr(lease.client, 'email', None)
+        send_lease_signature_notification_task.delay(str(lease.id), client_email)
+
+    _notify_staff_signature(sig_req, lease)
+
+    # Regenerate PDFs so this party's signature image appears in the documents
+    try:
+        generate_lease_pdfs(lease)
+    except Exception as exc:
+        logger.error('PDF regeneration after signing failed for lease %s: %s', lease.id, exc)
+
+    return JsonResponse({
+        'success':  True,
+        'redirect': f'/lease-manager/sign/{token}/complete/',
+    })
 
 
 def _notify_staff_decline(sig_req):
