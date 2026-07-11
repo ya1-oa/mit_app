@@ -596,6 +596,8 @@ def sign_room_direct(request, token):
 def api_sign_room_direct(request, token):
     """Public POST — sign a single room using the room's own share token."""
     from .models import CPSReportRoom
+    from .tasks import send_cps_room_signing_notification
+    
     room = get_object_or_404(CPSReportRoom, share_token=token)
     try:
         if room.signature_name:
@@ -612,6 +614,16 @@ def api_sign_room_direct(request, token):
         room.signed_at = timezone.now()
         room.signer_ip = ip
         room.save(update_fields=['signature_name', 'signed_at', 'signer_ip'])
+
+        # Trigger email notification asynchronously
+        client_email = None
+        try:
+            client = room.session.client
+            client_email = getattr(client, 'email', None) or getattr(client, 'pEmail', None)
+        except Exception:
+            pass
+        
+        send_cps_room_signing_notification.delay(room.id, client_email)
 
         return JsonResponse({
             'success': True,
@@ -679,6 +691,8 @@ def api_rerun_session(request, session_id):
 @require_POST
 def api_sign_room(request, token):
     """Public POST endpoint — save a typed-name signature for one room."""
+    from .tasks import send_cps_room_signing_notification
+    
     session = get_object_or_404(CPSReportSession, share_token=token)
     try:
         data = json.loads(request.body)
@@ -698,6 +712,16 @@ def api_sign_room(request, token):
         room.signed_at = timezone.now()
         room.signer_ip = ip
         room.save(update_fields=['signature_name', 'signed_at', 'signer_ip'])
+
+        # Trigger email notification asynchronously
+        client_email = None
+        try:
+            client = room.session.client
+            client_email = getattr(client, 'email', None) or getattr(client, 'pEmail', None)
+        except Exception:
+            pass
+        
+        send_cps_room_signing_notification.delay(room.id, client_email)
 
         return JsonResponse({
             'success': True,
