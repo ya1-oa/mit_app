@@ -792,10 +792,9 @@ def export_excel(request, session_id):
 @require_POST
 def api_import_excel(request):
     """
-    Import a previously exported Schedule of Loss Excel file as a new session.
-    Parses the file produced by excel_builder.build_excel() and reconstructs
-    rooms + items so the session can be shared for signature, edited, and
-    exported as PDF — identical to any live session.
+    Import a Schedule of Loss Excel file (any version) as a new session.
+    Detects column positions from the header row so old format files work
+    regardless of when they were generated.
     """
     import io
     import re as _re
@@ -811,32 +810,50 @@ def api_import_excel(request):
         wb = load_workbook(io.BytesIO(excel_file.read()), data_only=True)
         ws = wb.active
 
-        # ── Parse claim metadata from header rows 2–3 ─────────────────────────
-        # Row 2: "Claim Id: 12345   |   Claim Date: …   |   Type of Loss: Fire"
-        # Row 3: "Insured: John Doe   |   Claim #: ABC-123"
-        row2 = str(ws.cell(row=2, column=1).value or '')
-        row3 = str(ws.cell(row=3, column=1).value or '')
-
+        # ── Scan all rows for claim metadata (flexible — works across formats) ─
         encircle_claim_id = ''
         loss_type = ''
         insured_name = ''
         claim_number = ''
 
-        m = _re.search(r'Claim Id:\s*(\S+)', row2)
-        if m:
-            encircle_claim_id = m.group(1).strip()
+        for scan_row in range(1, min(15, ws.max_row + 1)):
+            for col in range(1, ws.max_column + 1):
+                raw = str(ws.cell(row=scan_row, column=col).value or '')
+                if not raw:
+                    continue
+                m = _re.search(r'Claim Id[:\s]+(\S+)', raw, _re.I)
+                if m and not encircle_claim_id:
+                    encircle_claim_id = m.group(1).strip()
+                m = _re.search(r'(?:Type of Loss|Loss)[:\s]+(.+?)(?:\s*\||$)', raw, _re.I)
+                if m and not loss_type:
+                    loss_type = m.group(1).strip()
+                m = _re.search(r'Insured[:\s]+(.+?)(?:\s*\||$)', raw, _re.I)
+                if m and not insured_name:
+                    insured_name = m.group(1).strip()
+                m = _re.search(r'Claim\s*#[:\s]+(.+?)(?:\s*\||$)', raw, _re.I)
+                if m and not claim_number:
+                    claim_number = m.group(1).strip()
 
-        m = _re.search(r'Type of Loss:\s*(.+?)$', row2)
-        if m:
-            loss_type = m.group(1).strip()
+        # ── Detect column positions from header row ───────────────────────────
+        # Scan for the row containing "Description" — that anchors all columns.
+        # Works for any format (old or new) regardless of how many prefix columns exist.
+        desc_col = None
+        data_start_row = 7   # fallback
 
-        m = _re.search(r'Insured:\s*(.+?)\s*\|', row3)
-        if m:
-            insured_name = m.group(1).strip()
+        for scan_row in range(1, min(20, ws.max_row + 1)):
+            for col in range(1, ws.max_column + 1):
+                v = ws.cell(row=scan_row, column=col).value
+                if v is not None and str(v).strip().lower() == 'description':
+                    desc_col = col
+                    data_start_row = scan_row + 2   # header is 2 rows (row5 + row6)
+                    break
+            if desc_col is not None:
+                break
 
-        m = _re.search(r'Claim #:\s*(.+?)$', row3)
-        if m:
-            claim_number = m.group(1).strip()
+        # Column map relative to description. Offsets match excel_builder.py layout:
+        # #, [Room,] Description, Brand, Disposition, Condition, QTY, Model#, Serial#,
+        # Retailer, Repl.Source, Purchase(Each, Total), Age(Y, M), Repl.Value(Each, Total)
+        D = desc_col if desc_col is not None else 5   # 5 = pre-Room-column legacy default
 
         # ── Find or create Client ─────────────────────────────────────────────
         # Use unscoped so pre-tenant-migration clients (tenant_id=NULL) are found.
@@ -861,7 +878,7 @@ def api_import_excel(request):
             notes='Imported from Excel file',
         )
 
-        # ── Parse rooms and items from row 7 onwards ─────────────────────────
+        # ── Parse rooms and items ─────────────────────────────────────────────
         # Row types (matched in priority order):
         #   "GRAND TOTAL"           → stop
         #   starts with "Room Total" → room subtotal row — skip
@@ -892,7 +909,7 @@ def api_import_excel(request):
             except (TypeError, ValueError):
                 return 0
 
-        for row_idx in range(7, ws.max_row + 1):
+        for row_idx in range(data_start_row, ws.max_row + 1):
             val_a = ws.cell(row=row_idx, column=1).value
             if val_a is None:
                 continue
@@ -940,19 +957,19 @@ def api_import_excel(request):
                 CPSReportItem.objects.create(
                     room=current_room,
                     order=item_order,
-                    description=_gs(row_idx, 5),
-                    brand=_gs(row_idx, 6),
-                    disposition=_gs(row_idx, 7) or 'Replacement',
-                    condition=_gs(row_idx, 8),
-                    qty=max(1, _gi(row_idx, 9)),
-                    model_number=_gs(row_idx, 10),
-                    serial_number=_gs(row_idx, 11),
-                    retailer=_gs(row_idx, 12),
-                    replacement_source=_gs(row_idx, 13),
-                    purchase_price_each=_gf(row_idx, 14),
-                    age_years=min(5, max(0, _gi(row_idx, 16))),
-                    age_months=min(11, max(0, _gi(row_idx, 17))),
-                    replacement_value_each=_gf(row_idx, 18),
+                    description=_gs(row_idx, D),
+                    brand=_gs(row_idx, D + 1),
+                    disposition=_gs(row_idx, D + 2) or 'Replacement',
+                    condition=_gs(row_idx, D + 3),
+                    qty=max(1, _gi(row_idx, D + 4)),
+                    model_number=_gs(row_idx, D + 5),
+                    serial_number=_gs(row_idx, D + 6),
+                    retailer=_gs(row_idx, D + 7),
+                    replacement_source=_gs(row_idx, D + 8),
+                    purchase_price_each=_gf(row_idx, D + 9),
+                    age_years=min(200, max(0, _gi(row_idx, D + 11))),
+                    age_months=min(11, max(0, _gi(row_idx, D + 12))),
+                    replacement_value_each=_gf(row_idx, D + 13),
                     ai_suggested=False,
                 )
                 item_order += 1

@@ -368,14 +368,14 @@
       </div>
       <div class="modal-body">
         <p class="text-muted small mb-3">
-          Upload a previously exported Schedule of Loss Excel file.
-          A new session will be created with all rooms and items from that file,
-          ready to share for signature, edit, and export as PDF.
+          Upload any previous Schedule of Loss Excel file — including reports generated before
+          this system existed. A new editable session will be created with all rooms and prices
+          from that file, ready to edit, export as PDF/Excel, and send for client signature.
         </p>
         <div class="mb-3">
-          <label class="form-label fw-semibold" for="importFileInput">Schedule of Loss Excel file</label>
+          <label class="form-label fw-semibold" for="importFileInput">Schedule of Loss Excel file (.xlsx)</label>
           <input class="form-control" type="file" id="importFileInput" accept=".xlsx,.xls">
-          <div class="form-text">Only files exported from this system (.xlsx) are supported.</div>
+          <div class="form-text">Old format files are supported — column layout is detected automatically.</div>
         </div>
         <div id="importResult" style="display:none"></div>
       </div>
