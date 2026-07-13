@@ -1286,6 +1286,10 @@ def build_field_mapping(client):
     addr = getattr(client, 'pAddress', '') or ''
     field_mapping['Cust id'] = f"{owner}@{addr}" if owner or addr else ''
 
+    # Human-readable claim ID (e.g. "OH24 Hendking @ MEADOWBROOK")
+    field_mapping['Claim Id'] = getattr(client, 'claimID', '') or ''
+    field_mapping['claim id'] = field_mapping['Claim Id']
+
     # Add date fields
     if client.dateOfLoss:
         field_mapping['date of loss'] = safe_strftime(client.dateOfLoss, '%A, %B %d, %Y')

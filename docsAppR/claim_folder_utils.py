@@ -577,6 +577,67 @@ def copy_templates_to_claim_folder(client, templates_source_dir=None):
         return []
 
 
+def compute_claim_id(client):
+    """
+    Build the short human-readable claim reference ID used across all documents.
+    Format: {state_abbrev}{year_2digit} {last_name} @ {street_name_upper}
+    Example: OH24 Hendking @ MEADOWBROOK
+    Returns empty string if not enough data is available yet.
+    """
+    from datetime import date as _date
+
+    # State abbreviation — scan pCityStateZip first, fall back to insCityStateZip
+    state = ''
+    for field_val in (getattr(client, 'pCityStateZip', '') or '',
+                      getattr(client, 'insCityStateZip', '') or ''):
+        m = re.search(r'\b([A-Z]{2})\b', field_val)
+        if m:
+            state = m.group(1)
+            break
+
+    # 2-digit year — dateOfLoss, then contractDate, then current year
+    year = ''
+    for dt in (getattr(client, 'dateOfLoss', None), getattr(client, 'contractDate', None)):
+        if dt and hasattr(dt, 'year'):
+            year = str(dt.year)[-2:]
+            break
+    if not year:
+        year = str(_date.today().year)[-2:]
+
+    # Last name — last word of pOwner
+    last_name = ''
+    owner = (getattr(client, 'pOwner', '') or '').strip()
+    if owner:
+        last_name = owner.split()[-1]
+
+    # Street name — strip leading house number and trailing road-type suffix from pAddress
+    street = ''
+    address = (getattr(client, 'pAddress', '') or '').strip()
+    if address:
+        parts = address.split()
+        if parts and parts[0].replace('-', '').isdigit():
+            parts = parts[1:]
+        road_suffixes = {
+            'dr', 'drive', 'st', 'street', 'ave', 'avenue', 'blvd', 'boulevard',
+            'rd', 'road', 'ln', 'lane', 'ct', 'court', 'pl', 'place', 'way',
+            'cir', 'circle', 'pkwy', 'parkway', 'hwy', 'highway',
+            'terr', 'terrace', 'trl', 'trail', 'run', 'loop', 'pass', 'pike',
+        }
+        if parts and parts[-1].lower().rstrip('.') in road_suffixes:
+            parts = parts[:-1]
+        street = ' '.join(parts).upper()
+
+    if not any([state, last_name, street]):
+        return ''
+
+    prefix = f"{state}{year}" if (state or year) else year
+    id_str = f"{prefix} {last_name}".strip() if last_name else prefix
+    if street:
+        id_str = f"{id_str} @ {street}" if id_str else f"@ {street}"
+
+    return id_str
+
+
 def get_templates_folder(client):
     """
     Get the path to the Templates folder for a client.

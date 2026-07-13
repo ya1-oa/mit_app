@@ -121,7 +121,9 @@ def _build_header_rows(ws, session):
 
     ws.row_dimensions[2].height = 16
     ws.merge_cells('A2:J2')
-    ws['A2'].value     = f"Claim Id: {session.encircle_claim_id}"
+    _human_id = getattr(session.client, 'claimID', '') or ''
+    _enc_id   = session.encircle_claim_id or ''
+    ws['A2'].value     = _human_id or (f"Claim Id: {_enc_id}" if _enc_id else '')
     ws['A2'].font      = _font(color=CLR_HEADER_FG)
     ws['A2'].fill      = _fill(CLR_SUBHEADER_BG)
     ws['A2'].alignment = _left()

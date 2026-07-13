@@ -477,7 +477,7 @@ def api_room_items(request, room_id):
 @login_required
 def export_pdf(request, session_id):
     """Generate and return the Schedule of Loss PDF file."""
-    session = get_object_or_404(CPSReportSession, id=session_id)
+    session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
     try:
         from .pdf_builder import build_pdf
         pdf_bytes = build_pdf(session)
@@ -767,7 +767,7 @@ def api_clear_room_signature(request, session_id, room_id):
 @login_required
 def export_excel(request, session_id):
     """Generate and return the Schedule of Loss Excel file."""
-    session = get_object_or_404(CPSReportSession, id=session_id)
+    session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
     try:
         from .excel_builder import build_excel
         share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')

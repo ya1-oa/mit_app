@@ -13,7 +13,7 @@ import uuid
 import hashlib
 import json
 from datetime import timedelta
-
+from .claim_folder_utils import compute_claim_id
 
 class CustomUserManager(BaseUserManager):
     def _create_user(self, email, password, **extra_fields):
@@ -175,6 +175,7 @@ class Client(models.Model):
         help_text="User who last modified files"
     )
 
+    claimID = models.CharField(max_length=150, blank=True, default='')
     #Customer
     pOwner = models.CharField(max_length=255, blank=True)
     pAddress = models.CharField(max_length=255, blank=True)
@@ -475,6 +476,13 @@ class Client(models.Model):
         super().save(*args, **kwargs)
         from .signals import create_checklist_items_for_client
         create_checklist_items_for_client(self)
+
+        try:
+            self.claimID = compute_claim_id(self)
+        except Exception:
+            pass
+        super().save(*args, **kwargs)
+    
 
 class WorkType(models.Model):
     """Definition of work types (100, 200, 300, 400, 500, 800, 900, ALE)"""
