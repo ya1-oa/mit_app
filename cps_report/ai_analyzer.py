@@ -141,7 +141,7 @@ Return JSON in this exact format:
 }}"""
 
 
-_IMAGE_CONTENT_TYPES = {'image/jpeg', 'image/jpg', 'image/png'}
+_IMAGE_CONTENT_TYPES = {'image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'}
 
 _IMAGES_PER_BATCH = 20
 
@@ -356,15 +356,30 @@ def filter_room_images(all_media: list[dict], room_number: str) -> list[str]:
     return urls
 
 
+def _detect_image_media_type(data: bytes) -> str:
+    """Detect true image media type from magic bytes — never trust the HTTP header."""
+    if data[:3] == b'\xff\xd8\xff':
+        return 'image/jpeg'
+    if data[:8] == b'\x89PNG\r\n\x1a\n':
+        return 'image/png'
+    if data[:6] in (b'GIF87a', b'GIF89a'):
+        return 'image/gif'
+    if data[:4] == b'RIFF' and data[8:12] == b'WEBP':
+        return 'image/webp'
+    return 'image/jpeg'
+
+
 def _image_url_to_base64(url: str) -> tuple[str, str] | None:
-    """Download an image URL and return (base64_data, media_type)."""
+    """Download an image URL and return (base64_data, media_type).
+    Uses magic-byte detection — Encircle CDN sometimes serves GIF/WebP bytes
+    with content-type: image/jpeg, which Claude rejects with a 400 error.
+    """
     try:
         resp = requests.get(url, timeout=15)
         resp.raise_for_status()
-        ct = resp.headers.get('content-type', 'image/jpeg').split(';')[0].strip()
-        if not ct.startswith('image/'):
-            ct = 'image/jpeg'
-        b64 = base64.standard_b64encode(resp.content).decode('utf-8')
+        data = resp.content
+        ct = _detect_image_media_type(data)
+        b64 = base64.standard_b64encode(data).decode('utf-8')
         return b64, ct
     except Exception as e:
         logger.warning(f"Failed to download image {url}: {e}")
