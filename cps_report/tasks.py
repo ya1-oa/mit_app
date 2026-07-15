@@ -227,6 +227,25 @@ def process_cps_session_task(self, session_id):
 
     from .views import _auto_generate_summary
     _auto_generate_summary(session)
+
+    # Auto-generate photo PDF using the already-fetched Encircle media
+    log("Generating photo evidence PDF…")
+    try:
+        from .photo_pdf_builder import build_photo_pdf
+        from django.core.files.base import ContentFile
+        from django.core.files.storage import default_storage
+        _session_for_pdf = CPSReportSession.objects.select_related('client').get(id=session_id)
+        _pdf_bytes = build_photo_pdf(_session_for_pdf, prefetched_media=all_claim_media)
+        _pdf_path = f'cps_photo_pdfs/{session_id}.pdf'
+        if default_storage.exists(_pdf_path):
+            default_storage.delete(_pdf_path)
+        default_storage.save(_pdf_path, ContentFile(_pdf_bytes))
+        logger.info(f"PPR task: photo PDF saved ({len(_pdf_bytes):,} bytes) → {_pdf_path}")
+        log(f"Photo PDF generated ({len(_pdf_bytes) // 1024:,} KB)")
+    except Exception as _pdf_err:
+        logger.warning(f"PPR task: photo PDF generation failed: {_pdf_err}", exc_info=True)
+        log(f"Photo PDF skipped: {_pdf_err}")
+
     log("Done. Report ready for download.")
 
 

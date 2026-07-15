@@ -492,11 +492,20 @@ def export_pdf(request, session_id):
 
 @login_required
 def export_photo_pdf(request, session_id):
-    """Generate and return the Photo Evidence PDF file."""
+    """Serve the Photo Evidence PDF — uses the pre-generated copy from the PPR
+    Celery task if available, otherwise generates on demand."""
     session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
     try:
+        from django.core.files.storage import default_storage
         from .photo_pdf_builder import build_photo_pdf
-        pdf_bytes = build_photo_pdf(session)
+
+        _pdf_path = f'cps_photo_pdfs/{session_id}.pdf'
+        if default_storage.exists(_pdf_path):
+            with default_storage.open(_pdf_path, 'rb') as _f:
+                pdf_bytes = _f.read()
+        else:
+            pdf_bytes = build_photo_pdf(session)
+
         filename = f"PhotoEvidence_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'

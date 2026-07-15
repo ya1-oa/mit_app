@@ -159,10 +159,11 @@ def _image_grid(image_bufs: list[Optional[BytesIO]],
     return [tbl]
 
 
-def build_photo_pdf(session) -> bytes:
+def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> bytes:
     """
     Build the Photo Evidence PDF for a CPSReportSession.
-    Re-fetches images from Encircle — takes 10–40s for large rooms.
+    Pass prefetched_media (from fetch_all_claim_media) to skip the Encircle
+    API call — the Celery task already has it in memory.
     Returns raw PDF bytes.
     """
     buf = BytesIO()
@@ -191,13 +192,16 @@ def build_photo_pdf(session) -> bytes:
 
     story = []
 
-    # ── Fetch all Encircle media once ─────────────────────────────────────────
-    all_media: list[dict] = []
-    if session.encircle_claim_id:
-        try:
-            all_media = fetch_all_claim_media(session.encircle_claim_id)
-        except Exception as exc:
-            logger.warning(f"Photo PDF: could not fetch Encircle media: {exc}")
+    # ── Resolve Encircle media (reuse prefetched list if provided) ────────────
+    if prefetched_media is not None:
+        all_media = prefetched_media
+    else:
+        all_media = []
+        if session.encircle_claim_id:
+            try:
+                all_media = fetch_all_claim_media(session.encircle_claim_id)
+            except Exception as exc:
+                logger.warning(f"Photo PDF: could not fetch Encircle media: {exc}")
 
     # ── Pre-compute rooms + global item numbers (same logic as pdf_builder.py) ─
     rooms = list(session.rooms.prefetch_related('items').order_by('order', 'room_number'))
