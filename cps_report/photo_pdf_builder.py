@@ -44,6 +44,11 @@ C_RULE      = colors.HexColor('#e2e8f0')
 IMG_COLS = 3
 IMG_SIZE = 2.1 * inch   # square cell size (image fills this)
 
+# Safety cap: prevents OOM on huge claims with hundreds of images per room.
+# ReportLab holds all Image flowables in memory until doc.build() completes,
+# so uncapped rooms with 300-500 images can consume 4+ GB and get SIGKILL'd.
+MAX_IMAGES_PER_ROOM = 30
+
 
 def _fmt_usd(v) -> str:
     try:
@@ -323,12 +328,14 @@ def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> byte
         story.append(it)
         story.append(Spacer(1, 8))
 
-        # Fetch + lay out room images
-        urls = filter_room_images(all_media, room.room_number) if all_media else []
+        # Fetch + lay out room images (capped to prevent OOM on huge claims)
+        all_urls = filter_room_images(all_media, room.room_number) if all_media else []
+        urls = all_urls[:MAX_IMAGES_PER_ROOM]
 
         if urls:
+            cap_note = f" (showing {len(urls)} of {len(all_urls)})" if len(all_urls) > MAX_IMAGES_PER_ROOM else ""
             story.append(Paragraph(
-                f"Photos: {len(urls)} images used for AI analysis above", muted_s
+                f"Photos: {len(all_urls)} images available{cap_note}", muted_s
             ))
             story.append(Spacer(1, 4))
             image_bufs = _fetch_parallel(urls)

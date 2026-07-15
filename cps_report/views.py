@@ -493,7 +493,9 @@ def export_pdf(request, session_id):
 @login_required
 def export_photo_pdf(request, session_id):
     """Serve the Photo Evidence PDF — uses the pre-generated copy from the PPR
-    Celery task if available, otherwise generates on demand."""
+    Celery task if available.  On-demand generation is allowed only for small
+    claims (≤ 15 rooms); large claims must use the Celery-pre-generated file to
+    avoid OOM-killing the web worker (502 Bad Gateway)."""
     session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
     try:
         from django.core.files.storage import default_storage
@@ -504,6 +506,15 @@ def export_photo_pdf(request, session_id):
             with default_storage.open(_pdf_path, 'rb') as _f:
                 pdf_bytes = _f.read()
         else:
+            room_count = session.rooms.count()
+            if room_count > 15:
+                return HttpResponse(
+                    f"The photo PDF for this claim ({room_count} rooms) is too large to generate "
+                    f"on demand. It is generated automatically after the PPR analysis completes — "
+                    f"please run or re-run the PPR report and then download the photo PDF.",
+                    status=503,
+                    content_type='text/plain',
+                )
             pdf_bytes = build_photo_pdf(session)
 
         filename = f"PhotoEvidence_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
