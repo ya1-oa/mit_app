@@ -527,6 +527,18 @@ def export_photo_pdf(request, session_id):
 
 
 @login_required
+def regenerate_photo_pdf(request, session_id):
+    """Queue a Celery task to rebuild the photo PDF for an existing session.
+    Returns JSON so it can be called from the session page via fetch()."""
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    from .tasks import regenerate_photo_pdf_task
+    regenerate_photo_pdf_task.delay(session_id)
+    return JsonResponse({'queued': True, 'session_id': session_id})
+
+
+@login_required
 def api_debug_claim_media(request, claim_id):
     """
     Diagnostic: fetch ALL media for a claim and break it down by room.

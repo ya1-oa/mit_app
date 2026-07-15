@@ -217,7 +217,25 @@ def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> byte
         first_n = global_item_num
         global_item_num += len(items)
         last_n  = global_item_num - 1
-        room_data.append({'room': room, 'items': items, 'first_n': first_n, 'last_n': last_n})
+
+        # Prefer the stored analyzed URLs (exact images Claude used) over
+        # re-filtering the full media list.  Stored URLs are already deduplicated.
+        # Fall back to filter_room_images only for reports run before this change.
+        if room.analyzed_image_urls:
+            room_urls = room.analyzed_image_urls
+            url_source = 'stored'
+        else:
+            room_urls = filter_room_images(all_media, room.room_number) if all_media else []
+            url_source = 'filtered'
+
+        room_data.append({
+            'room': room,
+            'items': items,
+            'first_n': first_n,
+            'last_n': last_n,
+            'urls': room_urls,
+            'url_source': url_source,
+        })
 
     # ── Cover page ─────────────────────────────────────────────────────────────
     cover = Table(
@@ -328,14 +346,13 @@ def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> byte
         story.append(it)
         story.append(Spacer(1, 8))
 
-        # Fetch + lay out room images (capped to prevent OOM on huge claims)
-        all_urls = filter_room_images(all_media, room.room_number) if all_media else []
-        urls = all_urls[:MAX_IMAGES_PER_ROOM]
+        # Use URLs pre-computed above (stored from analysis, or filtered from media list)
+        urls = rd['urls']
 
         if urls:
-            cap_note = f" (showing {len(urls)} of {len(all_urls)})" if len(all_urls) > MAX_IMAGES_PER_ROOM else ""
+            src = "analyzed" if rd['url_source'] == 'stored' else "available"
             story.append(Paragraph(
-                f"Photos: {len(all_urls)} images available{cap_note}", muted_s
+                f"Photos: {len(urls)} images {src} — exact images sent to AI for this room", muted_s
             ))
             story.append(Spacer(1, 4))
             image_bufs = _fetch_parallel(urls)

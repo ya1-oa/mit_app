@@ -201,11 +201,20 @@ def process_cps_session_task(self, session_id):
                     structural=bool(item_dict.get('structural', False)),
                 )
 
+            # Collect the deduplicated URLs that were actually sent to Claude —
+            # these are the exact images that produced the line items.
+            analyzed_urls = list(result_primary.get('analyzed_urls', []))
+            if has_secondary:
+                secondary_urls = result_secondary.get('analyzed_urls', [])
+                seen = set(analyzed_urls)
+                analyzed_urls.extend(u for u in secondary_urls if u not in seen)
+
             room.images_used = total_images
+            room.analyzed_image_urls = analyzed_urls
             room.ai_confidence = result_primary.get('confidence', '')
             room.ai_notes = ' | '.join(s for s in summaries if s)
             room.status = 'complete' if (result_primary.get('success') or all_items) else 'error'
-            room.save(update_fields=['images_used', 'ai_confidence', 'ai_notes', 'status'])
+            room.save(update_fields=['images_used', 'analyzed_image_urls', 'ai_confidence', 'ai_notes', 'status'])
             item_count = room.items.count()
             logger.info(
                 f"PPR task: room {room.room_number} done — "
@@ -270,3 +279,38 @@ def send_cps_room_signing_notification(self, room_id, client_email=None):
     else:
         logger.warning(f"Failed to send signing notification for room {room_id}, retrying...")
         raise self.retry(exc=Exception("Email sending failed"), max_retries=self.max_retries + 1)
+
+
+@shared_task(bind=True, max_retries=1, default_retry_delay=60)
+def regenerate_photo_pdf_task(self, session_id: int):
+    """
+    Rebuild the Photo Evidence PDF for an existing session WITHOUT re-running
+    the full AI analysis.  Uses the analyzed_image_urls stored on each room
+    (populated since migration 0011).  For rooms that pre-date the migration
+    the builder falls back to filter_room_images via the Encircle API.
+    """
+    from .models import CPSReportSession
+    from .photo_pdf_builder import build_photo_pdf
+    from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
+    try:
+        session = CPSReportSession.objects.select_related('client').get(id=session_id)
+    except CPSReportSession.DoesNotExist:
+        logger.error('regenerate_photo_pdf_task: session %s not found', session_id)
+        return
+
+    logger.info(f"regenerate_photo_pdf_task: rebuilding photo PDF for session {session_id}")
+
+    try:
+        pdf_bytes = build_photo_pdf(session)
+        _pdf_path = f'cps_photo_pdfs/{session_id}.pdf'
+        if default_storage.exists(_pdf_path):
+            default_storage.delete(_pdf_path)
+        default_storage.save(_pdf_path, ContentFile(pdf_bytes))
+        logger.info(
+            f"regenerate_photo_pdf_task: saved {len(pdf_bytes):,} bytes → {_pdf_path}"
+        )
+    except Exception as exc:
+        logger.error(f"regenerate_photo_pdf_task: failed for session {session_id}: {exc}", exc_info=True)
+        raise self.retry(exc=exc)

@@ -71,6 +71,7 @@ class CPSReportRoom(models.Model):
         default='pending',
     )
     images_used = models.PositiveIntegerField(default=0)
+    analyzed_image_urls = models.JSONField(default=list, blank=True)
     ai_confidence = models.CharField(max_length=20, blank=True)
     ai_notes = models.TextField(blank=True)
     signature_name = models.CharField(max_length=255, blank=True)

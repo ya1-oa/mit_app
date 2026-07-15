@@ -187,6 +187,12 @@
           <a href="{% url 'cps_report_export_photo_pdf' session.id %}" class="btn btn-warning btn-sm me-1" title="Photo Evidence PDF — image grid with matching item numbers">
             <i class="fas fa-images me-1"></i> Photo PDF
           </a>
+          <button type="button"
+                  class="btn btn-outline-warning btn-sm me-1"
+                  title="Queue a background rebuild of the Photo PDF (use if download shows 503 or after a large re-run)"
+                  onclick="regeneratePhotoPdf({{ session.id }}, this)">
+            <i class="fas fa-rotate me-1"></i> Regen Photo PDF
+          </button>
           <a href="{% url 'cps_report_export' session.id %}" class="btn btn-success btn-sm me-1">
             <i class="fas fa-file-excel me-1"></i> Excel
           </a>
@@ -1220,6 +1226,30 @@ async function cancelSession() {
   });
   if ((await res.json()).success) location.reload();
   else { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stop me-1"></i> Cancel Report'; alert('Could not cancel.'); }
+}
+
+async function regeneratePhotoPdf(sessionId, btn) {
+  if (!confirm('Queue a background rebuild of the Photo PDF?\n\nThis uses the exact images already stored from the AI analysis — no re-analysis needed. The download button will serve the new file once Celery finishes (typically 1–3 minutes for large claims).')) return;
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Queuing…';
+  try {
+    const res = await fetch(`/cps-report/session/${sessionId}/regenerate-photo-pdf/`, {
+      method: 'POST',
+      headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+    });
+    const data = await res.json();
+    if (data.queued) {
+      btn.innerHTML = '<i class="fas fa-check me-1"></i> Queued';
+      setTimeout(() => { btn.disabled = false; btn.innerHTML = orig; }, 5000);
+    } else {
+      throw new Error(data.error || 'Unknown error');
+    }
+  } catch (e) {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+    alert('Could not queue rebuild: ' + e.message);
+  }
 }
 
 async function rerunSession() {

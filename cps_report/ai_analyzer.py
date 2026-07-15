@@ -534,6 +534,10 @@ def analyze_room_for_ppr(
     if not urls:
         urls = filter_room_images(prefetched_media, room_number)
 
+    # Deduplicate while preserving order — Encircle sometimes returns the same
+    # image with slightly different metadata, causing duplicate downloads.
+    urls = list(dict.fromkeys(urls))
+
     if not urls:
         _log(f"No images found for room {room_number} — using placeholder")
         return {
@@ -629,6 +633,7 @@ def analyze_room_for_ppr(
             "confidence": "none",
             "room_summary": "",
             "images_used": images_used,
+            "analyzed_urls": urls,
             "input_tokens": total_input_tokens,
             "output_tokens": total_output_tokens,
             "error": last_error,
@@ -643,6 +648,7 @@ def analyze_room_for_ppr(
         "confidence": final_confidence,
         "room_summary": " | ".join(summaries),
         "images_used": images_used,
+        "analyzed_urls": urls,
         "input_tokens": total_input_tokens,
         "output_tokens": total_output_tokens,
         "error": last_error,
