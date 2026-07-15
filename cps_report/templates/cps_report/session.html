@@ -184,6 +184,9 @@
           <a href="{% url 'cps_report_export_pdf' session.id %}" class="btn btn-danger btn-sm me-1">
             <i class="fas fa-file-pdf me-1"></i> PDF
           </a>
+          <a href="{% url 'cps_report_export_photo_pdf' session.id %}" class="btn btn-warning btn-sm me-1" title="Photo Evidence PDF — image grid with matching item numbers">
+            <i class="fas fa-images me-1"></i> Photo PDF
+          </a>
           <a href="{% url 'cps_report_export' session.id %}" class="btn btn-success btn-sm me-1">
             <i class="fas fa-file-excel me-1"></i> Excel
           </a>
