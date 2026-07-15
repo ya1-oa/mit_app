@@ -420,7 +420,7 @@ def api_session_status(request, session_id):
 
     room_data = []
     for r in rooms:
-        items = list(r.items.all())
+        items = list(r.items.filter(structural=False))
         room_rcv = sum(
             float(i.replacement_value_each or 0) * (i.qty or 1)
             for i in items
@@ -598,8 +598,13 @@ def api_debug_claim_media(request, claim_id):
 
 def sign_session(request, token):
     """Public (no login) page where the client signs off on each room."""
+    from django.db.models import Prefetch
     session = get_object_or_404(CPSReportSession, share_token=token)
-    rooms = session.rooms.prefetch_related('items').order_by('order', 'room_number')
+    rooms = session.rooms.prefetch_related(
+        Prefetch('items',
+                 queryset=CPSReportItem.objects.filter(structural=False).order_by('order'),
+                 to_attr='billable_items')
+    ).order_by('order', 'room_number')
     return render(request, 'cps_report/sign.html', {
         'session': session,
         'rooms': rooms,
@@ -609,8 +614,16 @@ def sign_session(request, token):
 
 def sign_room_direct(request, token):
     """Public (no login) page where the client signs a single room via its own token."""
+    from django.db.models import Prefetch
     from .models import CPSReportRoom
-    room = get_object_or_404(CPSReportRoom, share_token=token)
+    room = get_object_or_404(
+        CPSReportRoom.objects.prefetch_related(
+            Prefetch('items',
+                     queryset=CPSReportItem.objects.filter(structural=False).order_by('order'),
+                     to_attr='billable_items')
+        ),
+        share_token=token,
+    )
     return render(request, 'cps_report/sign_room.html', {
         'session': room.session,
         'room': room,

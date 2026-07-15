@@ -21,7 +21,7 @@ def compute_summary(session) -> dict:
     grand_rcv = 0.0
 
     for room in session.rooms.prefetch_related('items').order_by('order', 'room_number'):
-        items = list(room.items.all())
+        items = list(room.items.filter(structural=False))
         rcv = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in items)
 
         grand_items += len(items)

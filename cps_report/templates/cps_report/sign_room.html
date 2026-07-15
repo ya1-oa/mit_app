@@ -76,7 +76,7 @@
           </tr>
         </thead>
         <tbody>
-          {% for item in room.items.all %}
+          {% for item in room.billable_items %}
           <tr>
             <td class="text-muted">{{ forloop.counter }}</td>
             <td>{{ item.description }}</td>
@@ -90,7 +90,7 @@
           {% empty %}
           <tr><td colspan="8" class="text-muted text-center py-3">No items in this room.</td></tr>
           {% endfor %}
-          {% if room.items.count %}
+          {% if room.billable_items %}
           <tr class="subtotal-row">
             <td colspan="6" class="text-end">ROOM TOTAL</td>
             <td class="text-end">${{ room.total_rcv|floatformat:2 }}</td>

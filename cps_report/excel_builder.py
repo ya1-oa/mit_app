@@ -250,7 +250,7 @@ def _write_room_total_row(ws, row: int, room) -> None:
         c.fill   = _fill(CLR_TOTAL_BG)
         c.border = _border()
 
-    items = list(room.items.all())
+    items = list(room.items.filter(structural=False))
     if items:
         rv_sum = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in items)
         c = ws.cell(row=row, column=COL_RV_TOTAL, value=rv_sum)
@@ -278,7 +278,7 @@ def _write_grand_total(ws, row: int, session) -> None:
     all_items = [
         item
         for room in session.rooms.prefetch_related('items').all()
-        for item in room.items.all()
+        for item in room.items.filter(structural=False)
     ]
     rv_grand = sum(float(i.replacement_value_each or 0) * (i.qty or 1) for i in all_items)
     c = ws.cell(row=row, column=COL_RV_TOTAL, value=rv_grand)
@@ -348,7 +348,7 @@ def build_excel(session, share_url: str | None = None) -> bytes:
     )
 
     for room_idx, room in enumerate(rooms):
-        items = list(room.items.order_by('order').all())
+        items = list(room.items.filter(structural=False).order_by('order'))
         if not items:
             continue
 

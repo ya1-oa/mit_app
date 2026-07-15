@@ -208,7 +208,7 @@ def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> byte
     global_item_num = 1
     room_data = []
     for room in rooms:
-        items = list(room.items.order_by('order'))
+        items = list(room.items.filter(structural=False).order_by('order'))
         first_n = global_item_num
         global_item_num += len(items)
         last_n  = global_item_num - 1

@@ -96,7 +96,7 @@ def build_pdf(session) -> bytes:
 
     room_stats = []
     for room in rooms:
-        items = list(room.items.order_by('order'))
+        items = list(room.items.filter(structural=False).order_by('order'))
         rcv = sum((float(i.replacement_value_each or 0) * (i.qty or 1)) for i in items)
         qty = sum(i.qty or 1 for i in items)
         room_stats.append({'room': room, 'items': items, 'rcv': rcv, 'qty': qty})

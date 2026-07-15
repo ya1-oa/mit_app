@@ -44,7 +44,7 @@ class CPSReportSession(models.Model):
     def total_replacement_value(self):
         total = 0
         for room in self.rooms.all():
-            for item in room.items.all():
+            for item in room.items.filter(structural=False):
                 total += (item.replacement_value_each or 0) * (item.qty or 1)
         return total
 
@@ -87,7 +87,7 @@ class CPSReportRoom(models.Model):
     def total_rcv(self):
         return sum(
             float(i.replacement_value_each or 0) * (i.qty or 1)
-            for i in self.items.all()
+            for i in self.items.filter(structural=False)
         )
 
 
