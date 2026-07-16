@@ -81,10 +81,20 @@
     cursor: default;
   }
   /* ── Room tabs ── */
-  #roomTabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  .tab-scroll-wrapper { display: flex; align-items: flex-end; }
+  #roomTabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; flex: 1; }
   #roomTabs::-webkit-scrollbar { display: none; }
   #roomTabs .nav-link { white-space: nowrap; font-size: .8rem; padding: .42rem .85rem; border-radius: 6px 6px 0 0; }
   #roomTabs .nav-link.active { font-weight: 700; color: #1f3864; }
+  .tab-scroll-btn {
+    flex-shrink: 0; width: 30px; height: 36px;
+    border: 1px solid #dee2e6; border-bottom: none; background: #f0f4fa;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; color: #495057; transition: background .15s, opacity .2s;
+    border-radius: 4px 4px 0 0;
+  }
+  .tab-scroll-btn:hover { background: #dde4f0; color: #1f3864; }
+  .tab-scroll-btn.tab-hidden { opacity: 0; pointer-events: none; }
   .room-controls-strip {
     display: flex; align-items: center; gap: .75rem;
     padding: .5rem 1rem; background: #f0f4fa; border-bottom: 1px solid #dee2e6;
@@ -333,7 +343,11 @@
 
     <!-- Tab navigation (scrollable so 10+ rooms still fit) -->
     <div class="card-header p-0 border-0 bg-white">
-      <ul class="nav nav-tabs px-2 pt-2 flex-nowrap" id="roomTabs" role="tablist">
+      <div class="tab-scroll-wrapper">
+        <button class="tab-scroll-btn tab-hidden" id="tabScrollLeft" onclick="scrollRoomTabs(-1)" title="Scroll left">
+          <i class="fas fa-chevron-left"></i>
+        </button>
+        <ul class="nav nav-tabs px-2 pt-2 flex-nowrap" id="roomTabs" role="tablist">
         {% for room in rooms %}
         <li class="nav-item" role="presentation">
           <button class="nav-link{% if forloop.first %} active{% endif %}"
@@ -353,6 +367,10 @@
         </li>
         {% endfor %}
       </ul>
+        <button class="tab-scroll-btn tab-hidden" id="tabScrollRight" onclick="scrollRoomTabs(1)" title="Scroll right">
+          <i class="fas fa-chevron-right"></i>
+        </button>
+      </div>
     </div>
 
     <!-- Tab panels -->
@@ -1205,6 +1223,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
 const SHARE_URL = "{{ share_url }}";
 const SESSION_ID = {{ session.id }};
+
+function scrollRoomTabs(dir) {
+  const el = document.getElementById('roomTabs');
+  if (el) el.scrollBy({ left: dir * 220, behavior: 'smooth' });
+}
+function updateTabScrollBtns() {
+  const el = document.getElementById('roomTabs');
+  const L  = document.getElementById('tabScrollLeft');
+  const R  = document.getElementById('tabScrollRight');
+  if (!el || !L || !R) return;
+  L.classList.toggle('tab-hidden', el.scrollLeft <= 2);
+  R.classList.toggle('tab-hidden', el.scrollLeft + el.clientWidth >= el.scrollWidth - 2);
+}
+document.addEventListener('DOMContentLoaded', () => {
+  const el = document.getElementById('roomTabs');
+  if (el) {
+    el.addEventListener('scroll', updateTabScrollBtns);
+    updateTabScrollBtns();
+  }
+});
 
 async function clearRoomSignature(roomId, roomLabel) {
   if (!confirm(`Remove the signature for "${roomLabel}"?\nThe client will need to re-sign this room.`)) return;
