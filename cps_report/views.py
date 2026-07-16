@@ -731,6 +731,17 @@ def api_cancel_session(request, session_id):
 def api_rerun_session(request, session_id):
     """Reset a session and re-fire the Celery task to reprocess all rooms."""
     session = get_object_or_404(CPSReportSession, id=session_id)
+    # Allow caller to override pricing mode for this re-run
+    try:
+        body = json.loads(request.body or b'{}')
+        new_mode = str(body.get('pricing_mode') or session.pricing_mode or 'normal').strip()
+        if new_mode not in ('normal', 'premium'):
+            new_mode = 'normal'
+    except Exception:
+        new_mode = session.pricing_mode or 'normal'
+    if new_mode != session.pricing_mode:
+        session.pricing_mode = new_mode
+        session.save(update_fields=['pricing_mode'])
     # Reset rooms — clear old items so the task starts fresh
     for room in session.rooms.all():
         room.items.all().delete()
