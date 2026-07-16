@@ -121,6 +121,9 @@ class CPSReportItem(models.Model):
     # Flagged by the structural-item filter in ai_analyzer — permanently attached
     # to the building (walls, floors, fixtures, etc.) rather than personal property.
     structural = models.BooleanField(default=False)
+    # URLs of the specific images Claude attributed this item to (1–N per item).
+    # Populated at analysis time; used by the photo PDF to show item-level photos.
+    source_image_urls = models.JSONField(default=list, blank=True)
 
     class Meta:
         ordering = ['order']

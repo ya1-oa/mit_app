@@ -199,6 +199,7 @@ def process_cps_session_task(self, session_id):
                     notes=str(item_dict.get('notes', ''))[:500],
                     ai_suggested=True,
                     structural=bool(item_dict.get('structural', False)),
+                    source_image_urls=list(item_dict.get('source_image_urls', []) or []),
                 )
 
             # Collect the deduplicated URLs that were actually sent to Claude —

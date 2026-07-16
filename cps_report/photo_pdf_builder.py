@@ -40,14 +40,13 @@ C_TEXT      = colors.HexColor('#0f172a')
 C_MUTED     = colors.HexColor('#64748b')
 C_RULE      = colors.HexColor('#e2e8f0')
 
-# Grid layout
+# Room-level image grid (legacy / fallback for reports without per-item attribution)
 IMG_COLS = 3
-IMG_SIZE = 2.1 * inch   # square cell size (image fills this)
+IMG_SIZE = 2.1 * inch
 
-# Safety cap: prevents OOM on huge claims with hundreds of images per room.
-# ReportLab holds all Image flowables in memory until doc.build() completes,
-# so uncapped rooms with 300-500 images can consume 4+ GB and get SIGKILL'd.
-MAX_IMAGES_PER_ROOM = 30
+# Per-item image strip — slightly smaller so items with many photos stay compact
+ITEM_IMG_COLS = 3
+ITEM_IMG_SIZE = 1.9 * inch
 
 
 def _fmt_usd(v) -> str:
@@ -159,6 +158,63 @@ def _image_grid(image_bufs: list[Optional[BytesIO]],
         ('LEFTPADDING',   (0, 0), (-1, -1), 3),
         ('RIGHTPADDING',  (0, 0), (-1, -1), 3),
         # Light grid on image rows only (even rows = images)
+        ('BOX',           (0, 0), (-1, -1), 0.3, C_RULE),
+    ]))
+    return [tbl]
+
+
+def _item_image_strip(image_bufs: list, cell_w: float) -> list:
+    """
+    Return flowables for the image strip shown beneath a single line item.
+    Photos are numbered 1…N relative to the item (not globally).
+    """
+    styles = getSampleStyleSheet()
+    cap_style = ParagraphStyle(
+        'ItemCap', parent=styles['Normal'],
+        fontSize=6, textColor=C_MUTED, leading=7, alignment=1,
+    )
+    empty_style = ParagraphStyle(
+        'ItemEmpty', parent=styles['Normal'],
+        fontSize=6, textColor=C_RULE, leading=7, alignment=1,
+    )
+
+    def _img_cell(buf, num):
+        if buf is None:
+            return [Paragraph(f"Photo {num}\n(unavail.)", empty_style)]
+        try:
+            img = Image(buf, width=ITEM_IMG_SIZE, height=ITEM_IMG_SIZE)
+            img.hAlign = 'CENTER'
+            return [img]
+        except Exception:
+            return [Paragraph(f"Photo {num}\n(error)", empty_style)]
+
+    # Pad to full column width
+    padded = list(image_bufs)
+    while len(padded) % ITEM_IMG_COLS != 0:
+        padded.append(None)
+
+    all_rows = []
+    row_heights = []
+    for row_start in range(0, len(padded), ITEM_IMG_COLS):
+        chunk = padded[row_start:row_start + ITEM_IMG_COLS]
+        img_row = [_img_cell(buf, row_start + j + 1) for j, buf in enumerate(chunk)]
+        cap_row = [Paragraph(f"Photo {row_start + j + 1}", cap_style) for j in range(ITEM_IMG_COLS)]
+        all_rows.append(img_row)
+        all_rows.append(cap_row)
+        row_heights.append(ITEM_IMG_SIZE + 4)
+        row_heights.append(9)
+
+    if not all_rows:
+        return []
+
+    tbl = Table(all_rows, colWidths=[cell_w] * ITEM_IMG_COLS, rowHeights=row_heights)
+    tbl.setStyle(TableStyle([
+        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 2),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 3),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 3),
         ('BOX',           (0, 0), (-1, -1), 0.3, C_RULE),
     ]))
     return [tbl]
@@ -288,7 +344,22 @@ def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> byte
     story.append(PageBreak())
 
     # ── Room sections ──────────────────────────────────────────────────────────
-    photo_counter = 1
+    iw = usable_w
+    col_widths = [iw*0.05, iw*0.42, iw*0.18, iw*0.05, iw*0.15, iw*0.15]
+    item_strip_cell_w = usable_w / ITEM_IMG_COLS
+
+    hdr_style = TableStyle([
+        ('BACKGROUND',    (0, 0), (-1, 0), colors.HexColor('#334155')),
+        ('TEXTCOLOR',     (0, 0), (-1, 0), colors.white),
+        ('FONTNAME',      (0, 0), (-1, 0), 'Helvetica-Bold'),
+        ('FONTSIZE',      (0, 0), (-1, -1), 7),
+        ('ALIGN',         (3, 0), (-1, -1), 'RIGHT'),
+        ('TOPPADDING',    (0, 0), (-1, -1), 3),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+        ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+        ('GRID',          (0, 0), (-1, -1), 0.3, C_RULE),
+    ])
 
     for rd in room_data:
         room  = rd['room']
@@ -313,55 +384,118 @@ def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> byte
         story.append(rh)
         story.append(Spacer(1, 5))
 
-        # Compact item table — same item numbers as Schedule of Loss
-        item_rows = [['#', 'Description', 'Brand', 'Qty', 'RCV Each', 'RCV Total']]
+        # Column header row
+        hdr_tbl = Table(
+            [['#', 'Description', 'Brand', 'Qty', 'RCV Each', 'RCV Total']],
+            colWidths=col_widths,
+        )
+        hdr_tbl.setStyle(hdr_style)
+        story.append(hdr_tbl)
+
+        # Determine whether items carry per-item attribution or need the room-level fallback
+        has_attribution = any(item.source_image_urls for item in items)
+
+        # Collect all unique image URLs that need to be downloaded for this room.
+        # For attributed items: the union of all item source URLs.
+        # For fallback (old reports): room.analyzed_image_urls or filter_room_images.
+        url_set: set[str] = set()
+        ordered_urls: list[str] = []
+        if has_attribution:
+            for item in items:
+                for u in (item.source_image_urls or []):
+                    if u not in url_set:
+                        ordered_urls.append(u)
+                        url_set.add(u)
+        else:
+            fallback = rd['urls']
+            for u in fallback:
+                if u not in url_set:
+                    ordered_urls.append(u)
+                    url_set.add(u)
+
+        # Download all needed images in one parallel batch → url → BytesIO mapping
+        url_to_buf: dict = {}
+        if ordered_urls:
+            bufs = _fetch_parallel(ordered_urls)
+            url_to_buf = dict(zip(ordered_urls, bufs))
+
+        # ── Per-item rows ───────────────────────────────────────────────────
+        room_rcv_total = 0.0
         for offset, item in enumerate(items):
             rcv_each  = float(item.replacement_value_each or 0)
             rcv_total = rcv_each * (item.qty or 1)
-            item_rows.append([
-                str(first_n + offset),
-                (item.description or '')[:70],
-                (item.brand or '')[:22],
-                str(item.qty or 1),
-                _fmt_usd(rcv_each),
-                _fmt_usd(rcv_total),
-            ])
-        iw = usable_w
-        it = Table(item_rows,
-                   colWidths=[iw*0.05, iw*0.42, iw*0.18, iw*0.05, iw*0.15, iw*0.15],
-                   repeatRows=1)
-        it.setStyle(TableStyle([
-            ('BACKGROUND',     (0, 0), (-1, 0), colors.HexColor('#334155')),
-            ('TEXTCOLOR',      (0, 0), (-1, 0), colors.white),
-            ('FONTNAME',       (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE',       (0, 0), (-1, -1), 7),
-            ('ROWBACKGROUNDS', (0, 1), (-1, -1), [colors.white, C_ALT]),
-            ('ALIGN',          (3, 0), (-1, -1), 'RIGHT'),
-            ('TOPPADDING',     (0, 0), (-1, -1), 3),
-            ('BOTTOMPADDING',  (0, 0), (-1, -1), 3),
-            ('LEFTPADDING',    (0, 0), (-1, -1), 4),
-            ('RIGHTPADDING',   (0, 0), (-1, -1), 4),
-            ('GRID',           (0, 0), (-1, -1), 0.3, C_RULE),
+            room_rcv_total += rcv_total
+            item_num = first_n + offset
+
+            # Item data row (alternating background)
+            row_fill = C_ALT if offset % 2 == 1 else colors.white
+            item_row_tbl = Table(
+                [[str(item_num),
+                  Paragraph((item.description or '')[:80], body),
+                  Paragraph((item.brand or '—')[:25], muted_s),
+                  str(item.qty or 1),
+                  _fmt_usd(rcv_each),
+                  _fmt_usd(rcv_total)]],
+                colWidths=col_widths,
+            )
+            item_row_tbl.setStyle(TableStyle([
+                ('BACKGROUND',    (0, 0), (-1, -1), row_fill),
+                ('FONTSIZE',      (0, 0), (-1, -1), 7.5),
+                ('ALIGN',         (3, 0), (-1, -1), 'RIGHT'),
+                ('TOPPADDING',    (0, 0), (-1, -1), 4),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+                ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+                ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+                ('GRID',          (0, 0), (-1, -1), 0.3, C_RULE),
+                ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+            ]))
+            story.append(item_row_tbl)
+
+            # Photos attributed to this item
+            if has_attribution:
+                item_urls = list(item.source_image_urls or [])
+                if item_urls:
+                    item_bufs = [url_to_buf.get(u) for u in item_urls]
+                    story.extend(_item_image_strip(item_bufs, item_strip_cell_w))
+                else:
+                    story.append(Paragraph(
+                        f"  Item #{item_num}: No photos attributed by AI for this item.",
+                        muted_s,
+                    ))
+            story.append(Spacer(1, 3))
+
+        # Room total row
+        total_tbl = Table(
+            [['', '', '', '', 'ROOM TOTAL', _fmt_usd(room_rcv_total)]],
+            colWidths=col_widths,
+        )
+        total_tbl.setStyle(TableStyle([
+            ('BACKGROUND',    (0, 0), (-1, -1), C_TOTAL_BG),
+            ('TEXTCOLOR',     (0, 0), (-1, -1), C_TOTAL_FG),
+            ('FONTNAME',      (0, 0), (-1, -1), 'Helvetica-Bold'),
+            ('FONTSIZE',      (0, 0), (-1, -1), 7.5),
+            ('ALIGN',         (4, 0), (-1, -1), 'RIGHT'),
+            ('TOPPADDING',    (0, 0), (-1, -1), 4),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
         ]))
-        story.append(it)
-        story.append(Spacer(1, 8))
+        story.append(total_tbl)
 
-        # Use URLs pre-computed above (stored from analysis, or filtered from media list)
-        urls = rd['urls']
-
-        if urls:
-            src = "analyzed" if rd['url_source'] == 'stored' else "available"
-            story.append(Paragraph(
-                f"Photos: {len(urls)} images {src} — exact images sent to AI for this room", muted_s
-            ))
-            story.append(Spacer(1, 4))
-            image_bufs = _fetch_parallel(urls)
-            story.extend(_image_grid(image_bufs, photo_counter, cell_w))
-            photo_counter += len(urls)
-        else:
-            story.append(Paragraph(
-                "No Encircle images available for this room.", muted_s
-            ))
+        # Fallback for old reports without per-item attribution: show room images
+        if not has_attribution:
+            if ordered_urls:
+                story.append(Spacer(1, 6))
+                story.append(Paragraph(
+                    f"Note: This report pre-dates per-item attribution. "
+                    f"Showing all {len(ordered_urls)} room images below.",
+                    muted_s,
+                ))
+                story.append(Spacer(1, 4))
+                all_bufs = [url_to_buf.get(u) for u in ordered_urls]
+                story.extend(_image_grid(all_bufs, 1, cell_w))
+            else:
+                story.append(Paragraph("No Encircle images available for this room.", muted_s))
 
         story.append(PageBreak())
 

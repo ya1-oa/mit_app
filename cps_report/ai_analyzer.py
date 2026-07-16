@@ -51,6 +51,7 @@ For each item provide:
 - replacement_value_each: today's retail replacement cost in USD (number only)
 - depreciation_category: one of — Clothing, Electronics, Furniture, Appliances, Bedding/Linens, Books/Media, Decor/Art, Toys/Games, Tools/Hardware, Kitchen/Cookware, Jewelry/Accessories, Sporting Goods, Musical Instruments, Other
 - notes: any relevant insurance notes (brand visible, serial noted, heavy wear, etc.)
+- source_image_indices: list of 1-based positions of the images you were shown that contain or best support this item (e.g. [1, 3] means the 1st and 3rd images you received). List every image where the item is clearly visible. This is required for insurance documentation.
 
 Return JSON in this exact format:
 {{
@@ -69,7 +70,8 @@ Return JSON in this exact format:
       "age_months": 0,
       "replacement_value_each": 699,
       "depreciation_category": "Electronics",
-      "notes": "Samsung logo visible"
+      "notes": "Samsung logo visible",
+      "source_image_indices": [1, 3]
     }}
   ],
   "confidence": "high|medium|low",
@@ -115,6 +117,7 @@ For each item provide:
 - replacement_value_each: today's upper-mid-tier retail replacement cost in USD (number only)
 - depreciation_category: one of — Clothing, Electronics, Furniture, Appliances, Bedding/Linens, Books/Media, Decor/Art, Toys/Games, Tools/Hardware, Kitchen/Cookware, Jewelry/Accessories, Sporting Goods, Musical Instruments, Other
 - notes: any relevant insurance notes (brand visible, serial noted, heavy wear, premium grade confirmed, cap applied, etc.)
+- source_image_indices: list of 1-based positions of the images you were shown that contain or best support this item (e.g. [1, 3] means the 1st and 3rd images you received). List every image where the item is clearly visible. This is required for insurance documentation.
 
 Return JSON in this exact format:
 {{
@@ -133,7 +136,8 @@ Return JSON in this exact format:
       "age_months": 0,
       "replacement_value_each": 849,
       "depreciation_category": "Electronics",
-      "notes": "No brand visible — priced at upper-mid Best Buy tier"
+      "notes": "No brand visible — priced at upper-mid Best Buy tier",
+      "source_image_indices": [2]
     }}
   ],
   "confidence": "high|medium|low",
@@ -458,6 +462,7 @@ def _clean_items(items: list, start_order: int = 0) -> list:
         age_months = max(0, min(11, int(item.get("age_months", 0) or 0)))
         if age_years >= 5:
             age_months = 0
+        raw_indices = item.get("source_image_indices") or []
         clean.append({
             "description": str(item.get("description", ""))[:500],
             "brand": str(item.get("brand", ""))[:200],
@@ -475,6 +480,8 @@ def _clean_items(items: list, start_order: int = 0) -> list:
             "notes": str(item.get("notes", ""))[:500],
             "ai_suggested": True,
             "order": start_order + i,
+            # Raw 1-based indices into this batch; converted to URLs in analyze_room_for_ppr
+            "_source_image_indices": [int(x) for x in raw_indices if str(x).isdigit()],
         })
     return clean
 
@@ -551,6 +558,7 @@ def analyze_room_for_ppr(
 
     _log(f"Found {len(urls)} images for room {room_number} — downloading…")
     image_blocks = []
+    downloaded_urls = []  # parallel to image_blocks — only successfully downloaded URLs
     for url in urls:
         result = _image_url_to_base64(url)
         if result:
@@ -559,6 +567,7 @@ def analyze_room_for_ppr(
                 "type": "image",
                 "source": {"type": "base64", "media_type": media_type, "data": b64},
             })
+            downloaded_urls.append(url)
 
     if not image_blocks:
         _log(f"Could not download any images for room {room_number}")
@@ -604,6 +613,17 @@ def analyze_room_for_ppr(
             total_input_tokens  += usage.get('input_tokens', 0)
             total_output_tokens += usage.get('output_tokens', 0)
             batch_items = _clean_items(parsed.get("items", []), start_order=len(all_items))
+            # Map each item's batch-local 1-based indices → actual download URLs.
+            # downloaded_urls is parallel to image_blocks; batch slice tells us
+            # which URLs correspond to this batch's image positions.
+            batch_urls = downloaded_urls[batch_start:batch_start + _IMAGES_PER_BATCH]
+            for it in batch_items:
+                raw_idx = it.pop("_source_image_indices", [])
+                it["source_image_urls"] = [
+                    batch_urls[i - 1]
+                    for i in raw_idx
+                    if isinstance(i, int) and 1 <= i <= len(batch_urls)
+                ]
             all_items.extend(batch_items)
             confidences.append(parsed.get("confidence", "medium"))
             if parsed.get("room_summary"):
