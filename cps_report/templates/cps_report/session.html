@@ -80,7 +80,24 @@
     padding: .35rem .65rem !important;
     cursor: default;
   }
-  /* Structural items collapsible section */
+  /* ── Room tabs ── */
+  #roomTabs { overflow-x: auto; scrollbar-width: none; -webkit-overflow-scrolling: touch; }
+  #roomTabs::-webkit-scrollbar { display: none; }
+  #roomTabs .nav-link { white-space: nowrap; font-size: .8rem; padding: .42rem .85rem; border-radius: 6px 6px 0 0; }
+  #roomTabs .nav-link.active { font-weight: 700; color: #1f3864; }
+  .room-controls-strip {
+    display: flex; align-items: center; gap: .75rem;
+    padding: .5rem 1rem; background: #f0f4fa; border-bottom: 1px solid #dee2e6;
+    flex-wrap: wrap;
+  }
+  .room-total-display { font-size: .95rem; font-weight: 700; color: #155724; }
+  .room-pagination-bar {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: .35rem 1rem; background: #f8f9fa; border-top: 1px solid #dee2e6;
+    font-size: .8rem;
+  }
+
+  /* ── Structural items collapsible section */
   .structural-section {
     border: 2px solid #f59e0b;
     border-radius: 0 0 6px 6px;
@@ -203,7 +220,7 @@
           <button class="btn btn-outline-danger btn-sm me-1" onclick="cancelSession()" id="cancelBtn">
             <i class="fas fa-stop me-1"></i> Cancel Report
           </button>
-          {% elif session.status == 'error' %}
+          {% else %}
           <button class="btn btn-outline-warning btn-sm me-1" onclick="rerunSession()" id="rerunBtn">
             <i class="fas fa-rotate-right me-1"></i> Re-run Report
           </button>
@@ -310,128 +327,171 @@
   </div>
   {% endif %}
 
-  <!-- Room Sections -->
-  {% for room in rooms %}
-  <div class="room-section" id="room-section-{{ room.id }}" data-room-token="{{ room.share_token }}">
-    <div class="room-header d-flex justify-content-between align-items-center">
-      <span>
-        {{ room.room_number }} — {{ room.room_name }}
-        {% if room.ai_confidence %}
-        <span class="badge bg-{% if room.ai_confidence == 'high' %}success{% elif room.ai_confidence == 'medium' %}warning{% else %}danger{% endif %} confidence-badge ms-2">
-          AI: {{ room.ai_confidence }}
-        </span>
+  <!-- Room Tabs -->
+  {% if rooms %}
+  <div class="card shadow-sm mb-3">
+
+    <!-- Tab navigation (scrollable so 10+ rooms still fit) -->
+    <div class="card-header p-0 border-0 bg-white">
+      <ul class="nav nav-tabs px-2 pt-2 flex-nowrap" id="roomTabs" role="tablist">
+        {% for room in rooms %}
+        <li class="nav-item" role="presentation">
+          <button class="nav-link{% if forloop.first %} active{% endif %}"
+                  id="tab-btn-{{ room.id }}"
+                  data-bs-toggle="tab"
+                  data-bs-target="#tab-panel-{{ room.id }}"
+                  type="button" role="tab"
+                  aria-selected="{% if forloop.first %}true{% else %}false{% endif %}">
+            <span class="fw-semibold">{{ room.room_number }}</span>
+            <span class="text-muted ms-1" style="font-size:.76rem;">{{ room.room_name|truncatechars:16 }}</span>
+            {% if room.signature_name %}
+            <i class="fas fa-pen text-success ms-1" style="font-size:.7rem;" title="Signed"></i>
+            {% else %}
+            <i class="fas fa-clock text-warning ms-1" style="font-size:.7rem;" title="Awaiting signature"></i>
+            {% endif %}
+          </button>
+        </li>
+        {% endfor %}
+      </ul>
+    </div>
+
+    <!-- Tab panels -->
+    <div class="tab-content" id="roomTabContent">
+      {% for room in rooms %}
+      <div class="tab-pane fade{% if forloop.first %} show active{% endif %}"
+           id="tab-panel-{{ room.id }}"
+           role="tabpanel"
+           data-room-id="{{ room.id }}"
+           data-room-token="{{ room.share_token }}">
+
+        <!-- Signature status bar -->
+        {% if room.signature_name %}
+        <div class="sig-status-bar signed" id="sig-bar-{{ room.id }}">
+          <i class="fas fa-check-circle"></i>
+          <strong>Signed by {{ room.signature_name }}</strong>
+          <span class="text-muted" style="font-size:.78rem;">— {{ room.signed_at|date:"F j, Y \a\t g:i A" }}</span>
+          <button onclick="clearRoomSignature({{ room.id }}, '{{ room.room_number }} {{ room.room_name }}')"
+                  class="btn btn-link btn-sm ms-auto text-danger p-0 small" title="Remove this signature">
+            <i class="fas fa-times me-1"></i>Remove signature
+          </button>
+        </div>
+        {% else %}
+        <div class="sig-status-bar unsigned" id="sig-bar-{{ room.id }}">
+          <i class="fas fa-clock"></i>
+          <span>Awaiting client signature</span>
+          <button onclick="copyRoomLink(this, '{{ room.share_token }}')" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">
+            <i class="fas fa-link me-1"></i>Copy room link
+          </button>
+        </div>
         {% endif %}
-        {% if room.images_used %}
-        <span class="badge bg-secondary confidence-badge ms-1">{{ room.images_used }} image(s)</span>
-        {% endif %}
-      </span>
-      <div>
-        <span class="small text-muted me-3" id="room-total-{{ room.id }}"></span>
-        <button class="btn btn-sm btn-outline-primary py-0 px-2"
-                onclick="addItemRow({{ room.id }})">
-          <i class="fas fa-plus"></i> Add Item
-        </button>
-        <button class="btn btn-sm btn-success py-0 px-2 ms-1"
-                onclick="saveRoom({{ room.id }})">
-          <i class="fas fa-save"></i> Save
-        </button>
+
+        <!-- Controls strip: room total (always visible) + action buttons -->
+        <div class="room-controls-strip">
+          <div>
+            <span class="text-muted small">Room Total</span>
+            <span class="room-total-display ms-2" id="room-rv-{{ room.id }}">—</span>
+          </div>
+          {% if room.ai_confidence %}
+          <span class="badge bg-{% if room.ai_confidence == 'high' %}success{% elif room.ai_confidence == 'medium' %}warning{% else %}danger{% endif %} confidence-badge">
+            AI: {{ room.ai_confidence }}
+          </span>
+          {% endif %}
+          {% if room.images_used %}
+          <span class="badge bg-secondary confidence-badge">{{ room.images_used }} img</span>
+          {% endif %}
+          <div class="ms-auto d-flex gap-1">
+            <button class="btn btn-sm btn-outline-primary py-0 px-2" onclick="addItemRow({{ room.id }})">
+              <i class="fas fa-plus"></i> Add Item
+            </button>
+            <button class="btn btn-sm btn-success py-0 px-2" onclick="saveRoom({{ room.id }})">
+              <i class="fas fa-save"></i> Save
+            </button>
+          </div>
+        </div>
+
+        <!-- Item table -->
+        <div class="table-responsive">
+          <table class="table table-sm table-bordered item-table mb-0" id="table-{{ room.id }}">
+            <thead>
+              <tr>
+                <th style="width:20px"></th>
+                <th style="width:28px">#</th>
+                <th>Description</th>
+                <th>Brand</th>
+                <th>Condition</th>
+                <th class="text-center" style="width:50px">QTY</th>
+                <th>Retailer</th>
+                <th class="text-end" style="width:90px">Purchase $</th>
+                <th class="text-center" style="width:55px">Age Y</th>
+                <th class="text-center" style="width:55px">Age M</th>
+                <th class="text-end rv-col" style="width:100px">Repl. Value</th>
+                <th style="width:50px"></th>
+              </tr>
+            </thead>
+            <tbody id="tbody-{{ room.id }}">
+              {% for item in room.items.all %}
+              <tr class="item-row" data-item-id="{{ item.id }}" draggable="true"{% if item.structural %} data-structural="true"{% endif %}>
+                <td class="text-center"><span class="drag-handle">⣿</span></td>
+                <td class="item-num"></td>
+                <td class="editable-cell" contenteditable="true">{{ item.description }}</td>
+                <td class="editable-cell" contenteditable="true">{{ item.brand }}</td>
+                <td>
+                  <select class="form-select form-select-sm p-0" style="font-size:.8rem">
+                    <option {% if item.condition == "Good" %}selected{% endif %}>Good</option>
+                    <option {% if item.condition == "Fair" %}selected{% endif %}>Fair</option>
+                    <option {% if item.condition == "Poor" %}selected{% endif %}>Poor</option>
+                  </select>
+                </td>
+                <td class="text-center editable-cell" contenteditable="true">{{ item.qty }}</td>
+                <td class="editable-cell" contenteditable="true">{{ item.retailer }}</td>
+                <td class="text-end editable-cell" contenteditable="true">{{ item.purchase_price_each|floatformat:2 }}</td>
+                <td class="text-center editable-cell" contenteditable="true">{{ item.age_years }}</td>
+                <td class="text-center editable-cell" contenteditable="true">{{ item.age_months }}</td>
+                <td class="text-end rv-col editable-cell" contenteditable="true">{{ item.replacement_value_each|floatformat:2 }}</td>
+                <td class="text-center" style="white-space:nowrap;">
+                  <button class="btn btn-link btn-sm p-0 text-secondary me-1" onclick="openMoveModal(this)" title="Move to another room">
+                    <i class="fas fa-share" style="font-size:.8em;"></i>
+                  </button>
+                  <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
+                    <i class="fas fa-times"></i>
+                  </button>
+                </td>
+              </tr>
+              <tr class="notes-row" data-item-id="{{ item.id }}">
+                <td colspan="12" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
+              </tr>
+              {% empty %}
+              <tr class="no-items-row">
+                <td colspan="12" class="text-center no-items-msg py-3">No items — click Add Item</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        <!-- Pagination bar (hidden when all items fit on one page) -->
+        <div class="room-pagination-bar" id="pagination-{{ room.id }}" style="display:none;">
+          <button class="btn btn-sm btn-outline-secondary py-0" id="prev-btn-{{ room.id }}"
+                  onclick="prevPage({{ room.id }})" disabled>
+            <i class="fas fa-chevron-left"></i> Prev
+          </button>
+          <span class="text-muted" id="page-info-{{ room.id }}"></span>
+          <button class="btn btn-sm btn-outline-secondary py-0" id="next-btn-{{ room.id }}"
+                  onclick="nextPage({{ room.id }})">
+            Next <i class="fas fa-chevron-right"></i>
+          </button>
+        </div>
+
+        <!-- Structural items (populated by JS) -->
+        <div id="structural-section-{{ room.id }}"></div>
+
       </div>
+      {% endfor %}
     </div>
-
-    <div class="table-responsive">
-      <table class="table table-sm table-bordered item-table mb-0" id="table-{{ room.id }}">
-        <thead>
-          <tr>
-            <th style="width:20px"></th>
-            <th style="width:28px">#</th>
-            <th>Description</th>
-            <th>Brand</th>
-            <th>Condition</th>
-            <th class="text-center" style="width:50px">QTY</th>
-            <th>Retailer</th>
-            <th class="text-end" style="width:90px">Purchase $</th>
-            <th class="text-center" style="width:55px">Age Y</th>
-            <th class="text-center" style="width:55px">Age M</th>
-            <th class="text-end rv-col" style="width:100px">Repl. Value</th>
-            <th style="width:50px"></th>
-          </tr>
-        </thead>
-        <tbody id="tbody-{{ room.id }}">
-          {% for item in room.items.all %}
-          <tr class="item-row" data-item-id="{{ item.id }}" draggable="true"{% if item.structural %} data-structural="true"{% endif %}>
-            <td class="text-center"><span class="drag-handle">⣿</span></td>
-            <td class="item-num"></td>
-            <td class="editable-cell" contenteditable="true">{{ item.description }}</td>
-            <td class="editable-cell" contenteditable="true">{{ item.brand }}</td>
-            <td>
-              <select class="form-select form-select-sm p-0" style="font-size:.8rem">
-                <option {% if item.condition == "Good" %}selected{% endif %}>Good</option>
-                <option {% if item.condition == "Fair" %}selected{% endif %}>Fair</option>
-                <option {% if item.condition == "Poor" %}selected{% endif %}>Poor</option>
-              </select>
-            </td>
-            <td class="text-center editable-cell" contenteditable="true">{{ item.qty }}</td>
-            <td class="editable-cell" contenteditable="true">{{ item.retailer }}</td>
-            <td class="text-end editable-cell" contenteditable="true">{{ item.purchase_price_each|floatformat:2 }}</td>
-            <td class="text-center editable-cell" contenteditable="true">{{ item.age_years }}</td>
-            <td class="text-center editable-cell" contenteditable="true">{{ item.age_months }}</td>
-            <td class="text-end rv-col editable-cell" contenteditable="true">{{ item.replacement_value_each|floatformat:2 }}</td>
-            <td class="text-center" style="white-space:nowrap;">
-              <button class="btn btn-link btn-sm p-0 text-secondary me-1" onclick="openMoveModal(this)" title="Move to another room">
-                <i class="fas fa-share" style="font-size:.8em;"></i>
-              </button>
-              <button class="btn btn-link btn-sm p-0 text-danger" onclick="removeRow(this)">
-                <i class="fas fa-times"></i>
-              </button>
-            </td>
-          </tr>
-          <tr class="notes-row" data-item-id="{{ item.id }}">
-            <td colspan="12" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
-          </tr>
-          {% empty %}
-          <tr class="no-items-row">
-            <td colspan="12" class="text-center no-items-msg py-3">No items — click Add Item</td>
-          </tr>
-          {% endfor %}
-        </tbody>
-        <tfoot>
-          <tr class="totals-row" id="totals-{{ room.id }}">
-            <td colspan="9" class="text-end small">Room Total:</td>
-            <td class="text-end rv-col" id="room-rv-{{ room.id }}">—</td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
-    </div>
-
-    <!-- Structural items section (populated by JS from data-structural attrs on rows) -->
-    <div id="structural-section-{{ room.id }}"></div>
-
-    <!-- Per-room signature status bar -->
-    {% if room.signature_name %}
-    <div class="sig-status-bar signed" id="sig-bar-{{ room.id }}">
-      <i class="fas fa-check-circle"></i>
-      <strong>Signed by {{ room.signature_name }}</strong>
-      <span class="text-muted" style="font-size:.78rem;">— {{ room.signed_at|date:"F j, Y \a\t g:i A" }}</span>
-      <button onclick="clearRoomSignature({{ room.id }}, '{{ room.room_number }} {{ room.room_name }}')"
-              class="btn btn-link btn-sm ms-auto text-danger p-0 small" title="Remove this signature">
-        <i class="fas fa-times me-1"></i>Remove signature
-      </button>
-    </div>
-    {% else %}
-    <div class="sig-status-bar unsigned" id="sig-bar-{{ room.id }}">
-      <i class="fas fa-clock"></i>
-      <span>Awaiting client signature</span>
-      <button onclick="copyRoomLink(this, '{{ room.share_token }}')" class="btn btn-link btn-sm ms-auto text-warning-emphasis p-0 small">
-        <i class="fas fa-link me-1"></i>Copy room link
-      </button>
-    </div>
-    {% endif %}
-
   </div>
-  {% empty %}
+  {% else %}
   <div class="alert alert-warning">No rooms found for this session.</div>
-  {% endfor %}
+  {% endif %}
 
 </div>
 
@@ -807,6 +867,10 @@ document.addEventListener('DOMContentLoaded', () => {
   }).then(r => r.json());
   const fmt = v => isNaN(v) ? '—' : '$' + parseFloat(v).toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
 
+  const ITEMS_PER_PAGE = 15;
+  const roomPages  = {};  // roomId (string) → current 1-based page
+  const roomInited = {};  // roomId (string) → boolean
+
   // ── Sequential numbering across ALL rooms ──────────────────────────────────
   function renumberItems() {
     let n = 1;
@@ -816,15 +880,14 @@ document.addEventListener('DOMContentLoaded', () => {
         tr.querySelector('.item-num').textContent = n++;
         tr.classList.toggle('even-item', even);
         const notesRow = tr.nextElementSibling;
-        if (notesRow && notesRow.classList.contains('notes-row')) {
+        if (notesRow && notesRow.classList.contains('notes-row'))
           notesRow.classList.toggle('even-item', even);
-        }
         even = !even;
       });
     });
   }
 
-  // ── Dirty-room tracking ─────────────────────────────────────────────────────
+  // ── Dirty-room tracking ────────────────────────────────────────────────────
   const dirtyRooms = new Set();
   function markRoomDirty(roomId) {
     dirtyRooms.add(String(roomId));
@@ -835,33 +898,29 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   }
 
-  // ── Read data from an item-row (12 columns: handle + # + 10 data + actions) ─
-  // col[0]=handle  col[1]=# col[2]=desc col[3]=brand col[4]=condition(select)
-  // col[5]=qty col[6]=retailer col[7]=purchase col[8]=ageY col[9]=ageM
-  // col[10]=rv col[11]=actions
+  // ── Read data from one item-row ────────────────────────────────────────────
   function getRowData(tr) {
     const cells  = tr.querySelectorAll('td');
     const condEl = cells[4].querySelector('select');
     const notesRow = tr.nextElementSibling;
     const notes = (notesRow && notesRow.classList.contains('notes-row'))
-      ? notesRow.querySelector('td').textContent.trim()
-      : '';
+      ? notesRow.querySelector('td').textContent.trim() : '';
     return {
       description:            cells[2].textContent.trim(),
       brand:                  cells[3].textContent.trim(),
       condition:              condEl ? condEl.value : cells[4].textContent.trim(),
-      qty:                    parseInt(cells[5].textContent.trim()) || 1,
+      qty:                    parseInt(cells[5].textContent.trim())   || 1,
       retailer:               cells[6].textContent.trim(),
       purchase_price_each:    parseFloat(cells[7].textContent.trim()) || 0,
-      age_years:              parseInt(cells[8].textContent.trim()) || 0,
-      age_months:             parseInt(cells[9].textContent.trim()) || 0,
+      age_years:              parseInt(cells[8].textContent.trim())   || 0,
+      age_months:             parseInt(cells[9].textContent.trim())   || 0,
       replacement_value_each: parseFloat(cells[10].textContent.trim()) || 0,
       notes,
       ai_suggested: false,
     };
   }
 
-  // ── Drag-and-drop reorder (within room) and move (across rooms) ────────────
+  // ── Drag-and-drop ──────────────────────────────────────────────────────────
   let dragSrcRow  = null;
   let dragSrcBody = null;
 
@@ -887,65 +946,103 @@ document.addEventListener('DOMContentLoaded', () => {
       const target = e.target.closest('tr.item-row');
       if (target && target !== dragSrcRow) target.classList.add('drag-over');
     });
-
     tbody.addEventListener('drop', e => {
       e.preventDefault();
       if (!dragSrcRow) return;
-
       const targetRow  = e.target.closest('tr.item-row');
       const targetBody = tbody;
       const notesRow   = dragSrcRow.nextElementSibling?.classList.contains('notes-row')
                          ? dragSrcRow.nextElementSibling : null;
-
       if (targetRow && targetRow !== dragSrcRow) {
-        const rect = targetRow.getBoundingClientRect();
+        const rect  = targetRow.getBoundingClientRect();
         const after = e.clientY > rect.top + rect.height / 2;
-        const ref = after
+        const ref   = after
           ? (targetRow.nextElementSibling?.classList.contains('notes-row')
              ? targetRow.nextElementSibling.nextSibling : targetRow.nextSibling)
           : targetRow;
         targetBody.insertBefore(dragSrcRow, ref);
       } else {
-        // Dropped on empty area of target tbody
         targetBody.appendChild(dragSrcRow);
       }
       if (notesRow) dragSrcRow.after(notesRow);
-
-      // Remove placeholder in target if present
       targetBody.querySelector('.no-items-row')?.remove();
 
       const srcId = dragSrcBody.id.replace('tbody-', '');
       const tgtId = targetBody.id.replace('tbody-', '');
       markRoomDirty(srcId);
       if (srcId !== tgtId) markRoomDirty(tgtId);
-
       renumberItems();
       calcTotals(parseInt(srcId));
       if (srcId !== tgtId) calcTotals(parseInt(tgtId));
       calcGrandTotals();
-
-      dragSrcRow  = null;
-      dragSrcBody = null;
+      renderPage(srcId, roomPages[srcId] || 1);
+      if (srcId !== tgtId) renderPage(tgtId, roomPages[tgtId] || 1);
+      dragSrcRow = null; dragSrcBody = null;
     });
   }
 
-  // Initialise drag on all existing rows and tbodies
-  document.querySelectorAll('tr.item-row').forEach(initDragRow);
-  document.querySelectorAll('[id^="tbody-"]').forEach(initTbodyDrop);
+  // ── Lazy-init a room (attach drag + input listeners, render page 1) ────────
+  function initRoom(roomId) {
+    roomId = String(roomId);
+    if (roomInited[roomId]) return;
+    roomInited[roomId] = true;
+    const tbody = document.getElementById(`tbody-${roomId}`);
+    if (!tbody) return;
+    tbody.querySelectorAll('tr.item-row').forEach(initDragRow);
+    initTbodyDrop(tbody);
+    tbody.addEventListener('input', () => {
+      calcTotals(parseInt(roomId));
+      calcGrandTotals();
+    });
+    calcTotals(parseInt(roomId));
+    renderPage(roomId, 1);
+  }
 
-  // ── Move-Item Modal ─────────────────────────────────────────────────────────
+  // ── Pagination ─────────────────────────────────────────────────────────────
+  function renderPage(roomId, page) {
+    roomId = String(roomId);
+    const tbody = document.getElementById(`tbody-${roomId}`);
+    if (!tbody) return;
+    // Skip structural rows — they are permanently hidden by the structural-section JS
+    const rows = [...tbody.querySelectorAll('tr.item-row')]
+                   .filter(tr => !tr.getAttribute('data-structural'));
+    const total      = rows.length;
+    const totalPages = Math.max(1, Math.ceil(total / ITEMS_PER_PAGE));
+    page = Math.max(1, Math.min(page, totalPages));
+    roomPages[roomId] = page;
+    const start = (page - 1) * ITEMS_PER_PAGE;
+    const end   = start + ITEMS_PER_PAGE;
+    rows.forEach((tr, i) => {
+      const show = i >= start && i < end;
+      tr.style.display = show ? '' : 'none';
+      const next = tr.nextElementSibling;
+      if (next && next.classList.contains('notes-row')) next.style.display = show ? '' : 'none';
+    });
+    const infoEl  = document.getElementById(`page-info-${roomId}`);
+    const prevBtn = document.getElementById(`prev-btn-${roomId}`);
+    const nextBtn = document.getElementById(`next-btn-${roomId}`);
+    const bar     = document.getElementById(`pagination-${roomId}`);
+    if (infoEl)  infoEl.textContent = `Page ${page} of ${totalPages}  ·  ${total} items`;
+    if (prevBtn) prevBtn.disabled   = page <= 1;
+    if (nextBtn) nextBtn.disabled   = page >= totalPages;
+    if (bar)     bar.style.display  = totalPages > 1 ? '' : 'none';
+  }
+
+  window.prevPage = roomId => renderPage(roomId, (roomPages[String(roomId)] || 1) - 1);
+  window.nextPage = roomId => renderPage(roomId, (roomPages[String(roomId)] || 1) + 1);
+
+  // ── Move-Item Modal ────────────────────────────────────────────────────────
   let moveSourceRow    = null;
   let moveSourceRoomId = null;
 
   window.openMoveModal = function(btn) {
-    const tr   = btn.closest('tr.item-row');
+    const tr = btn.closest('tr.item-row');
     moveSourceRow    = tr;
     moveSourceRoomId = String(tr.closest('tbody').id.replace('tbody-', ''));
-
     document.querySelectorAll('.move-room-btn').forEach(b => {
-      const isCurrentRoom = b.dataset.roomId === moveSourceRoomId;
-      b.disabled = isCurrentRoom;
-      b.classList.toggle('text-muted', isCurrentRoom);
+      const same = b.dataset.roomId === moveSourceRoomId;
+      b.disabled = same;
+      b.classList.toggle('text-muted', same);
       b.classList.toggle('active', false);
     });
     new bootstrap.Modal(document.getElementById('moveItemModal')).show();
@@ -956,81 +1053,68 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!moveSourceRow || btn.disabled) return;
       const targetRoomId = btn.dataset.roomId;
       const targetTbody  = document.getElementById(`tbody-${targetRoomId}`);
-
       const notesRow = moveSourceRow.nextElementSibling?.classList.contains('notes-row')
                        ? moveSourceRow.nextElementSibling : null;
       targetTbody.appendChild(moveSourceRow);
       if (notesRow) targetTbody.appendChild(notesRow);
       targetTbody.querySelector('.no-items-row')?.remove();
-
+      initRoom(targetRoomId);  // ensure target room has listeners
       markRoomDirty(moveSourceRoomId);
       markRoomDirty(targetRoomId);
       renumberItems();
       calcTotals(parseInt(moveSourceRoomId));
       calcTotals(parseInt(targetRoomId));
       calcGrandTotals();
-
+      renderPage(moveSourceRoomId, roomPages[moveSourceRoomId] || 1);
+      renderPage(targetRoomId, roomPages[targetRoomId] || 1);
       bootstrap.Modal.getInstance(document.getElementById('moveItemModal')).hide();
-      moveSourceRow    = null;
-      moveSourceRoomId = null;
+      moveSourceRow = null; moveSourceRoomId = null;
     });
   });
 
+  // ── Totals ─────────────────────────────────────────────────────────────────
   function calcTotals(roomId) {
     const tbody = document.getElementById(`tbody-${roomId}`);
     let rvTotal = 0;
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
       const cells = tr.querySelectorAll('td');
       if (cells.length < 11) return;
-      const rv  = parseFloat(cells[10].textContent) || 0;  // col index 10 = Repl. Value
-      const qty = parseInt(cells[5].textContent)    || 1;  // col index 5  = QTY
-      rvTotal += rv * qty;
+      rvTotal += (parseFloat(cells[10].textContent) || 0) * (parseInt(cells[5].textContent) || 1);
     });
-    const rvEl = document.getElementById(`room-rv-${roomId}`);
-    if (rvEl) rvEl.textContent = fmt(rvTotal);
+    const el = document.getElementById(`room-rv-${roomId}`);
+    if (el) el.textContent = fmt(rvTotal);
     return { rv: rvTotal };
   }
 
   function calcGrandTotals() {
     let grandRv = 0;
     document.querySelectorAll('[id^="room-rv-"]').forEach(el => {
-      const roomId = el.id.replace('room-rv-', '');
-      const { rv } = calcTotals(parseInt(roomId));
-      grandRv += rv;
+      grandRv += calcTotals(parseInt(el.id.replace('room-rv-', ''))).rv;
     });
     document.getElementById('gt-rv').textContent = fmt(grandRv);
   }
 
-  // Recalculate on any edit (input fires on contenteditable changes)
-  document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
-    tbody.addEventListener('input', () => {
-      const roomId = tbody.id.replace('tbody-', '');
-      calcTotals(parseInt(roomId));
-      calcGrandTotals();
-    });
-  });
-
+  // ── Row actions ────────────────────────────────────────────────────────────
   window.removeRow = function(btn) {
     const tr     = btn.closest('tr');
     const tbody  = tr.closest('tbody');
     const roomId = tbody.id.replace('tbody-', '');
-    const notesRow = tr.nextElementSibling;
-    if (notesRow && notesRow.classList.contains('notes-row')) notesRow.remove();
+    const next   = tr.nextElementSibling;
+    if (next && next.classList.contains('notes-row')) next.remove();
     tr.remove();
     markRoomDirty(roomId);
     calcTotals(parseInt(roomId));
     calcGrandTotals();
     renumberItems();
+    const remaining = [...tbody.querySelectorAll('tr.item-row')].filter(r => !r.dataset.structural).length;
+    renderPage(roomId, Math.min(roomPages[roomId] || 1, Math.max(1, Math.ceil(remaining / ITEMS_PER_PAGE))));
   };
 
   window.addItemRow = function(roomId) {
-    const tbody       = document.getElementById(`tbody-${roomId}`);
-    const placeholder = tbody.querySelector('.no-items-row');
-    if (placeholder) placeholder.remove();
-
-    const tr       = document.createElement('tr');
-    tr.className   = 'item-row';
-    tr.setAttribute('draggable', 'true');
+    const tbody = document.getElementById(`tbody-${roomId}`);
+    tbody.querySelector('.no-items-row')?.remove();
+    const tr = document.createElement('tr');
+    tr.className = 'item-row';
     tr.innerHTML = `
       <td class="text-center"><span class="drag-handle">⣿</span></td>
       <td class="item-num"></td>
@@ -1053,30 +1137,31 @@ document.addEventListener('DOMContentLoaded', () => {
           <i class="fas fa-times"></i>
         </button>
       </td>`;
-
-    const notesRow     = document.createElement('tr');
+    const notesRow = document.createElement('tr');
     notesRow.className = 'notes-row';
     notesRow.innerHTML = `<td colspan="12" class="editable-cell" contenteditable="true"></td>`;
-
     tbody.appendChild(tr);
     tbody.appendChild(notesRow);
-    initDragRow(tr);   // wire up drag events for newly created row
+    initDragRow(tr);
     markRoomDirty(roomId);
     renumberItems();
+    // Jump to last page so the new row is visible
+    const count    = [...tbody.querySelectorAll('tr.item-row')].filter(r => !r.dataset.structural).length;
+    const lastPage = Math.max(1, Math.ceil(count / ITEMS_PER_PAGE));
+    renderPage(roomId, lastPage);
     tr.querySelectorAll('[contenteditable]')[0].focus();
   };
 
   window.saveRoom = async function(roomId) {
     const tbody = document.getElementById(`tbody-${roomId}`);
     const items = [];
+    // Collect ALL rows regardless of pagination visibility
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
       if (tr.querySelectorAll('td').length >= 11) items.push(getRowData(tr));
     });
-
     const btn = event.target.closest('button');
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
-    btn.disabled = true;
-
+    btn.disabled  = true;
     try {
       const data = await post('{% url "cps_api_save_room" %}', { room_id: roomId, items });
       if (data.success) {
@@ -1101,12 +1186,21 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   };
 
-  // Initial render
-  document.querySelectorAll('[id^="tbody-"]').forEach(tbody => {
-    calcTotals(parseInt(tbody.id.replace('tbody-', '')));
+  // ── Bootstrap tab: lazy-init room on first activation ─────────────────────
+  document.querySelectorAll('#roomTabs button[data-bs-toggle="tab"]').forEach(btn => {
+    btn.addEventListener('shown.bs.tab', e => {
+      const panel = document.querySelector(e.target.getAttribute('data-bs-target'));
+      if (panel) initRoom(panel.dataset.roomId);
+    });
   });
-  calcGrandTotals();
-  renumberItems();
+
+  // ── Startup: init first tab only, compute grand total ─────────────────────
+  document.addEventListener('DOMContentLoaded', () => {
+    const first = document.querySelector('.tab-pane.active[data-room-id]');
+    if (first) initRoom(first.dataset.roomId);
+    calcGrandTotals();
+    renumberItems();
+  });
 })();
 
 const SHARE_URL = "{{ share_url }}";
@@ -1124,7 +1218,7 @@ async function clearRoomSignature(roomId, roomLabel) {
       // Update the per-room status bar
       const bar = document.getElementById(`sig-bar-${roomId}`);
       if (bar) {
-        const section = document.getElementById(`room-section-${roomId}`);
+        const section = document.getElementById(`tab-panel-${roomId}`);
         const roomToken = section ? section.dataset.roomToken : '';
         bar.className = 'sig-status-bar unsigned';
         bar.innerHTML = '<i class="fas fa-clock"></i><span>Awaiting client signature</span>'
