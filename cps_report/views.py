@@ -129,11 +129,14 @@ def session_view(request, session_id):
         .prefetch_related('rooms')
         .order_by('-created_at')
     )
+    from django.core.files.storage import default_storage
+    photo_pdf_ready = default_storage.exists(f'cps_photo_pdfs/{session.id}.pdf')
     return render(request, 'cps_report/session.html', {
         'session': session,
         'rooms': rooms,
         'share_url': share_url,
         'other_sessions': other_sessions,
+        'photo_pdf_ready': photo_pdf_ready,
     })
 
 
@@ -536,6 +539,15 @@ def regenerate_photo_pdf(request, session_id):
     from .tasks import regenerate_photo_pdf_task
     regenerate_photo_pdf_task.delay(session_id)
     return JsonResponse({'queued': True, 'session_id': session_id})
+
+
+@login_required
+def photo_pdf_status_api(request, session_id):
+    """Lightweight check — does the pre-built photo PDF file exist in storage?"""
+    get_object_or_404(CPSReportSession, id=session_id)
+    from django.core.files.storage import default_storage
+    ready = default_storage.exists(f'cps_photo_pdfs/{session_id}.pdf')
+    return JsonResponse({'ready': ready, 'session_id': session_id})
 
 
 @login_required

@@ -188,58 +188,72 @@
 
   <!-- Report Header -->
   <div class="card shadow-sm mb-3">
-    <div class="card-body py-2">
-      <div class="row align-items-center">
-        <div class="col-md-8">
+    <div class="card-body py-2 px-3">
+      <!-- Name + metadata row -->
+      <div class="d-flex justify-content-between align-items-start">
+        <div>
           <h5 class="mb-0">{{ session.insured_name }}</h5>
           <div class="text-muted small">
-            Claim #: {{ session.claim_number|default:"—" }} &nbsp;|&nbsp;
-            Encircle: {{ session.encircle_claim_id }} &nbsp;|&nbsp;
-            Loss Type: {{ session.loss_type|default:"—" }} &nbsp;|&nbsp;
-            Date: {{ session.updated_at|date:"M d, Y" }}
+            Claim&nbsp;#{{ session.claim_number|default:"—" }} &nbsp;·&nbsp;
+            Encircle&nbsp;{{ session.encircle_claim_id }} &nbsp;·&nbsp;
+            {{ session.loss_type|default:"—" }} &nbsp;·&nbsp;
+            {{ session.updated_at|date:"M d, Y" }}
+            {% if session.pricing_mode == 'premium' %}
+            &nbsp;·&nbsp;<span class="badge bg-warning text-dark" style="font-size:.72rem;">Premium Pricing</span>
+            {% endif %}
           </div>
         </div>
-        <div class="col-md-4 text-end">
-          <a href="{% url 'cps_report_summary' session.id %}" class="btn btn-outline-info btn-sm me-1">
-            <i class="fas fa-table me-1"></i> Summary
-          </a>
-          {% if session.pricing_mode == 'premium' %}
-          <a href="{% url 'cps_pricing_audit' session.id %}" class="btn btn-outline-warning btn-sm me-1">
-            <i class="fas fa-chart-bar me-1"></i> Pricing Audit
-          </a>
-          {% endif %}
-          <a href="{% url 'cps_report_export_pdf' session.id %}" class="btn btn-danger btn-sm me-1">
-            <i class="fas fa-file-pdf me-1"></i> PDF
-          </a>
-          <a href="{% url 'cps_report_export_photo_pdf' session.id %}" class="btn btn-warning btn-sm me-1" title="Photo Evidence PDF — image grid with matching item numbers">
-            <i class="fas fa-images me-1"></i> Photo PDF
-          </a>
-          <button type="button"
-                  class="btn btn-outline-warning btn-sm me-1"
-                  title="Queue a background rebuild of the Photo PDF (use if download shows 503 or after a large re-run)"
-                  onclick="regeneratePhotoPdf({{ session.id }}, this)">
-            <i class="fas fa-rotate me-1"></i> Regen Photo PDF
-          </button>
-          <a href="{% url 'cps_report_export' session.id %}" class="btn btn-success btn-sm me-1">
-            <i class="fas fa-file-excel me-1"></i> Excel
-          </a>
-          <button class="btn btn-outline-primary btn-sm me-1" onclick="copyShareLink(this)" title="Copy client signature link">
-            <i class="fas fa-link me-1"></i> Share Link
-          </button>
-          {% if session.status == 'processing' %}
-          <button class="btn btn-outline-danger btn-sm me-1" onclick="cancelSession()" id="cancelBtn">
-            <i class="fas fa-stop me-1"></i> Cancel Report
-          </button>
+        <a href="{% url 'cps_report_home' %}" class="btn btn-sm btn-outline-secondary ms-3 flex-shrink-0">
+          <i class="fas fa-arrow-left me-1"></i> Back
+        </a>
+      </div>
+      <!-- Action toolbar -->
+      <div class="d-flex align-items-center flex-wrap gap-1 mt-2 pt-2 border-top">
+        <!-- View / analysis -->
+        <a href="{% url 'cps_report_summary' session.id %}" class="btn btn-sm btn-outline-info">
+          <i class="fas fa-table me-1"></i> Summary
+        </a>
+        {% if session.pricing_mode == 'premium' %}
+        <a href="{% url 'cps_pricing_audit' session.id %}" class="btn btn-sm btn-outline-secondary">
+          <i class="fas fa-chart-bar me-1"></i> Pricing Audit
+        </a>
+        {% endif %}
+
+        <div class="vr mx-1"></div>
+
+        <!-- Exports -->
+        <a href="{% url 'cps_report_export_pdf' session.id %}" class="btn btn-sm btn-danger">
+          <i class="fas fa-file-pdf me-1"></i> Schedule of Loss
+        </a>
+        <button id="photoPdfBtn"
+                class="btn btn-sm {% if photo_pdf_ready %}btn-warning{% else %}btn-outline-warning{% endif %}"
+                onclick="handlePhotoPdf(this)">
+          {% if photo_pdf_ready %}
+          <i class="fas fa-images me-1"></i> Photo PDF
           {% else %}
-          <button class="btn btn-outline-warning btn-sm me-1" id="rerunBtn"
-                  data-bs-toggle="modal" data-bs-target="#rerunModal">
-            <i class="fas fa-rotate-right me-1"></i> Re-run Report
-          </button>
+          <i class="fas fa-clock me-1"></i> Photo PDF&nbsp;<span style="font-size:.75em;opacity:.8;">(building…)</span>
           {% endif %}
-          <a href="{% url 'cps_report_home' %}" class="btn btn-outline-secondary btn-sm">
-            <i class="fas fa-arrow-left me-1"></i> Back
-          </a>
-        </div>
+        </button>
+        <a href="{% url 'cps_report_export' session.id %}" class="btn btn-sm btn-success">
+          <i class="fas fa-file-excel me-1"></i> Excel
+        </a>
+
+        <div class="vr mx-1"></div>
+
+        <!-- Actions -->
+        <button class="btn btn-sm btn-outline-primary" onclick="copyShareLink(this)">
+          <i class="fas fa-link me-1"></i> Share Link
+        </button>
+        {% if session.status == 'processing' %}
+        <button class="btn btn-sm btn-outline-danger" onclick="cancelSession()" id="cancelBtn">
+          <i class="fas fa-stop me-1"></i> Cancel
+        </button>
+        {% else %}
+        <button class="btn btn-sm btn-outline-warning" id="rerunBtn"
+                data-bs-toggle="modal" data-bs-target="#rerunModal">
+          <i class="fas fa-rotate-right me-1"></i> Re-run
+        </button>
+        {% endif %}
       </div>
     </div>
   </div>
@@ -1400,29 +1414,62 @@ async function cancelSession() {
   else { btn.disabled = false; btn.innerHTML = '<i class="fas fa-stop me-1"></i> Cancel Report'; alert('Could not cancel.'); }
 }
 
-async function regeneratePhotoPdf(sessionId, btn) {
-  if (!confirm('Queue a background rebuild of the Photo PDF?\n\nThis uses the exact images already stored from the AI analysis — no re-analysis needed. The download button will serve the new file once Celery finishes (typically 1–3 minutes for large claims).')) return;
-  const orig = btn.innerHTML;
-  btn.disabled = true;
-  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Queuing…';
-  try {
-    const res = await fetch(`/cps-report/session/${sessionId}/regenerate-photo-pdf/`, {
-      method: 'POST',
-      headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
-    });
-    const data = await res.json();
-    if (data.queued) {
-      btn.innerHTML = '<i class="fas fa-check me-1"></i> Queued';
-      setTimeout(() => { btn.disabled = false; btn.innerHTML = orig; }, 5000);
-    } else {
-      throw new Error(data.error || 'Unknown error');
-    }
-  } catch (e) {
-    btn.disabled = false;
-    btn.innerHTML = orig;
-    alert('Could not queue rebuild: ' + e.message);
-  }
+const PHOTO_PDF_READY = {% if photo_pdf_ready %}true{% else %}false{% endif %};
+const PHOTO_PDF_URL   = "{% url 'cps_report_export_photo_pdf' session.id %}";
+const PHOTO_PDF_STATUS_URL = "{% url 'cps_photo_pdf_status' session.id %}";
+let _photoPdfPollTimer = null;
+
+async function _queuePhotoPdfRegen() {
+  await fetch(`/cps-report/session/${SESSION_ID}/regenerate-photo-pdf/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '' },
+  }).catch(() => {});
 }
+
+function _startPhotoPdfPoll(btn) {
+  if (_photoPdfPollTimer) return;
+  let attempts = 0;
+  _photoPdfPollTimer = setInterval(async () => {
+    attempts++;
+    try {
+      const r = await fetch(PHOTO_PDF_STATUS_URL);
+      const d = await r.json();
+      if (d.ready) {
+        clearInterval(_photoPdfPollTimer); _photoPdfPollTimer = null;
+        btn.className = btn.className.replace('btn-outline-warning', 'btn-warning');
+        btn.innerHTML = '<i class="fas fa-images me-1"></i> Photo PDF';
+        btn.disabled = false;
+        window.location.href = PHOTO_PDF_URL;
+      }
+    } catch (_) {}
+    if (attempts >= 24) { // 8 min max
+      clearInterval(_photoPdfPollTimer); _photoPdfPollTimer = null;
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-images me-1"></i> Photo PDF (retry)';
+    }
+  }, 20000);
+}
+
+async function handlePhotoPdf(btn) {
+  if (PHOTO_PDF_READY) {
+    window.location.href = PHOTO_PDF_URL;
+    return;
+  }
+  // File not ready — queue regen and start polling
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Queueing…';
+  await _queuePhotoPdfRegen();
+  btn.innerHTML = '<i class="fas fa-clock me-1"></i> Building PDF… <span style="font-size:.75em;opacity:.8;">(auto-downloads when ready)</span>';
+  _startPhotoPdfPoll(btn);
+}
+
+// Auto-start polling on load if PDF isn't ready yet (large claim after re-run)
+document.addEventListener('DOMContentLoaded', () => {
+  if (!PHOTO_PDF_READY) {
+    const btn = document.getElementById('photoPdfBtn');
+    if (btn) _startPhotoPdfPoll(btn);
+  }
+});
 
 async function rerunSession() {
   const modal = bootstrap.Modal.getInstance(document.getElementById('rerunModal'));
