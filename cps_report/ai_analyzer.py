@@ -433,10 +433,14 @@ def _call_claude_with_images(
         system_prompt = _SYSTEM_PROMPT
         user_prompt = _USER_PROMPT
 
-    content = list(image_content_blocks) + [{
-        "type": "text",
-        "text": user_prompt.format(room_name=room_name),
-    }]
+    # Interleave "[Image N]" text labels before each image block so Claude's
+    # source_image_indices references are unambiguous — without labels Claude
+    # sometimes returns the index of the *next* image causing a +1 offset.
+    content = []
+    for idx, block in enumerate(image_content_blocks, 1):
+        content.append({"type": "text", "text": f"[Image {idx}]"})
+        content.append(block)
+    content.append({"type": "text", "text": user_prompt.format(room_name=room_name)})
     response = client.messages.create(
         model=_CPS_MODEL,
         max_tokens=8192,
@@ -668,7 +672,9 @@ def analyze_room_for_ppr(
         "confidence": final_confidence,
         "room_summary": " | ".join(summaries),
         "images_used": images_used,
-        "analyzed_urls": urls,
+        # Use downloaded_urls (not urls) so the stored list matches exactly what
+        # Claude received — failed downloads shift indices and cause photo-attribution offset.
+        "analyzed_urls": downloaded_urls,
         "input_tokens": total_input_tokens,
         "output_tokens": total_output_tokens,
         "error": last_error,
