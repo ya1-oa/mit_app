@@ -292,12 +292,18 @@ def build_photo_pdf(session, prefetched_media: list[dict] | None = None) -> byte
         global_item_num += len(items)
         last_n  = global_item_num - 1
 
-        # Prefer the stored analyzed URLs (exact images Claude used) over
-        # re-filtering the full media list.  Stored URLs are already deduplicated.
-        # Fall back to filter_room_images only for reports run before this change.
+        # Prefer the stored analyzed URLs (exact images Claude used).
+        # If the room was analyzed (status=complete) trust the stored list even
+        # when it is empty — that means Encircle had no images for that room.
+        # Only fall back to filter_room_images for pre-migration rooms that
+        # were never analyzed (analyzed_image_urls is an empty list by default).
         if room.analyzed_image_urls:
             room_urls = room.analyzed_image_urls
             url_source = 'stored'
+        elif getattr(room, 'status', None) == 'complete':
+            # Analyzed, no images found in Encircle for this room — skip fallback
+            room_urls = []
+            url_source = 'none_found'
         else:
             room_urls = filter_room_images(all_media, room.room_number) if all_media else []
             url_source = 'filtered'

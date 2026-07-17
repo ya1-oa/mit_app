@@ -238,23 +238,16 @@ def process_cps_session_task(self, session_id):
     from .views import _auto_generate_summary
     _auto_generate_summary(session)
 
-    # Auto-generate photo PDF using the already-fetched Encircle media
-    log("Generating photo evidence PDF…")
+    # Queue photo PDF as a separate Celery task so it runs in a fresh worker
+    # with its own memory budget — building the PDF inline exhausted memory on
+    # large claims (28+ rooms, 200+ image downloads) and failed silently.
+    log("Queuing photo evidence PDF (builds in background)…")
     try:
-        from .photo_pdf_builder import build_photo_pdf
-        from django.core.files.base import ContentFile
-        from django.core.files.storage import default_storage
-        _session_for_pdf = CPSReportSession.objects.select_related('client').get(id=session_id)
-        _pdf_bytes = build_photo_pdf(_session_for_pdf, prefetched_media=all_claim_media)
-        _pdf_path = f'cps_photo_pdfs/{session_id}.pdf'
-        if default_storage.exists(_pdf_path):
-            default_storage.delete(_pdf_path)
-        default_storage.save(_pdf_path, ContentFile(_pdf_bytes))
-        logger.info(f"PPR task: photo PDF saved ({len(_pdf_bytes):,} bytes) → {_pdf_path}")
-        log(f"Photo PDF generated ({len(_pdf_bytes) // 1024:,} KB)")
-    except Exception as _pdf_err:
-        logger.warning(f"PPR task: photo PDF generation failed: {_pdf_err}", exc_info=True)
-        log(f"Photo PDF skipped: {_pdf_err}")
+        regenerate_photo_pdf_task.delay(session_id)
+        log("Photo PDF queued — available for download once built (typically 2–5 min).")
+    except Exception as _queue_err:
+        logger.warning(f"PPR task: could not queue photo PDF task: {_queue_err}")
+        log(f"Photo PDF queue failed: {_queue_err}")
 
     log("Done. Report ready for download.")
 
@@ -301,7 +294,8 @@ def regenerate_photo_pdf_task(self, session_id: int):
         logger.error('regenerate_photo_pdf_task: session %s not found', session_id)
         return
 
-    logger.info(f"regenerate_photo_pdf_task: rebuilding photo PDF for session {session_id}")
+    room_count = session.rooms.count()
+    logger.info(f"regenerate_photo_pdf_task: rebuilding photo PDF for session {session_id} ({room_count} rooms)")
 
     try:
         pdf_bytes = build_photo_pdf(session)
@@ -310,8 +304,11 @@ def regenerate_photo_pdf_task(self, session_id: int):
             default_storage.delete(_pdf_path)
         default_storage.save(_pdf_path, ContentFile(pdf_bytes))
         logger.info(
-            f"regenerate_photo_pdf_task: saved {len(pdf_bytes):,} bytes → {_pdf_path}"
+            f"regenerate_photo_pdf_task: DONE — saved {len(pdf_bytes):,} bytes → {_pdf_path}"
         )
     except Exception as exc:
-        logger.error(f"regenerate_photo_pdf_task: failed for session {session_id}: {exc}", exc_info=True)
+        logger.error(
+            f"regenerate_photo_pdf_task: FAILED for session {session_id} ({room_count} rooms): {exc}",
+            exc_info=True,
+        )
         raise self.retry(exc=exc)
