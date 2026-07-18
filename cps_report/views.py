@@ -377,6 +377,7 @@ def api_save_room_items(request):
                 notes=str(item_dict.get('notes', ''))[:500],
                 ai_suggested=bool(item_dict.get('ai_suggested', True)),
                 structural=bool(item_dict.get('structural', False)),
+                source_image_urls=list(item_dict.get('source_image_urls', []) or []),
             )
 
         room.status = 'complete'

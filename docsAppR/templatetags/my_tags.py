@@ -1,6 +1,16 @@
+import json as _json
+
 from django import template
 
 register = template.Library()
+
+
+@register.filter(name='jsonify')
+def jsonify_filter(value):
+    """Serialize a Python value to a JSON string (safe for HTML attribute use with escape)."""
+    if value is None:
+        return '[]'
+    return _json.dumps(value)
 
 
 @register.filter(name='multiply')

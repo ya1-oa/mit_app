@@ -1,5 +1,5 @@
 {% extends "account/base.html" %}
-{% load static humanize %}
+{% load static humanize my_tags %}
 
 {% block title %}PPR Report — {{ session.insured_name }}{% endblock %}
 {% block page_title %}<i class="fas fa-file-invoice-dollar"></i> PPR Report — {{ session.insured_name }}{% endblock %}
@@ -51,6 +51,17 @@
     background: #fafafa;
   }
   .notes-row td:focus { font-style: normal; }
+  .photos-row td {
+    padding: 3px 8px 5px 44px !important;
+    border-top: none !important;
+    background: #eef4ff;
+  }
+  .photo-thumb {
+    width: 52px; height: 52px; object-fit: cover;
+    border-radius: 3px; border: 1px solid #c7d7f0;
+    cursor: zoom-in; transition: transform .12s;
+  }
+  .photo-thumb:hover { transform: scale(1.08); }
   .editable-cell { cursor: pointer; }
   .editable-cell:hover { background: #fff8c4 !important; }
   .inline-edit { width: 100%; min-width: 80px; font-size: .82rem; padding: 1px 4px; }
@@ -463,7 +474,9 @@
             </thead>
             <tbody id="tbody-{{ room.id }}">
               {% for item in room.items.all %}
-              <tr class="item-row" data-item-id="{{ item.id }}" draggable="true"{% if item.structural %} data-structural="true"{% endif %}>
+              <tr class="item-row" data-item-id="{{ item.id }}" draggable="true"
+                  data-source-urls="{{ item.source_image_urls|jsonify|escape }}"
+                  {% if item.structural %} data-structural="true"{% endif %}>
                 <td class="text-center"><span class="drag-handle">⣿</span></td>
                 <td class="item-num"></td>
                 <td class="editable-cell" contenteditable="true">{{ item.description }}</td>
@@ -493,6 +506,20 @@
               <tr class="notes-row" data-item-id="{{ item.id }}">
                 <td colspan="12" class="editable-cell" contenteditable="true">{{ item.notes }}</td>
               </tr>
+              {% if item.source_image_urls %}
+              <tr class="photos-row" data-item-id="{{ item.id }}">
+                <td colspan="12">
+                  <div class="d-flex flex-wrap align-items-center gap-1">
+                    <span class="text-muted me-1" style="font-size:.68rem;"><i class="fas fa-camera"></i> Photos:</span>
+                    {% for url in item.source_image_urls %}
+                    <a href="{{ url }}" target="_blank" rel="noopener noreferrer" title="Photo {{ forloop.counter }}">
+                      <img src="{{ url }}" class="photo-thumb" loading="lazy" alt="Photo {{ forloop.counter }}">
+                    </a>
+                    {% endfor %}
+                  </div>
+                </td>
+              </tr>
+              {% endif %}
               {% empty %}
               <tr class="no-items-row">
                 <td colspan="12" class="text-center no-items-msg py-3">No items — click Add Item</td>
@@ -610,9 +637,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const structRows = [];
 
     tbody.querySelectorAll('tr.item-row[data-structural="true"]').forEach(tr => {
-      const notesRow = tr.nextElementSibling?.classList.contains('notes-row')
-                       ? tr.nextElementSibling : null;
-      structRows.push({ tr, notesRow });
+      const n1 = tr.nextElementSibling;
+      const notesRow  = n1?.classList.contains('notes-row')  ? n1 : null;
+      const n2 = notesRow?.nextElementSibling;
+      const photosRow = n2?.classList.contains('photos-row') ? n2 : null;
+      structRows.push({ tr, notesRow, photosRow });
     });
 
     if (!structRows.length) return;
@@ -646,7 +675,7 @@ document.addEventListener('DOMContentLoaded', () => {
       </div>`;
 
     const structTbody = details.querySelector(`#struct-tbody-${roomId}`);
-    structRows.forEach(({ tr, notesRow }, i) => {
+    structRows.forEach(({ tr, notesRow, photosRow }, i) => {
       const cells = tr.querySelectorAll('td');
       const miniRow = document.createElement('tr');
       miniRow.innerHTML = `
@@ -670,7 +699,8 @@ document.addEventListener('DOMContentLoaded', () => {
         // Restore the original row to the main table as a regular item
         tr.removeAttribute('data-structural');
         tr.style.display = '';
-        if (notesRow) notesRow.style.display = '';
+        if (notesRow)  notesRow.style.display = '';
+        if (photosRow) photosRow.style.display = '';
         miniRow.remove();
         if (!structTbody.querySelector('tr')) details.remove();
         markRoomDirty(roomId);
@@ -682,7 +712,8 @@ document.addEventListener('DOMContentLoaded', () => {
       deleteBtn.addEventListener('click', () => {
         // Remove both the mini-row and the original hidden row from the DOM
         tr.remove();
-        if (notesRow) notesRow.remove();
+        if (notesRow)  notesRow.remove();
+        if (photosRow) photosRow.remove();
         miniRow.remove();
         if (!structTbody.querySelector('tr')) details.remove();
         markRoomDirty(roomId);
@@ -694,7 +725,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       // Hide the original rows from the main table
       tr.style.display = 'none';
-      if (notesRow) notesRow.style.display = 'none';
+      if (notesRow)  notesRow.style.display = 'none';
+      if (photosRow) photosRow.style.display = 'none';
     });
 
     wrapper.appendChild(details);
@@ -1006,6 +1038,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const notesRow = tr.nextElementSibling;
     const notes = (notesRow && notesRow.classList.contains('notes-row'))
       ? notesRow.querySelector('td').textContent.trim() : '';
+    let sourceUrls = [];
+    try { sourceUrls = JSON.parse(tr.dataset.sourceUrls || '[]'); } catch (_) {}
     return {
       description:            cells[2].textContent.trim(),
       brand:                  cells[3].textContent.trim(),
@@ -1018,6 +1052,7 @@ document.addEventListener('DOMContentLoaded', () => {
       replacement_value_each: parseFloat(cells[10].textContent.trim()) || 0,
       notes,
       ai_suggested: false,
+      source_image_urls: sourceUrls,
     };
   }
 
@@ -1052,20 +1087,24 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!dragSrcRow) return;
       const targetRow  = e.target.closest('tr.item-row');
       const targetBody = tbody;
-      const notesRow   = dragSrcRow.nextElementSibling?.classList.contains('notes-row')
-                         ? dragSrcRow.nextElementSibling : null;
+      const srcNotes  = dragSrcRow.nextElementSibling?.classList.contains('notes-row')
+                        ? dragSrcRow.nextElementSibling : null;
+      const srcPhotos = srcNotes?.nextElementSibling?.classList.contains('photos-row')
+                        ? srcNotes.nextElementSibling : null;
       if (targetRow && targetRow !== dragSrcRow) {
         const rect  = targetRow.getBoundingClientRect();
         const after = e.clientY > rect.top + rect.height / 2;
-        const ref   = after
-          ? (targetRow.nextElementSibling?.classList.contains('notes-row')
-             ? targetRow.nextElementSibling.nextSibling : targetRow.nextSibling)
-          : targetRow;
+        const tNotes  = targetRow.nextElementSibling?.classList.contains('notes-row')
+                        ? targetRow.nextElementSibling : null;
+        const tPhotos = tNotes?.nextElementSibling?.classList.contains('photos-row')
+                        ? tNotes.nextElementSibling : null;
+        const ref = after ? ((tPhotos || tNotes)?.nextSibling ?? null) : targetRow;
         targetBody.insertBefore(dragSrcRow, ref);
       } else {
         targetBody.appendChild(dragSrcRow);
       }
-      if (notesRow) dragSrcRow.after(notesRow);
+      if (srcNotes)  dragSrcRow.after(srcNotes);
+      if (srcPhotos) srcNotes.after(srcPhotos);
       targetBody.querySelector('.no-items-row')?.remove();
 
       const srcId = dragSrcBody.id.replace('tbody-', '');
@@ -1117,7 +1156,11 @@ document.addEventListener('DOMContentLoaded', () => {
       const show = i >= start && i < end;
       tr.style.display = show ? '' : 'none';
       const next = tr.nextElementSibling;
-      if (next && next.classList.contains('notes-row')) next.style.display = show ? '' : 'none';
+      if (next?.classList.contains('notes-row')) {
+        next.style.display = show ? '' : 'none';
+        const photos = next.nextElementSibling;
+        if (photos?.classList.contains('photos-row')) photos.style.display = show ? '' : 'none';
+      }
     });
     const infoEl  = document.getElementById(`page-info-${roomId}`);
     const prevBtn = document.getElementById(`prev-btn-${roomId}`);
@@ -1154,10 +1197,13 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!moveSourceRow || btn.disabled) return;
       const targetRoomId = btn.dataset.roomId;
       const targetTbody  = document.getElementById(`tbody-${targetRoomId}`);
-      const notesRow = moveSourceRow.nextElementSibling?.classList.contains('notes-row')
-                       ? moveSourceRow.nextElementSibling : null;
+      const notesRow  = moveSourceRow.nextElementSibling?.classList.contains('notes-row')
+                        ? moveSourceRow.nextElementSibling : null;
+      const photosRow = notesRow?.nextElementSibling?.classList.contains('photos-row')
+                        ? notesRow.nextElementSibling : null;
       targetTbody.appendChild(moveSourceRow);
-      if (notesRow) targetTbody.appendChild(notesRow);
+      if (notesRow)  targetTbody.appendChild(notesRow);
+      if (photosRow) targetTbody.appendChild(photosRow);
       targetTbody.querySelector('.no-items-row')?.remove();
       initRoom(targetRoomId);  // ensure target room has listeners
       markRoomDirty(moveSourceRoomId);
@@ -1201,7 +1247,11 @@ document.addEventListener('DOMContentLoaded', () => {
     const tbody  = tr.closest('tbody');
     const roomId = tbody.id.replace('tbody-', '');
     const next   = tr.nextElementSibling;
-    if (next && next.classList.contains('notes-row')) next.remove();
+    if (next?.classList.contains('notes-row')) {
+      const photos = next.nextElementSibling;
+      if (photos?.classList.contains('photos-row')) photos.remove();
+      next.remove();
+    }
     tr.remove();
     markRoomDirty(roomId);
     calcTotals(parseInt(roomId));
