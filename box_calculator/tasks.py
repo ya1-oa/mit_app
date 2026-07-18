@@ -179,7 +179,7 @@ def download_encircle_room_task(
     tmp_dir.mkdir(parents=True, exist_ok=True)
     saved_paths = []
 
-    for url in photo_urls[:5]:
+    for url in photo_urls[:20]:
         try:
             resp = req_lib.get(url, timeout=30)
             resp.raise_for_status()

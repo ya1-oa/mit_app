@@ -193,7 +193,7 @@ def analyze_room_ppr(
 
     Args:
         room_name:    e.g. "301 Living Room DN"
-        image_paths:  list of filesystem paths or URLs (up to 5 used)
+        image_paths:  list of filesystem paths or URLs (up to 20 used)
         model:        Claude model ID
 
     Returns:
@@ -219,7 +219,7 @@ def analyze_room_ppr(
 
     content = []
     images_used = 0
-    for path in image_paths[:5]:
+    for path in image_paths[:20]:
         result = _image_to_base64(path)
         if result:
             b64, media_type = result
