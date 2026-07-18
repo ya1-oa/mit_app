@@ -23,6 +23,7 @@ from __future__ import annotations
 import base64
 import json
 import logging
+import math
 import os
 
 import requests
@@ -182,6 +183,33 @@ def _image_to_base64(path_or_url: str) -> tuple[str, str] | None:
         return None
 
 
+_IMAGES_PER_BATCH = 20
+_CONF_RANK = {"high": 2, "medium": 1, "low": 0, "none": -1}
+
+
+def _call_claude_batch(client, model, image_blocks, room_name, is_overview):
+    """Send one batch of image blocks to Claude; return (counts_dict, confidence, notes)."""
+    prompt_template = _OVERVIEW_PROMPT if is_overview else _USER_PROMPT
+    content = list(image_blocks) + [{
+        "type": "text",
+        "text": prompt_template.format(room_name=room_name),
+    }]
+    response = client.messages.create(
+        model=model,
+        max_tokens=512,
+        system=_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": content}],
+    )
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    parsed = json.loads(raw.strip())
+    counts = {col: max(0, int(parsed.get(col, 0) or 0)) for col in CPS_COLUMNS}
+    return counts, str(parsed.get("confidence", "medium")), str(parsed.get("notes", ""))[:300]
+
+
 def analyze_room_ppr(
     room_name: str,
     image_paths: list[str],
@@ -189,12 +217,10 @@ def analyze_room_ppr(
     is_overview: bool = False,
 ) -> dict:
     """
-    Analyze room images and return PPR box count estimates.
+    Analyze ALL room images in batches of 20 and return merged PPR box count estimates.
 
-    Args:
-        room_name:    e.g. "301 Living Room DN"
-        image_paths:  list of filesystem paths or URLs (up to 20 used)
-        model:        Claude model ID
+    Batches are merged by taking the MAX per box type so boxes visible from
+    different angles across batches are not double-counted.
 
     Returns:
         {
@@ -213,72 +239,84 @@ def analyze_room_ppr(
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         return _error_result("ANTHROPIC_API_KEY not configured", 0)
-
     if not image_paths:
         return _error_result("No images provided", 0)
 
-    content = []
-    images_used = 0
-    for path in image_paths[:20]:
+    # Build image content blocks from ALL paths — no artificial cap
+    all_blocks = []
+    for path in image_paths:
         result = _image_to_base64(path)
         if result:
             b64, media_type = result
-            content.append({
+            all_blocks.append({
                 "type": "image",
                 "source": {"type": "base64", "media_type": media_type, "data": b64},
             })
-            images_used += 1
 
-    if not content:
+    if not all_blocks:
         return _error_result("Could not load any images", 0)
 
-    prompt_template = _OVERVIEW_PROMPT if is_overview else _USER_PROMPT
-    content.append({
-        "type": "text",
-        "text": prompt_template.format(room_name=room_name),
-    })
+    client = anthropic.Anthropic(api_key=api_key)
+    total_batches = math.ceil(len(all_blocks) / _IMAGES_PER_BATCH)
 
-    logger.info("Claude API call — room=%r model=%s images=%d overview=%s", room_name, model, images_used, is_overview)
+    logger.info("CPS AI start — room=%r model=%s images=%d batches=%d overview=%s",
+                room_name, model, len(all_blocks), total_batches, is_overview)
 
-    try:
-        client = anthropic.Anthropic(api_key=api_key)
-        response = client.messages.create(
-            model=model,
-            max_tokens=512,
-            system=_SYSTEM_PROMPT,
-            messages=[{"role": "user", "content": content}],
-        )
-        raw = response.content[0].text.strip()
-        logger.info("Claude raw response — room=%r: %s", room_name, raw[:300])
+    batch_counts = []
+    batch_confidences = []
+    batch_notes = []
+    images_used = 0
+    last_error = None
 
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        raw = raw.strip()
+    for batch_num in range(total_batches):
+        batch_start = batch_num * _IMAGES_PER_BATCH
+        batch = all_blocks[batch_start:batch_start + _IMAGES_PER_BATCH]
+        logger.info("CPS AI batch %d/%d — room=%r images=%d",
+                    batch_num + 1, total_batches, room_name, len(batch))
+        try:
+            counts, confidence, notes = _call_claude_batch(
+                client, model, batch, room_name, is_overview
+            )
+            batch_counts.append(counts)
+            batch_confidences.append(confidence)
+            if notes:
+                batch_notes.append(notes)
+            images_used += len(batch)
+            logger.info("CPS batch %d/%d done — room=%r total=%d confidence=%s",
+                        batch_num + 1, total_batches, room_name, sum(counts.values()), confidence)
+        except json.JSONDecodeError as e:
+            logger.error("CPS JSON error batch %d/%d — room=%r: %s",
+                         batch_num + 1, total_batches, room_name, e)
+            last_error = "AI returned invalid JSON on one batch"
+        except Exception as e:
+            logger.error("CPS API error batch %d/%d — room=%r: %s",
+                         batch_num + 1, total_batches, room_name, e, exc_info=True)
+            last_error = str(e)
 
-        parsed = json.loads(raw)
-        counts = {col: max(0, int(parsed.get(col, 0) or 0)) for col in CPS_COLUMNS}
-        total = sum(counts.values())
-        logger.info("Claude parsed counts — room=%r total=%d counts=%s", room_name, total,
-                    {k: v for k, v in counts.items() if v})
+    if not batch_counts:
+        return _error_result(last_error or "All batches failed", images_used)
 
-        return {
-            "success": True,
-            "counts": counts,
-            "total": total,
-            "confidence": str(parsed.get("confidence", "medium")),
-            "notes": str(parsed.get("notes", ""))[:500],
-            "images_used": images_used,
-            "error": None,
-        }
+    # Merge: MAX per box type — same box visible from different angles
+    # across batches should not be summed.
+    merged = {col: max(c.get(col, 0) for c in batch_counts) for col in CPS_COLUMNS}
+    total = sum(merged.values())
 
-    except json.JSONDecodeError as e:
-        logger.error("Claude JSON parse error — room=%r raw=%r error=%s", room_name, raw[:200], e)
-        return _error_result("AI returned invalid JSON — try again", images_used)
-    except Exception as e:
-        logger.error("Claude API error — room=%r error=%s", room_name, e, exc_info=True)
-        return _error_result(str(e), images_used)
+    # Worst confidence wins across batches
+    confidence = min(batch_confidences, key=lambda c: _CONF_RANK.get(c, 0))
+    notes_str = (" | ".join(batch_notes) if batch_notes else "")[:500]
+
+    logger.info("CPS merged — room=%r total=%d batches=%d images_used=%d",
+                room_name, total, total_batches, images_used)
+
+    return {
+        "success": True,
+        "counts": merged,
+        "total": total,
+        "confidence": confidence,
+        "notes": notes_str,
+        "images_used": images_used,
+        "error": None,
+    }
 
 
 def _error_result(error: str, images_used: int) -> dict:

@@ -169,7 +169,7 @@ def download_encircle_room_task(
         cps_room.save()
         return {"success": False, "error": "No photos found", "room_name": room_name}
 
-    # ── Download up to 5 photos ───────────────────────────────────────────────
+    # ── Download all photos ───────────────────────────────────────────────────
     self.update_state(state="PROGRESS", meta={
         "room_name": room_name, "stage": "analyzing",
         "photos_found": len(photo_urls),
@@ -179,7 +179,7 @@ def download_encircle_room_task(
     tmp_dir.mkdir(parents=True, exist_ok=True)
     saved_paths = []
 
-    for url in photo_urls[:20]:
+    for url in photo_urls:
         try:
             resp = req_lib.get(url, timeout=30)
             resp.raise_for_status()
