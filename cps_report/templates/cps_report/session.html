@@ -62,6 +62,10 @@
     cursor: zoom-in; transition: transform .12s;
   }
   .photo-thumb:hover { transform: scale(1.08); }
+  .photo-drag-handle { cursor: grab; display: inline-block; }
+  .photo-drag-handle:active { cursor: grabbing; }
+  .photo-drag-handle.photo-dragging img { opacity: .4; transform: scale(.88); }
+  .item-row.photo-drop-target > td { background: #dbeafe !important; outline: 2px dashed #3b82f6; outline-offset: -2px; }
   .editable-cell { cursor: pointer; }
   .editable-cell:hover { background: #fff8c4 !important; }
   .inline-edit { width: 100%; min-width: 80px; font-size: .82rem; padding: 1px 4px; }
@@ -512,8 +516,12 @@
                   <div class="d-flex flex-wrap align-items-center gap-1">
                     <span class="text-muted me-1" style="font-size:.68rem;"><i class="fas fa-camera"></i> Photos:</span>
                     {% for url in item.source_image_urls %}
-                    <a href="{{ url }}" target="_blank" rel="noopener noreferrer" title="Photo {{ forloop.counter }}">
-                      <img src="{{ url }}" class="photo-thumb" loading="lazy" alt="Photo {{ forloop.counter }}">
+                    <a href="{{ url }}" target="_blank" rel="noopener noreferrer" title="Drag to reassign · click to open"
+                       class="photo-drag-handle"
+                       data-photo-url="{{ url }}"
+                       data-from-item-id="{{ item.id }}"
+                       draggable="true">
+                      <img src="{{ url }}" class="photo-thumb" loading="lazy" alt="Photo {{ forloop.counter }}" draggable="false">
                     </a>
                     {% endfor %}
                   </div>
@@ -1063,6 +1071,7 @@ document.addEventListener('DOMContentLoaded', () => {
   function initDragRow(tr) {
     tr.setAttribute('draggable', 'true');
     tr.addEventListener('dragstart', e => {
+      if (e.target.closest('.photo-drag-handle')) return; // photo drag takes over
       dragSrcRow  = tr;
       dragSrcBody = tr.closest('tbody');
       tr.classList.add('dragging');
@@ -1076,6 +1085,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function initTbodyDrop(tbody) {
     tbody.addEventListener('dragover', e => {
+      if (dragPhotoUrl) return; // photo drag handles its own dragover
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       document.querySelectorAll('.drag-over').forEach(r => r.classList.remove('drag-over'));
@@ -1084,7 +1094,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
     tbody.addEventListener('drop', e => {
       e.preventDefault();
-      if (!dragSrcRow) return;
+      if (!dragSrcRow) return; // photo drag handles its own drop
       const targetRow  = e.target.closest('tr.item-row');
       const targetBody = tbody;
       const srcNotes  = dragSrcRow.nextElementSibling?.classList.contains('notes-row')
@@ -1120,6 +1130,157 @@ document.addEventListener('DOMContentLoaded', () => {
       dragSrcRow = null; dragSrcBody = null;
     });
   }
+
+  // ── Photo drag-and-drop (attribution reassignment) ─────────────────────────
+  let dragPhotoUrl   = null;
+  let dragFromItemId = null;
+  let dragFromTr     = null;
+
+  function _csrfToken() {
+    return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+  }
+
+  function _makePhotoThumb(url, itemId) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    a.title = 'Drag to reassign · click to open';
+    a.className = 'photo-drag-handle';
+    a.dataset.photoUrl = url;
+    a.dataset.fromItemId = String(itemId);
+    a.draggable = true;
+    const img = document.createElement('img');
+    img.src = url;
+    img.className = 'photo-thumb';
+    img.loading = 'lazy';
+    img.alt = 'Photo';
+    img.draggable = false;
+    a.appendChild(img);
+    return a;
+  }
+
+  function _refreshPhotosRow(itemTr, urls, itemId) {
+    const notesRow = itemTr.nextElementSibling?.classList.contains('notes-row')
+                     ? itemTr.nextElementSibling : null;
+    let photosRow = notesRow?.nextElementSibling?.classList.contains('photos-row')
+                    ? notesRow.nextElementSibling : null;
+
+    if (!urls.length) {
+      photosRow?.remove();
+      return;
+    }
+    if (!photosRow) {
+      photosRow = document.createElement('tr');
+      photosRow.className = 'photos-row';
+      photosRow.dataset.itemId = String(itemId);
+      const td = document.createElement('td');
+      td.colSpan = 12;
+      photosRow.appendChild(td);
+      (notesRow || itemTr).after(photosRow);
+    }
+    const td = photosRow.querySelector('td');
+    const container = document.createElement('div');
+    container.className = 'd-flex flex-wrap align-items-center gap-1';
+    const label = document.createElement('span');
+    label.className = 'text-muted me-1';
+    label.style.fontSize = '.68rem';
+    label.innerHTML = '<i class="fas fa-camera"></i> Photos:';
+    container.appendChild(label);
+    urls.forEach(u => container.appendChild(_makePhotoThumb(u, itemId)));
+    td.innerHTML = '';
+    td.appendChild(container);
+    photosRow.style.display = itemTr.style.display;
+  }
+
+  function _movePhotoInDom(photoUrl, fromTr, toTr) {
+    let fromUrls = [];
+    let toUrls   = [];
+    try { fromUrls = JSON.parse(fromTr.dataset.sourceUrls || '[]'); } catch (_) {}
+    try { toUrls   = JSON.parse(toTr.dataset.sourceUrls   || '[]'); } catch (_) {}
+    fromUrls = fromUrls.filter(u => u !== photoUrl);
+    if (!toUrls.includes(photoUrl)) toUrls.push(photoUrl);
+    fromTr.dataset.sourceUrls = JSON.stringify(fromUrls);
+    toTr.dataset.sourceUrls   = JSON.stringify(toUrls);
+    _refreshPhotosRow(fromTr, fromUrls, fromTr.dataset.itemId);
+    _refreshPhotosRow(toTr, toUrls, toTr.dataset.itemId);
+  }
+
+  document.addEventListener('dragstart', e => {
+    const handle = e.target.closest('.photo-drag-handle');
+    if (!handle) return;
+    dragPhotoUrl   = handle.dataset.photoUrl;
+    dragFromItemId = handle.dataset.fromItemId;
+    // Walk up from the photos-row to find the item-row
+    const row = handle.closest('tr');
+    if (row?.classList.contains('photos-row')) {
+      const nr = row.previousElementSibling;
+      dragFromTr = nr?.classList.contains('notes-row') ? nr.previousElementSibling : nr;
+    } else {
+      dragFromTr = row?.closest('tr.item-row') || null;
+    }
+    handle.classList.add('photo-dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', dragPhotoUrl);
+    e.stopPropagation(); // prevent item-row dragstart from also firing
+  });
+
+  document.addEventListener('dragend', e => {
+    const handle = e.target.closest('.photo-drag-handle');
+    if (!handle) return;
+    handle.classList.remove('photo-dragging');
+    document.querySelectorAll('.photo-drop-target').forEach(el => el.classList.remove('photo-drop-target'));
+    dragPhotoUrl = dragFromItemId = dragFromTr = null;
+  });
+
+  document.addEventListener('dragover', e => {
+    if (!dragPhotoUrl) return;
+    const targetTr = e.target.closest('tr.item-row');
+    if (!targetTr || targetTr === dragFromTr || !targetTr.dataset.itemId) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    document.querySelectorAll('.photo-drop-target').forEach(el => el.classList.remove('photo-drop-target'));
+    targetTr.classList.add('photo-drop-target');
+  });
+
+  document.addEventListener('dragleave', e => {
+    if (!dragPhotoUrl) return;
+    const targetTr = e.target.closest('tr.item-row');
+    if (targetTr) targetTr.classList.remove('photo-drop-target');
+  });
+
+  document.addEventListener('drop', e => {
+    if (!dragPhotoUrl || !dragFromItemId || !dragFromTr) return;
+    const targetTr = e.target.closest('tr.item-row');
+    if (!targetTr || targetTr === dragFromTr || !targetTr.dataset.itemId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    targetTr.classList.remove('photo-drop-target');
+
+    const photoUrl    = dragPhotoUrl;
+    const fromItemId  = parseInt(dragFromItemId);
+    const toItemId    = parseInt(targetTr.dataset.itemId);
+    const fromTr      = dragFromTr;
+
+    // Optimistic DOM update
+    _movePhotoInDom(photoUrl, fromTr, targetTr);
+    dragPhotoUrl = dragFromItemId = dragFromTr = null;
+
+    // Persist to database
+    fetch("{% url 'cps_api_reassign_photo' %}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrfToken() },
+      body: JSON.stringify({ from_item_id: fromItemId, to_item_id: toItemId, photo_url: photoUrl }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        alert('Could not reassign photo: ' + (data.error || 'unknown error'));
+        location.reload();
+      }
+    })
+    .catch(() => { alert('Network error — please reload and try again.'); });
+  });
 
   // ── Lazy-init a room (attach drag + input listeners, render page 1) ────────
   function initRoom(roomId) {

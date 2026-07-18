@@ -480,6 +480,55 @@ def api_room_items(request, room_id):
 
 
 @login_required
+@require_POST
+def api_reassign_photo(request):
+    """
+    Move a photo URL from one CPSReportItem to another.
+    POST JSON: { from_item_id, to_item_id, photo_url }
+    """
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'invalid JSON'}, status=400)
+
+    from_id  = data.get('from_item_id')
+    to_id    = data.get('to_item_id')
+    url      = (data.get('photo_url') or '').strip()
+
+    if not url or not from_id or not to_id:
+        return JsonResponse({'error': 'from_item_id, to_item_id, photo_url required'}, status=400)
+    if from_id == to_id:
+        return JsonResponse({'error': 'source and destination are the same item'}, status=400)
+
+    from_item = get_object_or_404(CPSReportItem, id=from_id)
+    to_item   = get_object_or_404(CPSReportItem, id=to_id)
+
+    if from_item.room.session_id != to_item.room.session_id:
+        return JsonResponse({'error': 'items must belong to the same session'}, status=403)
+
+    from_urls = list(from_item.source_image_urls or [])
+    to_urls   = list(to_item.source_image_urls or [])
+
+    if url not in from_urls:
+        return JsonResponse({'error': 'photo_url not found on source item'}, status=400)
+
+    from_urls.remove(url)
+    if url not in to_urls:
+        to_urls.append(url)
+
+    from_item.source_image_urls = from_urls
+    from_item.save(update_fields=['source_image_urls'])
+    to_item.source_image_urls = to_urls
+    to_item.save(update_fields=['source_image_urls'])
+
+    return JsonResponse({
+        'success': True,
+        'from_source_image_urls': from_urls,
+        'to_source_image_urls': to_urls,
+    })
+
+
+@login_required
 def export_pdf(request, session_id):
     """Generate and return the Schedule of Loss PDF file."""
     session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
