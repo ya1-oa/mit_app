@@ -482,7 +482,7 @@ def cps_export_photo_pdf(request, session_id):
     session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     pdf_bytes = build_box_photo_pdf(session)
     safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
-    filename = f"PPR_Photo_Evidence_{safe_name}.pdf"
+    filename = f"CPS_Photo_Report_{safe_name}.pdf"
     BoxCalcCPSReport.objects.create(
         session=session,
         format=BoxCalcCPSReport.FORMAT_PHOTO_PDF,
