@@ -208,6 +208,7 @@ class BoxCalcCPSRoom(models.Model):
     confidence      = models.CharField(max_length=20, blank=True)
     ai_notes        = models.TextField(blank=True)
     images_count    = models.PositiveIntegerField(default=0)
+    image_urls      = models.JSONField(default=list, blank=True)
     created_at      = models.DateTimeField(auto_now_add=True)
     updated_at      = models.DateTimeField(auto_now=True)
     tenant = models.ForeignKey(
@@ -235,6 +236,7 @@ class BoxCalcCPSRoom(models.Model):
             "confidence": self.confidence,
             "ai_notes": self.ai_notes,
             "images_count": self.images_count,
+            "image_urls": self.image_urls or [],
             "celery_task_id": self.celery_task_id,
             "counts": counts,
             "total": self.total,
@@ -249,9 +251,10 @@ class BoxCalcCPSReport(models.Model):
     File bytes stored in the DB so no filesystem management is needed.  The UUID
     primary key is the stable URL identifier.
     """
-    FORMAT_PDF   = 'pdf'
-    FORMAT_EXCEL = 'excel'
-    FORMAT_CHOICES = [('pdf', 'PDF'), ('excel', 'Excel')]
+    FORMAT_PDF       = 'pdf'
+    FORMAT_EXCEL     = 'excel'
+    FORMAT_PHOTO_PDF = 'photo_pdf'
+    FORMAT_CHOICES   = [('pdf', 'PDF'), ('excel', 'Excel'), ('photo_pdf', 'Photo PDF')]
 
     id         = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     session    = models.ForeignKey(
@@ -275,8 +278,6 @@ class BoxCalcCPSReport(models.Model):
 
     @property
     def mime_type(self) -> str:
-        return (
-            'application/pdf'
-            if self.format == self.FORMAT_PDF
-            else 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
+        if self.format in (self.FORMAT_PDF, self.FORMAT_PHOTO_PDF):
+            return 'application/pdf'
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'

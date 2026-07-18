@@ -80,6 +80,11 @@ def process_cps_room_task(
         cps_room.status = "error"
         cps_room.ai_notes = result.get("error", "Unknown error")
 
+    # Persist http image URLs so photo PDF can re-fetch them later
+    http_urls = [p for p in image_paths if isinstance(p, str) and p.startswith('http')]
+    if http_urls:
+        cps_room.image_urls = http_urls
+
     cps_room.save()
 
     # Clean up temp image files
@@ -216,6 +221,7 @@ def download_encircle_room_task(
         cps_room.confidence = result["confidence"]
         cps_room.ai_notes = result["notes"]
         cps_room.images_count = result["images_used"]
+        cps_room.image_urls = photo_urls  # already http URLs from Encircle
     else:
         logger.error("CPS Encircle FAILED — session=%s room=%r error=%s",
                      session_id, room_name, result.get("error"))

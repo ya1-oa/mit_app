@@ -475,6 +475,28 @@ def cps_export_excel(request, session_id):
 
 
 @login_required
+def cps_export_photo_pdf(request, session_id):
+    """Generate, save, and stream the PPR Photo Evidence PDF."""
+    from .models import BoxCalcCPSSession, BoxCalcCPSReport
+    from .photo_pdf_builder import build_box_photo_pdf
+    session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
+    pdf_bytes = build_box_photo_pdf(session)
+    safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
+    filename = f"PPR_Photo_Evidence_{safe_name}.pdf"
+    BoxCalcCPSReport.objects.create(
+        session=session,
+        format=BoxCalcCPSReport.FORMAT_PHOTO_PDF,
+        filename=filename,
+        file_data=pdf_bytes,
+        file_size=len(pdf_bytes),
+        created_by=request.user,
+    )
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
 def cps_saved_report(request, report_id):
     """Serve a previously saved CPS report (PDF or Excel) from the database."""
     from .models import BoxCalcCPSReport

@@ -28,6 +28,9 @@
       <a href="{% url 'cps_export_pdf' session.id %}" class="btn btn-sm btn-danger">
         <i class="bi bi-file-earmark-pdf me-1"></i>PDF
       </a>
+      <a href="{% url 'cps_export_photo_pdf' session.id %}" class="btn btn-sm btn-primary">
+        <i class="bi bi-images me-1"></i>Photo PDF
+      </a>
       <button onclick="window.print()" class="btn btn-sm btn-outline-dark no-print">
         <i class="bi bi-printer me-1"></i>Print
       </button>
@@ -45,10 +48,12 @@
       <div class="d-flex flex-wrap gap-2">
         {% for rpt in saved_reports %}
         <a href="{% url 'cps_saved_report' rpt.id %}"
-           class="btn btn-sm {% if rpt.format == 'pdf' %}btn-outline-danger{% else %}btn-outline-success{% endif %} d-flex align-items-center gap-1"
+           class="btn btn-sm {% if rpt.format == 'pdf' %}btn-outline-danger{% elif rpt.format == 'photo_pdf' %}btn-outline-primary{% else %}btn-outline-success{% endif %} d-flex align-items-center gap-1"
            title="Generated {{ rpt.created_at|date:'M j, Y g:i A' }}">
           {% if rpt.format == 'pdf' %}
             <i class="bi bi-file-earmark-pdf"></i>
+          {% elif rpt.format == 'photo_pdf' %}
+            <i class="bi bi-images"></i>
           {% else %}
             <i class="bi bi-file-earmark-excel"></i>
           {% endif %}
