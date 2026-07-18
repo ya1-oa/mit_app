@@ -391,6 +391,17 @@ def api_save_room_items(request):
             session.save(update_fields=['status'])
             _auto_generate_summary(session)
 
+        # Invalidate cached photo PDF so the next download reflects edits.
+        # For large sessions that can't generate on-demand, also queue a rebuild.
+        from django.core.files.storage import default_storage
+        _pdf_path = f'cps_photo_pdfs/{session.id}.pdf'
+        if default_storage.exists(_pdf_path):
+            default_storage.delete(_pdf_path)
+            room_count = session.rooms.count()
+            if room_count > 15:
+                from .tasks import regenerate_photo_pdf_task
+                regenerate_photo_pdf_task.delay(session.id)
+
         return JsonResponse({
             'success': True,
             'room_id': room.id,
