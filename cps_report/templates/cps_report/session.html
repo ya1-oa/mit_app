@@ -1385,6 +1385,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const tbody = document.getElementById(`tbody-${roomId}`);
     let rvTotal = 0;
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
+      if (tr.dataset.structural) return; // structural items excluded from totals
       const cells = tr.querySelectorAll('td');
       if (cells.length < 11) return;
       rvTotal += (parseFloat(cells[10].textContent) || 0) * (parseInt(cells[5].textContent) || 1);
@@ -1473,7 +1474,7 @@ document.addEventListener('DOMContentLoaded', () => {
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
       if (tr.querySelectorAll('td').length >= 11) {
         const data = getRowData(tr);
-        if (tr.getAttribute('data-structural')) data.structural = true;
+        data.structural = !!tr.getAttribute('data-structural');
         items.push(data);
       }
     });

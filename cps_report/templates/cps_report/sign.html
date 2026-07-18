@@ -71,7 +71,7 @@
   <div class="room-card" id="room-card-{{ room.id }}">
     <div class="room-card-header">
       <h2><i class="fas fa-door-open me-2"></i>{{ room.room_number }} {{ room.room_name }}</h2>
-      <span>{{ room.items.count }} item{{ room.items.count|pluralize }}</span>
+      <span>{{ room.billable_items|length }} item{{ room.billable_items|length|pluralize }}</span>
     </div>
 
     <!-- Items table -->
