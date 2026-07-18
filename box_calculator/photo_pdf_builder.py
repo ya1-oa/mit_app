@@ -106,11 +106,30 @@ def _download_image(url: str) -> Optional[BytesIO]:
     try:
         resp = requests.get(url, timeout=20)
         resp.raise_for_status()
-        buf = BytesIO(resp.content)
-        buf.seek(0)
-        return buf
+        raw = BytesIO(resp.content)
+        # Normalise to JPEG/PNG via Pillow so ReportLab handles GIF, WebP,
+        # palette-mode images, etc. without crashing.
+        try:
+            from PIL import Image as PilImage
+            raw.seek(0)
+            pil_img = PilImage.open(raw)
+            pil_img.load()
+            if pil_img.mode == 'RGBA':
+                out = BytesIO()
+                pil_img.save(out, format='PNG')
+                out.seek(0)
+                return out
+            if pil_img.mode != 'RGB':
+                pil_img = pil_img.convert('RGB')
+            out = BytesIO()
+            pil_img.save(out, format='JPEG', quality=85)
+            out.seek(0)
+            return out
+        except Exception:
+            raw.seek(0)
+            return raw
     except Exception as exc:
-        logger.debug(f"PPR Photo PDF: failed to download {url}: {exc}")
+        logger.debug(f"CPS Photo PDF: failed to download {url}: {exc}")
         return None
 
 
@@ -375,7 +394,7 @@ def build_box_photo_pdf(session) -> bytes:
                         if lm and lm.group(1) == prefix:
                             urls.append(dl_url)
                             break
-                urls = urls[:5]
+                pass  # no artificial cap — use all available URLs
 
         counts = {col: getattr(room, col, 0) or 0 for col in CPS_COLUMNS}
         room_data.append({

@@ -734,7 +734,7 @@ def api_auto_from_encircle(request):
     try:
         # Primary rooms (300-series, or 100-series when no 300s)
         for order, room_info in enumerate(primary_rooms):
-            photo_urls = media_by_room_num.get(room_info['num'], [])[:5]
+            photo_urls = media_by_room_num.get(room_info['num'], [])
             cps_room, _ = BoxCalcCPSRoom.objects.update_or_create(
                 session=session,
                 room_name=room_info['name'],
@@ -752,7 +752,7 @@ def api_auto_from_encircle(request):
         # Supplemental overview rooms (100-series when 300-series are primary).
         # Claude uses the wide-angle overview prompt to catch items missed in individual shots.
         for i, room_info in enumerate(supplemental_overview):
-            photo_urls = media_by_room_num.get(room_info['num'], [])[:5]
+            photo_urls = media_by_room_num.get(room_info['num'], [])
             ov_name = f"[OVERVIEW] {room_info['name']}"
             cps_room, _ = BoxCalcCPSRoom.objects.update_or_create(
                 session=session,
