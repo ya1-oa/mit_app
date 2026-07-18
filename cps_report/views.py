@@ -376,6 +376,7 @@ def api_save_room_items(request):
                 replacement_value_each=float(item_dict.get('replacement_value_each', 0) or 0),
                 notes=str(item_dict.get('notes', ''))[:500],
                 ai_suggested=bool(item_dict.get('ai_suggested', True)),
+                structural=bool(item_dict.get('structural', False)),
             )
 
         room.status = 'complete'

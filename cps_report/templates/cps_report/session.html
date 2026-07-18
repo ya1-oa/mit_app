@@ -627,7 +627,7 @@ document.addEventListener('DOMContentLoaded', () => {
       <summary>
         <i class="fas fa-hard-hat me-1"></i>
         ${structRows.length} Structural / Fixed Item${structRows.length > 1 ? 's' : ''} — AI flagged these as part of the building, not personal property.
-        <span class="ms-auto text-muted" style="font-weight:400;font-size:.76rem;">Click to review</span>
+        <span class="ms-auto text-muted" style="font-weight:400;font-size:.76rem;">Click to review &amp; un-flag</span>
       </summary>
       <div style="padding:.5rem;">
         <table class="table table-sm structural-table mb-0">
@@ -641,13 +641,12 @@ document.addEventListener('DOMContentLoaded', () => {
         </table>
         <p class="text-muted small mt-2 mb-0" style="font-size:.74rem;">
           <i class="fas fa-info-circle me-1"></i>These items are <strong>not</strong> included in the room total.
-          Delete them or move them to confirm they are not personal property.
+          <strong class="text-success">Un-flag</strong> to move back to regular items and price them, or delete to remove entirely.
         </p>
       </div>`;
 
     const structTbody = details.querySelector(`#struct-tbody-${roomId}`);
     structRows.forEach(({ tr, notesRow }, i) => {
-      // Create a simplified read-only row for the structural table
       const cells = tr.querySelectorAll('td');
       const miniRow = document.createElement('tr');
       miniRow.innerHTML = `
@@ -656,14 +655,44 @@ document.addEventListener('DOMContentLoaded', () => {
         <td>${cells[3]?.textContent.trim() || ''}</td>
         <td>${cells[5]?.textContent.trim() || ''}</td>
         <td class="text-end">${cells[10]?.textContent.trim() || ''}</td>
-        <td>
-          <button class="btn btn-link btn-sm p-0 text-danger" title="Remove" onclick="this.closest('tr').remove()">
+        <td class="text-nowrap">
+          <button class="btn btn-link btn-sm p-0 text-success me-2" title="Move to regular items (un-flag structural)">
+            <i class="fas fa-arrow-circle-up me-1"></i>Un-flag
+          </button>
+          <button class="btn btn-link btn-sm p-0 text-danger" title="Delete item">
             <i class="fas fa-times"></i>
           </button>
         </td>`;
+
+      const [unflagBtn, deleteBtn] = miniRow.querySelectorAll('button');
+
+      unflagBtn.addEventListener('click', () => {
+        // Restore the original row to the main table as a regular item
+        tr.removeAttribute('data-structural');
+        tr.style.display = '';
+        if (notesRow) notesRow.style.display = '';
+        miniRow.remove();
+        if (!structTbody.querySelector('tr')) details.remove();
+        markRoomDirty(roomId);
+        renderPage(roomId, roomPages[String(roomId)] || 1);
+        calcTotals(parseInt(roomId));
+        renumberItems();
+      });
+
+      deleteBtn.addEventListener('click', () => {
+        // Remove both the mini-row and the original hidden row from the DOM
+        tr.remove();
+        if (notesRow) notesRow.remove();
+        miniRow.remove();
+        if (!structTbody.querySelector('tr')) details.remove();
+        markRoomDirty(roomId);
+        calcTotals(parseInt(roomId));
+        renumberItems();
+      });
+
       structTbody.appendChild(miniRow);
 
-      // Hide the original rows from the main table (don't delete — save still captures them)
+      // Hide the original rows from the main table
       tr.style.display = 'none';
       if (notesRow) notesRow.style.display = 'none';
     });
@@ -1227,9 +1256,15 @@ document.addEventListener('DOMContentLoaded', () => {
   window.saveRoom = async function(roomId) {
     const tbody = document.getElementById(`tbody-${roomId}`);
     const items = [];
-    // Collect ALL rows regardless of pagination visibility
+    // Collect ALL rows regardless of pagination visibility.
+    // Still-flagged structural rows are included with structural:true so they
+    // survive the server-side delete+recreate and reload in the right section.
     tbody.querySelectorAll('tr.item-row').forEach(tr => {
-      if (tr.querySelectorAll('td').length >= 11) items.push(getRowData(tr));
+      if (tr.querySelectorAll('td').length >= 11) {
+        const data = getRowData(tr);
+        if (tr.getAttribute('data-structural')) data.structural = true;
+        items.push(data);
+      }
     });
     const btn = event.target.closest('button');
     btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
