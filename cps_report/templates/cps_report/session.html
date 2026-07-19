@@ -209,6 +209,7 @@
         <div>
           <h5 class="mb-0">{{ session.insured_name }}</h5>
           <div class="text-muted small">
+            {% if session.client.pAddress %}{{ session.client.pAddress }} &nbsp;·&nbsp;{% endif %}
             Claim&nbsp;#{{ session.claim_number|default:"—" }} &nbsp;·&nbsp;
             Encircle&nbsp;{{ session.encircle_claim_id }} &nbsp;·&nbsp;
             {{ session.loss_type|default:"—" }} &nbsp;·&nbsp;
