@@ -133,7 +133,8 @@
               </button>
             </td>
           </tr>
-          {% if room.image_urls %}
+          {% with photos=room_photo_urls|get_item:room.id %}
+          {% if photos %}
           <tr class="cps-photos-row">
             <td colspan="{{ cps_columns|length|add:3 }}"
                 style="padding:3px 8px 5px 16px; background:#eef4ff; border-top:none;">
@@ -141,18 +142,18 @@
                 <span class="text-muted me-1" style="font-size:.68rem;">
                   <i class="bi bi-camera"></i> Photos:
                 </span>
-                {% for url in room.image_urls %}
-                <a href="{{ url }}" target="_blank" rel="noopener noreferrer"
-                   title="Photo {{ forloop.counter }}">
-                  <img src="{{ url }}" loading="lazy" alt="Photo {{ forloop.counter }}"
-                       style="width:52px;height:52px;object-fit:cover;border-radius:3px;
-                              border:1px solid #c7d7f0;cursor:zoom-in;">
-                </a>
+                {% for url in photos %}
+                <img src="{{ url }}" loading="lazy" alt="Photo {{ forloop.counter }}"
+                     data-lightbox-src="{{ url }}"
+                     style="width:52px;height:52px;object-fit:cover;border-radius:3px;
+                            border:1px solid #c7d7f0;cursor:zoom-in;"
+                     onclick="openPhotoModal(this.dataset.lightboxSrc, {{ forloop.counter }}, {{ photos|length }})">
                 {% endfor %}
               </div>
             </td>
           </tr>
           {% endif %}
+          {% endwith %}
           {% endfor %}
 
           {# ── Overview check rows (100-series) ───────────────────────────── #}
@@ -245,6 +246,22 @@
   {% endif %}
 
 </div>{# /container #}
+
+{# ── Photo lightbox modal ─────────────────────────────────────────────────── #}
+<div class="modal fade" id="photoModal" tabindex="-1" aria-label="Photo viewer" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content bg-dark border-0">
+      <div class="modal-header border-0 pb-1 pt-2 px-3">
+        <small class="text-white-50" id="photoModalLabel"></small>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center p-2">
+        <img id="photoModalImg" src="" alt="Room photo"
+             style="max-width:100%; max-height:80vh; border-radius:4px; object-fit:contain;">
+      </div>
+    </div>
+  </div>
+</div>
 
 {# ── Styles ───────────────────────────────────────────────────────────────── #}
 <style>
@@ -395,5 +412,14 @@
   });
 
 })();
+</script>
+
+<script>
+function openPhotoModal(src, index, total) {
+  document.getElementById('photoModalImg').src = src;
+  document.getElementById('photoModalLabel').textContent = 'Photo ' + index + ' of ' + total;
+  var modal = new bootstrap.Modal(document.getElementById('photoModal'));
+  modal.show();
+}
 </script>
 {% endblock %}

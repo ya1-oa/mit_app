@@ -409,10 +409,28 @@ def cps_report(request, session_id):
     """Render the PPR report page for a completed session."""
     from .models import BoxCalcCPSSession
     from .cps_analyzer import CPS_COLUMNS, CPS_COLUMN_LABELS
+    from django.core.files.storage import default_storage
     session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
     primary_rooms   = session.rooms.exclude(room_name__startswith='[OVERVIEW]').order_by('order', 'room_name')
     overview_rooms  = session.rooms.filter(room_name__startswith='[OVERVIEW]').order_by('order', 'room_name')
     saved_reports   = session.saved_reports.order_by('-created_at')
+
+    # Generate fresh presigned URLs for each room's photos.
+    # image_urls stores permanent storage keys (for rooms analysed after the fix);
+    # legacy rooms may still have full http URLs which pass through as-is (already expired).
+    room_photo_urls = {}
+    for room in list(primary_rooms) + list(overview_rooms):
+        urls = []
+        for key in (room.image_urls or []):
+            try:
+                if key.startswith(('http://', 'https://')):
+                    urls.append(key)
+                else:
+                    urls.append(default_storage.url(key))
+            except Exception:
+                pass
+        room_photo_urls[room.id] = urls
+
     return render(request, 'box_calculator/cps_report.html', {
         'session': session,
         'primary_rooms':  primary_rooms,
@@ -424,6 +442,7 @@ def cps_report(request, session_id):
         'overview_counts': session.overview_counts,
         'overview_total':  session.overview_total,
         'saved_reports':   saved_reports,
+        'room_photo_urls': room_photo_urls,
     })
 
 

@@ -177,7 +177,11 @@ def download_encircle_room_task(
 
     tmp_dir = pathlib.Path("/tmp") / f"encircle_cps_{session_id}_{uuid.uuid4().hex[:8]}"
     tmp_dir.mkdir(parents=True, exist_ok=True)
+    from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
     saved_paths = []
+    storage_keys = []
 
     for url in photo_urls:
         try:
@@ -191,6 +195,11 @@ def download_encircle_room_task(
             dest = tmp_dir / f"{uuid.uuid4().hex}{ext}"
             dest.write_bytes(resp.content)
             saved_paths.append(str(dest))
+            key = default_storage.save(
+                f"cps_room_photos/{session_id}/{cps_room.id}/{dest.name}",
+                ContentFile(resp.content),
+            )
+            storage_keys.append(key)
         except Exception as e:
             logger.warning("Photo download failed for room %s: %s", room_name, e)
 
@@ -221,7 +230,7 @@ def download_encircle_room_task(
         cps_room.confidence = result["confidence"]
         cps_room.ai_notes = result["notes"]
         cps_room.images_count = result["images_used"]
-        cps_room.image_urls = photo_urls  # already http URLs from Encircle
+        cps_room.image_urls = storage_keys  # permanent storage keys, not expiring Encircle URLs
     else:
         logger.error("CPS Encircle FAILED — session=%s room=%r error=%s",
                      session_id, room_name, result.get("error"))
