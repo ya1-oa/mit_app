@@ -160,7 +160,8 @@ def build_cps_pdf(session) -> bytes:
             grand[col] += getattr(r, col, 0) or 0
     grand_total = sum(grand.values())
 
-    today_str = date.today().strftime("%b %d, %Y").replace(" 0", " ")
+    # Claim Date = session creation date (matches report origin, not today)
+    session_date_str = session.created_at.strftime("%b %d, %Y").replace(" 0", " ")
 
     story = []
 
@@ -170,9 +171,9 @@ def build_cps_pdf(session) -> bytes:
         Paragraph("CPS Box Summary", S["title"]),
         Paragraph("SALVAGEABLE CONTENTS", S["purpose"]),
         Paragraph("PACKOUT, TRANSPORT, STORE, CLEAN, RESET", S["purpose"]),
-        Spacer(1, 4),
-        Paragraph(f"Claim Date:", S["hdr_label"]),
-        Paragraph(today_str, S["hdr_val"]),
+        Spacer(1, 14),
+        Paragraph("Claim Date:", S["hdr_label"]),
+        Paragraph(session_date_str, S["hdr_val"]),
     ]
 
     # Center cell: claim id + insured
@@ -181,47 +182,50 @@ def build_cps_pdf(session) -> bytes:
     center_content = [
         Paragraph("Claim Id:", S["hdr_label"]),
         Paragraph(claim_id, S["hdr_val"]),
-        Spacer(1, 6),
+        Spacer(1, 16),
         Paragraph("Insured:", S["hdr_label"]),
         Paragraph(insured, S["hdr_val"]),
     ]
 
-    # Right cell: loss/address
+    # Right cell: property address (Bold-10 value matches reference)
     address = getattr(client, 'pAddress', '') or '—'
     right_content = [
         Paragraph("Property Address:", S["hdr_label"]),
         Paragraph(address, S["hdr_loss"]),
     ]
 
-    # Build header as a 3-column Table (each cell holds a list of flowables
-    # wrapped in a sub-table so ReportLab renders them stacked)
-    def _cell(flowables):
-        t = Table([[f] for f in flowables], colWidths=[None])
+    # Build header as a 3-column Table.
+    # Each cell holds a nested sub-table so flowables stack vertically.
+    def _cell(flowables, usable_w):
+        t = Table([[f] for f in flowables], colWidths=[usable_w])
         t.setStyle(TableStyle([
-            ("TOPPADDING",    (0, 0), (-1, -1), 2),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 2),
+            ("TOPPADDING",    (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
             ("LEFTPADDING",   (0, 0), (-1, -1), 0),
             ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
             ("VALIGN",        (0, 0), (-1, -1), "TOP"),
         ]))
         return t
 
+    _hdr_pad = 8  # left/right padding inside each header column
     lw = _CONTENT_W * 0.30
     cw = _CONTENT_W * 0.32
     rw = _CONTENT_W * 0.38
 
     header_tbl = Table(
-        [[_cell(left_content), _cell(center_content), _cell(right_content)]],
+        [[_cell(left_content, lw - 2 * _hdr_pad),
+          _cell(center_content, cw - 2 * _hdr_pad),
+          _cell(right_content, rw - 2 * _hdr_pad)]],
         colWidths=[lw, cw, rw],
     )
     _border = colors.HexColor("#aaaaaa")
     header_tbl.setStyle(TableStyle([
         ("BOX",          (0, 0), (-1, -1), 0.8, _border),
         ("INNERGRID",    (0, 0), (-1, -1), 0.8, _border),
-        ("TOPPADDING",   (0, 0), (-1, -1), 5),
-        ("BOTTOMPADDING",(0, 0), (-1, -1), 5),
-        ("LEFTPADDING",  (0, 0), (-1, -1), 6),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 6),
+        ("TOPPADDING",   (0, 0), (-1, -1), 8),
+        ("BOTTOMPADDING",(0, 0), (-1, -1), 8),
+        ("LEFTPADDING",  (0, 0), (-1, -1), _hdr_pad),
+        ("RIGHTPADDING", (0, 0), (-1, -1), _hdr_pad),
         ("VALIGN",       (0, 0), (-1, -1), "TOP"),
         ("BACKGROUND",   (0, 0), (-1, -1), colors.HexColor("#f8f9fa")),
     ]))
