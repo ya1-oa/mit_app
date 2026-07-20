@@ -49,8 +49,8 @@ urlpatterns = [
     # Encircle Dashboard + Sync + Webhooks
     path('encircle/', include('encircle.urls')),
 
-    # Box Count Calculator
-    path('box-calculator/', include('box_calculator.urls')),
+    # Box Count Calculator — disabled (client no longer needs this feature)
+    # path('box-calculator/', include('box_calculator.urls')),
 
     # CPS Schedule of Loss Report
     path('cps-report/', include('cps_report.urls')),
