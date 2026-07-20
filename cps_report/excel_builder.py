@@ -365,9 +365,6 @@ def build_excel(session, share_url: str | None = None) -> bytes:
         _write_room_total_row(ws, current_row, room)
         current_row += 1
 
-        _write_room_signature_row(ws, current_row, room, share_url=share_url)
-        current_row += 1
-
         if room_idx < len(rooms) - 1:
             pb = Break(id=current_row - 1)
             ws.row_breaks.append(pb)

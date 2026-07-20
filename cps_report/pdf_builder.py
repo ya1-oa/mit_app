@@ -46,7 +46,7 @@ def _header_footer(canvas, doc):
     # Footer
     canvas.setFont('Helvetica', 7)
     canvas.setFillColor(C_MUTED)
-    canvas.drawString(0.6 * inch, 0.35 * inch, 'PPR Schedule of Loss — Confidential')
+    canvas.drawString(0.6 * inch, 0.35 * inch, 'PPR Schedule of Loss  |  All Phase Consulting, LLC')
     canvas.drawRightString(w - 0.6 * inch, 0.35 * inch, f'Page {doc.page}')
     canvas.restoreState()
 
