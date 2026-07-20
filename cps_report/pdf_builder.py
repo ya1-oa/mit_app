@@ -106,15 +106,18 @@ def build_pdf(session) -> bytes:
     # ── Cover page ────────────────────────────────────────────────────────────
     cover_data = [
         [Paragraph('PPR Schedule of Loss', h1)],
+        [Paragraph('All Phase Consulting, LLC', h2)],
         [Paragraph('Personal Property Replacement — Replacement Value Report', h2)],
     ]
     cover_tbl = Table(cover_data, colWidths=[w])
     cover_tbl.setStyle(TableStyle([
         ('BACKGROUND', (0, 0), (-1, -1), C_HEADER_BG),
-        ('TOPPADDING',  (0, 0), (-1, 0), 24),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 6),
+        ('TOPPADDING',  (0, 0), (-1, 0), 20),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
         ('TOPPADDING',  (0, 1), (-1, 1), 4),
-        ('BOTTOMPADDING', (0, 1), (-1, 1), 24),
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 2),
+        ('TOPPADDING',  (0, 2), (-1, 2), 2),
+        ('BOTTOMPADDING', (0, 2), (-1, 2), 20),
         ('LEFTPADDING',  (0, 0), (-1, -1), 20),
         ('RIGHTPADDING', (0, 0), (-1, -1), 20),
         ('ROUNDEDCORNERS', [6]),

@@ -43,7 +43,7 @@ def build_cps_excel(session) -> bytes:
     # ── Title block ──────────────────────────────────────────────────────────
     ws.merge_cells("A1:M1")
     title_cell = ws["A1"]
-    title_cell.value = f"Pre-Packout Report — {session.client.pOwner}"
+    title_cell.value = f"All Phase Consulting, LLC  ·  Pre-Packout Report — {session.client.pOwner}"
     title_cell.font = Font(bold=True, size=13)
     title_cell.alignment = Alignment(horizontal="center")
 

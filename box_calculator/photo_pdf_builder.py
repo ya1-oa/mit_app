@@ -211,6 +211,7 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
 
     cover = Table(
         [[Paragraph('CPS Photo Evidence Report', styles['h1'])],
+         [Paragraph('All Phase Consulting, LLC', styles['h2'])],
          [Paragraph(
              'Visual proof of packout room contents — supports CPS box count estimates',
              styles['h2'],
@@ -219,10 +220,12 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     )
     cover.setStyle(TableStyle([
         ('BACKGROUND',    (0, 0), (-1, -1), C_HEADER_BG),
-        ('TOPPADDING',    (0, 0), (-1, 0), 22),
-        ('BOTTOMPADDING', (0, 0), (-1, 0), 4),
+        ('TOPPADDING',    (0, 0), (-1, 0), 20),
+        ('BOTTOMPADDING', (0, 0), (-1, 0), 2),
         ('TOPPADDING',    (0, 1), (-1, 1), 4),
-        ('BOTTOMPADDING', (0, 1), (-1, 1), 22),
+        ('BOTTOMPADDING', (0, 1), (-1, 1), 2),
+        ('TOPPADDING',    (0, 2), (-1, 2), 2),
+        ('BOTTOMPADDING', (0, 2), (-1, 2), 20),
         ('LEFTPADDING',   (0, 0), (-1, -1), 16),
     ]))
     story.append(cover)

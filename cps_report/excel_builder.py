@@ -122,7 +122,7 @@ def _build_header_rows(ws, session):
     _loss_date = session.loss_date.strftime('%b %d, %Y') if session.loss_date else ''
     _today     = datetime.date.today().strftime('%b %d, %Y')
 
-    parts = []
+    parts = ['All Phase Consulting, LLC']
     if _name:                       parts.append(f'Insured: {_name}')
     if _human_id:                   parts.append(f'Claim ID: {_human_id}')
     if _enc_id:                     parts.append(f'Customer ID: {_enc_id}')
