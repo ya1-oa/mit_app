@@ -30,6 +30,7 @@ urlpatterns = [
 
     # API
     path('api/clients/', views.api_search_clients, name='cps_api_clients'),
+    path('api/rooms/', views.api_fetch_rooms, name='cps_api_fetch_rooms'),
     path('api/start/', views.api_start_session, name='cps_api_start'),
     path('api/process-room/', views.api_process_room, name='cps_api_process_room'),
     path('api/save-room/', views.api_save_room_items, name='cps_api_save_room'),

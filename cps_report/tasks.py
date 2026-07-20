@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import time as _time
@@ -113,15 +114,43 @@ def process_cps_session_task(self, session_id):
     rooms = list(session.rooms.order_by('order').all())
     log(f"Processing {len(rooms)} rooms…")
 
+    # Import heavy deps once outside the loop
+    import uuid as _uuid_mod
+    import requests as _ppr_req
+    from django.core.files.base import ContentFile
+    from django.core.files.storage import default_storage
+
+    def _img_ext_from_bytes(b: bytes) -> str:
+        # Detect actual format from magic bytes — never trust Content-Type from Encircle,
+        # which sometimes returns image/gif for JPEG files, causing corrupt playback.
+        if b[:2] == b'\xff\xd8':
+            return '.jpg'
+        if b[:8] == b'\x89PNG\r\n\x1a\n':
+            return '.png'
+        if b[:4] == b'RIFF' and len(b) >= 12 and b[8:12] == b'WEBP':
+            return '.webp'
+        return '.jpg'
+
+    # sha256_hex → storage_key — built up across ALL rooms so duplicate images
+    # (same physical photo in both 400s and BU folders) are uploaded only once.
+    session_seen_hashes = {}
+
     for room in rooms:
+        from .models import CPSReportRoom as _CPSRoom
         room.status = 'processing'
         room.save(update_fields=['status'])
 
+        is_primary  = room.room_source == _CPSRoom.ROOM_SOURCE_PRIMARY
+        is_overview = room.room_source == _CPSRoom.ROOM_SOURCE_OVERVIEW
+        is_bu       = room.room_source == _CPSRoom.ROOM_SOURCE_BU
+
         has_secondary = bool(room.encircle_room_id_secondary)
-        source_label = f"{room.room_number} {room.room_name}"
-        logger.info(f"PPR task: processing room {source_label}" +
+        source_label  = f"{room.room_number} {room.room_name}"
+        source_type   = '' if is_primary else f' [{room.room_source}]'
+        logger.info(f"PPR task: processing room {source_label}{source_type}" +
                     (" (primary + secondary)" if has_secondary else ""))
-        log(f"Starting room: {source_label}" + (" (primary + secondary)" if has_secondary else ""))
+        log(f"Starting room: {source_label}{source_type}" +
+            (" (primary + secondary)" if has_secondary else ""))
 
         try:
             result_primary = analyze_room_for_ppr(
@@ -131,9 +160,9 @@ def process_cps_session_task(self, session_id):
                 pricing_mode=pricing_mode,
                 log_fn=log,
             )
-            all_items = list(result_primary.get('items', []))
+            all_items    = list(result_primary.get('items', []))
             total_images = result_primary.get('images_used', 0)
-            summaries = [result_primary.get('room_summary', '')]
+            summaries    = [result_primary.get('room_summary', '')]
 
             if has_secondary:
                 secondary_number = re.match(r'^(\d+)', room.encircle_room_label_secondary or '')
@@ -147,7 +176,7 @@ def process_cps_session_task(self, session_id):
                     pricing_mode=pricing_mode,
                     log_fn=log,
                 )
-                all_items.extend(result_secondary.get('items', []))
+                all_items    .extend(result_secondary.get('items', []))
                 total_images += result_secondary.get('images_used', 0)
                 if result_secondary.get('room_summary'):
                     summaries.append(f"[secondary] {result_secondary['room_summary']}")
@@ -174,9 +203,79 @@ def process_cps_session_task(self, session_id):
             except Exception as log_err:
                 logger.warning(f"PPR usage log failed for room {room.id}: {log_err}")
 
+            # --- Collect analyzed_urls before item creation so we can upload now
+            analyzed_urls = list(result_primary.get('analyzed_urls', []))
+            if has_secondary:
+                _secondary_urls = result_secondary.get('analyzed_urls', [])
+                _seen_urls = set(analyzed_urls)
+                analyzed_urls.extend(u for u in _secondary_urls if u not in _seen_urls)
+
+            # --- Upload all photos to permanent storage while Encircle URLs are still fresh.
+            # SHA-256 dedup: if the same image already exists from an earlier room (e.g.
+            # the same photo appears in both 400s and BU), reuse the existing storage key.
+            # Snapshot seen hashes BEFORE this room so we can detect dup items below.
+            pre_room_hashes = set(session_seen_hashes.keys())
+
+            url_to_key  = {}   # encircle_url → storage_key (this room)
+            url_to_hash = {}   # encircle_url → sha256_hex  (this room)
+            for _enc_url in analyzed_urls:
+                if _enc_url and _enc_url.startswith('http') and _enc_url not in url_to_key:
+                    try:
+                        _resp = _ppr_req.get(_enc_url, timeout=20)
+                        _resp.raise_for_status()
+                        _sha = hashlib.sha256(_resp.content).hexdigest()
+                        url_to_hash[_enc_url] = _sha
+                        if _sha in session_seen_hashes:
+                            # Image already stored — reuse key, skip upload
+                            url_to_key[_enc_url] = session_seen_hashes[_sha]
+                        else:
+                            _ext = _img_ext_from_bytes(_resp.content)
+                            _key = default_storage.save(
+                                f"ppr_room_photos/{session_id}/{room.id}/{_uuid_mod.uuid4().hex}{_ext}",
+                                ContentFile(_resp.content),
+                            )
+                            url_to_key[_enc_url] = _key
+                            session_seen_hashes[_sha] = _key
+                    except Exception as _upload_err:
+                        logger.warning("PPR: photo upload failed url=%s room=%s: %s",
+                                       _enc_url, room.id, _upload_err)
+
+            # Remap source_image_urls in each item dict: Encircle URL → storage key
+            for _item_dict in all_items:
+                _item_dict['source_image_urls'] = [
+                    url_to_key.get(u, u) for u in (_item_dict.get('source_image_urls') or [])
+                ]
+
+            # For overview (100s) and BU rooms: filter out items whose photos are ALL
+            # duplicates of images already seen in earlier (primary) rooms.  This prevents
+            # the same physical item from appearing twice in the report when the same photo
+            # was filed in both the primary and the supplemental folder.
+            if is_overview or is_bu:
+                deduped_items = []
+                for _item_dict in all_items:
+                    item_source_keys = _item_dict.get('source_image_urls') or []
+                    # Resolve the hashes for each storage key this item claims
+                    item_hashes = set()
+                    for _orig_url in (analyzed_urls):
+                        if url_to_key.get(_orig_url) in item_source_keys:
+                            h = url_to_hash.get(_orig_url)
+                            if h:
+                                item_hashes.add(h)
+                    # If every hash was already in pre_room_hashes → pure duplicate item
+                    if item_hashes and item_hashes.issubset(pre_room_hashes):
+                        continue
+                    deduped_items.append(_item_dict)
+                skipped = len(all_items) - len(deduped_items)
+                if skipped:
+                    log(f"  Skipped {skipped} duplicate item(s) already found in primary rooms")
+                all_items = deduped_items
+
+            # Remap analyzed_urls → storage keys for the room record
+            analyzed_keys = [url_to_key.get(u, u) for u in analyzed_urls]
+
             room.items.all().delete()
             for order, item_dict in enumerate(all_items):
-                age_years = max(0, min(5, int(item_dict.get('age_years', 0) or 0)))
+                age_years  = max(0, min(5,  int(item_dict.get('age_years',  0) or 0)))
                 age_months = max(0, min(11, int(item_dict.get('age_months', 0) or 0)))
                 if age_years >= 5:
                     age_months = 0
@@ -202,32 +301,25 @@ def process_cps_session_task(self, session_id):
                     source_image_urls=list(item_dict.get('source_image_urls', []) or []),
                 )
 
-            # Collect the deduplicated URLs that were actually sent to Claude —
-            # these are the exact images that produced the line items.
-            analyzed_urls = list(result_primary.get('analyzed_urls', []))
-            if has_secondary:
-                secondary_urls = result_secondary.get('analyzed_urls', [])
-                seen = set(analyzed_urls)
-                analyzed_urls.extend(u for u in secondary_urls if u not in seen)
-
-            room.images_used = total_images
-            room.analyzed_image_urls = analyzed_urls
-            room.ai_confidence = result_primary.get('confidence', '')
-            room.ai_notes = ' | '.join(s for s in summaries if s)
-            room.status = 'complete' if (result_primary.get('success') or all_items) else 'error'
+            room.images_used        = total_images
+            room.analyzed_image_urls = analyzed_keys
+            room.ai_confidence      = result_primary.get('confidence', '')
+            room.ai_notes           = ' | '.join(s for s in summaries if s)
+            room.status             = 'complete' if (result_primary.get('success') or all_items) else 'error'
             room.save(update_fields=['images_used', 'analyzed_image_urls', 'ai_confidence', 'ai_notes', 'status'])
             item_count = room.items.count()
             logger.info(
                 f"PPR task: room {room.room_number} done — "
                 f"{item_count} items, {total_images} images, {room.ai_confidence} confidence"
             )
-            log(f"Room {source_label} complete — {item_count} items, {total_images} images ({room.ai_confidence} confidence)")
+            log(f"Room {source_label} complete — {item_count} items, {total_images} images "
+                f"({room.ai_confidence} confidence)")
 
         except Exception as e:
             logger.error(f"PPR task: error on room {room.id} ({room.room_name}): {e}", exc_info=True)
             log(f"ERROR on room {source_label}: {e}")
-            room.status = 'error'
-            room.ai_notes = str(e)[:500]
+            room.status    = 'error'
+            room.ai_notes  = str(e)[:500]
             room.save(update_fields=['status', 'ai_notes'])
 
     session.status = 'complete'

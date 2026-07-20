@@ -32,6 +32,8 @@ class CPSReportSession(models.Model):
     celery_task_id = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     share_token = models.UUIDField(default=uuid.uuid4, unique=True)
+    # Which room series were selected at session-start, e.g. ["400s","100s","bu"]
+    room_sources = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -50,6 +52,15 @@ class CPSReportSession(models.Model):
 
 
 class CPSReportRoom(models.Model):
+    ROOM_SOURCE_PRIMARY  = 'primary'
+    ROOM_SOURCE_OVERVIEW = 'overview'
+    ROOM_SOURCE_BU       = 'bu'
+    ROOM_SOURCE_CHOICES  = [
+        ('primary',  'Primary (400s PPR / 300s CPS)'),
+        ('overview', 'Overview (100s)'),
+        ('bu',       'Backup Photos (BU)'),
+    ]
+
     session = models.ForeignKey(
         CPSReportSession,
         on_delete=models.CASCADE,
@@ -63,6 +74,11 @@ class CPSReportRoom(models.Model):
     # Secondary Encircle room — populated when a 300-series room is paired with its 400-series counterpart
     encircle_room_id_secondary = models.CharField(max_length=100, blank=True)
     encircle_room_label_secondary = models.CharField(max_length=300, blank=True)
+    room_source = models.CharField(
+        max_length=20,
+        choices=ROOM_SOURCE_CHOICES,
+        default=ROOM_SOURCE_PRIMARY,
+    )
     order = models.PositiveIntegerField(default=0)
     status = models.CharField(
         max_length=20,

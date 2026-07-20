@@ -168,7 +168,7 @@ def build_cps_pdf(session) -> bytes:
     # ── 3-column header grid ─────────────────────────────────────────────────
     # Left cell: title + purpose + date
     left_content = [
-        Paragraph("CPS Box Summary", S["title"]),
+        Paragraph("CPS Box Count Report", S["title"]),
         Paragraph("SALVAGEABLE CONTENTS", S["purpose"]),
         Paragraph("PACKOUT, TRANSPORT, STORE, CLEAN, RESET", S["purpose"]),
         Spacer(1, 14),

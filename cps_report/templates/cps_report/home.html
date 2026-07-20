@@ -113,6 +113,35 @@
   .confidence-medium { color: #fd7e14; font-weight: 600; }
   .confidence-low    { color: #dc3545; font-weight: 600; }
   .confidence-none   { color: #6c757d; }
+
+  /* ── Room Selector Modal ── */
+  .room-type-card {
+    border: 2px solid #dee2e6; border-radius: 10px; padding: 14px 16px;
+    margin-bottom: 10px; transition: border-color .15s, background .15s; cursor: pointer;
+  }
+  .room-type-card:hover { border-color: #0d6efd; background: #f0f6ff; }
+  .room-type-card.selected { border-color: #0d6efd; background: #e8f0fe; }
+  .room-type-card.disabled { opacity: .45; cursor: not-allowed; }
+  .room-type-card .series-header {
+    display: flex; align-items: center; gap: 10px; user-select: none;
+  }
+  .room-type-card .series-badge {
+    font-size: .72rem; font-weight: 700; padding: 2px 8px;
+    border-radius: 20px; flex-shrink: 0;
+  }
+  .room-type-card .series-desc {
+    font-size: .82rem; color: #64748b; flex: 1;
+  }
+  .room-type-card .room-list {
+    margin-top: 8px; font-size: .76rem; color: #475569;
+    padding-left: 32px; display: none;
+  }
+  .room-type-card.open .room-list { display: block; }
+  .room-type-card .toggle-rooms {
+    font-size: .72rem; color: #0d6efd; cursor: pointer;
+    margin-top: 4px; padding-left: 32px; display: inline-block;
+  }
+  .room-type-card .toggle-rooms:hover { text-decoration: underline; }
 </style>
 {% endblock %}
 
@@ -351,6 +380,32 @@
           <input type="checkbox" id="chk-disable-welcome" style="width:14px;height:14px;">
           Don't show this again
         </label>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Room Type Selector Modal -->
+<div class="modal fade" id="roomSelectorModal" tabindex="-1" aria-labelledby="roomSelectorModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-lg">
+    <div class="modal-content">
+      <div class="modal-header bg-primary text-white py-2">
+        <h5 class="modal-title" id="roomSelectorModalLabel">
+          <i class="fas fa-door-open me-2"></i>Select Room Types to Include
+        </h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="room-selector-body">
+        <div class="text-center py-4">
+          <div class="spinner-border text-primary" role="status"></div>
+          <div class="mt-2 text-muted small">Fetching rooms from Encircle…</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="btn-start-analysis" disabled>
+          <i class="fas fa-play me-1"></i> Start Analysis
+        </button>
       </div>
     </div>
   </div>
@@ -655,7 +710,129 @@ document.addEventListener('DOMContentLoaded', () => {
     setTimeout(() => toast.innerHTML = '', 8000);
   }
 
-  // Start report — find rooms then redirect to live progress page
+  // ── Room type selector ──────────────────────────────────────────────────────
+  // Step 1: fetch rooms from Encircle and show the selector modal.
+  // Step 2: user toggles series → clicks Start Analysis → POST api/start/.
+
+  const SERIES_CONFIG = {
+    '400s': { label: '400s — Replacement Items', color: '#0d6efd', defaultOn: true,
+               desc: 'Primary source for PPR replacement item identification.' },
+    '100s': { label: '100s — Room Overview Photos', color: '#198754', defaultOn: true,
+               desc: 'Wide-angle overview shots; may reveal additional items.' },
+    '300s': { label: '300s — Packout / CPS Items', color: '#fd7e14', defaultOn: false,
+               desc: 'CPS packout series. Enable if items were filed here instead of 400s.' },
+    'bu':   { label: 'BU — Backup / Additional Photos', color: '#6f42c1', defaultOn: true,
+               desc: 'Backup photos tagged BU; extra replacement item evidence.' },
+  };
+
+  let roomGroups    = null;   // {400s:[], 300s:[], 100s:[], bu:[]}
+  let selectedSeries = null;  // Set of series keys the user toggled on
+  const roomModal   = new bootstrap.Modal(document.getElementById('roomSelectorModal'));
+
+  function buildRoomSelector(groups) {
+    selectedSeries = new Set();
+    const body = document.getElementById('room-selector-body');
+    body.innerHTML = '';
+
+    const order = ['400s', '100s', 'bu', '300s'];
+    let anyAvailable = false;
+
+    order.forEach(key => {
+      const rooms = groups[key] || [];
+      const cfg   = SERIES_CONFIG[key];
+      const on    = cfg.defaultOn && rooms.length > 0;
+      if (on) selectedSeries.add(key);
+
+      const card = document.createElement('div');
+      card.className = 'room-type-card' + (on ? ' selected' : '') + (rooms.length === 0 ? ' disabled' : '');
+      card.dataset.series = key;
+
+      const checkbox = document.createElement('input');
+      checkbox.type    = 'checkbox';
+      checkbox.checked = on;
+      checkbox.disabled = rooms.length === 0;
+      checkbox.style.cssText = 'width:18px;height:18px;flex-shrink:0;cursor:pointer;accent-color:' + cfg.color;
+
+      const badge = document.createElement('span');
+      badge.className = 'series-badge';
+      badge.style.cssText = `background:${cfg.color};color:#fff;`;
+      badge.textContent = key.toUpperCase();
+
+      const nameEl = document.createElement('span');
+      nameEl.style.cssText = 'font-weight:600;font-size:.9rem;';
+      nameEl.textContent = cfg.label;
+
+      const countEl = document.createElement('span');
+      countEl.className = 'text-muted ms-auto';
+      countEl.style.cssText = 'font-size:.8rem;white-space:nowrap;';
+      countEl.textContent = rooms.length ? `${rooms.length} room${rooms.length > 1 ? 's' : ''}` : 'none found';
+
+      const header = document.createElement('div');
+      header.className = 'series-header';
+      header.append(checkbox, badge, nameEl, countEl);
+
+      const desc = document.createElement('div');
+      desc.className   = 'series-desc mt-1';
+      desc.style.paddingLeft = '32px';
+      desc.textContent = cfg.desc;
+
+      card.append(header, desc);
+
+      if (rooms.length > 0) {
+        anyAvailable = true;
+        const toggle = document.createElement('span');
+        toggle.className   = 'toggle-rooms';
+        toggle.textContent = `Show ${rooms.length} room${rooms.length > 1 ? 's' : ''}`;
+        const roomList = document.createElement('ul');
+        roomList.className = 'room-list mb-0';
+        rooms.forEach(r => {
+          const li = document.createElement('li');
+          li.textContent = r.label;
+          roomList.appendChild(li);
+        });
+        toggle.addEventListener('click', (e) => {
+          e.stopPropagation();
+          card.classList.toggle('open');
+          toggle.textContent = card.classList.contains('open')
+            ? 'Hide rooms' : `Show ${rooms.length} room${rooms.length > 1 ? 's' : ''}`;
+        });
+        card.append(toggle, roomList);
+
+        // Toggle selection on card click (not on the list toggle link)
+        card.addEventListener('click', (e) => {
+          if (e.target === toggle || toggle.contains(e.target)) return;
+          checkbox.checked = !checkbox.checked;
+          card.classList.toggle('selected', checkbox.checked);
+          if (checkbox.checked) { selectedSeries.add(key); }
+          else                  { selectedSeries.delete(key); }
+          updateStartBtn();
+        });
+        checkbox.addEventListener('change', () => {
+          card.classList.toggle('selected', checkbox.checked);
+          if (checkbox.checked) { selectedSeries.add(key); }
+          else                  { selectedSeries.delete(key); }
+          updateStartBtn();
+        });
+      }
+
+      body.appendChild(card);
+    });
+
+    if (!anyAvailable) {
+      body.innerHTML = '<div class="alert alert-warning m-3">No 100s, 300s, or 400s rooms found in this claim.</div>';
+    }
+
+    updateStartBtn();
+  }
+
+  function updateStartBtn() {
+    const hasPrimary = selectedSeries.has('400s') || selectedSeries.has('300s');
+    const btn = document.getElementById('btn-start-analysis');
+    btn.disabled = !hasPrimary;
+    btn.title = hasPrimary ? '' : 'Select at least one primary series (400s or 300s)';
+  }
+
+  // Step 1 — "Find PPR Rooms" button opens the selector
   document.getElementById('btn-start').addEventListener('click', async () => {
     if (!selectedClientId) {
       showError('Please select a claim first.');
@@ -663,28 +840,64 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     const btn = document.getElementById('btn-start');
     btn.disabled = true;
-    const pricingMode = document.querySelector('input[name="pricing-mode"]:checked')?.value ?? 'normal';
-    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Finding PPR rooms &amp; launching…';
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Loading rooms…';
+
+    document.getElementById('room-selector-body').innerHTML =
+      '<div class="text-center py-4"><div class="spinner-border text-primary" role="status"></div>' +
+      '<div class="mt-2 text-muted small">Fetching rooms from Encircle…</div></div>';
+    document.getElementById('btn-start-analysis').disabled = true;
+    roomModal.show();
+
+    try {
+      const params = new URLSearchParams({ encircle_claim_id: selectedClientId });
+      const resp   = await fetch(`{% url "cps_api_fetch_rooms" %}?${params}`);
+      const data   = await resp.json();
+
+      if (data.error) {
+        document.getElementById('room-selector-body').innerHTML =
+          `<div class="alert alert-danger m-3"><i class="fas fa-exclamation-triangle me-2"></i>${data.error}</div>`;
+      } else {
+        roomGroups = data.groups;
+        buildRoomSelector(roomGroups);
+      }
+    } catch (e) {
+      document.getElementById('room-selector-body').innerHTML =
+        `<div class="alert alert-danger m-3">Request failed: ${e}</div>`;
+    } finally {
+      btn.disabled = false;
+      btn.innerHTML = '<i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report';
+    }
+  });
+
+  // Step 2 — "Start Analysis" inside the modal fires the actual POST
+  document.getElementById('btn-start-analysis').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-start-analysis');
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Starting…';
+
+    const pricingMode  = document.querySelector('input[name="pricing-mode"]:checked')?.value ?? 'normal';
+    const roomSources  = Array.from(selectedSeries);
 
     try {
       const data = await post('{% url "cps_api_start" %}', {
         encircle_claim_id: selectedClientId,
         pricing_mode: pricingMode,
+        room_sources: roomSources,
       });
+
       if (data.error) {
         showError(data.error);
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report';
+        btn.innerHTML = '<i class="fas fa-play me-1"></i> Start Analysis';
         return;
       }
 
-      // Redirect to live progress page — Celery task is already running
+      roomModal.hide();
       window.location.href = data.progress_url;
-
     } catch (e) {
       showError('Request failed: ' + e);
       btn.disabled = false;
-      btn.innerHTML = '<i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report';
+      btn.innerHTML = '<i class="fas fa-play me-1"></i> Start Analysis';
     }
   });
 

@@ -67,7 +67,7 @@ def _make_header_footer(page_offset_ref: list):
         canvas.line(0.5 * inch, h - 0.42 * inch, w - 0.5 * inch, h - 0.42 * inch)
         canvas.setFont('Helvetica', 7)
         canvas.setFillColor(C_MUTED)
-        canvas.drawString(0.5 * inch, 0.3 * inch, 'CPS Photo Evidence Report — Confidential')
+        canvas.drawString(0.5 * inch, 0.3 * inch, 'PPR Photo Evidence Report — Confidential')
         canvas.drawRightString(
             w - 0.5 * inch, 0.3 * inch,
             f'Page {page_offset_ref[0] + doc.page}',
@@ -104,16 +104,28 @@ def _make_styles() -> dict:
     }
 
 
-def _download_image(url: str) -> Optional[BytesIO]:
-    """Download one image URL and return a seekable BytesIO, or None on failure."""
+def _resolve_storage_url(key: str) -> str:
+    """Convert a storage key to a downloadable URL; pass http(s) URLs through unchanged."""
+    if key.startswith(('http://', 'https://')):
+        return key
     try:
-        resp = requests.get(url, timeout=20)
+        from django.core.files.storage import default_storage
+        return default_storage.url(key)
+    except Exception:
+        return key
+
+
+def _download_image(url: str) -> Optional[BytesIO]:
+    """Download one image URL (or storage key) and return a seekable BytesIO, or None on failure."""
+    resolved = _resolve_storage_url(url)
+    try:
+        resp = requests.get(resolved, timeout=20)
         resp.raise_for_status()
         buf = BytesIO(resp.content)
         buf.seek(0)
         return buf
     except Exception as exc:
-        logger.debug(f"Photo PDF: failed to download {url}: {exc}")
+        logger.debug(f"Photo PDF: failed to download {resolved}: {exc}")
         return None
 
 
@@ -267,7 +279,7 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     now = datetime.date.today().strftime('%B %d, %Y')
 
     cover = Table(
-        [[Paragraph('CPS Photo Evidence Report', styles['h1'])],
+        [[Paragraph('PPR Photo Evidence Report', styles['h1'])],
          [Paragraph(
              'Visual proof of replacement items — matches Schedule of Loss numbering',
              styles['h2'],

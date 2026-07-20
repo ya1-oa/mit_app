@@ -187,11 +187,15 @@ def download_encircle_room_task(
         try:
             resp = req_lib.get(url, timeout=30)
             resp.raise_for_status()
-            ct = resp.headers.get("content-type", "image/jpeg").split(";")[0].strip()
-            ext = {
-                "image/jpeg": ".jpg", "image/png": ".png",
-                "image/webp": ".webp", "image/bmp": ".bmp",
-            }.get(ct, ".jpg")
+            _b = resp.content
+            if _b[:2] == b'\xff\xd8':
+                ext = ".jpg"
+            elif _b[:8] == b'\x89PNG\r\n\x1a\n':
+                ext = ".png"
+            elif _b[:4] == b'RIFF' and len(_b) >= 12 and _b[8:12] == b'WEBP':
+                ext = ".webp"
+            else:
+                ext = ".jpg"  # default — Encircle can return image/gif header on JPEG bytes
             dest = tmp_dir / f"{uuid.uuid4().hex}{ext}"
             dest.write_bytes(resp.content)
             saved_paths.append(str(dest))

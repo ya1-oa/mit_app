@@ -61,7 +61,7 @@ def _make_header_footer(page_offset_ref: list):
         canvas.line(0.5 * inch, h - 0.42 * inch, w - 0.5 * inch, h - 0.42 * inch)
         canvas.setFont('Helvetica', 7)
         canvas.setFillColor(C_MUTED)
-        canvas.drawString(0.5 * inch, 0.3 * inch, 'CPS Photo Report — Confidential')
+        canvas.drawString(0.5 * inch, 0.3 * inch, 'CPS Photo Evidence Report — Confidential')
         canvas.drawRightString(
             w - 0.5 * inch, 0.3 * inch,
             f'Page {page_offset_ref[0] + doc.page}',
@@ -210,7 +210,7 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     now = datetime.date.today().strftime('%B %d, %Y')
 
     cover = Table(
-        [[Paragraph('CPS Photo Report', styles['h1'])],
+        [[Paragraph('CPS Photo Evidence Report', styles['h1'])],
          [Paragraph(
              'Visual proof of packout room contents — supports CPS box count estimates',
              styles['h2'],

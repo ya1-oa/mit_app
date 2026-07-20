@@ -46,7 +46,7 @@ def _header_footer(canvas, doc):
     # Footer
     canvas.setFont('Helvetica', 7)
     canvas.setFillColor(C_MUTED)
-    canvas.drawString(0.6 * inch, 0.35 * inch, 'CPS Schedule of Loss — Confidential')
+    canvas.drawString(0.6 * inch, 0.35 * inch, 'PPR Schedule of Loss — Confidential')
     canvas.drawRightString(w - 0.6 * inch, 0.35 * inch, f'Page {doc.page}')
     canvas.restoreState()
 
@@ -105,8 +105,8 @@ def build_pdf(session) -> bytes:
 
     # ── Cover page ────────────────────────────────────────────────────────────
     cover_data = [
-        [Paragraph('CPS Schedule of Loss', h1)],
-        [Paragraph('Contents Pack-out &amp; Storage — Replacement Value Report', h2)],
+        [Paragraph('PPR Schedule of Loss', h1)],
+        [Paragraph('Personal Property Replacement — Replacement Value Report', h2)],
     ]
     cover_tbl = Table(cover_data, colWidths=[w])
     cover_tbl.setStyle(TableStyle([

@@ -481,6 +481,7 @@
               {% for item in room.items.all %}
               <tr class="item-row" data-item-id="{{ item.id }}" draggable="true"
                   data-source-urls="{{ item.source_image_urls|jsonify|escape }}"
+                  data-url-map="{{ item_url_map|get_item:item.id|jsonify|escape }}"
                   {% if item.structural %} data-structural="true"{% endif %}>
                 <td class="text-center"><span class="drag-handle">⣿</span></td>
                 <td class="item-num"></td>
@@ -516,15 +517,18 @@
                 <td colspan="12">
                   <div class="d-flex flex-wrap align-items-center gap-1">
                     <span class="text-muted me-1" style="font-size:.68rem;"><i class="fas fa-camera"></i> Photos:</span>
-                    {% for url in item.source_image_urls %}
-                    <a href="{{ url }}" target="_blank" rel="noopener noreferrer" title="Drag to reassign · click to open"
+                    {% with pairs=item_photo_pairs|get_item:item.id %}
+                    {% for pair in pairs %}
+                    <a href="#" title="Drag to reassign · click to enlarge"
                        class="photo-drag-handle"
-                       data-photo-url="{{ url }}"
+                       data-photo-url="{{ pair.0 }}"
+                       data-display-url="{{ pair.1 }}"
                        data-from-item-id="{{ item.id }}"
                        draggable="true">
-                      <img src="{{ url }}" class="photo-thumb" loading="lazy" alt="Photo {{ forloop.counter }}" draggable="false">
+                      <img src="{{ pair.1 }}" class="photo-thumb" loading="lazy" alt="Photo {{ forloop.counter }}" draggable="false">
                     </a>
                     {% endfor %}
+                    {% endwith %}
                   </div>
                 </td>
               </tr>
@@ -562,6 +566,20 @@
   <div class="alert alert-warning">No rooms found for this session.</div>
   {% endif %}
 
+</div>
+
+<!-- ─── Photo Lightbox Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="photoLightboxModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content bg-dark border-0" style="border-radius:10px;overflow:hidden;">
+      <div class="modal-header border-0 pb-1 pt-2 px-3">
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body text-center p-0 pb-3 px-3">
+        <img id="photoLightboxImg" src="" alt="Photo" class="img-fluid" style="max-height:80vh;border-radius:6px;">
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- ─── Re-run Mode Modal ──────────────────────────────────────────────────── -->
@@ -1141,14 +1159,27 @@ document.addEventListener('DOMContentLoaded', () => {
     return document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
   }
 
-  function _makePhotoThumb(url, itemId) {
+  const _photoLightbox = new bootstrap.Modal(document.getElementById('photoLightboxModal'));
+  const _photoLightboxImg = document.getElementById('photoLightboxImg');
+
+  document.addEventListener('click', e => {
+    const handle = e.target.closest('.photo-drag-handle');
+    if (!handle) return;
+    e.preventDefault();
+    const url = handle.dataset.displayUrl || handle.querySelector('img')?.src || '';
+    if (url) {
+      _photoLightboxImg.src = url;
+      _photoLightbox.show();
+    }
+  });
+
+  function _makePhotoThumb(key, url, itemId) {
     const a = document.createElement('a');
-    a.href = url;
-    a.target = '_blank';
-    a.rel = 'noopener noreferrer';
-    a.title = 'Drag to reassign · click to open';
+    a.href = '#';
+    a.title = 'Drag to reassign · click to enlarge';
     a.className = 'photo-drag-handle';
-    a.dataset.photoUrl = url;
+    a.dataset.photoUrl = key;        // storage key — sent to api_reassign_photo
+    a.dataset.displayUrl = url;      // presigned URL — for lightbox
     a.dataset.fromItemId = String(itemId);
     a.draggable = true;
     const img = document.createElement('img');
@@ -1161,13 +1192,15 @@ document.addEventListener('DOMContentLoaded', () => {
     return a;
   }
 
-  function _refreshPhotosRow(itemTr, urls, itemId) {
+  function _refreshPhotosRow(itemTr, keys, itemId) {
+    let urlMap = {};
+    try { urlMap = JSON.parse(itemTr.dataset.urlMap || '{}'); } catch (_) {}
     const notesRow = itemTr.nextElementSibling?.classList.contains('notes-row')
                      ? itemTr.nextElementSibling : null;
     let photosRow = notesRow?.nextElementSibling?.classList.contains('photos-row')
                     ? notesRow.nextElementSibling : null;
 
-    if (!urls.length) {
+    if (!keys.length) {
       photosRow?.remove();
       return;
     }
@@ -1188,23 +1221,29 @@ document.addEventListener('DOMContentLoaded', () => {
     label.style.fontSize = '.68rem';
     label.innerHTML = '<i class="fas fa-camera"></i> Photos:';
     container.appendChild(label);
-    urls.forEach(u => container.appendChild(_makePhotoThumb(u, itemId)));
+    keys.forEach(k => container.appendChild(_makePhotoThumb(k, urlMap[k] || k, itemId)));
     td.innerHTML = '';
     td.appendChild(container);
     photosRow.style.display = itemTr.style.display;
   }
 
-  function _movePhotoInDom(photoUrl, fromTr, toTr) {
-    let fromUrls = [];
-    let toUrls   = [];
-    try { fromUrls = JSON.parse(fromTr.dataset.sourceUrls || '[]'); } catch (_) {}
-    try { toUrls   = JSON.parse(toTr.dataset.sourceUrls   || '[]'); } catch (_) {}
-    fromUrls = fromUrls.filter(u => u !== photoUrl);
-    if (!toUrls.includes(photoUrl)) toUrls.push(photoUrl);
-    fromTr.dataset.sourceUrls = JSON.stringify(fromUrls);
-    toTr.dataset.sourceUrls   = JSON.stringify(toUrls);
-    _refreshPhotosRow(fromTr, fromUrls, fromTr.dataset.itemId);
-    _refreshPhotosRow(toTr, toUrls, toTr.dataset.itemId);
+  function _movePhotoInDom(photoKey, fromTr, toTr) {
+    let fromKeys = [], toKeys = [], fromMap = {}, toMap = {};
+    try { fromKeys = JSON.parse(fromTr.dataset.sourceUrls || '[]'); } catch (_) {}
+    try { toKeys   = JSON.parse(toTr.dataset.sourceUrls   || '[]'); } catch (_) {}
+    try { fromMap  = JSON.parse(fromTr.dataset.urlMap     || '{}'); } catch (_) {}
+    try { toMap    = JSON.parse(toTr.dataset.urlMap       || '{}'); } catch (_) {}
+    const displayUrl = fromMap[photoKey];
+    fromKeys = fromKeys.filter(k => k !== photoKey);
+    if (!toKeys.includes(photoKey)) toKeys.push(photoKey);
+    delete fromMap[photoKey];
+    if (displayUrl) toMap[photoKey] = displayUrl;
+    fromTr.dataset.sourceUrls = JSON.stringify(fromKeys);
+    toTr.dataset.sourceUrls   = JSON.stringify(toKeys);
+    fromTr.dataset.urlMap     = JSON.stringify(fromMap);
+    toTr.dataset.urlMap       = JSON.stringify(toMap);
+    _refreshPhotosRow(fromTr, fromKeys, fromTr.dataset.itemId);
+    _refreshPhotosRow(toTr, toKeys, toTr.dataset.itemId);
   }
 
   document.addEventListener('dragstart', e => {
@@ -1278,6 +1317,14 @@ document.addEventListener('DOMContentLoaded', () => {
       if (!data.success) {
         alert('Could not reassign photo: ' + (data.error || 'unknown error'));
         location.reload();
+      } else if (data.url_map) {
+        // Merge fresh presigned URLs into both rows so subsequent drag-drops display correctly
+        [fromTr, targetTr].forEach(tr => {
+          let map = {};
+          try { map = JSON.parse(tr.dataset.urlMap || '{}'); } catch (_) {}
+          Object.assign(map, data.url_map);
+          tr.dataset.urlMap = JSON.stringify(map);
+        });
       }
     })
     .catch(() => { alert('Network error — please reload and try again.'); });

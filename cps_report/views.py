@@ -18,6 +18,19 @@ from .models import CPSReportSession, CPSReportRoom, CPSReportItem
 logger = logging.getLogger(__name__)
 
 
+def _ppr_resolve_url(key):
+    """Resolve a storage key to a fresh presigned URL; pass http(s) URLs through unchanged."""
+    if not key:
+        return key
+    if key.startswith(('http://', 'https://')):
+        return key
+    try:
+        from django.core.files.storage import default_storage
+        return default_storage.url(key)
+    except Exception:
+        return key
+
+
 @login_required
 def cps_home(request):
     """Landing page — select a claim to run a CPS report."""
@@ -120,7 +133,7 @@ def api_search_clients(request):
 def session_view(request, session_id):
     """View / manage an existing CPS report session."""
     session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
-    rooms = session.rooms.prefetch_related('items').order_by('order', 'room_number')
+    rooms = list(session.rooms.prefetch_related('items').order_by('order', 'room_number'))
     share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')
     other_sessions = (
         CPSReportSession.objects
@@ -131,12 +144,27 @@ def session_view(request, session_id):
     )
     from django.core.files.storage import default_storage
     photo_pdf_ready = default_storage.exists(f'cps_photo_pdfs/{session.id}.pdf')
+
+    # Resolve storage keys to fresh presigned URLs for template display.
+    # item_photo_pairs: {item.id: [[storage_key, presigned_url], ...]}
+    # item_url_map:     {item.id: {storage_key: presigned_url}} — for JS data-url-map attr
+    item_photo_pairs = {}
+    item_url_map = {}
+    for room in rooms:
+        for item in room.items.all():
+            if item.source_image_urls:
+                pairs = [[k, _ppr_resolve_url(k)] for k in item.source_image_urls]
+                item_photo_pairs[item.id] = pairs
+                item_url_map[item.id] = {k: url for k, url in pairs}
+
     return render(request, 'cps_report/session.html', {
         'session': session,
         'rooms': rooms,
         'share_url': share_url,
         'other_sessions': other_sessions,
         'photo_pdf_ready': photo_pdf_ready,
+        'item_photo_pairs': item_photo_pairs,
+        'item_url_map': item_url_map,
     })
 
 
@@ -145,15 +173,67 @@ def session_view(request, session_id):
 # ---------------------------------------------------------------------------
 
 @login_required
+def api_fetch_rooms(request):
+    """
+    GET — fetch Encircle rooms for a claim grouped by series (100s/300s/400s/BU).
+    Called by the room-type selector modal before analysis starts.
+    """
+    encircle_claim_id = request.GET.get('encircle_claim_id', '').strip()
+    if not encircle_claim_id:
+        return JsonResponse({'error': 'encircle_claim_id required'}, status=400)
+    try:
+        from docsAppR.encircle_client import EncircleAPIClient
+        api = EncircleAPIClient()
+        structures = api.get_claim_structures(encircle_claim_id)
+        if not structures or not structures.get('list'):
+            return JsonResponse({'error': 'No structures found for this claim'}, status=404)
+        structure_id = structures['list'][0]['id']
+        all_rooms    = api.get_all_structure_rooms(encircle_claim_id, structure_id)
+
+        return JsonResponse({'success': True, 'groups': _group_encircle_rooms(all_rooms)})
+    except Exception as e:
+        logger.error(f"api_fetch_rooms error: {e}", exc_info=True)
+        return JsonResponse({'error': str(e)}, status=500)
+
+
+def _group_encircle_rooms(all_rooms):
+    """
+    Classify Encircle rooms by numeric series prefix into 100s / 300s / 400s / bu.
+    BU only matches rooms NOT already classified by their numeric prefix, so a
+    room named "401 BU PICS" lands in 400s (not both).
+    """
+    groups = {'400s': [], '300s': [], '100s': [], 'bu': []}
+    for room in all_rooms:
+        label = (room.get('label') or room.get('name') or '').strip()
+        rid   = room.get('id', '')
+        m = re.match(r'^(\d+)', label)
+        classified = False
+        if m:
+            num  = int(m.group(1))
+            info = {'id': rid, 'label': label, 'number': m.group(1)}
+            if 100 <= num < 200:
+                groups['100s'].append(info)
+                classified = True
+            elif 300 <= num < 400:
+                groups['300s'].append(info)
+                classified = True
+            elif 400 <= num < 500:
+                groups['400s'].append(info)
+                classified = True
+        if not classified and re.search(r'\bbu\b', label, re.IGNORECASE):
+            groups['bu'].append({'id': rid, 'label': label, 'number': ''})
+    return groups
+
+
+@login_required
 @require_POST
 def api_start_session(request):
     """
-    Create a new CPS report session for the given client/claim.
-    Finds all 300s and 400s rooms from Encircle and returns them.
+    Create a new PPR session.  Accepts room_sources (default ["400s","100s","bu"])
+    which controls which Encircle room series are included and in what order.
     """
     try:
         data = json.loads(request.body)
-        # Accept encircle_claim_id directly (selector now returns Encircle IDs)
         encircle_claim_id = str(data.get('encircle_claim_id') or data.get('client_id') or '').strip()
         if not encircle_claim_id:
             return JsonResponse({'error': 'encircle_claim_id required'}, status=400)
@@ -162,9 +242,9 @@ def api_start_session(request):
         if pricing_mode not in ('normal', 'premium'):
             pricing_mode = 'normal'
 
-        # Find existing Client by encircle_claim_id, or create a minimal stub
-        # so CPSReportSession has an FK to attach to.
-        # Use unscoped so pre-tenant-migration clients (tenant_id=NULL) are found.
+        room_sources = list(data.get('room_sources') or ['400s', '100s', 'bu'])
+
+        # Find or stub a Client record for the FK
         client = Client.unscoped.filter(encircle_claim_id=encircle_claim_id).first()
         if not client:
             from docsAppR.encircle_client import EncircleAPIClient as _API, EncircleDataProcessor as _P
@@ -181,7 +261,7 @@ def api_start_session(request):
             except Exception:
                 client = Client.unscoped.create(encircle_claim_id=encircle_claim_id)
 
-        # Fetch rooms from Encircle
+        # Fetch and group all rooms from Encircle
         from docsAppR.encircle_client import EncircleAPIClient
         api = EncircleAPIClient()
 
@@ -190,28 +270,43 @@ def api_start_session(request):
             return JsonResponse({'error': 'No structures found for this claim'}, status=404)
 
         structure_id = structures['list'][0]['id']
+        all_rooms    = api.get_all_structure_rooms(encircle_claim_id, structure_id)
+        grouped      = _group_encircle_rooms(all_rooms)
 
-        # Use paginated fetch so claims with >100 rooms don't silently drop rooms
-        all_rooms = api.get_all_structure_rooms(encircle_claim_id, structure_id)
+        has_400s = '400s' in room_sources and grouped['400s']
+        has_300s = '300s' in room_sources and grouped['300s']
+        has_100s = '100s' in room_sources and grouped['100s']
+        has_bu   = 'bu'   in room_sources and grouped['bu']
 
-        # Filter for 300s and 400s rooms (CPS rooms: 300–399 and 400–499)
-        cps_rooms = []
-        for room in all_rooms:
-            label = (room.get('label') or room.get('name') or '').strip()
-            m = re.match(r'^(\d+)', label)
-            if m:
-                num = int(m.group(1))
-                if 300 <= num <= 499:
-                    cps_rooms.append({
-                        'id': room.get('id'),
-                        'label': label,
-                        'number': str(m.group(1)),
-                    })
+        if not has_400s and not has_300s:
+            available = [k for k in ('400s', '300s') if grouped[k]]
+            return JsonResponse({
+                'error': 'No primary rooms (400s/300s) found or selected. '
+                         f'Available: {available or "none"}',
+            }, status=404)
 
-        if not cps_rooms:
-            return JsonResponse({'error': 'No 300s or 400s CPS rooms found in this claim'}, status=404)
+        # Build paired primary rooms — when both 400s and 300s are selected,
+        # pair them by numeric suffix (e.g. "401" ↔ "301") so the AI sees
+        # both photo sets together for the same physical room.
+        paired_rooms = []  # [(primary_info, secondary_info|None), ...]
+        if has_400s and has_300s:
+            from collections import defaultdict
+            by_suffix = defaultdict(dict)
+            for r in grouped['400s']:
+                by_suffix[r['number'][1:]][r['number'][0]] = r
+            for r in grouped['300s']:
+                by_suffix[r['number'][1:]][r['number'][0]] = r
+            for suffix in sorted(by_suffix.keys()):
+                sm = by_suffix[suffix]
+                primary   = sm.get('4') or sm.get('3')
+                secondary = sm.get('3') if ('4' in sm and '3' in sm) else None
+                paired_rooms.append((primary, secondary))
+        elif has_400s:
+            paired_rooms = [(r, None) for r in sorted(grouped['400s'], key=lambda x: x['number'])]
+        else:
+            paired_rooms = [(r, None) for r in sorted(grouped['300s'], key=lambda x: x['number'])]
 
-        # Always create a fresh session so previous runs are preserved for comparison
+        # Create session
         session = CPSReportSession.objects.create(
             client=client,
             encircle_claim_id=encircle_claim_id,
@@ -219,46 +314,55 @@ def api_start_session(request):
             insured_name=client.pOwner or '',
             encircle_structure_id=structure_id,
             pricing_mode=pricing_mode,
+            room_sources=room_sources,
             status='pending',
         )
 
-        # No old rooms to delete — this is a brand-new session
-        session.rooms.all().delete()
+        def _clean_name(label):
+            return re.sub(r'^\d+\s*[\-–—·\.]*\s*', '', label).strip() or label
 
-        # Pair 300-series and 400-series rooms by their numeric suffix.
-        # e.g. "301" and "401" share suffix "01" → same physical room.
-        # Prefer 400-series as primary (normal CPS designation); 300-series becomes secondary.
-        from collections import defaultdict
-        by_suffix = defaultdict(dict)
-        for room_info in cps_rooms:
-            num_str = room_info['number']
-            series_digit = num_str[0]   # "3" or "4"
-            suffix = num_str[1:]        # "01", "02", …
-            by_suffix[suffix][series_digit] = room_info
-
-        paired_rooms = []
-        for suffix in sorted(by_suffix.keys()):
-            series_map = by_suffix[suffix]
-            primary   = series_map.get('4') or series_map.get('3')
-            secondary = series_map.get('3') if ('4' in series_map and '3' in series_map) else None
-            paired_rooms.append((primary, secondary))
-
+        # Primary rooms (order 0+)
         for order, (primary, secondary) in enumerate(paired_rooms):
-            label = primary['label']
-            room_num = primary['number']
-            # Strip leading number + separator to get a clean room name
-            room_name = re.sub(r'^\d+\s*[\-–—·\.]*\s*', '', label).strip() or label
             CPSReportRoom.objects.create(
                 session=session,
-                room_name=room_name,
-                room_number=room_num,
+                room_name=_clean_name(primary['label']),
+                room_number=primary['number'],
                 encircle_room_id=primary['id'],
                 encircle_room_label=primary['label'],
                 encircle_room_id_secondary=secondary['id'] if secondary else '',
                 encircle_room_label_secondary=secondary['label'] if secondary else '',
+                room_source=CPSReportRoom.ROOM_SOURCE_PRIMARY,
                 order=order,
                 status='pending',
             )
+
+        # Overview rooms — 100s (order 100+)
+        if has_100s:
+            for ov_idx, r in enumerate(sorted(grouped['100s'], key=lambda x: x['number'])):
+                CPSReportRoom.objects.create(
+                    session=session,
+                    room_name=_clean_name(r['label']),
+                    room_number=r['number'],
+                    encircle_room_id=r['id'],
+                    encircle_room_label=r['label'],
+                    room_source=CPSReportRoom.ROOM_SOURCE_OVERVIEW,
+                    order=100 + ov_idx,
+                    status='pending',
+                )
+
+        # BU rooms (order 200+)
+        if has_bu:
+            for bu_idx, r in enumerate(grouped['bu']):
+                CPSReportRoom.objects.create(
+                    session=session,
+                    room_name=_clean_name(r['label']),
+                    room_number=r.get('number', ''),
+                    encircle_room_id=r['id'],
+                    encircle_room_label=r['label'],
+                    room_source=CPSReportRoom.ROOM_SOURCE_BU,
+                    order=200 + bu_idx,
+                    status='pending',
+                )
 
         rooms_out = [
             {
@@ -266,12 +370,13 @@ def api_start_session(request):
                 'room_name': r.room_name,
                 'room_number': r.room_number,
                 'encircle_room_id': r.encircle_room_id,
+                'room_source': r.room_source,
                 'status': r.status,
             }
             for r in session.rooms.order_by('order').all()
         ]
 
-        # Launch Celery task — worker processes rooms in background
+        # Launch Celery task
         from .tasks import process_cps_session_task
         task = process_cps_session_task.delay(session.id)
         session.celery_task_id = task.id
@@ -532,10 +637,12 @@ def api_reassign_photo(request):
     to_item.source_image_urls = to_urls
     to_item.save(update_fields=['source_image_urls'])
 
+    all_keys = list(dict.fromkeys(from_urls + to_urls))
     return JsonResponse({
         'success': True,
         'from_source_image_urls': from_urls,
         'to_source_image_urls': to_urls,
+        'url_map': {k: _ppr_resolve_url(k) for k in all_keys},
     })
 
 
@@ -546,7 +653,7 @@ def export_pdf(request, session_id):
     try:
         from .pdf_builder import build_pdf
         pdf_bytes = build_pdf(session)
-        filename = f"ScheduleOfLoss_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
+        filename = f"PPR_Schedule_Of_Loss_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -582,7 +689,7 @@ def export_photo_pdf(request, session_id):
                 )
             pdf_bytes = build_photo_pdf(session)
 
-        filename = f"PhotoEvidence_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
+        filename = f"PPR_Photo_Evidence_Report_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -918,7 +1025,7 @@ def export_excel(request, session_id):
         from .excel_builder import build_excel
         share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')
         xlsx_bytes = build_excel(session, share_url=share_url)
-        filename = f"ScheduleOfLoss_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.xlsx"
+        filename = f"PPR_Schedule_Of_Loss_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.xlsx"
 
         # Best-effort: save to claim folder + notify via email
         _cps_save_and_notify(session, xlsx_bytes, filename)
