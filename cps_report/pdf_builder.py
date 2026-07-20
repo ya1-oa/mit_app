@@ -127,10 +127,12 @@ def build_pdf(session) -> bytes:
 
     # Claim info block
     now = datetime.date.today().strftime('%B %d, %Y')
+    _street      = session.client.pAddress     or ''
+    _city_st_zip = session.client.pCityStateZip or ''
     info_rows = [
-        ['Insured',        session.insured_name or '—',              'Report Date', now],
-        ['Address',        (session.client.pAddress or '—'),          'Encircle ID', session.encircle_claim_id or '—'],
-        ['Claim Number',   session.claim_number or '—',              'Total Items', str(grand_qty)],
+        ['Insured',        session.insured_name or '—',          'Report Date',  now],
+        ['Address',        _street or '—',                       '',             _city_st_zip],
+        ['Claim Number',   session.claim_number or '—',          'Total Items',  str(grand_qty)],
         ['Total Rooms',    str(len(rooms)),                           '',            ''],
         ['Replacement Value', _fmt_usd(grand_rcv),                   '',            ''],
     ]

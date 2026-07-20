@@ -294,12 +294,13 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     story.append(cover)
     story.append(Spacer(1, 12))
 
-    claim_id_display = (
-        getattr(session.client, 'claimID', '') or session.encircle_claim_id or '—'
-    )
+    _addr = ', '.join(filter(None, [
+        getattr(session.client, 'pAddress', '') or '',
+        getattr(session.client, 'pCityStateZip', '') or '',
+    ]))
     info = Table(
         [['Insured',   session.insured_name or '—',  'Report Date', now],
-         ['Claim #',   session.claim_number or '—',  'Claim ID',    claim_id_display],
+         ['Claim #',   session.claim_number or '—',  'Address',     _addr or '—'],
          ['Loss Type', session.loss_type or '—',     'Total Rooms', str(len(room_data))]],
         colWidths=[usable_w*0.14, usable_w*0.36, usable_w*0.14, usable_w*0.36],
     )

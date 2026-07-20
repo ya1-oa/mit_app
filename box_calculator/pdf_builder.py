@@ -175,9 +175,10 @@ def build_cps_pdf(session) -> bytes:
         if loss_date else claim_date_str
     )
 
-    claim_num = getattr(client, 'claimNumber', '') or '—'
-    insured   = getattr(client, 'pOwner',       '') or '—'
-    address   = getattr(client, 'pAddress',     '') or '—'
+    claim_num    = getattr(client, 'claimNumber',    '') or '—'
+    insured      = getattr(client, 'pOwner',         '') or '—'
+    street       = getattr(client, 'pAddress',       '') or ''
+    city_st_zip  = getattr(client, 'pCityStateZip',  '') or ''
 
     story = []
 
@@ -192,15 +193,17 @@ def build_cps_pdf(session) -> bytes:
         Paragraph(loss_date_str,   S["hdr_val"]),
     ]
 
-    # Right column: claim id, insured, property address
+    # Right column: claim number, insured, full property address
     right_content = [
-        Paragraph("Claim Id:", S["hdr_label"]),
-        Paragraph(claim_num,   S["hdr_val"]),
+        Paragraph("Claim Number:", S["hdr_label"]),
+        Paragraph(claim_num,       S["hdr_val"]),
         Paragraph("Insured:", S["hdr_label"]),
         Paragraph(insured,    S["hdr_val"]),
         Paragraph("Property Address:", S["hdr_label"]),
-        Paragraph(address,            S["hdr_addr"]),
+        Paragraph(street or '—',   S["hdr_addr"]),
     ]
+    if city_st_zip:
+        right_content.append(Paragraph(city_st_zip, S["hdr_addr"]))
 
     def _cell(flowables, usable_w):
         t = Table([[f] for f in flowables], colWidths=[usable_w])

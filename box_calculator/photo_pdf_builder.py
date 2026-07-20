@@ -231,12 +231,15 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     story.append(cover)
     story.append(Spacer(1, 12))
 
+    _full_addr = ', '.join(filter(None, [
+        session.client.pAddress or '',
+        session.client.pCityStateZip or '',
+    ])) or '—'
     info = Table(
-        [['Insured',       session.client.pOwner or '—',    'Report Date', now],
-         ['Claim #',       session.client.claimNumber or '—', 'Total Rooms',
+        [['Insured',  session.client.pOwner or '—',       'Report Date',  now],
+         ['Claim #',  session.client.claimNumber or '—',   'Total Rooms',
           str(len([rd for rd in room_data if rd['status'] == 'complete']))],
-         ['Claim ID',      session.client.encircle_claim_id or '—',
-          'Total Boxes',   str(session.grand_total)]],
+         ['Address',  _full_addr,                           'Total Boxes',  str(session.grand_total)]],
         colWidths=[usable_w*0.14, usable_w*0.36, usable_w*0.14, usable_w*0.36],
     )
     info.setStyle(TableStyle([

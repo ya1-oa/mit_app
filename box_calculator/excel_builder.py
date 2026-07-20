@@ -47,10 +47,17 @@ def build_cps_excel(session) -> bytes:
     title_cell.font = Font(bold=True, size=13)
     title_cell.alignment = Alignment(horizontal="center")
 
+    _sub_parts = []
     if session.client.claimNumber:
+        _sub_parts.append(f"Claim #{session.client.claimNumber}")
+    _addr_parts = [session.client.pAddress or '', session.client.pCityStateZip or '']
+    _full_addr = ', '.join(p for p in _addr_parts if p)
+    if _full_addr:
+        _sub_parts.append(_full_addr)
+    if _sub_parts:
         ws.merge_cells("A2:M2")
         sub_cell = ws["A2"]
-        sub_cell.value = f"Claim #{session.client.claimNumber}"
+        sub_cell.value = '   |   '.join(_sub_parts)
         sub_cell.alignment = Alignment(horizontal="center")
         sub_cell.font = Font(italic=True, color="555555")
 

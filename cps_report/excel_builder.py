@@ -115,19 +115,20 @@ def _build_header_rows(ws, session):
     ws.merge_cells(f'A2:{LAST_COL}2')
     c2 = ws['A2']
 
-    _human_id  = getattr(session.client, 'claimID', '') or ''
-    _enc_id    = session.encircle_claim_id or ''
     _name      = session.insured_name or ''
     _claim_num = session.claim_number or ''
     _loss_date = session.loss_date.strftime('%b %d, %Y') if session.loss_date else ''
     _today     = datetime.date.today().strftime('%b %d, %Y')
+    _addr      = ', '.join(filter(None, [
+        getattr(session.client, 'pAddress', '') or '',
+        getattr(session.client, 'pCityStateZip', '') or '',
+    ]))
 
     parts = ['All Phase Consulting, LLC']
-    if _name:                       parts.append(f'Insured: {_name}')
-    if _human_id:                   parts.append(f'Claim ID: {_human_id}')
-    if _enc_id:                     parts.append(f'Customer ID: {_enc_id}')
-    if _loss_date:                  parts.append(f'Date of Loss: {_loss_date}')
-    if _claim_num:                  parts.append(f'Claim #: {_claim_num}')
+    if _name:      parts.append(f'Insured: {_name}')
+    if _addr:      parts.append(f'Address: {_addr}')
+    if _loss_date: parts.append(f'Date of Loss: {_loss_date}')
+    if _claim_num: parts.append(f'Claim #: {_claim_num}')
     parts.append(f'Report Date: {_today}')
 
     c2.value     = '   •   '.join(parts)
