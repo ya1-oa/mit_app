@@ -42,6 +42,12 @@ _PAGE_W, _PAGE_H = landscape(letter)
 _MARGIN    = 0.55 * inch
 _CONTENT_W = _PAGE_W - 2 * _MARGIN
 
+# Company letterhead constants
+_COMPANY_NAME    = "All Phase Consulting, LLC"
+_COMPANY_TAGLINE = "Providing Cost Estimating & Project Management Services"
+_COMPANY_WEB     = "www.myapcllc.com"
+_COMPANY_EMAIL   = "info@myapcllc.com"
+
 # Column labels that match the reference invoice format
 _COL_LABELS = {
     "small":          "Small\nBox",
@@ -104,6 +110,18 @@ def _styles():
         "note_text": ParagraphStyle(
             "cps_note_text", fontName="Helvetica", fontSize=8,
             textColor=_BLACK, leading=11,
+        ),
+        "co_name": ParagraphStyle(
+            "cps_co_name", fontName="Helvetica-Bold", fontSize=14,
+            textColor=_BLUE_DARK, alignment=TA_LEFT,
+        ),
+        "co_tagline": ParagraphStyle(
+            "cps_co_tagline", fontName="Helvetica-Oblique", fontSize=8,
+            textColor=colors.HexColor("#4a6fa5"), alignment=TA_LEFT, spaceBefore=2,
+        ),
+        "co_contact": ParagraphStyle(
+            "cps_co_contact", fontName="Helvetica", fontSize=8,
+            textColor=colors.HexColor("#555555"), alignment=TA_RIGHT, leading=12,
         ),
     }
 
@@ -174,6 +192,45 @@ def build_cps_pdf(session) -> bytes:
     address   = getattr(client, 'pAddress',     '') or '—'
 
     story = []
+
+    # ── Company letterhead strip ──────────────────────────────────────────────
+    lh_left = Table(
+        [[Paragraph(_COMPANY_NAME, S["co_name"])],
+         [Paragraph(_COMPANY_TAGLINE, S["co_tagline"])]],
+        colWidths=[_CONTENT_W * 0.6],
+    )
+    lh_left.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    lh_right = Table(
+        [[Paragraph(f"{_COMPANY_WEB}  |  {_COMPANY_EMAIL}", S["co_contact"])]],
+        colWidths=[_CONTENT_W * 0.4],
+    )
+    lh_right.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 0),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 0),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+    ]))
+    letterhead = Table(
+        [[lh_left, lh_right]],
+        colWidths=[_CONTENT_W * 0.6, _CONTENT_W * 0.4],
+    )
+    letterhead.setStyle(TableStyle([
+        ("TOPPADDING",    (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
+        ("LEFTPADDING",   (0, 0), (-1, -1), 0),
+        ("RIGHTPADDING",  (0, 0), (-1, -1), 0),
+        ("VALIGN",        (0, 0), (-1, -1), "MIDDLE"),
+        ("LINEBELOW",     (0, 0), (-1, -1), 1.5, _BLUE_DARK),
+    ]))
+    story.append(letterhead)
+    story.append(Spacer(1, 6))
 
     # ── Header: 2-column bordered grid ───────────────────────────────────────
     # Left column: title + report date + date of loss
