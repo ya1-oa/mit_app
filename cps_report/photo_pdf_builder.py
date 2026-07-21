@@ -104,34 +104,42 @@ def _make_styles() -> dict:
     }
 
 
-def _resolve_storage_url(key: str) -> str:
-    """Convert a storage key to a downloadable URL; pass http(s) URLs through unchanged."""
-    if key.startswith(('http://', 'https://')):
-        return key
+def _load_image_bytes(url: str) -> Optional[bytes]:
+    """Fetch raw image bytes.
+
+    Storage keys are read straight from default_storage (no presigned-URL
+    HTTP round-trip, which fails intermittently in production). Real
+    http(s) URLs are downloaded normally.
+    """
+    if url.startswith(('http://', 'https://')):
+        try:
+            resp = requests.get(url, timeout=20)
+            resp.raise_for_status()
+            return resp.content
+        except Exception as exc:
+            logger.warning(f"Photo PDF: download failed for {url}: {exc}")
+            return None
     try:
         from django.core.files.storage import default_storage
-        return default_storage.url(key)
-    except Exception:
-        return key
+        with default_storage.open(url, 'rb') as fh:
+            return fh.read()
+    except Exception as exc:
+        logger.warning(f"Photo PDF: storage read failed for {url}: {exc}")
+        return None
 
 
 def _download_image(url: str) -> Optional[BytesIO]:
-    """Download one image URL (or storage key) and return a JPEG BytesIO, or None on failure.
+    """Load one image (storage key or URL) and return a JPEG BytesIO, or None on failure.
 
     Converts through Pillow so any format Encircle serves (WEBP, HEIC, etc.)
     is normalised to JPEG before ReportLab touches it.
     """
-    resolved = _resolve_storage_url(url)
-    try:
-        resp = requests.get(resolved, timeout=20)
-        resp.raise_for_status()
-    except Exception as exc:
-        logger.warning(f"Photo PDF: download failed for {resolved}: {exc}")
+    raw = _load_image_bytes(url)
+    if raw is None:
         return None
-
     try:
         from PIL import Image as PilImage
-        pil = PilImage.open(BytesIO(resp.content))
+        pil = PilImage.open(BytesIO(raw))
         if pil.mode not in ('RGB', 'L'):
             pil = pil.convert('RGB')
         out = BytesIO()
@@ -139,7 +147,7 @@ def _download_image(url: str) -> Optional[BytesIO]:
         out.seek(0)
         return out
     except Exception as exc:
-        logger.warning(f"Photo PDF: image conversion failed for {resolved}: {exc}")
+        logger.warning(f"Photo PDF: image conversion failed for {url}: {exc}")
         return None
 
 
@@ -153,127 +161,51 @@ def _fetch_parallel(urls: list[str], max_workers: int = 8) -> list[Optional[Byte
     return results
 
 
+def _render_images(image_bufs: list, size: float, per_row: int) -> list:
+    """Render loaded images in rows of up to `per_row`. Failed/missing images
+    are skipped entirely — no captions, no placeholder boxes, no padding.
+    One photo renders as one photo."""
+    imgs = []
+    for buf in image_bufs:
+        if buf is None:
+            continue
+        try:
+            img = Image(buf, width=size, height=size)
+            imgs.append(img)
+        except Exception as exc:
+            logger.warning(f"Photo PDF: could not render image: {exc}")
+
+    if not imgs:
+        return []
+
+    flow = []
+    for start in range(0, len(imgs), per_row):
+        chunk = imgs[start:start + per_row]
+        tbl = Table([chunk], colWidths=[size + 8] * len(chunk),
+                    rowHeights=[size + 6])
+        tbl.setStyle(TableStyle([
+            ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
+            ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
+            ('TOPPADDING',    (0, 0), (-1, -1), 3),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 3),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 4),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 4),
+        ]))
+        tbl.hAlign = 'LEFT'
+        flow.append(tbl)
+    return flow
+
+
 def _image_grid(image_bufs: list[Optional[BytesIO]],
                 photo_start: int,
                 cell_w: float) -> list:
-    """Return flowables for a 3-column image grid (legacy fallback)."""
-    styles = getSampleStyleSheet()
-    cap_style = ParagraphStyle(
-        'PhotoCap', parent=styles['Normal'],
-        fontSize=6.5, textColor=C_MUTED, leading=8, alignment=1,
-    )
-    def _img_cell(buf, idx):
-        if buf is None:
-            ph = Table([['']], colWidths=[IMG_SIZE], rowHeights=[IMG_SIZE])
-            ph.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3f4f6')),
-                ('BOX',        (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
-            ]))
-            return [ph]
-        try:
-            img = Image(buf, width=IMG_SIZE, height=IMG_SIZE)
-            img.hAlign = 'CENTER'
-            return [img]
-        except Exception as _exc:
-            logger.warning(f"Photo PDF: could not render image: {_exc}")
-            ph = Table([['']], colWidths=[IMG_SIZE], rowHeights=[IMG_SIZE])
-            ph.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3f4f6')),
-                ('BOX',        (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
-            ]))
-            return [ph]
-
-    img_rows, cap_rows = [], []
-    for chunk_start in range(0, len(image_bufs), IMG_COLS):
-        chunk = list(image_bufs[chunk_start:chunk_start + IMG_COLS])
-        while len(chunk) < IMG_COLS:
-            chunk.append(None)
-        img_rows.append([_img_cell(buf, chunk_start + i) for i, buf in enumerate(chunk)])
-        cap_rows.append([
-            [Paragraph(f"Photo {photo_start + chunk_start + i}", cap_style)]
-            for i in range(IMG_COLS)
-        ])
-
-    if not img_rows:
-        return []
-
-    all_rows, row_heights = [], []
-    for img_row, cap_row in zip(img_rows, cap_rows):
-        all_rows.append(img_row)
-        all_rows.append(cap_row)
-        row_heights.append(IMG_SIZE + 4)
-        row_heights.append(10)
-
-    tbl = Table(all_rows, colWidths=[cell_w] * IMG_COLS, rowHeights=row_heights)
-    tbl.setStyle(TableStyle([
-        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING',    (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 3),
-        ('BOX',           (0, 0), (-1, -1), 0.3, C_RULE),
-    ]))
-    return [tbl]
+    """Room-level image grid (legacy fallback for reports without attribution)."""
+    return _render_images(image_bufs, IMG_SIZE, IMG_COLS)
 
 
 def _item_image_strip(image_bufs: list, cell_w: float) -> list:
-    """Return flowables for the image strip shown beneath a single line item."""
-    styles = getSampleStyleSheet()
-    cap_style = ParagraphStyle(
-        'ItemCap', parent=styles['Normal'],
-        fontSize=6, textColor=C_MUTED, leading=7, alignment=1,
-    )
-
-    def _img_cell(buf, num):
-        if buf is None:
-            ph = Table([['']], colWidths=[ITEM_IMG_SIZE], rowHeights=[ITEM_IMG_SIZE])
-            ph.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3f4f6')),
-                ('BOX',        (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
-            ]))
-            return [ph]
-        try:
-            img = Image(buf, width=ITEM_IMG_SIZE, height=ITEM_IMG_SIZE)
-            img.hAlign = 'CENTER'
-            return [img]
-        except Exception as _exc:
-            logger.warning(f"Photo PDF: could not render image: {_exc}")
-            ph = Table([['']], colWidths=[ITEM_IMG_SIZE], rowHeights=[ITEM_IMG_SIZE])
-            ph.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3f4f6')),
-                ('BOX',        (0, 0), (-1, -1), 0.5, colors.HexColor('#d1d5db')),
-            ]))
-            return [ph]
-
-    padded = list(image_bufs)
-    while len(padded) % ITEM_IMG_COLS != 0:
-        padded.append(None)
-
-    all_rows, row_heights = [], []
-    for row_start in range(0, len(padded), ITEM_IMG_COLS):
-        chunk   = padded[row_start:row_start + ITEM_IMG_COLS]
-        img_row = [_img_cell(buf, row_start + j + 1) for j, buf in enumerate(chunk)]
-        cap_row = [[Paragraph(f"Photo {row_start + j + 1}", cap_style)] for j in range(ITEM_IMG_COLS)]
-        all_rows.append(img_row)
-        all_rows.append(cap_row)
-        row_heights.append(ITEM_IMG_SIZE + 4)
-        row_heights.append(9)
-
-    if not all_rows:
-        return []
-
-    tbl = Table(all_rows, colWidths=[cell_w] * ITEM_IMG_COLS, rowHeights=row_heights)
-    tbl.setStyle(TableStyle([
-        ('ALIGN',         (0, 0), (-1, -1), 'CENTER'),
-        ('VALIGN',        (0, 0), (-1, -1), 'MIDDLE'),
-        ('TOPPADDING',    (0, 0), (-1, -1), 2),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
-        ('LEFTPADDING',   (0, 0), (-1, -1), 3),
-        ('RIGHTPADDING',  (0, 0), (-1, -1), 3),
-        ('BOX',           (0, 0), (-1, -1), 0.3, C_RULE),
-    ]))
-    return [tbl]
+    """Image strip beneath a single line item — real photos only."""
+    return _render_images(image_bufs, ITEM_IMG_SIZE, ITEM_IMG_COLS)
 
 
 # ── Sub-PDF builders ───────────────────────────────────────────────────────────
@@ -473,7 +405,14 @@ def _build_room_pdf(rd: dict, styles: dict, page_offset_ref: list) -> bytes:
             item_urls = list(item.source_image_urls or [])
             if item_urls:
                 item_bufs = [url_to_buf.get(u) for u in item_urls]
-                story.extend(_item_image_strip(item_bufs, item_strip_cell_w))
+                strip = _item_image_strip(item_bufs, item_strip_cell_w)
+                if strip:
+                    story.extend(strip)
+                else:
+                    story.append(Paragraph(
+                        '  Photos could not be loaded for this item.',
+                        styles['muted'],
+                    ))
             else:
                 story.append(Paragraph(
                     '  No photos attributed for this item.',

@@ -674,6 +674,19 @@ def export_photo_pdf(request, session_id):
         from .photo_pdf_builder import build_photo_pdf
 
         _pdf_path = f'cps_photo_pdfs/{session_id}.pdf'
+
+        # ?rebuild=1 — flush the cached copy and queue a fresh build
+        if request.GET.get('rebuild'):
+            if default_storage.exists(_pdf_path):
+                default_storage.delete(_pdf_path)
+            from .tasks import regenerate_photo_pdf_task
+            regenerate_photo_pdf_task.delay(session_id)
+            return HttpResponse(
+                'Photo PDF rebuild queued. Wait a few minutes, then download again '
+                '(the Photo PDF button will show "building…" until it is ready).',
+                content_type='text/plain',
+            )
+
         if default_storage.exists(_pdf_path):
             with default_storage.open(_pdf_path, 'rb') as _f:
                 pdf_bytes = _f.read()
@@ -689,7 +702,7 @@ def export_photo_pdf(request, session_id):
                 )
             pdf_bytes = build_photo_pdf(session)
 
-        filename = f"PPR_Photo_Evidence_Report_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
+        filename = f"NON_SALVAGEABLE_PPR_Photo_Evidence_Report_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -1528,108 +1541,32 @@ def _cps_save_and_notify(session, xlsx_bytes: bytes, filename: str) -> None:
 # ── PPR Box Count ─────────────────────────────────────────────────────────────
 
 @login_required
-def ppr_box_count(request, session_id):
-    """Display and manage the NON SALVAGEABLE / PPR Box Count for a PPR session."""
-    from box_calculator.cps_analyzer import CPS_COLUMNS, CPS_COLUMN_LABELS
-    from .models import PPRBoxCount, PPRBoxCountRoom
+def ppr_box_count_pdf(request, session_id):
+    """Stream the NON SALVAGEABLE / PPR Box Count PDF.
+
+    Same data as the client's CPS box count (BoxCalcCPSSession) — identical
+    layout, rebranded title. The CPS box count itself stays untouched at
+    /box-calculator/.
+    """
+    from box_calculator.models import BoxCalcCPSSession
+    from box_calculator.ppr_pdf_builder import build_ppr_pdf
 
     session = get_object_or_404(CPSReportSession, id=session_id)
-    box_count, created = PPRBoxCount.objects.get_or_create(session=session)
-
-    if created:
-        # Pre-populate from the PPR session's primary rooms (ordered)
-        ppr_rooms = (
-            session.rooms
-            .filter(room_source=CPSReportRoom.ROOM_SOURCE_PRIMARY)
-            .order_by('order', 'room_number')
-        )
-        for i, room in enumerate(ppr_rooms):
-            PPRBoxCountRoom.objects.create(
-                box_count=box_count,
-                room_name=room.room_name,
-                order=i,
-            )
-
-    rooms = list(box_count.rooms.order_by('order', 'room_name'))
-    col_labels = [CPS_COLUMN_LABELS[c] for c in CPS_COLUMNS]
-
-    return render(request, 'cps_report/ppr_box_count.html', {
-        'session':    session,
-        'box_count':  box_count,
-        'rooms':      rooms,
-        'cps_columns': CPS_COLUMNS,
-        'col_labels':  col_labels,
-    })
-
-
-@login_required
-@require_POST
-def ppr_box_count_save(request, session_id):
-    """Save room box counts + notes via JSON POST."""
-    from box_calculator.cps_analyzer import CPS_COLUMNS
-    from .models import PPRBoxCount, PPRBoxCountRoom
-
-    session   = get_object_or_404(CPSReportSession, id=session_id)
-    box_count = get_object_or_404(PPRBoxCount, session=session)
-    data      = json.loads(request.body)
-
-    for room_data in data.get('rooms', []):
-        try:
-            room = PPRBoxCountRoom.objects.get(id=room_data['id'], box_count=box_count)
-        except PPRBoxCountRoom.DoesNotExist:
-            continue
-        for col in CPS_COLUMNS:
-            setattr(room, col, int(room_data.get(col, 0) or 0))
-        room.room_name = (room_data.get('room_name') or room.room_name).strip()
-        room.save()
-
-    box_count.notes = data.get('notes', '').strip()
-    box_count.save()
-    return JsonResponse({'ok': True})
-
-
-@login_required
-@require_POST
-def ppr_box_count_add_room(request, session_id):
-    """Add a blank room row to the box count."""
-    from .models import PPRBoxCount, PPRBoxCountRoom
-
-    session   = get_object_or_404(CPSReportSession, id=session_id)
-    box_count = get_object_or_404(PPRBoxCount, session=session)
-    data      = json.loads(request.body)
-    room_name = (data.get('room_name') or 'New Room').strip()
-    from django.db.models import Max
-    max_order = box_count.rooms.aggregate(m=Max('order'))['m'] or 0
-    room = PPRBoxCountRoom.objects.create(
-        box_count=box_count,
-        room_name=room_name,
-        order=max_order + 1,
+    cps_session = (
+        BoxCalcCPSSession.unscoped
+        .filter(client=session.client)
+        .order_by('-updated_at')
+        .first()
     )
-    return JsonResponse({'ok': True, 'id': room.id, 'room_name': room.room_name})
+    if cps_session is None:
+        return HttpResponse(
+            'No box count data exists for this client yet.\n'
+            'Run the CPS box calculator for this client first '
+            '(Box Calculator app -> CPS), then download this report again.',
+            status=404, content_type='text/plain',
+        )
 
-
-@login_required
-@require_POST
-def ppr_box_count_delete_room(request, session_id, room_id):
-    """Delete a room row from the box count."""
-    from .models import PPRBoxCount, PPRBoxCountRoom
-
-    session   = get_object_or_404(CPSReportSession, id=session_id)
-    box_count = get_object_or_404(PPRBoxCount, session=session)
-    room      = get_object_or_404(PPRBoxCountRoom, id=room_id, box_count=box_count)
-    room.delete()
-    return JsonResponse({'ok': True})
-
-
-@login_required
-def ppr_box_count_pdf(request, session_id):
-    """Generate and stream the NON SALVAGEABLE / PPR Box Count PDF."""
-    from .models import PPRBoxCount
-    from .ppr_box_count_pdf_builder import build_ppr_box_count_pdf
-
-    session   = get_object_or_404(CPSReportSession, id=session_id)
-    box_count = get_object_or_404(PPRBoxCount, session=session)
-    pdf_bytes = build_ppr_box_count_pdf(box_count)
+    pdf_bytes = build_ppr_pdf(cps_session)
 
     client    = session.client
     safe_name = (client.pOwner or 'Unknown').replace(' ', '_').replace('/', '-')
