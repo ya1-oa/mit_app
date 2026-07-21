@@ -116,16 +116,30 @@ def _resolve_storage_url(key: str) -> str:
 
 
 def _download_image(url: str) -> Optional[BytesIO]:
-    """Download one image URL (or storage key) and return a seekable BytesIO, or None on failure."""
+    """Download one image URL (or storage key) and return a JPEG BytesIO, or None on failure.
+
+    Converts through Pillow so any format Encircle serves (WEBP, HEIC, etc.)
+    is normalised to JPEG before ReportLab touches it.
+    """
     resolved = _resolve_storage_url(url)
     try:
         resp = requests.get(resolved, timeout=20)
         resp.raise_for_status()
-        buf = BytesIO(resp.content)
-        buf.seek(0)
-        return buf
     except Exception as exc:
-        logger.debug(f"Photo PDF: failed to download {resolved}: {exc}")
+        logger.warning(f"Photo PDF: download failed for {resolved}: {exc}")
+        return None
+
+    try:
+        from PIL import Image as PilImage
+        pil = PilImage.open(BytesIO(resp.content))
+        if pil.mode not in ('RGB', 'L'):
+            pil = pil.convert('RGB')
+        out = BytesIO()
+        pil.save(out, format='JPEG', quality=85)
+        out.seek(0)
+        return out
+    except Exception as exc:
+        logger.warning(f"Photo PDF: image conversion failed for {resolved}: {exc}")
         return None
 
 
@@ -160,7 +174,8 @@ def _image_grid(image_bufs: list[Optional[BytesIO]],
             img = Image(buf, width=IMG_SIZE, height=IMG_SIZE)
             img.hAlign = 'CENTER'
             return [img]
-        except Exception:
+        except Exception as _exc:
+            logger.warning(f"Photo PDF: could not render image: {_exc}")
             ph = Table([['']], colWidths=[IMG_SIZE], rowHeights=[IMG_SIZE])
             ph.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3f4f6')),
@@ -222,7 +237,8 @@ def _item_image_strip(image_bufs: list, cell_w: float) -> list:
             img = Image(buf, width=ITEM_IMG_SIZE, height=ITEM_IMG_SIZE)
             img.hAlign = 'CENTER'
             return [img]
-        except Exception:
+        except Exception as _exc:
+            logger.warning(f"Photo PDF: could not render image: {_exc}")
             ph = Table([['']], colWidths=[ITEM_IMG_SIZE], rowHeights=[ITEM_IMG_SIZE])
             ph.setStyle(TableStyle([
                 ('BACKGROUND', (0, 0), (-1, -1), colors.HexColor('#f3f4f6')),
