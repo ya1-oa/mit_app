@@ -289,7 +289,7 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     now = datetime.date.today().strftime('%B %d, %Y')
 
     cover = Table(
-        [[Paragraph('PPR Schedule of Loss — Photo Evidence Report', styles['h1'])],
+        [[Paragraph('NON SALVAGEABLE / PPR Photo Evidence Report', styles['h1'])],
          [Paragraph('All Phase Consulting, LLC', styles['h2'])],
          [Paragraph(
              'Personal property replacement items with supporting photo documentation',

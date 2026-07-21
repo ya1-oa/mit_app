@@ -105,7 +105,7 @@ def build_pdf(session) -> bytes:
 
     # ── Cover page ────────────────────────────────────────────────────────────
     cover_data = [
-        [Paragraph('PPR Schedule of Loss', h1)],
+        [Paragraph('NON SALVAGEABLE / PPR Schedule of Loss', h1)],
         [Paragraph('All Phase Consulting, LLC', h2)],
         [Paragraph('Personal Property Replacement — Replacement Value Report', h2)],
     ]

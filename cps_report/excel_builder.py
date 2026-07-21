@@ -105,7 +105,7 @@ def _build_header_rows(ws, session):
     ws.row_dimensions[1].height = 22
     ws.merge_cells(f'A1:{LAST_COL}1')
     c = ws['A1']
-    c.value     = 'Schedule of Loss — Detailed Report'
+    c.value     = 'NON SALVAGEABLE / PPR Schedule of Loss'
     c.font      = _font(bold=True, color=CLR_HEADER_FG, size=13)
     c.fill      = _fill(CLR_HEADER_BG)
     c.alignment = _center()

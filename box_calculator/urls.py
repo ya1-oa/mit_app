@@ -23,6 +23,7 @@ urlpatterns = [
     path('cps/report/<int:session_id>/', views.cps_report, name='cps_report'),
     path('cps/export/<int:session_id>/', views.cps_export_excel, name='cps_export_excel'),
     path('cps/pdf/<int:session_id>/', views.cps_export_pdf, name='cps_export_pdf'),
+    path('cps/ppr-pdf/<int:session_id>/', views.ppr_export_pdf, name='ppr_export_pdf'),
     path('cps/photo-pdf/<int:session_id>/', views.cps_export_photo_pdf, name='cps_export_photo_pdf'),
     path('cps/room/<int:room_id>/update/', views.cps_update_room, name='cps_update_room'),
     path('cps/room/<int:room_id>/delete/', views.cps_delete_room, name='cps_delete_room'),

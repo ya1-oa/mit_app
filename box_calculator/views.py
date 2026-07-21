@@ -494,6 +494,28 @@ def cps_export_excel(request, session_id):
 
 
 @login_required
+def ppr_export_pdf(request, session_id):
+    """Generate and stream the NON SALVAGEABLE / PPR Box Count as PDF."""
+    from .models import BoxCalcCPSSession, BoxCalcCPSReport
+    from .ppr_pdf_builder import build_ppr_pdf
+    session = get_object_or_404(BoxCalcCPSSession.unscoped, id=session_id)
+    pdf_bytes = build_ppr_pdf(session)
+    safe_name = session.client.pOwner.replace(' ', '_').replace('/', '-')
+    filename = f"NON_SALVAGEABLE_PPR_Box_Count_{safe_name}.pdf"
+    BoxCalcCPSReport.objects.create(
+        session=session,
+        format=BoxCalcCPSReport.FORMAT_PDF,
+        filename=filename,
+        file_data=pdf_bytes,
+        file_size=len(pdf_bytes),
+        created_by=request.user,
+    )
+    response = HttpResponse(pdf_bytes, content_type='application/pdf')
+    response['Content-Disposition'] = f'attachment; filename="{filename}"'
+    return response
+
+
+@login_required
 def cps_export_photo_pdf(request, session_id):
     """Generate, save, and stream the PPR Photo Evidence PDF."""
     from .models import BoxCalcCPSSession, BoxCalcCPSReport
