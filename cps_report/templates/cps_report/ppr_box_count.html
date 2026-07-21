@@ -1,0 +1,416 @@
+{% extends "account/base.html" %}
+{% load static my_tags %}
+
+{% block title %}NON SALVAGEABLE / PPR Box Count — {{ session.insured_name }}{% endblock %}
+{% block page_title %}<i class="fas fa-boxes me-2"></i>NON SALVAGEABLE / PPR Box Count — {{ session.insured_name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+  /* ── Page wrapper ───────────────────────────────────────────────── */
+  .bc-meta-card {
+    background: #fff;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    padding: 16px 20px;
+    margin-bottom: 18px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 20px;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .bc-meta-item { display: flex; flex-direction: column; gap: 2px; }
+  .bc-meta-label { font-size: 10px; text-transform: uppercase; letter-spacing: .8px; color: #94a3b8; font-weight: 600; }
+  .bc-meta-value { font-size: 13px; font-weight: 600; color: #0f172a; }
+
+  /* ── Table wrapper ──────────────────────────────────────────────── */
+  .bc-table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid #e2e8f0; }
+
+  /* ── Main grid ──────────────────────────────────────────────────── */
+  #bcTable {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+    min-width: 1100px;
+  }
+  #bcTable thead th {
+    background: #1e3a5f;
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    text-align: center;
+    padding: 8px 4px;
+    white-space: pre-line;
+    line-height: 1.3;
+    border: 1px solid rgba(255,255,255,.15);
+  }
+  #bcTable thead th.th-room {
+    text-align: left;
+    padding-left: 10px;
+    min-width: 170px;
+  }
+  #bcTable tbody tr:nth-child(even) { background: #f8fafc; }
+  #bcTable tbody tr:hover           { background: #eff6ff; }
+
+  #bcTable tbody td {
+    padding: 5px 4px;
+    border: 1px solid #e2e8f0;
+    vertical-align: middle;
+  }
+  #bcTable tbody td.td-room { padding-left: 8px; }
+
+  /* ── Inputs ─────────────────────────────────────────────────────── */
+  .room-name-input {
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    font-weight: 600;
+    color: #0f172a;
+    width: 100%;
+    min-width: 140px;
+    padding: 2px 4px;
+    border-radius: 4px;
+  }
+  .room-name-input:focus {
+    outline: none;
+    background: #eff6ff;
+  }
+  .count-input {
+    width: 44px;
+    text-align: center;
+    border: 1px solid #d1d5db;
+    border-radius: 4px;
+    font-size: 12px;
+    padding: 3px 2px;
+    background: #fff;
+  }
+  .count-input:focus { outline: none; border-color: #3b82f6; background: #eff6ff; }
+  .count-input::-webkit-inner-spin-button { opacity: 1; }
+
+  /* ── Row total ──────────────────────────────────────────────────── */
+  .row-total {
+    font-weight: 700;
+    color: #1e3a5f;
+    text-align: center;
+    min-width: 44px;
+  }
+
+  /* ── Grand total row ─────────────────────────────────────────────── */
+  #grandTotalRow td {
+    background: #fff9e6;
+    font-weight: 700;
+    color: #1e3a5f;
+    font-size: 12px;
+    text-align: center;
+    border-top: 2px solid #2e6da4;
+    border-bottom: 2px solid #2e6da4;
+    padding: 7px 4px;
+  }
+  #grandTotalRow td.grand-label { text-align: left; padding-left: 10px; }
+
+  /* ── Notes ──────────────────────────────────────────────────────── */
+  #notesField {
+    width: 100%;
+    min-height: 70px;
+    font-size: 13px;
+    border: 1px solid #d1d5db;
+    border-radius: 6px;
+    padding: 8px 10px;
+    resize: vertical;
+  }
+  #notesField:focus { outline: none; border-color: #3b82f6; }
+
+  /* ── Toast ──────────────────────────────────────────────────────── */
+  #saveToast {
+    position: fixed;
+    bottom: 24px; right: 24px;
+    background: #1e3a5f;
+    color: #fff;
+    padding: 10px 18px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    opacity: 0;
+    transform: translateY(8px);
+    transition: opacity .2s, transform .2s;
+    pointer-events: none;
+    z-index: 9999;
+  }
+  #saveToast.show { opacity: 1; transform: translateY(0); }
+
+  /* ── Disclaimer ─────────────────────────────────────────────────── */
+  .photo-note {
+    background: #fffbeb;
+    border: 1px solid #fde68a;
+    border-radius: 8px;
+    padding: 10px 14px;
+    font-size: 12px;
+    color: #92400e;
+    margin-top: 14px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+
+<!-- Back link + action bar -->
+<div class="d-flex align-items-center gap-2 mb-3 flex-wrap">
+  <a href="{% url 'cps_report_session' session.id %}" class="btn btn-sm btn-outline-secondary">
+    <i class="fas fa-arrow-left me-1"></i> Back to PPR Session
+  </a>
+  <button id="saveBtn" class="btn btn-sm btn-primary" onclick="saveAll()">
+    <i class="fas fa-save me-1"></i> Save
+  </button>
+  <a href="{% url 'ppr_box_count_pdf' session.id %}" class="btn btn-sm btn-danger" target="_blank">
+    <i class="fas fa-file-pdf me-1"></i> Download PDF
+  </a>
+  <button class="btn btn-sm btn-outline-success" onclick="addRoom()">
+    <i class="fas fa-plus me-1"></i> Add Room
+  </button>
+</div>
+
+<!-- Meta card -->
+<div class="bc-meta-card">
+  <div class="bc-meta-item">
+    <span class="bc-meta-label">Insured</span>
+    <span class="bc-meta-value">{{ session.insured_name|default:"—" }}</span>
+  </div>
+  <div class="bc-meta-item">
+    <span class="bc-meta-label">Claim #</span>
+    <span class="bc-meta-value">{{ session.claim_number|default:"—" }}</span>
+  </div>
+  <div class="bc-meta-item">
+    <span class="bc-meta-label">Address</span>
+    <span class="bc-meta-value">{{ session.client.pAddress|default:"—" }}{% if session.client.pCityStateZip %}, {{ session.client.pCityStateZip }}{% endif %}</span>
+  </div>
+  <div class="bc-meta-item">
+    <span class="bc-meta-label">Date of Loss</span>
+    <span class="bc-meta-value">{{ session.loss_date|date:"M d, Y"|default:"—" }}</span>
+  </div>
+  <div class="bc-meta-item">
+    <span class="bc-meta-label">PPR Rooms</span>
+    <span class="bc-meta-value">{{ rooms|length }}</span>
+  </div>
+  <div class="bc-meta-item">
+    <span class="bc-meta-label">Grand Total Boxes</span>
+    <span class="bc-meta-value" id="grandTotalDisplay">{{ box_count.grand_total }}</span>
+  </div>
+</div>
+
+<!-- Box count grid -->
+<div class="bc-table-wrap">
+  <table id="bcTable">
+    <thead>
+      <tr>
+        <th class="th-room">Room</th>
+        {% for label in col_labels %}
+        <th>{{ label }}</th>
+        {% endfor %}
+        <th>Total</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="bcBody">
+      {% for room in rooms %}
+      <tr data-room-id="{{ room.id }}">
+        <td class="td-room">
+          <input type="text" class="room-name-input" value="{{ room.room_name }}" data-field="room_name">
+        </td>
+        {% for col in cps_columns %}
+        <td style="text-align:center;">
+          <input type="number" class="count-input" min="0"
+                 value="{{ room|attr:col|default:0 }}"
+                 data-field="{{ col }}"
+                 oninput="updateRowTotal(this)">
+        </td>
+        {% endfor %}
+        <td class="row-total" id="rt-{{ room.id }}">{{ room.total }}</td>
+        <td style="text-align:center;">
+          <button class="btn btn-sm btn-link text-danger p-0" title="Remove room"
+                  onclick="deleteRoom({{ room.id }}, this)">
+            <i class="fas fa-trash-alt"></i>
+          </button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr id="grandTotalRow">
+        <td class="grand-label">Total</td>
+        {% for col in cps_columns %}
+        <td id="gt-{{ col }}">—</td>
+        {% endfor %}
+        <td id="gt-total">—</td>
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+</div>
+
+<!-- Photo disclaimer -->
+<div class="photo-note mt-3">
+  <i class="fas fa-info-circle me-1"></i>
+  <strong>Photo Note:</strong> Some photos may contain more than one non-salvageable item.
+  As a result, the total item count in the PPR Schedule of Loss may exceed the total number
+  of photos in the photo evidence report — this is expected and does not indicate a discrepancy.
+</div>
+
+<!-- Notes -->
+<div class="mt-3">
+  <label for="notesField" class="form-label fw-semibold" style="font-size:13px;">Estimator Note <span class="text-muted fw-normal">(optional — printed on PDF)</span></label>
+  <textarea id="notesField" placeholder="Add any notes here…">{{ box_count.notes }}</textarea>
+</div>
+
+<div id="saveToast"></div>
+
+<script>
+const SESSION_ID  = {{ session.id }};
+const SAVE_URL    = "{% url 'ppr_box_count_save' session.id %}";
+const ADD_URL     = "{% url 'ppr_box_count_add_room' session.id %}";
+const DEL_BASE    = "/cps-report/session/{{ session.id }}/box-count/delete-room/";
+const COLS        = {{ cps_columns|safe }};
+const CSRF        = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+// ── Totals ────────────────────────────────────────────────────────────────────
+function rowTotal(row) {
+  let t = 0;
+  row.querySelectorAll('.count-input').forEach(i => t += parseInt(i.value || 0, 10));
+  return t;
+}
+
+function updateRowTotal(input) {
+  const row  = input.closest('tr');
+  const id   = row.dataset.roomId;
+  const tot  = rowTotal(row);
+  const rtEl = document.getElementById('rt-' + id);
+  if (rtEl) rtEl.textContent = tot;
+  recalcGrand();
+}
+
+function recalcGrand() {
+  const body  = document.getElementById('bcBody');
+  const grand = {};
+  COLS.forEach(c => grand[c] = 0);
+  let grandT = 0;
+
+  body.querySelectorAll('tr[data-room-id]').forEach(row => {
+    row.querySelectorAll('.count-input').forEach(inp => {
+      const col = inp.dataset.field;
+      const v   = parseInt(inp.value || 0, 10);
+      if (col && grand[col] !== undefined) grand[col] += v;
+      grandT += v;
+    });
+  });
+
+  COLS.forEach(c => {
+    const el = document.getElementById('gt-' + c);
+    if (el) el.textContent = grand[c];
+  });
+  const tot = document.getElementById('gt-total');
+  if (tot) tot.textContent = grandT;
+  const disp = document.getElementById('grandTotalDisplay');
+  if (disp) disp.textContent = grandT;
+}
+
+// ── Save ─────────────────────────────────────────────────────────────────────
+async function saveAll() {
+  const body  = document.getElementById('bcBody');
+  const rooms = [];
+  body.querySelectorAll('tr[data-room-id]').forEach(row => {
+    const id      = parseInt(row.dataset.roomId, 10);
+    const nameEl  = row.querySelector('[data-field="room_name"]');
+    const entry   = { id, room_name: nameEl ? nameEl.value : '' };
+    row.querySelectorAll('.count-input').forEach(inp => {
+      entry[inp.dataset.field] = parseInt(inp.value || 0, 10);
+    });
+    rooms.push(entry);
+  });
+
+  const notes = document.getElementById('notesField').value;
+  const resp  = await fetch(SAVE_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify({ rooms, notes }),
+  });
+  showToast(resp.ok ? '✓ Saved' : '✗ Save failed');
+}
+
+// ── Add room ─────────────────────────────────────────────────────────────────
+async function addRoom() {
+  const name = prompt('Room name:');
+  if (!name) return;
+  const resp = await fetch(ADD_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify({ room_name: name }),
+  });
+  if (!resp.ok) { showToast('✗ Failed to add room'); return; }
+  const data = await resp.json();
+  appendRow(data.id, data.room_name);
+  recalcGrand();
+}
+
+function appendRow(id, roomName) {
+  const body = document.getElementById('bcBody');
+  const row  = document.createElement('tr');
+  row.dataset.roomId = id;
+
+  let cells = `<td class="td-room">
+    <input type="text" class="room-name-input" value="${escHtml(roomName)}" data-field="room_name">
+  </td>`;
+
+  COLS.forEach(col => {
+    cells += `<td style="text-align:center;">
+      <input type="number" class="count-input" min="0" value="0"
+             data-field="${col}" oninput="updateRowTotal(this)">
+    </td>`;
+  });
+
+  cells += `<td class="row-total" id="rt-${id}">0</td>`;
+  cells += `<td style="text-align:center;">
+    <button class="btn btn-sm btn-link text-danger p-0" title="Remove room"
+            onclick="deleteRoom(${id}, this)">
+      <i class="fas fa-trash-alt"></i>
+    </button>
+  </td>`;
+
+  row.innerHTML = cells;
+  body.appendChild(row);
+}
+
+// ── Delete room ───────────────────────────────────────────────────────────────
+async function deleteRoom(id, btn) {
+  if (!confirm('Remove this room?')) return;
+  const resp = await fetch(`${DEL_BASE}${id}/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF },
+  });
+  if (!resp.ok) { showToast('✗ Failed to delete room'); return; }
+  btn.closest('tr').remove();
+  recalcGrand();
+}
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function showToast(msg, ms = 2200) {
+  const t = document.getElementById('saveToast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), ms);
+}
+
+function escHtml(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', () => {
+  recalcGrand();
+  // Ctrl+S save shortcut
+  document.addEventListener('keydown', e => {
+    if ((e.ctrlKey || e.metaKey) && e.key === 's') { e.preventDefault(); saveAll(); }
+  });
+});
+</script>
+{% endblock %}

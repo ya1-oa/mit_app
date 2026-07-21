@@ -44,4 +44,11 @@ urlpatterns = [
 
     # Diagnostic — shows raw Encircle media breakdown per room for a claim
     path('api/debug/media/<str:claim_id>/', views.api_debug_claim_media, name='cps_api_debug_media'),
+
+    # PPR Box Count — dedicated box count for the Non-Salvageable / PPR workflow
+    path('session/<int:session_id>/box-count/', views.ppr_box_count, name='ppr_box_count'),
+    path('session/<int:session_id>/box-count/save/', views.ppr_box_count_save, name='ppr_box_count_save'),
+    path('session/<int:session_id>/box-count/add-room/', views.ppr_box_count_add_room, name='ppr_box_count_add_room'),
+    path('session/<int:session_id>/box-count/delete-room/<int:room_id>/', views.ppr_box_count_delete_room, name='ppr_box_count_delete_room'),
+    path('session/<int:session_id>/box-count/pdf/', views.ppr_box_count_pdf, name='ppr_box_count_pdf'),
 ]

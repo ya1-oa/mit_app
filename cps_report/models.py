@@ -192,3 +192,74 @@ class CPSReportItem(models.Model):
             'ai_suggested': self.ai_suggested,
             'structural': self.structural,
         }
+
+
+# ── PPR Box Count ─────────────────────────────────────────────────────────────
+
+class PPRBoxCount(models.Model):
+    """
+    Manual box count for the NON SALVAGEABLE / PPR packout workflow.
+    One per CPSReportSession; rooms are pre-populated from the PPR session
+    rooms and can be edited manually.
+    """
+    session    = models.OneToOneField(
+        CPSReportSession,
+        on_delete=models.CASCADE,
+        related_name='box_count',
+    )
+    notes      = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ['-updated_at']
+
+    def __str__(self):
+        return f"PPR Box Count — {self.session.client.pOwner}"
+
+    # Convenience proxies so the PDF builder can treat this like BoxCalcCPSSession
+    @property
+    def client(self):
+        return self.session.client
+
+    @property
+    def loss_date(self):
+        return self.session.loss_date
+
+    @property
+    def grand_total(self):
+        from box_calculator.cps_analyzer import CPS_COLUMNS
+        return sum(
+            sum(getattr(r, col, 0) or 0 for col in CPS_COLUMNS)
+            for r in self.rooms.all()
+        )
+
+
+class PPRBoxCountRoom(models.Model):
+    """Per-room box type counts for the PPR non-salvageable packout."""
+    box_count      = models.ForeignKey(PPRBoxCount, on_delete=models.CASCADE, related_name='rooms')
+    room_name      = models.CharField(max_length=200)
+    order          = models.PositiveIntegerField(default=0)
+    small          = models.PositiveIntegerField(default=0)
+    medium         = models.PositiveIntegerField(default=0)
+    large          = models.PositiveIntegerField(default=0)
+    box_wrapped    = models.PositiveIntegerField(default=0)
+    picture_mirror = models.PositiveIntegerField(default=0)
+    plant_vase     = models.PositiveIntegerField(default=0)
+    tv             = models.PositiveIntegerField(default=0)
+    wardrobe       = models.PositiveIntegerField(default=0)
+    mattress       = models.PositiveIntegerField(default=0)
+    dish_pack      = models.PositiveIntegerField(default=0)
+    glass_pack     = models.PositiveIntegerField(default=0)
+    boots_pans     = models.PositiveIntegerField(default=0)
+
+    class Meta:
+        ordering = ['order', 'room_name']
+
+    def __str__(self):
+        return self.room_name
+
+    @property
+    def total(self):
+        from box_calculator.cps_analyzer import CPS_COLUMNS
+        return sum(getattr(self, col, 0) or 0 for col in CPS_COLUMNS)
