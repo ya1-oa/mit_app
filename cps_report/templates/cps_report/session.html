@@ -66,6 +66,20 @@
   .photo-drag-handle:active { cursor: grabbing; }
   .photo-drag-handle.photo-dragging img { opacity: .4; transform: scale(.88); }
   .item-row.photo-drop-target > td { background: #dbeafe !important; outline: 2px dashed #3b82f6; outline-offset: -2px; }
+  /* Photo cell wrapper + delete (×) button */
+  .photo-cell { position: relative; display: inline-block; line-height: 0; }
+  .photo-del {
+    position: absolute; top: -6px; right: -6px;
+    width: 17px; height: 17px; padding: 0;
+    line-height: 15px; text-align: center;
+    border: 1px solid #fff; border-radius: 50%;
+    background: #dc2626; color: #fff;
+    font-size: 12px; font-weight: 700; cursor: pointer;
+    display: none; z-index: 2;
+    box-shadow: 0 1px 2px rgba(0,0,0,.3);
+  }
+  .photo-cell:hover .photo-del { display: block; }
+  .photo-del:hover { background: #b91c1c; }
   .editable-cell { cursor: pointer; }
   .editable-cell:hover { background: #fff8c4 !important; }
   .inline-edit { width: 100%; min-width: 80px; font-size: .82rem; padding: 1px 4px; }
@@ -526,14 +540,18 @@
                     <span class="text-muted me-1" style="font-size:.68rem;"><i class="fas fa-camera"></i> Photos:</span>
                     {% with pairs=item_photo_pairs|get_item:item.id %}
                     {% for pair in pairs %}
-                    <a href="#" title="Drag to reassign · click to enlarge"
-                       class="photo-drag-handle"
-                       data-photo-url="{{ pair.0 }}"
-                       data-display-url="{{ pair.1 }}"
-                       data-from-item-id="{{ item.id }}"
-                       draggable="true">
-                      <img src="{{ pair.1 }}" class="photo-thumb" loading="lazy" alt="Photo {{ forloop.counter }}" draggable="false">
-                    </a>
+                    <span class="photo-cell">
+                      <a href="#" title="Drag to reassign · click to enlarge"
+                         class="photo-drag-handle"
+                         data-photo-url="{{ pair.0 }}"
+                         data-display-url="{{ pair.1 }}"
+                         data-from-item-id="{{ item.id }}"
+                         draggable="true">
+                        <img src="{{ pair.1 }}" class="photo-thumb" loading="lazy" alt="Photo {{ forloop.counter }}" draggable="false">
+                      </a>
+                      <button type="button" class="photo-del" title="Delete photo from this item"
+                              data-photo-url="{{ pair.0 }}" data-item-id="{{ item.id }}">&times;</button>
+                    </span>
                     {% endfor %}
                     {% endwith %}
                   </div>
@@ -1180,7 +1198,59 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  // ── Photo delete (human review) ────────────────────────────────────────────
+  document.addEventListener('click', e => {
+    const del = e.target.closest('.photo-del');
+    if (!del) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const key    = del.dataset.photoUrl;
+    const itemId = parseInt(del.dataset.itemId, 10);
+    if (!confirm('Remove this photo from the item?\nIt will no longer appear in the Photo Evidence report.')) return;
+
+    const cell      = del.closest('.photo-cell');
+    const photosRow = del.closest('tr.photos-row');
+
+    // Locate the parent item-row (item-row → notes-row → photos-row)
+    let itemTr = null;
+    if (photosRow) {
+      const prev = photosRow.previousElementSibling;
+      itemTr = prev?.classList.contains('notes-row') ? prev.previousElementSibling : prev;
+    }
+
+    // Update the item-row's stored key list
+    if (itemTr) {
+      let keys = [];
+      try { keys = JSON.parse(itemTr.dataset.sourceUrls || '[]'); } catch (_) {}
+      keys = keys.filter(k => k !== key);
+      itemTr.dataset.sourceUrls = JSON.stringify(keys);
+    }
+
+    // Remove the thumbnail; drop the whole row if it was the last photo
+    cell?.remove();
+    if (photosRow && !photosRow.querySelector('.photo-cell')) photosRow.remove();
+
+    // Persist
+    fetch("{% url 'cps_api_delete_photo' %}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': _csrfToken() },
+      body: JSON.stringify({ item_id: itemId, photo_url: key }),
+    })
+    .then(r => r.json())
+    .then(data => {
+      if (!data.success) {
+        alert('Could not delete photo: ' + (data.error || 'unknown error'));
+        location.reload();
+      }
+    })
+    .catch(() => { alert('Network error deleting photo.'); location.reload(); });
+  });
+
   function _makePhotoThumb(key, url, itemId) {
+    const cell = document.createElement('span');
+    cell.className = 'photo-cell';
+
     const a = document.createElement('a');
     a.href = '#';
     a.title = 'Drag to reassign · click to enlarge';
@@ -1196,7 +1266,18 @@ document.addEventListener('DOMContentLoaded', () => {
     img.alt = 'Photo';
     img.draggable = false;
     a.appendChild(img);
-    return a;
+    cell.appendChild(a);
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'photo-del';
+    del.title = 'Delete photo from this item';
+    del.dataset.photoUrl = key;
+    del.dataset.itemId = String(itemId);
+    del.innerHTML = '&times;';
+    cell.appendChild(del);
+
+    return cell;
   }
 
   function _refreshPhotosRow(itemTr, keys, itemId) {

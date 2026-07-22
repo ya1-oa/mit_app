@@ -637,6 +637,8 @@ def api_reassign_photo(request):
     to_item.source_image_urls = to_urls
     to_item.save(update_fields=['source_image_urls'])
 
+    _invalidate_photo_pdf_cache(from_item.room.session_id)
+
     all_keys = list(dict.fromkeys(from_urls + to_urls))
     return JsonResponse({
         'success': True,
@@ -644,6 +646,53 @@ def api_reassign_photo(request):
         'to_source_image_urls': to_urls,
         'url_map': {k: _ppr_resolve_url(k) for k in all_keys},
     })
+
+
+def _invalidate_photo_pdf_cache(session_id):
+    """Delete the pre-built Photo Evidence PDF so a photo edit forces a rebuild
+    the next time the Photo PDF button is used. Without this, edits would not
+    appear in the cached PDF served from storage."""
+    try:
+        from django.core.files.storage import default_storage
+        path = f'cps_photo_pdfs/{session_id}.pdf'
+        if default_storage.exists(path):
+            default_storage.delete(path)
+    except Exception as exc:
+        logger.warning(f"Could not invalidate photo PDF cache for session {session_id}: {exc}")
+
+
+@login_required
+@require_POST
+def api_delete_photo(request):
+    """
+    Remove a photo URL from a CPSReportItem entirely (human review layer).
+    The photo will no longer appear in the Photo Evidence report.
+    POST JSON: { item_id, photo_url }
+    """
+    try:
+        data = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({'error': 'invalid JSON'}, status=400)
+
+    item_id = data.get('item_id')
+    url     = (data.get('photo_url') or '').strip()
+
+    if not item_id or not url:
+        return JsonResponse({'error': 'item_id and photo_url required'}, status=400)
+
+    item = get_object_or_404(CPSReportItem, id=item_id)
+    urls = list(item.source_image_urls or [])
+
+    if url not in urls:
+        return JsonResponse({'error': 'photo_url not found on item'}, status=400)
+
+    urls.remove(url)
+    item.source_image_urls = urls
+    item.save(update_fields=['source_image_urls'])
+
+    _invalidate_photo_pdf_cache(item.room.session_id)
+
+    return JsonResponse({'success': True, 'source_image_urls': urls})
 
 
 @login_required
