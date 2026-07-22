@@ -265,6 +265,22 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     story.append(info)
     story.append(Spacer(1, 10))
 
+    # Photo disclaimer — explains why item count can exceed photo count
+    note_style = ParagraphStyle(
+        'PhotoNote', fontSize=8, textColor=C_TEXT, leading=11,
+        backColor=colors.HexColor('#fffbeb'),
+        borderColor=colors.HexColor('#fde68a'), borderWidth=0.5,
+        borderPadding=6,
+    )
+    story.append(Paragraph(
+        '<b>Photo Note:</b> Some photos may contain more than one non-salvageable '
+        'item. As a result, the total item count in the PPR Schedule of Loss may '
+        'exceed the total number of photos in this photo evidence report — this is '
+        'expected and does not indicate a discrepancy.',
+        note_style,
+    ))
+    story.append(Spacer(1, 10))
+
     story.append(Paragraph('Contents:', styles['muted']))
     story.append(Spacer(1, 3))
     for rd in room_data:

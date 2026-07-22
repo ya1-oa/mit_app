@@ -305,16 +305,6 @@ def build_ppr_pdf(session) -> bytes:
             f"<b>Estimator Note:</b> {note_text}", S["note_text"]
         ))
 
-    # ── Photo disclaimer (permanent for PPR non-salvageable workflow) ─────────
-    story.append(Spacer(1, 8))
-    story.append(Paragraph(
-        "<b>Photo Note:</b> Some photos may contain more than one non-salvageable "
-        "item. As a result, the total item count in the PPR Schedule of Loss may "
-        "exceed the total number of photos in the photo evidence report — this is "
-        "expected and does not indicate a discrepancy.",
-        S["note_text"],
-    ))
-
     # ── Two-pass build to get total page count for footer ────────────────────
     footer_fn = _make_footer(total_pages_ref)
 
