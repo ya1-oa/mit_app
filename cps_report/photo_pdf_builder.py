@@ -242,25 +242,72 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     story.append(cover)
     story.append(Spacer(1, 12))
 
-    _addr = ', '.join(filter(None, [
-        getattr(session.client, 'pAddress', '') or '',
-        getattr(session.client, 'pCityStateZip', '') or '',
-    ]))
+    # ── Header block — identical format & data source to the PPR Box Count ────
+    _blue_dark = colors.HexColor('#1e3a5f')
+    _border    = colors.HexColor('#aaaaaa')
+
+    hdr_label = ParagraphStyle('HdrLabel', fontName='Helvetica-Bold', fontSize=8,
+                               textColor=_blue_dark, spaceAfter=1)
+    hdr_val   = ParagraphStyle('HdrVal', fontName='Helvetica', fontSize=9,
+                               textColor=C_TEXT, spaceAfter=5)
+    hdr_addr  = ParagraphStyle('HdrAddr', fontName='Helvetica-Bold', fontSize=10,
+                               textColor=C_TEXT)
+
+    client       = session.client
+    claim_num    = (getattr(client, 'claimNumber',   '') or '') or '—'
+    insured      = (getattr(client, 'pOwner',        '') or '') or '—'
+    street       = getattr(client, 'pAddress',       '') or ''
+    city_st_zip  = getattr(client, 'pCityStateZip',  '') or ''
+    loss_date    = getattr(session, 'loss_date', None) or getattr(client, 'loss_date', None)
+    loss_date_str = loss_date.strftime('%b %d, %Y') if loss_date else '—'
+
+    left_content = [
+        Paragraph('Report Date:', hdr_label),
+        Paragraph(now,            hdr_val),
+        Paragraph('Date of Loss:', hdr_label),
+        Paragraph(loss_date_str,   hdr_val),
+        Paragraph('Total Rooms:', hdr_label),
+        Paragraph(str(len(room_data)), hdr_val),
+    ]
+    right_content = [
+        Paragraph('Claim Number:', hdr_label),
+        Paragraph(claim_num,       hdr_val),
+        Paragraph('Insured:', hdr_label),
+        Paragraph(insured,    hdr_val),
+        Paragraph('Property Address:', hdr_label),
+        Paragraph(street or '—',   hdr_addr),
+    ]
+    if city_st_zip:
+        right_content.append(Paragraph(city_st_zip, hdr_addr))
+
+    def _hdr_cell(flowables, cell_w):
+        t = Table([[f] for f in flowables], colWidths=[cell_w])
+        t.setStyle(TableStyle([
+            ('TOPPADDING',    (0, 0), (-1, -1), 2),
+            ('BOTTOMPADDING', (0, 0), (-1, -1), 2),
+            ('LEFTPADDING',   (0, 0), (-1, -1), 0),
+            ('RIGHTPADDING',  (0, 0), (-1, -1), 0),
+            ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+        ]))
+        return t
+
+    _pad = 10
+    _lw  = usable_w * 0.42
+    _rw  = usable_w * 0.58
     info = Table(
-        [['Insured',   session.insured_name or '—',  'Report Date', now],
-         ['Claim #',   session.claim_number or '—',  'Address',     _addr or '—'],
-         ['Loss Type', session.loss_type or '—',     'Total Rooms', str(len(room_data))]],
-        colWidths=[usable_w*0.14, usable_w*0.36, usable_w*0.14, usable_w*0.36],
+        [[_hdr_cell(left_content,  _lw - 2 * _pad),
+          _hdr_cell(right_content, _rw - 2 * _pad)]],
+        colWidths=[_lw, _rw],
     )
     info.setStyle(TableStyle([
-        ('FONTNAME',      (0, 0), (0, -1), 'Helvetica-Bold'),
-        ('FONTNAME',      (2, 0), (2, -1), 'Helvetica-Bold'),
-        ('FONTSIZE',      (0, 0), (-1, -1), 8.5),
-        ('TEXTCOLOR',     (0, 0), (0, -1), C_MUTED),
-        ('TEXTCOLOR',     (2, 0), (2, -1), C_MUTED),
-        ('TOPPADDING',    (0, 0), (-1, -1), 4),
-        ('BOTTOMPADDING', (0, 0), (-1, -1), 4),
-        ('GRID',          (0, 0), (-1, -1), 0.3, C_RULE),
+        ('BOX',           (0, 0), (-1, -1), 0.8, _border),
+        ('INNERGRID',     (0, 0), (-1, -1), 0.8, _border),
+        ('TOPPADDING',    (0, 0), (-1, -1), 10),
+        ('BOTTOMPADDING', (0, 0), (-1, -1), 10),
+        ('LEFTPADDING',   (0, 0), (-1, -1), _pad),
+        ('RIGHTPADDING',  (0, 0), (-1, -1), _pad),
+        ('VALIGN',        (0, 0), (-1, -1), 'TOP'),
+        ('BACKGROUND',    (0, 0), (-1, -1), colors.HexColor('#f8f9fa')),
     ]))
     story.append(info)
     story.append(Spacer(1, 10))
