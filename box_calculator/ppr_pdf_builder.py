@@ -175,8 +175,8 @@ def build_ppr_pdf(session) -> bytes:
 
     claim_num    = getattr(client, 'claimNumber',    '') or '—'
     insured      = getattr(client, 'pOwner',         '') or '—'
-    street       = getattr(client, 'pAddress',       '') or ''
-    city_st_zip  = getattr(client, 'pCityStateZip',  '') or ''
+    street       = (getattr(client, 'pAddress',      '') or '').strip().strip(',').strip()
+    city_st_zip  = (getattr(client, 'pCityStateZip', '') or '').strip().strip(',').strip()
 
     story = []
 

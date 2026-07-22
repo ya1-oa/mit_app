@@ -254,10 +254,10 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
                                textColor=C_TEXT)
 
     client       = session.client
-    claim_num    = (getattr(client, 'claimNumber',   '') or '') or '—'
-    insured      = (getattr(client, 'pOwner',        '') or '') or '—'
-    street       = getattr(client, 'pAddress',       '') or ''
-    city_st_zip  = getattr(client, 'pCityStateZip',  '') or ''
+    claim_num    = (getattr(client, 'claimNumber',   '') or '').strip() or '—'
+    insured      = (getattr(client, 'pOwner',        '') or '').strip() or '—'
+    street       = (getattr(client, 'pAddress',      '') or '').strip().strip(',').strip()
+    city_st_zip  = (getattr(client, 'pCityStateZip', '') or '').strip().strip(',').strip()
     loss_date    = getattr(session, 'loss_date', None) or getattr(client, 'loss_date', None)
     loss_date_str = loss_date.strftime('%b %d, %Y') if loss_date else '—'
 
