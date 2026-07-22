@@ -115,14 +115,17 @@ def _build_header_rows(ws, session):
     ws.merge_cells(f'A2:{LAST_COL}2')
     c2 = ws['A2']
 
-    _name      = session.insured_name or ''
-    _claim_num = session.claim_number or ''
-    _loss_date = session.loss_date.strftime('%b %d, %Y') if session.loss_date else ''
+    # Pull from the Client record (same source as the box count header) so the
+    # values are populated even when the session's own fields are blank.
+    _client    = session.client
+    _name      = (getattr(_client, 'pOwner',      '') or '').strip()
+    _claim_num = (getattr(_client, 'claimNumber', '') or '').strip()
+    _loss_date_val = getattr(session, 'loss_date', None) or getattr(_client, 'loss_date', None)
+    _loss_date = _loss_date_val.strftime('%b %d, %Y') if _loss_date_val else ''
     _today     = datetime.date.today().strftime('%b %d, %Y')
-    _addr      = ', '.join(filter(None, [
-        getattr(session.client, 'pAddress', '') or '',
-        getattr(session.client, 'pCityStateZip', '') or '',
-    ]))
+    _street    = (getattr(_client, 'pAddress',      '') or '').strip().strip(',').strip()
+    _city_zip  = (getattr(_client, 'pCityStateZip', '') or '').strip().strip(',').strip()
+    _addr      = ', '.join(filter(None, [_street, _city_zip]))
 
     parts = ['All Phase Consulting, LLC']
     if _name:      parts.append(f'Insured: {_name}')

@@ -125,16 +125,22 @@ def build_pdf(session) -> bytes:
     story.append(cover_tbl)
     story.append(Spacer(1, 16))
 
-    # Claim info block
+    # Claim info block — pull from the Client record (same source as the box
+    # count header) so values populate even when session fields are blank.
     now = datetime.date.today().strftime('%B %d, %Y')
-    _street      = session.client.pAddress     or ''
-    _city_st_zip = session.client.pCityStateZip or ''
+    _client      = session.client
+    _insured     = (getattr(_client, 'pOwner',      '') or '').strip() or '—'
+    _claim_num   = (getattr(_client, 'claimNumber', '') or '').strip() or '—'
+    _street      = (getattr(_client, 'pAddress',      '') or '').strip().strip(',').strip()
+    _city_st_zip = (getattr(_client, 'pCityStateZip', '') or '').strip().strip(',').strip()
+    _loss_val    = getattr(session, 'loss_date', None) or getattr(_client, 'loss_date', None)
+    _loss_date   = _loss_val.strftime('%B %d, %Y') if _loss_val else '—'
     info_rows = [
-        ['Insured',        session.insured_name or '—',          'Report Date',  now],
-        ['Address',        _street or '—',                       '',             _city_st_zip],
-        ['Claim Number',   session.claim_number or '—',          'Total Items',  str(grand_qty)],
-        ['Total Rooms',    str(len(rooms)),                           '',            ''],
-        ['Replacement Value', _fmt_usd(grand_rcv),                   '',            ''],
+        ['Insured',        _insured,             'Report Date',   now],
+        ['Address',        _street or '—',       '',              _city_st_zip],
+        ['Claim Number',   _claim_num,           'Date of Loss',  _loss_date],
+        ['Total Rooms',    str(len(rooms)),      'Total Items',   str(grand_qty)],
+        ['Replacement Value', _fmt_usd(grand_rcv), '',            ''],
     ]
     info_col_w = [w * 0.18, w * 0.32, w * 0.18, w * 0.32]
     info_tbl = Table(info_rows, colWidths=info_col_w)
