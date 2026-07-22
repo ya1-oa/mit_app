@@ -702,7 +702,8 @@ def export_pdf(request, session_id):
     try:
         from .pdf_builder import build_pdf
         pdf_bytes = build_pdf(session)
-        filename = f"PPR_Schedule_Of_Loss_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
+        _cnum = (getattr(session.client, 'claimNumber', '') or '').strip() or session.claim_number or session.encircle_claim_id
+        filename = f"NON_SALVAGEABLE_PPR_Schedule_Of_Loss_{_cnum}_{session.updated_at:%Y%m%d}.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -751,7 +752,8 @@ def export_photo_pdf(request, session_id):
                 )
             pdf_bytes = build_photo_pdf(session)
 
-        filename = f"NON_SALVAGEABLE_PPR_Photo_Evidence_Report_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.pdf"
+        _cnum = (getattr(session.client, 'claimNumber', '') or '').strip() or session.claim_number or session.encircle_claim_id
+        filename = f"NON_SALVAGEABLE_PPR_Photo_Evidence_Report_{_cnum}_{session.updated_at:%Y%m%d}.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -1087,7 +1089,8 @@ def export_excel(request, session_id):
         from .excel_builder import build_excel
         share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')
         xlsx_bytes = build_excel(session, share_url=share_url)
-        filename = f"PPR_Schedule_Of_Loss_{session.claim_number or session.encircle_claim_id}_{session.updated_at:%Y%m%d}.xlsx"
+        _cnum = (getattr(session.client, 'claimNumber', '') or '').strip() or session.claim_number or session.encircle_claim_id
+        filename = f"NON_SALVAGEABLE_PPR_Schedule_Of_Loss_{_cnum}_{session.updated_at:%Y%m%d}.xlsx"
 
         # Best-effort: save to claim folder + notify via email
         _cps_save_and_notify(session, xlsx_bytes, filename)

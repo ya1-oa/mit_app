@@ -58,6 +58,15 @@ CLR_SIG_LINK     = 'FF2563EB'
 
 # ── Style helpers ─────────────────────────────────────────────────────────────
 
+def _clean_addr(v: str) -> str:
+    """Trim stray commas and ensure a single space after each internal comma."""
+    import re
+    v = (v or '').strip().strip(',').strip()
+    v = re.sub(r'\s*,\s*', ', ', v)
+    v = re.sub(r'\s{2,}', ' ', v)
+    return v.strip()
+
+
 def _font(bold=False, color='FF000000', size=9):
     return Font(name='Calibri', bold=bold, color=color, size=size)
 
@@ -123,8 +132,8 @@ def _build_header_rows(ws, session):
     _loss_date_val = getattr(session, 'loss_date', None) or getattr(_client, 'loss_date', None)
     _loss_date = _loss_date_val.strftime('%b %d, %Y') if _loss_date_val else ''
     _today     = datetime.date.today().strftime('%b %d, %Y')
-    _street    = (getattr(_client, 'pAddress',      '') or '').strip().strip(',').strip()
-    _city_zip  = (getattr(_client, 'pCityStateZip', '') or '').strip().strip(',').strip()
+    _street    = _clean_addr(getattr(_client, 'pAddress',      '') or '')
+    _city_zip  = _clean_addr(getattr(_client, 'pCityStateZip', '') or '')
     _addr      = ', '.join(filter(None, [_street, _city_zip]))
 
     parts = ['All Phase Consulting, LLC']

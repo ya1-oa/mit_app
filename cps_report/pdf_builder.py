@@ -36,6 +36,15 @@ def _fmt_usd(v) -> str:
         return "$0.00"
 
 
+def _clean_addr(v: str) -> str:
+    """Trim stray commas and ensure a single space after each internal comma."""
+    import re
+    v = (v or '').strip().strip(',').strip()
+    v = re.sub(r'\s*,\s*', ', ', v)
+    v = re.sub(r'\s{2,}', ' ', v)
+    return v.strip()
+
+
 def _header_footer(canvas, doc):
     canvas.saveState()
     w, h = letter
@@ -131,8 +140,8 @@ def build_pdf(session) -> bytes:
     _client      = session.client
     _insured     = (getattr(_client, 'pOwner',      '') or '').strip() or '—'
     _claim_num   = (getattr(_client, 'claimNumber', '') or '').strip() or '—'
-    _street      = (getattr(_client, 'pAddress',      '') or '').strip().strip(',').strip()
-    _city_st_zip = (getattr(_client, 'pCityStateZip', '') or '').strip().strip(',').strip()
+    _street      = _clean_addr(getattr(_client, 'pAddress',      '') or '')
+    _city_st_zip = _clean_addr(getattr(_client, 'pCityStateZip', '') or '')
     _loss_val    = getattr(session, 'loss_date', None) or getattr(_client, 'loss_date', None)
     _loss_date   = _loss_val.strftime('%B %d, %Y') if _loss_val else '—'
     info_rows = [

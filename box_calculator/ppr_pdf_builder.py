@@ -52,12 +52,21 @@ _COL_LABELS = {
     "picture_mirror": "Picture /\nMirror",
     "plant_vase":     "Lamp /\nPlant /\nVase",
     "tv":             "TV\nBox",
-    "wardrobe":       "Wardrobe\nBox",
+    "wardrobe":       "Ward-\nrobe\nBox",
     "mattress":       "Mattress\nBox",
     "dish_pack":      "Dish\nPack\nBox",
     "glass_pack":     "Glass\nPack\nBox",
     "boots_pans":     "Pots &\nPans\nBox",
 }
+
+
+def _clean_addr(v: str) -> str:
+    """Trim stray commas and ensure a single space after each internal comma."""
+    import re
+    v = (v or '').strip().strip(',').strip()
+    v = re.sub(r'\s*,\s*', ', ', v)
+    v = re.sub(r'\s{2,}', ' ', v)
+    return v.strip()
 
 
 def _styles():
@@ -175,8 +184,8 @@ def build_ppr_pdf(session) -> bytes:
 
     claim_num    = getattr(client, 'claimNumber',    '') or '—'
     insured      = getattr(client, 'pOwner',         '') or '—'
-    street       = (getattr(client, 'pAddress',      '') or '').strip().strip(',').strip()
-    city_st_zip  = (getattr(client, 'pCityStateZip', '') or '').strip().strip(',').strip()
+    street       = _clean_addr(getattr(client, 'pAddress',      '') or '')
+    city_st_zip  = _clean_addr(getattr(client, 'pCityStateZip', '') or '')
 
     story = []
 

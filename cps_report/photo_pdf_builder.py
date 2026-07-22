@@ -57,6 +57,16 @@ def _fmt_usd(v) -> str:
         return "$0.00"
 
 
+def _clean_addr(v: str) -> str:
+    """Trim stray leading/trailing commas and ensure a single space after
+    each internal comma, e.g. 'PAINESVILLE,OH  44077' -> 'PAINESVILLE, OH 44077'."""
+    import re
+    v = (v or '').strip().strip(',').strip()
+    v = re.sub(r'\s*,\s*', ', ', v)   # normalise comma spacing
+    v = re.sub(r'\s{2,}', ' ', v)     # collapse double spaces
+    return v.strip()
+
+
 def _make_header_footer(page_offset_ref: list):
     """Return an onPage callback that uses a shared offset for global page numbers."""
     def _hf(canvas, doc):
@@ -256,8 +266,8 @@ def _build_cover_pdf(session, room_data: list, styles: dict,
     client       = session.client
     claim_num    = (getattr(client, 'claimNumber',   '') or '').strip() or '—'
     insured      = (getattr(client, 'pOwner',        '') or '').strip() or '—'
-    street       = (getattr(client, 'pAddress',      '') or '').strip().strip(',').strip()
-    city_st_zip  = (getattr(client, 'pCityStateZip', '') or '').strip().strip(',').strip()
+    street       = _clean_addr(getattr(client, 'pAddress',      '') or '')
+    city_st_zip  = _clean_addr(getattr(client, 'pCityStateZip', '') or '')
     loss_date    = getattr(session, 'loss_date', None) or getattr(client, 'loss_date', None)
     loss_date_str = loss_date.strftime('%b %d, %Y') if loss_date else '—'
 
