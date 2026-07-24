@@ -8,6 +8,7 @@ import datetime
 import io
 
 from openpyxl import Workbook
+from openpyxl.comments import Comment
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.page import PageMargins
@@ -247,6 +248,19 @@ def _write_item_row(ws, row: int, item, item_num: int, room_name: str = '',
             c.alignment     = _center()
         elif col_idx in NUM_COLS_SET:
             c.alignment = _center()
+
+    # Link the RCV-Each cell to the live product listing it was priced from.
+    src_url = getattr(item, 'price_source_url', '') or ''
+    if src_url:
+        rv_cell = ws.cell(row=row, column=COL_RV_EACH)
+        rv_cell.hyperlink = src_url
+        rv_cell.font = _font(size=9, color=CLR_SIG_LINK)  # blue = clickable source
+        vendor = getattr(item, 'price_source_vendor', '') or 'source'
+        rv_cell.comment = Comment(f"Source: {vendor}\n{src_url}", "PPR")
+    elif getattr(item, 'price_needs_review', False):
+        # No live listing — mark the price cell so a reviewer verifies the name
+        rv_cell = ws.cell(row=row, column=COL_RV_EACH)
+        rv_cell.font = _font(size=9, color='FFB45309')  # amber = AI estimate, verify
 
 
 def _write_room_total_row(ws, row: int, room) -> None:

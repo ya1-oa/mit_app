@@ -67,6 +67,21 @@ def _clean_addr(v: str) -> str:
     return v.strip()
 
 
+def _price_cell(item, rcv_each, styles):
+    """RCV-Each cell: blue hyperlink to the live listing when one exists,
+    amber 'est.' when it's an unverified AI estimate, else plain amount."""
+    from xml.sax.saxutils import escape as _esc
+    amount = _fmt_usd(rcv_each)
+    link_style = ParagraphStyle('PxLink', parent=styles['body'], alignment=2)  # 2 = TA_RIGHT
+    url = (getattr(item, 'price_source_url', '') or '').strip()
+    if url:
+        safe = _esc(url, {'"': '&quot;'})
+        return Paragraph(f'<link href="{safe}" color="#1d4ed8"><u>{amount}</u></link>', link_style)
+    if getattr(item, 'price_needs_review', False) or getattr(item, 'price_method', '') == 'ai_estimate':
+        return Paragraph(f'<font color="#b45309">{amount} (est.)</font>', link_style)
+    return amount
+
+
 def _make_header_footer(page_offset_ref: list):
     """Return an onPage callback that uses a shared offset for global page numbers."""
     def _hf(canvas, doc):
@@ -457,7 +472,7 @@ def _build_room_pdf(rd: dict, styles: dict, page_offset_ref: list) -> bytes:
               Paragraph((item.description or '')[:80], styles['body']),
               Paragraph((item.brand or '—')[:25], styles['muted']),
               str(item.qty or 1),
-              _fmt_usd(rcv_each),
+              _price_cell(item, rcv_each, styles),
               _fmt_usd(rcv_total)]],
             colWidths=col_widths,
         )

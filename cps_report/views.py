@@ -242,6 +242,10 @@ def api_start_session(request):
         if pricing_mode not in ('normal', 'premium'):
             pricing_mode = 'normal'
 
+        ai_model = str(data.get('ai_model') or 'claude-haiku-4-5-20251001').strip()
+        if ai_model not in ('claude-haiku-4-5-20251001', 'claude-sonnet-5'):
+            ai_model = 'claude-haiku-4-5-20251001'
+
         room_sources = list(data.get('room_sources') or ['400s', '100s', 'bu'])
 
         # Find or stub a Client record for the FK
@@ -314,6 +318,7 @@ def api_start_session(request):
             insured_name=client.pOwner or '',
             encircle_structure_id=structure_id,
             pricing_mode=pricing_mode,
+            ai_model=ai_model,
             room_sources=room_sources,
             status='pending',
         )

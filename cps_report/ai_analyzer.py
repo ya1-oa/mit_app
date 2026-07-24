@@ -683,3 +683,371 @@ def analyze_room_for_ppr(
 
 # Backward-compat alias
 analyze_room_for_cps = analyze_room_for_ppr
+
+
+# ═════════════════════════════════════════════════════════════════════════════
+# LIVE-PRICING PIPELINE  (3 stages)
+#   Stage 1  identify items only (no price)          — Claude vision, model-selectable
+#   Stage 2  look up real prices per item            — Serper.dev (price_finder.py)
+#   Stage 3  choose the best listing as an expert    — Claude text
+# ═════════════════════════════════════════════════════════════════════════════
+
+_SELECTION_MODEL = "claude-haiku-4-5-20251001"   # stage-3 reasoning is cheap; always Haiku
+
+_IDENTIFY_SYSTEM_PROMPT = """DIRECTIVE: You are a professional mitigation claim inspector. You review photos and identify each personal-property item in a client's home for an insurance contents claim.
+
+Do NOT estimate prices — pricing is handled separately by a live web search. Your job is accurate identification and a precise shopping search query for each item.
+Respond ONLY with valid JSON — no markdown, no explanation."""
+
+_IDENTIFY_USER_PROMPT = """ACTION: Identify every personal-property item shown in the photos of room "{room_name}".
+
+RULES:
+- Identify ALL items. If the same item appears in multiple photos, list it once.
+- Do NOT include structural / permanently-fixed building components (windows, flooring, walls, ceilings, built-in cabinets, doors, stairs, plumbing fixtures, countertops, etc.). Personal property only.
+- Price separate components separately (e.g. a potted plant = the pot and the plant as two lines).
+- Estimate age from visible wear, style, and technology generation.
+
+For each item provide:
+- description: clear insurance-standard description (e.g. "Queen Size Bed Frame - Dark Wood - Upholstered")
+- brand: brand/manufacturer ONLY if visibly confirmed on the item, else ""
+- model_number: if visible, else ""
+- serial_number: if visible, else ""
+- condition: "Good", "Fair", or "Poor"
+- qty: integer quantity
+- age_years: 0–5 (vary realistically between items)
+- age_months: 0–11
+- depreciation_category: one of — Clothing, Electronics, Furniture, Appliances, Bedding/Linens, Books/Media, Decor/Art, Toys/Games, Tools/Hardware, Kitchen/Cookware, Jewelry/Accessories, Sporting Goods, Musical Instruments, Other
+- search_query: the exact phrase a shopper would type to BUY this item new online. Be specific: include brand + model if known, size/capacity, material, color. Examples: "Arctic King 5000 BTU window air conditioner", "Samsung 55 inch 4K LED smart TV", "gray upholstered queen platform bed frame". Avoid vague queries like "rug" — say "5x8 gray geometric area rug".
+- notes: any relevant insurance note (brand visible, serial noted, heavy wear, etc.)
+- source_image_indices: 1-based positions of the images (as labeled "[Image N]") that show this item. List every image where it is clearly visible. Required.
+
+Return JSON in exactly this format:
+{{
+  "items": [
+    {{
+      "description": "55-inch LED Smart TV",
+      "brand": "Samsung",
+      "model_number": "",
+      "serial_number": "",
+      "condition": "Good",
+      "qty": 1,
+      "age_years": 3,
+      "age_months": 0,
+      "depreciation_category": "Electronics",
+      "search_query": "Samsung 55 inch 4K LED smart TV",
+      "notes": "Samsung logo visible",
+      "source_image_indices": [1, 3]
+    }}
+  ],
+  "confidence": "high|medium|low",
+  "room_summary": "brief description of room and notable contents"
+}}"""
+
+
+def _identify_call_claude(client, image_content_blocks: list, room_name: str, model: str) -> tuple[dict, dict]:
+    """Stage 1: one vision batch → identified items (no price). Returns (parsed, usage)."""
+    content = []
+    for idx, block in enumerate(image_content_blocks, 1):
+        content.append({"type": "text", "text": f"[Image {idx}]"})
+        content.append(block)
+    content.append({"type": "text", "text": _IDENTIFY_USER_PROMPT.format(room_name=room_name)})
+    response = client.messages.create(
+        model=model,
+        max_tokens=8192,
+        system=_IDENTIFY_SYSTEM_PROMPT,
+        messages=[{"role": "user", "content": content}],
+    )
+    usage = {
+        'input_tokens':  getattr(response.usage, 'input_tokens', 0),
+        'output_tokens': getattr(response.usage, 'output_tokens', 0),
+    }
+    raw = response.content[0].text.strip()
+    if raw.startswith("```"):
+        raw = raw.split("```")[1]
+        if raw.startswith("json"):
+            raw = raw[4:]
+    return json.loads(raw.strip()), usage
+
+
+def _clean_identified_items(items: list, start_order: int = 0) -> list:
+    """Normalise stage-1 items (no price fields)."""
+    clean = []
+    for i, item in enumerate(items):
+        age_years  = max(0, min(5, int(item.get("age_years", 0) or 0)))
+        age_months = max(0, min(11, int(item.get("age_months", 0) or 0)))
+        if age_years >= 5:
+            age_months = 0
+        raw_indices = item.get("source_image_indices") or []
+        clean.append({
+            "description":  str(item.get("description", ""))[:500],
+            "brand":        str(item.get("brand", ""))[:200],
+            "model_number": str(item.get("model_number", ""))[:200],
+            "serial_number": str(item.get("serial_number", ""))[:200],
+            "condition":    str(item.get("condition", "Good")),
+            "qty":          max(1, int(item.get("qty", 1) or 1)),
+            "age_years":    age_years,
+            "age_months":   age_months,
+            "depreciation_category": str(item.get("depreciation_category", "Other"))[:100],
+            "search_query": str(item.get("search_query", "") or item.get("description", ""))[:500],
+            "notes":        str(item.get("notes", ""))[:500],
+            "ai_suggested": True,
+            "order":        start_order + i,
+            "_source_image_indices": [int(x) for x in raw_indices if str(x).isdigit()],
+        })
+    return clean
+
+
+_DECIDE_SYSTEM_PROMPT = """DIRECTIVE: You are an expert mitigation contractor pricing a personal-property (contents) insurance claim. For each item you are given real, live product listings (vendor, price, direct link). Choose the single best listing to use as the replacement source.
+
+Selection standard:
+- Pick a reasonable, in-stock, mainstream retailer at fair market value.
+- Do NOT pick the absolute cheapest off-brand/marketplace junk, and do NOT pick the most expensive luxury option — choose a fair, defensible replacement an adjuster would accept.
+- If an item has NO listings, estimate a fair replacement price yourself from the description and mark it method:"ai_estimate".
+
+Respond ONLY with valid JSON — no markdown, no explanation."""
+
+_DECIDE_USER_PROMPT = """{mode_line}
+For each item below, choose the best listing (or estimate if none).
+
+ITEMS:
+{items_block}
+
+Return JSON exactly:
+{{
+  "prices": [
+    {{"index": 0, "price": 199.00, "url": "https://...", "vendor": "Home Depot", "reason": "mid-priced, in stock, mainstream retailer", "method": "live"}},
+    {{"index": 1, "price": 45.00, "url": "", "vendor": "", "reason": "no listing found; estimated from description", "method": "ai_estimate"}}
+  ]
+}}
+Rules: include EVERY item index exactly once. For method "live", url and vendor MUST come from that item's listings. price is a number only."""
+
+
+def decide_prices(items: list[dict], pricing_mode: str = 'normal') -> dict:
+    """
+    Stage 3: given items each carrying a `price_options` list (may be empty),
+    ask Claude to pick the best listing per item or estimate when none exist.
+    Mutates each item dict in place, setting: replacement_value_each,
+    price_source_url, price_source_vendor, price_selection_reason,
+    price_method, price_needs_review, retailer, replacement_source.
+    Returns usage dict.
+    """
+    import anthropic
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+    if not api_key or not items:
+        # No AI available — leave items unpriced but flagged for review
+        for it in items:
+            it.setdefault('replacement_value_each', 0.0)
+            it['price_needs_review'] = True
+            it['price_method'] = 'ai_estimate'
+        return {'input_tokens': 0, 'output_tokens': 0}
+
+    # Build a compact block the model can reason over
+    lines = []
+    for idx, it in enumerate(items):
+        lines.append(f"[{idx}] {it.get('description','')} (brand: {it.get('brand','') or 'n/a'}, "
+                     f"category: {it.get('depreciation_category','Other')})")
+        opts = it.get('price_options') or []
+        if opts:
+            for o in opts[:8]:
+                lines.append(f"     - {o.get('vendor','?')}: ${o.get('price')} | {o.get('url','')}")
+        else:
+            lines.append("     - (no listings found)")
+    items_block = "\n".join(lines)
+
+    mode_line = ("Pricing tier: UPPER-MID — prefer quality/mid-premium listings, avoid budget/discount vendors."
+                 if pricing_mode == 'premium'
+                 else "Pricing tier: STANDARD market retail.")
+
+    client = anthropic.Anthropic(api_key=api_key, timeout=120.0)
+    try:
+        response = client.messages.create(
+            model=_SELECTION_MODEL,
+            max_tokens=4096,
+            system=_DECIDE_SYSTEM_PROMPT,
+            messages=[{"role": "user",
+                       "content": _DECIDE_USER_PROMPT.format(mode_line=mode_line, items_block=items_block)}],
+        )
+        usage = {
+            'input_tokens':  getattr(response.usage, 'input_tokens', 0),
+            'output_tokens': getattr(response.usage, 'output_tokens', 0),
+        }
+        raw = response.content[0].text.strip()
+        if raw.startswith("```"):
+            raw = raw.split("```")[1]
+            if raw.startswith("json"):
+                raw = raw[4:]
+        decided = json.loads(raw.strip()).get('prices', [])
+    except Exception as exc:
+        logger.error(f"decide_prices failed: {exc}", exc_info=True)
+        for it in items:
+            it.setdefault('replacement_value_each', 0.0)
+            it['price_needs_review'] = True
+            it['price_method'] = 'ai_estimate'
+        return {'input_tokens': 0, 'output_tokens': 0}
+
+    by_index = {int(d.get('index')): d for d in decided if str(d.get('index', '')).lstrip('-').isdigit()}
+    for idx, it in enumerate(items):
+        d = by_index.get(idx, {})
+        opts = it.get('price_options') or []
+        method = (d.get('method') or ('live' if opts else 'ai_estimate')).strip()
+        price = None
+        try:
+            price = float(d.get('price'))
+        except (TypeError, ValueError):
+            price = None
+        if price is None and opts:
+            price = float(opts[0]['price'])   # fall back to cheapest listing
+        it['replacement_value_each']   = round(float(price or 0), 2)
+        it['price_source_url']         = (d.get('url') or '')[:1000]
+        it['price_source_vendor']      = (d.get('vendor') or '')[:200]
+        it['price_selection_reason']   = (d.get('reason') or '')[:500]
+        it['price_method']             = 'live' if (method == 'live' and it['price_source_url']) else 'ai_estimate'
+        it['price_needs_review']       = not bool(opts)   # no listings → verify the item name
+        # Keep legacy fields populated for existing report/excel columns
+        it['retailer']                 = it.get('price_source_vendor', '') or it.get('retailer', '')
+        it['replacement_source']       = 'Online' if it['price_source_url'] else 'Retail'
+        it.setdefault('purchase_price_each', 0.0)
+    return usage
+
+
+def analyze_room_with_live_pricing(
+    room_name: str,
+    room_number: str,
+    prefetched_media: list[dict],
+    image_urls: list[str] | None = None,
+    pricing_mode: str = 'normal',
+    model: str = _CPS_MODEL,
+    log_fn=None,
+) -> dict:
+    """
+    Full 3-stage pipeline for one room. Returns the SAME result shape as
+    analyze_room_for_ppr, with each item additionally carrying:
+    search_query, price_options, price_source_url, price_source_vendor,
+    price_selection_reason, price_method, price_needs_review.
+    """
+    import anthropic
+    from concurrent.futures import ThreadPoolExecutor
+    from . import price_finder
+
+    def _log(msg):
+        if log_fn:
+            log_fn(msg)
+
+    api_key = os.getenv('ANTHROPIC_API_KEY')
+    if not api_key:
+        return {"success": False, "items": [], "confidence": "none", "room_summary": "",
+                "images_used": 0, "error": "ANTHROPIC_API_KEY not configured"}
+
+    urls = list(dict.fromkeys(image_urls or []))
+    if not urls:
+        urls = filter_room_images(prefetched_media, room_number)
+        urls = list(dict.fromkeys(urls))
+    if not urls:
+        _log(f"No images found for room {room_number}")
+        return {"success": False, "items": _make_fallback_items(room_name), "confidence": "none",
+                "room_summary": "No images available", "images_used": 0,
+                "error": "No images available for this room"}
+
+    # Download images
+    _log(f"Found {len(urls)} images for room {room_number} — downloading…")
+    image_blocks, downloaded_urls = [], []
+    for url in urls:
+        result = _image_url_to_base64(url)
+        if result:
+            b64, media_type = result
+            image_blocks.append({"type": "image",
+                                 "source": {"type": "base64", "media_type": media_type, "data": b64}})
+            downloaded_urls.append(url)
+    if not image_blocks:
+        return {"success": False, "items": _make_fallback_items(room_name), "confidence": "none",
+                "room_summary": "Could not download images", "images_used": 0,
+                "error": "Could not download any images"}
+
+    client = anthropic.Anthropic(api_key=api_key, timeout=180.0)
+    all_items: list[dict] = []
+    confidences, summaries = [], []
+    images_used = 0
+    tok_in = tok_out = 0
+    last_error = None
+    total_batches = math.ceil(len(image_blocks) / _IMAGES_PER_BATCH)
+
+    # ── Stage 1: identify ────────────────────────────────────────────────────
+    for batch_start in range(0, len(image_blocks), _IMAGES_PER_BATCH):
+        batch = image_blocks[batch_start:batch_start + _IMAGES_PER_BATCH]
+        batch_num = batch_start // _IMAGES_PER_BATCH + 1
+        if batch_num > 1:
+            time.sleep(2)
+        try:
+            _log(f"Identifying items — batch {batch_num}/{total_batches} ({len(batch)} images) [{model}]")
+            parsed, usage = _identify_call_claude(client, batch, room_name, model)
+            tok_in  += usage.get('input_tokens', 0)
+            tok_out += usage.get('output_tokens', 0)
+            batch_items = _clean_identified_items(parsed.get("items", []), start_order=len(all_items))
+            batch_urls = downloaded_urls[batch_start:batch_start + _IMAGES_PER_BATCH]
+            for it in batch_items:
+                raw_idx = it.pop("_source_image_indices", [])
+                it["source_image_urls"] = [batch_urls[i - 1] for i in raw_idx
+                                           if isinstance(i, int) and 1 <= i <= len(batch_urls)]
+            all_items.extend(batch_items)
+            confidences.append(parsed.get("confidence", "medium"))
+            if parsed.get("room_summary"):
+                summaries.append(parsed["room_summary"])
+            images_used += len(batch)
+        except json.JSONDecodeError:
+            last_error = "AI returned invalid JSON during identification"
+            logger.error(f"identify JSON error room {room_number} batch {batch_num}")
+        except Exception as e:
+            last_error = str(e)
+            logger.error(f"identify error room {room_number} batch {batch_num}: {e}", exc_info=True)
+
+    flag_structural_items(all_items)
+
+    # Only price non-structural items (structural ones get collapsed anyway)
+    priceable = [it for it in all_items if not it.get('structural')]
+
+    # ── Stage 2: live price lookup (parallel) ────────────────────────────────
+    if priceable:
+        if price_finder.is_configured():
+            _log(f"Looking up live prices for {len(priceable)} items…")
+            def _lookup(it):
+                it['price_options'] = price_finder.search_item_prices(it.get('search_query', ''))
+                return it
+            with ThreadPoolExecutor(max_workers=8) as pool:
+                list(pool.map(_lookup, priceable))
+        else:
+            _log("SERPER_API_KEY not set — skipping live lookup, using AI estimates")
+            for it in priceable:
+                it['price_options'] = []
+
+        # ── Stage 3: expert selection / estimate ─────────────────────────────
+        _log("Selecting best price per item…")
+        dusage = decide_prices(priceable, pricing_mode=pricing_mode)
+        tok_in  += dusage.get('input_tokens', 0)
+        tok_out += dusage.get('output_tokens', 0)
+
+    # Structural items: no price, flagged, no options
+    for it in all_items:
+        if it.get('structural'):
+            it.setdefault('replacement_value_each', 0.0)
+            it.setdefault('price_options', [])
+            it.setdefault('price_method', '')
+
+    confidence_rank = {"high": 2, "medium": 1, "low": 0, "none": -1}
+    final_conf = min(confidences, key=lambda c: confidence_rank.get(c, 1)) if confidences else "medium"
+
+    if not all_items and last_error:
+        return {"success": False, "items": _make_fallback_items(room_name), "confidence": "none",
+                "room_summary": "", "images_used": images_used, "analyzed_urls": downloaded_urls,
+                "input_tokens": tok_in, "output_tokens": tok_out, "error": last_error}
+
+    return {
+        "success": True,
+        "items": all_items,
+        "confidence": final_conf,
+        "room_summary": " | ".join(summaries),
+        "images_used": images_used,
+        "analyzed_urls": downloaded_urls,
+        "input_tokens": tok_in,
+        "output_tokens": tok_out,
+        "error": last_error,
+    }

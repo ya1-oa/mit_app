@@ -82,7 +82,7 @@ def process_cps_session_task(self, session_id):
     Runs in Celery worker — frontend polls api_session_status for live updates.
     """
     from .models import CPSReportSession, CPSReportItem
-    from .ai_analyzer import analyze_room_for_ppr, fetch_all_claim_media
+    from .ai_analyzer import analyze_room_with_live_pricing, fetch_all_claim_media
 
     try:
         session = CPSReportSession.objects.get(id=session_id)
@@ -153,11 +153,12 @@ def process_cps_session_task(self, session_id):
             (" (primary + secondary)" if has_secondary else ""))
 
         try:
-            result_primary = analyze_room_for_ppr(
+            result_primary = analyze_room_with_live_pricing(
                 room_name=source_label,
                 room_number=room.room_number,
                 prefetched_media=all_claim_media,
                 pricing_mode=pricing_mode,
+                model=session.ai_model,
                 log_fn=log,
             )
             all_items    = list(result_primary.get('items', []))
@@ -169,11 +170,12 @@ def process_cps_session_task(self, session_id):
                 secondary_number = secondary_number.group(1) if secondary_number else ''
                 logger.info(f"PPR task: processing secondary room {secondary_number} for {source_label}")
                 log(f"Processing secondary images (room {secondary_number}) for {source_label}…")
-                result_secondary = analyze_room_for_ppr(
+                result_secondary = analyze_room_with_live_pricing(
                     room_name=source_label,
                     room_number=secondary_number,
                     prefetched_media=all_claim_media,
                     pricing_mode=pricing_mode,
+                    model=session.ai_model,
                     log_fn=log,
                 )
                 all_items    .extend(result_secondary.get('items', []))
@@ -191,7 +193,7 @@ def process_cps_session_task(self, session_id):
                 from docsAppR.models import AIUsageLog
                 AIUsageLog.log_call(
                     operation='ppr_room',
-                    model='claude-haiku-4-5-20251001',
+                    model=session.ai_model,
                     input_tokens=total_input,
                     output_tokens=total_output,
                     images_count=total_images,
@@ -299,6 +301,14 @@ def process_cps_session_task(self, session_id):
                     ai_suggested=True,
                     structural=bool(item_dict.get('structural', False)),
                     source_image_urls=list(item_dict.get('source_image_urls', []) or []),
+                    # Live-pricing fields
+                    search_query=str(item_dict.get('search_query', ''))[:500],
+                    price_options=list(item_dict.get('price_options', []) or []),
+                    price_source_url=str(item_dict.get('price_source_url', ''))[:1000],
+                    price_source_vendor=str(item_dict.get('price_source_vendor', ''))[:200],
+                    price_selection_reason=str(item_dict.get('price_selection_reason', ''))[:500],
+                    price_method=str(item_dict.get('price_method', ''))[:20],
+                    price_needs_review=bool(item_dict.get('price_needs_review', False)),
                 )
 
             room.images_used        = total_images

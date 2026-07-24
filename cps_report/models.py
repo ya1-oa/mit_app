@@ -16,6 +16,11 @@ class CPSReportSession(models.Model):
         ('premium', 'Premium / High-End Pricing'),
     ]
 
+    AI_MODEL_CHOICES = [
+        ('claude-haiku-4-5-20251001', 'Haiku 4.5 — faster / cheaper'),
+        ('claude-sonnet-5',           'Sonnet 5 — higher accuracy'),
+    ]
+
     client = models.ForeignKey(
         'docsAppR.Client',
         on_delete=models.CASCADE,
@@ -29,6 +34,9 @@ class CPSReportSession(models.Model):
     loss_date = models.DateField(null=True, blank=True)
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
     pricing_mode = models.CharField(max_length=16, choices=PRICING_MODE_CHOICES, default='normal')
+    # Which Claude model performs item identification (stage 1). Prices come from
+    # live web search (Serper.dev), not the model, so this only affects naming accuracy.
+    ai_model = models.CharField(max_length=60, choices=AI_MODEL_CHOICES, default='claude-haiku-4-5-20251001')
     celery_task_id = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     share_token = models.UUIDField(default=uuid.uuid4, unique=True)
@@ -140,6 +148,23 @@ class CPSReportItem(models.Model):
     # URLs of the specific images Claude attributed this item to (1–N per item).
     # Populated at analysis time; used by the photo PDF to show item-level photos.
     source_image_urls = models.JSONField(default=list, blank=True)
+
+    # ── Live pricing (Serper.dev web search) ──────────────────────────────────
+    # The search string used to look this item up.
+    search_query = models.CharField(max_length=500, blank=True)
+    # All listings found: [{"vendor","price","url","title","in_stock"}].
+    price_options = models.JSONField(default=list, blank=True)
+    # The listing the AI selected as the replacement source.
+    price_source_url    = models.CharField(max_length=1000, blank=True)
+    price_source_vendor = models.CharField(max_length=200,  blank=True)
+    # One-line justification the AI gave for choosing this listing.
+    price_selection_reason = models.CharField(max_length=500, blank=True)
+    # How replacement_value_each was derived: 'live' (verified listing) or
+    # 'ai_estimate' (no listing found — fell back to an AI estimate).
+    price_method = models.CharField(max_length=20, blank=True)
+    # True when no live listing was found — prompts a human to verify the item
+    # was named correctly (a well-named common item should return listings).
+    price_needs_review = models.BooleanField(default=False)
 
     class Meta:
         ordering = ['order']

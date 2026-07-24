@@ -233,6 +233,11 @@ MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 # ==================== Anthropic / Claude API ====================
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 
+# ==================== Serper.dev (live product price lookup) ====================
+# Google Shopping results API used by cps_report/price_finder.py to fetch real
+# item prices + direct product links. Free key at https://serper.dev
+SERPER_API_KEY = os.getenv('SERPER_API_KEY', '')
+
 # ==================== OneDrive Configuration ====================
 ONEDRIVE_CLIENT_ID = os.getenv('ONEDRIVE_CLIENT_ID', '')
 ONEDRIVE_CLIENT_SECRET = os.getenv('ONEDRIVE_CLIENT_SECRET', '')  # Optional for native client

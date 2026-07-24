@@ -190,6 +190,24 @@
             </div>
             <div id="pricing-mode-hint" class="text-muted" style="font-size:.72rem; line-height:1.3; min-height:1.2em;"></div>
           </div>
+          <div class="mb-2">
+            <div class="d-flex align-items-center gap-2 mb-1">
+              <span class="small fw-semibold text-muted" style="white-space:nowrap">AI Model:</span>
+              <div class="btn-group btn-group-sm w-100" role="group" id="ai-model-group">
+                <input type="radio" class="btn-check" name="ai-model" id="model-haiku" value="claude-haiku-4-5-20251001" checked>
+                <label class="btn btn-outline-secondary" for="model-haiku">
+                  <i class="fas fa-bolt me-1"></i> Haiku
+                </label>
+                <input type="radio" class="btn-check" name="ai-model" id="model-sonnet" value="claude-sonnet-5">
+                <label class="btn btn-outline-primary" for="model-sonnet">
+                  <i class="fas fa-brain me-1"></i> Sonnet
+                </label>
+              </div>
+            </div>
+            <div class="text-muted" style="font-size:.72rem; line-height:1.3;">
+              Haiku is faster &amp; cheaper; Sonnet identifies items more accurately. Prices come from live web search (Serper.dev), not the AI.
+            </div>
+          </div>
           <button id="btn-start" class="btn btn-primary btn-sm w-100" disabled>
             <i class="fas fa-play me-1"></i> Find PPR Rooms &amp; Start Report
           </button>
@@ -876,12 +894,14 @@ document.addEventListener('DOMContentLoaded', () => {
     btn.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span> Starting…';
 
     const pricingMode  = document.querySelector('input[name="pricing-mode"]:checked')?.value ?? 'normal';
+    const aiModel      = document.querySelector('input[name="ai-model"]:checked')?.value ?? 'claude-haiku-4-5-20251001';
     const roomSources  = Array.from(selectedSeries);
 
     try {
       const data = await post('{% url "cps_api_start" %}', {
         encircle_claim_id: selectedClientId,
         pricing_mode: pricingMode,
+        ai_model: aiModel,
         room_sources: roomSources,
       });
 

@@ -8,9 +8,11 @@ import datetime
 from io import BytesIO
 
 from reportlab.lib import colors
+from reportlab.lib.enums import TA_RIGHT
 from reportlab.lib.pagesizes import letter
 from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
 from reportlab.lib.units import inch
+from xml.sax.saxutils import escape as _xml_escape
 from reportlab.platypus import (
     BaseDocTemplate, Frame, HRFlowable, KeepTogether, NextPageTemplate,
     PageBreak, PageTemplate, Paragraph, Spacer, Table, TableStyle,
@@ -43,6 +45,28 @@ def _clean_addr(v: str) -> str:
     v = re.sub(r'\s*,\s*', ', ', v)
     v = re.sub(r'\s{2,}', ' ', v)
     return v.strip()
+
+
+_PRICE_LINK_STYLE = ParagraphStyle(
+    'PriceLink', fontName='Helvetica', fontSize=7.5, alignment=TA_RIGHT, leading=9,
+)
+
+
+def _price_cell(item):
+    """RCV-Each cell: a blue hyperlink to the live listing when one exists,
+    an amber 'est.' marker when the price is an unverified AI estimate,
+    otherwise a plain amount."""
+    amount = _fmt_usd(item.replacement_value_each)
+    url = (getattr(item, 'price_source_url', '') or '').strip()
+    if url:
+        safe = _xml_escape(url, {'"': '&quot;'})
+        return Paragraph(
+            f'<link href="{safe}" color="#1d4ed8"><u>{amount}</u></link>',
+            _PRICE_LINK_STYLE,
+        )
+    if getattr(item, 'price_needs_review', False) or getattr(item, 'price_method', '') == 'ai_estimate':
+        return Paragraph(f'<font color="#b45309">{amount} (est.)</font>', _PRICE_LINK_STYLE)
+    return amount
 
 
 def _header_footer(canvas, doc):
@@ -225,7 +249,7 @@ def build_pdf(session) -> bytes:
                 item.brand or '',
                 str(item.qty or 1),
                 age_str,
-                _fmt_usd(item.replacement_value_each),
+                _price_cell(item),
                 _fmt_usd(float(item.replacement_value_each or 0) * (item.qty or 1)),
                 item.condition or '',
             ])
