@@ -230,6 +230,14 @@ AUTH_USER_MODEL = 'docsAppR.CustomUser'
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
+# ==================== Multi-tenant enforcement ====================
+# OFF by default. While off, TenantScopedManager behaves like a normal manager
+# (no tenant filtering) so the live single-tenant app is unaffected by the
+# in-progress multi-tenant retrofit. Do NOT enable until every tenant-scoped
+# table is backfilled with tenant_id and every user has a tenant assigned —
+# enabling early makes leases/claims lists appear empty. See docsAppR/tenancy.py.
+TENANT_ENFORCEMENT_ENABLED = os.getenv('TENANT_ENFORCEMENT_ENABLED', 'false').lower() == 'true'
+
 # ==================== Anthropic / Claude API ====================
 ANTHROPIC_API_KEY = os.getenv('ANTHROPIC_API_KEY', '')
 

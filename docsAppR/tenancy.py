@@ -62,6 +62,20 @@ class TenantScopedManager(models.Manager):
 
     def get_queryset(self):
         qs = super().get_queryset()
+
+        # MASTER SWITCH — tenant enforcement is OFF until deliberately enabled.
+        # While off, this manager behaves like a normal (unfiltered) manager so
+        # the live single-tenant app behaves exactly as it did before the
+        # multi-tenant retrofit began (Workstream A Phase 0: "nothing enforced
+        # yet; site behaves identically"). Turning this on before every row is
+        # backfilled with a tenant_id AND staff/user tenants are assigned will
+        # make tenant-scoped lists (leases, claims, etc.) appear EMPTY. Only
+        # flip TENANT_ENFORCEMENT_ENABLED=true after the backfill is verified
+        # and cross-tenant isolation has been tested in staging.
+        from django.conf import settings
+        if not getattr(settings, 'TENANT_ENFORCEMENT_ENABLED', False):
+            return qs
+
         if _bypass_tenant_scope.get():
             return qs
         tenant_id = get_current_tenant_id()
