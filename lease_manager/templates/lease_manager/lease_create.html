@@ -1,0 +1,937 @@
+{% extends "account/base.html" %}
+{% load static humanize %}
+
+{% block title %}New Lease{% endblock %}
+{% block page_title %}<i class="fas fa-file-contract"></i> New Lease{% endblock %}
+
+{% block extra_css %}
+<style>
+:root {
+  --lc-purple:    #6366f1;
+  --lc-purple-d:  #4f46e5;
+  --lc-purple-bg: #ede9fe;
+  --lc-green:     #10b981;
+  --lc-green-bg:  #d1fae5;
+  --lc-amber:     #f59e0b;
+  --lc-amber-bg:  #fef3c7;
+  --lc-red:       #ef4444;
+  --lc-red-bg:    #fee2e2;
+  --lc-blue:      #3b82f6;
+  --lc-blue-bg:   #dbeafe;
+  --lc-border:    #e5e7eb;
+  --lc-bg:        #f9fafb;
+  --lc-card:      #ffffff;
+  --lc-text-1:    #111827;
+  --lc-text-2:    #374151;
+  --lc-text-3:    #6b7280;
+  --lc-text-4:    #9ca3af;
+  --lc-radius:    10px;
+  --lc-radius-sm: 6px;
+  --lc-shadow:    0 1px 4px rgba(0,0,0,.08);
+}
+.lc-page { max-width: 960px; margin: 0 auto; padding: 1.25rem 1rem 4rem; }
+
+/* Top bar */
+.lc-topbar {
+  display: flex; align-items: center; justify-content: space-between;
+  flex-wrap: wrap; gap: .75rem; margin-bottom: 1.25rem;
+}
+.lc-title { font-size: 1.25rem; font-weight: 800; color: var(--lc-text-1); margin: 0; }
+.lc-subtitle { font-size: .8125rem; color: var(--lc-text-3); margin: .2rem 0 0; }
+
+/* Client picker card */
+.lc-picker-card {
+  background: var(--lc-card); border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+  padding: 1.25rem; margin-bottom: 1rem;
+}
+.lc-picker-label {
+  display: block; font-size: .7rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--lc-text-3); margin-bottom: .4rem;
+}
+.lc-picker-row {
+  display: flex; gap: .75rem; align-items: flex-start; flex-wrap: wrap;
+}
+.lc-search-wrap { position: relative; flex: 1; min-width: 220px; }
+.lc-search-wrap input[type=text] {
+  width: 100%; padding: .55rem .75rem .55rem 2.1rem;
+  border: 1px solid var(--lc-border); border-radius: var(--lc-radius-sm);
+  font-size: .875rem; color: var(--lc-text-1); outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.lc-search-wrap input:focus {
+  border-color: var(--lc-purple); box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+}
+.lc-search-icon {
+  position: absolute; left: .7rem; top: 50%; transform: translateY(-50%);
+  color: var(--lc-text-4); font-size: .8rem; pointer-events: none;
+}
+.lc-client-select {
+  flex: 1; min-width: 220px;
+  padding: .55rem .75rem; border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius-sm); font-size: .875rem; color: var(--lc-text-1);
+  background: #fff; outline: none; cursor: pointer;
+  transition: border-color .15s, box-shadow .15s;
+}
+.lc-client-select:focus {
+  border-color: var(--lc-purple); box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+}
+
+/* ALE status badge */
+.lc-ale-badge {
+  display: inline-flex; align-items: center; gap: .35rem;
+  padding: .3rem .65rem; border-radius: 99px; font-size: .75rem; font-weight: 600;
+}
+.lc-ale-ok  { background: var(--lc-green-bg); color: #065f46; }
+.lc-ale-warn{ background: var(--lc-amber-bg); color: #92400e; }
+.lc-ale-empty { background: #f3f4f6; color: var(--lc-text-3); }
+
+/* Existing lease banner */
+.lc-existing-banner {
+  background: var(--lc-blue-bg); border: 1px solid #bfdbfe; border-radius: var(--lc-radius-sm);
+  padding: .65rem 1rem; font-size: .8125rem; color: #1e40af;
+  display: flex; align-items: center; gap: .6rem; margin-top: .75rem;
+}
+
+/* PDF import card */
+.lc-pdf-card {
+  background: linear-gradient(135deg, #f5f3ff 0%, #ede9fe 100%);
+  border: 1.5px dashed #a5b4fc; border-radius: var(--lc-radius);
+  padding: 1rem 1.25rem; margin-bottom: 1.25rem;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 1rem;
+}
+.lc-pdf-icon { font-size: 1.75rem; }
+.lc-pdf-text { flex: 1; min-width: 180px; }
+.lc-pdf-title { font-size: .9rem; font-weight: 700; color: #4f46e5; margin: 0 0 .2rem; }
+.lc-pdf-sub   { font-size: .78rem; color: var(--lc-text-3); margin: 0; }
+.lc-pdf-actions { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; }
+
+/* Section cards */
+.lc-section {
+  background: var(--lc-card); border: 1px solid var(--lc-border);
+  border-radius: var(--lc-radius); box-shadow: var(--lc-shadow);
+  margin-bottom: 1rem; overflow: hidden;
+}
+.lc-section-head {
+  display: flex; align-items: center; gap: .6rem;
+  padding: .7rem 1.1rem;
+  border-bottom: 1px solid var(--lc-border);
+  background: #f9fafb; cursor: pointer; user-select: none;
+}
+.lc-section-head h3 {
+  margin: 0; font-size: .875rem; font-weight: 700; color: var(--lc-text-1); flex: 1;
+}
+.lc-section-icon { font-size: .9rem; width: 18px; text-align: center; }
+.lc-section-toggle { color: var(--lc-text-4); font-size: .75rem; transition: transform .2s; }
+.lc-section-body { padding: 1.1rem; }
+.lc-section.collapsed .lc-section-body { display: none; }
+.lc-section.collapsed .lc-section-toggle { transform: rotate(-90deg); }
+
+/* Field grid */
+.lc-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: .625rem 1rem; }
+.lc-grid .span-2 { grid-column: span 2; }
+.lc-grid .span-3 { grid-column: span 3; }
+.lc-field label {
+  display: block; font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--lc-text-3); margin-bottom: .2rem;
+}
+.lc-field label .req { color: var(--lc-red); margin-left: 2px; }
+.lc-input, .lc-select, .lc-textarea {
+  width: 100%; padding: .45rem .65rem;
+  border: 1px solid var(--lc-border); border-radius: var(--lc-radius-sm);
+  font-size: .875rem; color: var(--lc-text-1); background: #fff; outline: none;
+  transition: border-color .15s, box-shadow .15s;
+}
+.lc-input:focus, .lc-select:focus, .lc-textarea:focus {
+  border-color: var(--lc-purple); box-shadow: 0 0 0 3px rgba(99,102,241,.12);
+}
+.lc-input.filled   { border-color: #6ee7b7; background: #f0fdf4; }
+.lc-input.imported { border-color: #93c5fd; background: #eff6ff; }
+.lc-textarea { resize: vertical; min-height: 70px; }
+.lc-money-wrap { position: relative; }
+.lc-money-wrap .lc-dollar {
+  position: absolute; left: .6rem; top: 50%; transform: translateY(-50%);
+  color: var(--lc-text-3); font-size: .8rem; pointer-events: none; font-weight: 600;
+}
+.lc-money-wrap .lc-input { padding-left: 1.4rem; }
+
+/* Lease type radio */
+.lc-type-row { display: flex; gap: .75rem; flex-wrap: wrap; margin-top: .25rem; }
+.lc-type-opt {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .6rem 1rem; border: 1.5px solid var(--lc-border);
+  border-radius: var(--lc-radius-sm); cursor: pointer; flex: 1; min-width: 140px;
+  transition: background .12s, border-color .12s;
+}
+.lc-type-opt input[type=radio] { display: none; }
+.lc-type-opt.selected {
+  border-color: var(--lc-purple); background: var(--lc-purple-bg);
+}
+.lc-type-opt .lc-opt-label { font-size: .875rem; font-weight: 600; color: var(--lc-text-2); }
+.lc-type-opt .lc-opt-sub { font-size: .72rem; color: var(--lc-text-3); }
+.lc-type-opt.selected .lc-opt-label { color: var(--lc-purple-d); }
+
+/* Checkbox row */
+.lc-check-row { display: flex; align-items: center; gap: .5rem; margin-top: .5rem; }
+.lc-check-row input[type=checkbox] { width: 15px; height: 15px; accent-color: var(--lc-purple); cursor: pointer; }
+.lc-check-row label { font-size: .8125rem; color: var(--lc-text-2); cursor: pointer; margin: 0; }
+
+/* Buttons */
+.lc-btn {
+  display: inline-flex; align-items: center; gap: .4rem;
+  padding: .5rem 1rem; border-radius: var(--lc-radius-sm);
+  font-size: .8125rem; font-weight: 600; cursor: pointer; border: 1px solid transparent;
+  transition: background .15s, box-shadow .15s; text-decoration: none; white-space: nowrap;
+}
+.lc-btn-primary { background: var(--lc-purple); color: #fff; border-color: var(--lc-purple); }
+.lc-btn-primary:hover { background: var(--lc-purple-d); color: #fff; box-shadow: 0 3px 8px rgba(99,102,241,.3); }
+.lc-btn-primary:disabled { opacity: .55; cursor: not-allowed; }
+.lc-btn-ghost { background: #fff; color: var(--lc-text-2); border-color: var(--lc-border); }
+.lc-btn-ghost:hover { background: #f3f4f6; color: var(--lc-text-1); }
+.lc-btn-pdf { background: var(--lc-purple-bg); color: var(--lc-purple-d); border-color: #a5b4fc; }
+.lc-btn-pdf:hover { background: #ddd6fe; }
+.lc-btn-sm { padding: .35rem .7rem; font-size: .75rem; }
+
+/* Footer bar */
+.lc-footer {
+  position: sticky; bottom: 0; z-index: 50;
+  background: rgba(255,255,255,.97); border-top: 1px solid var(--lc-border);
+  display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem;
+  padding: .875rem 1.25rem; margin: 0 -1rem;
+  backdrop-filter: blur(8px);
+}
+.lc-footer-info { font-size: .8125rem; color: var(--lc-text-3); }
+.lc-footer-info strong { color: var(--lc-text-1); }
+.lc-footer-actions { display: flex; gap: .5rem; align-items: center; }
+
+/* Toast */
+#lc-toast {
+  position: fixed; top: 1.25rem; right: 1.25rem; z-index: 9999;
+  padding: .65rem 1rem; border-radius: var(--lc-radius-sm);
+  font-size: .8125rem; font-weight: 600; max-width: 360px;
+  box-shadow: 0 4px 16px rgba(0,0,0,.12); transition: opacity .3s;
+  display: none;
+}
+#lc-toast.success { background: var(--lc-green-bg); color: #065f46; border: 1px solid #6ee7b7; }
+#lc-toast.error   { background: var(--lc-red-bg); color: #991b1b; border: 1px solid #fca5a5; }
+#lc-toast.info    { background: var(--lc-blue-bg); color: #1e40af; border: 1px solid #93c5fd; }
+
+/* Spinner */
+.spin { animation: spin 1s linear infinite; display: inline-block; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* Loading overlay for form fields */
+.lc-loading-overlay {
+  position: absolute; inset: 0; background: rgba(255,255,255,.7);
+  display: flex; align-items: center; justify-content: center;
+  border-radius: var(--lc-radius); z-index: 10;
+  display: none;
+}
+.lc-form-wrap { position: relative; }
+
+@media (max-width: 640px) {
+  .lc-grid { grid-template-columns: 1fr 1fr; }
+  .lc-grid .span-3 { grid-column: span 2; }
+}
+@media (max-width: 480px) {
+  .lc-grid { grid-template-columns: 1fr; }
+  .lc-grid .span-2, .lc-grid .span-3 { grid-column: span 1; }
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="lc-page">
+
+  {# ── Top bar ──────────────────────────────────────────────────────────── #}
+  <div class="lc-topbar">
+    <div>
+      <h2 class="lc-title">New Lease</h2>
+      <p class="lc-subtitle">Fill in the details below, or upload a previous Input Sheet PDF to auto-populate.</p>
+    </div>
+    <a href="{% url 'lease_manager:lease_manager' %}" class="lc-btn lc-btn-ghost">
+      <i class="fas fa-arrow-left"></i> Lease Manager
+    </a>
+  </div>
+
+  {% for msg in messages %}
+  <div class="alert alert-{{ msg.tags }} alert-dismissible fade show mb-3" role="alert">
+    {{ msg }} <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+  </div>
+  {% endfor %}
+
+  <form method="post" id="lease-form" enctype="multipart/form-data">
+    {% csrf_token %}
+
+    {# ── Client picker ────────────────────────────────────────────────── #}
+    <div class="lc-picker-card">
+      <label class="lc-picker-label"><i class="fas fa-user" style="margin-right:.3rem;"></i> Select Client / Claim</label>
+      <div class="lc-picker-row">
+        <div class="lc-search-wrap">
+          <i class="fas fa-search lc-search-icon"></i>
+          <input type="text" id="client-search" placeholder="Type to filter clients…" autocomplete="off">
+        </div>
+        <select name="client_id" id="client-select" class="lc-client-select" required>
+          <option value="">— Choose a client —</option>
+          {% for cl in clients %}
+          <option value="{{ cl.id }}"
+                  {% if selected_client and cl.id == selected_client.id %}selected{% endif %}
+                  data-address="{{ cl.pAddress }}">
+            {{ cl.pOwner }}{% if cl.pAddress %} — {{ cl.pAddress|truncatechars:40 }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+        <div id="ale-status-badge" class="lc-ale-badge lc-ale-empty" style="display:none;">
+          <i class="fas fa-circle-dot" style="font-size:.6rem;"></i>
+          <span id="ale-status-text">No ALE</span>
+        </div>
+      </div>
+
+      {# Existing lease notice #}
+      <div id="existing-lease-banner" class="lc-existing-banner" style="display:none;">
+        <i class="fas fa-info-circle"></i>
+        <span id="existing-lease-text">This client already has a lease.</span>
+        <a id="existing-lease-link" href="#" style="color:#1e40af;font-weight:600;margin-left:auto;">View →</a>
+      </div>
+    </div>
+
+    {# ── PDF Import ───────────────────────────────────────────────────── #}
+    <div class="lc-pdf-card">
+      <div class="lc-pdf-icon">📄</div>
+      <div class="lc-pdf-text">
+        <p class="lc-pdf-title">Import from Previous Lease PDF</p>
+        <p class="lc-pdf-sub">Upload a previously generated <strong>Input Sheet PDF</strong> and all fields will be auto-populated. You can then edit before creating.</p>
+      </div>
+      <div class="lc-pdf-actions">
+        <input type="file" id="pdf-file-input" accept=".pdf" style="display:none;">
+        <button type="button" class="lc-btn lc-btn-pdf" onclick="document.getElementById('pdf-file-input').click()">
+          <i class="fas fa-upload"></i> Choose PDF
+        </button>
+        <button type="button" id="pdf-parse-btn" class="lc-btn lc-btn-primary" style="display:none;" onclick="parsePDF()">
+          <i class="fas fa-magic"></i> Parse &amp; Fill
+        </button>
+        <span id="pdf-filename" style="font-size:.75rem;color:var(--lc-text-3);"></span>
+      </div>
+    </div>
+
+    {# The actual data form — hidden until a client is selected #}
+    <div id="lease-form-body" class="lc-form-wrap" {% if not selected_client %}style="display:none;"{% endif %}>
+
+      {# ── TENANT (LESSEE) ────────────────────────────────────────────── #}
+      <div class="lc-section" id="sec-lessee">
+        <div class="lc-section-head" onclick="toggleSection('sec-lessee')">
+          <span class="lc-section-icon" style="color:#6366f1;"><i class="fas fa-user"></i></span>
+          <h3>Tenant (Lessee) Information</h3>
+          <i class="fas fa-chevron-down lc-section-toggle"></i>
+        </div>
+        <div class="lc-section-body">
+          <div class="lc-grid">
+            <div class="lc-field">
+              <label>Tenant Full Name</label>
+              <input class="lc-input" type="text" name="lessee_name" id="f-lessee_name" value="{{ ale.lessee_name|default:'' }}" autocomplete="off">
+            </div>
+            <div class="lc-field">
+              <label>Phone</label>
+              <input class="lc-input" type="tel" name="lessee_phone" id="f-lessee_phone" value="{{ ale.lessee_phone|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Email</label>
+              <input class="lc-input" type="email" name="lessee_email" id="f-lessee_email" value="{{ ale.lessee_email|default:'' }}">
+            </div>
+            <div class="lc-field span-2">
+              <label>Current Home Address (street)</label>
+              <input class="lc-input" type="text" name="lessee_address" id="f-lessee_address" value="{{ ale.lessee_address|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>City, State ZIP</label>
+              <input class="lc-input" type="text" name="lessee_city_state_zip" id="f-lessee_city_state_zip" value="{{ ale.lessee_city_state_zip|default:'' }}" placeholder="Cleveland, OH 44102">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── RENTAL PROPERTY ────────────────────────────────────────────── #}
+      <div class="lc-section" id="sec-property">
+        <div class="lc-section-head" onclick="toggleSection('sec-property')">
+          <span class="lc-section-icon" style="color:#10b981;"><i class="fas fa-home"></i></span>
+          <h3>Rental Property <span style="font-weight:400;color:var(--lc-text-3);">(the temporary housing address)</span></h3>
+          <i class="fas fa-chevron-down lc-section-toggle"></i>
+        </div>
+        <div class="lc-section-body">
+          <div class="lc-grid">
+            <div class="lc-field span-2">
+              <label>Property Address <span class="req">*</span></label>
+              <input class="lc-input" type="text" name="property_address" id="f-property_address" value="{{ ale.property_address|default:'' }}" required>
+            </div>
+            <div class="lc-field">
+              <label>Bedrooms</label>
+              <input class="lc-input" type="number" name="bedrooms" id="f-bedrooms" value="{{ ale.bedrooms|default:'1' }}" min="1" max="20">
+            </div>
+            <div class="lc-field span-2">
+              <label>City</label>
+              <input class="lc-input" type="text" name="property_city" id="f-property_city" value="{{ ale.property_city|default:'' }}">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.625rem 1rem;">
+              <div class="lc-field">
+                <label>State</label>
+                <input class="lc-input" type="text" name="property_state" id="f-property_state" value="{{ ale.property_state|default:'' }}" maxlength="2" style="text-transform:uppercase;" placeholder="OH">
+              </div>
+              <div class="lc-field">
+                <label>ZIP</label>
+                <input class="lc-input" type="text" name="property_zip" id="f-property_zip" value="{{ ale.property_zip|default:'' }}" maxlength="10">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── LESSOR (LANDLORD) ──────────────────────────────────────────── #}
+      <div class="lc-section" id="sec-lessor">
+        <div class="lc-section-head" onclick="toggleSection('sec-lessor')">
+          <span class="lc-section-icon" style="color:#f59e0b;"><i class="fas fa-building"></i></span>
+          <h3>Lessor (Landlord) Information</h3>
+          <i class="fas fa-chevron-down lc-section-toggle"></i>
+        </div>
+        <div class="lc-section-body">
+          <div class="lc-grid">
+            <div class="lc-field span-2">
+              <label>Landlord Full Name <span class="req">*</span></label>
+              <input class="lc-input" type="text" name="lessor_name" id="f-lessor_name" value="{{ ale.lessor_name|default:'' }}" required>
+            </div>
+            <div class="lc-field">
+              <label>Contact Person</label>
+              <input class="lc-input" type="text" name="lessor_contact_person_1" id="f-lessor_contact_person_1" value="{{ ale.lessor_contact_person_1|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Phone</label>
+              <input class="lc-input" type="tel" name="lessor_phone" id="f-lessor_phone" value="{{ ale.lessor_phone|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Email</label>
+              <input class="lc-input" type="email" name="lessor_email" id="f-lessor_email" value="{{ ale.lessor_email|default:'' }}">
+            </div>
+            <div class="lc-field"></div>
+            <div class="lc-field span-3">
+              <label>Mailing Address (street)</label>
+              <input class="lc-input" type="text" name="lessor_address" id="f-lessor_address" value="{{ ale.lessor_address|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>City</label>
+              <input class="lc-input" type="text" name="lessor_city" id="f-lessor_city" value="{{ ale.lessor_city|default:'' }}">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.625rem 1rem;">
+              <div class="lc-field">
+                <label>State</label>
+                <input class="lc-input" type="text" name="lessor_state" id="f-lessor_state" value="{{ ale.lessor_state|default:'' }}" maxlength="2" style="text-transform:uppercase;" placeholder="OH">
+              </div>
+              <div class="lc-field">
+                <label>ZIP</label>
+                <input class="lc-input" type="text" name="lessor_zip" id="f-lessor_zip" value="{{ ale.lessor_zip|default:'' }}" maxlength="10">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── LEASE TERMS ────────────────────────────────────────────────── #}
+      <div class="lc-section" id="sec-terms">
+        <div class="lc-section-head" onclick="toggleSection('sec-terms')">
+          <span class="lc-section-icon" style="color:#3b82f6;"><i class="fas fa-calendar-alt"></i></span>
+          <h3>Lease Terms &amp; Dates</h3>
+          <i class="fas fa-chevron-down lc-section-toggle"></i>
+        </div>
+        <div class="lc-section-body">
+          <div class="lc-grid">
+            <div class="lc-field">
+              <label>Agreement Date</label>
+              <input class="lc-input" type="date" name="lease_agreement_date" id="f-lease_agreement_date" value="{{ ale.lease_agreement_date|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Lease Start Date <span class="req">*</span></label>
+              <input class="lc-input" type="date" name="lease_start_date" id="f-lease_start_date" value="{{ ale.lease_start_date|default:'' }}" onchange="calcEndDate()">
+            </div>
+            <div class="lc-field">
+              <label>Lease End Date <span class="req">*</span></label>
+              <input class="lc-input" type="date" name="lease_end_date" id="f-lease_end_date" value="{{ ale.lease_end_date|default:'' }}" onchange="calcMonths()">
+            </div>
+            <div class="lc-field">
+              <label>Duration (months) <span style="font-weight:400;color:var(--lc-text-4);">— auto</span></label>
+              <input class="lc-input" type="number" name="rental_months" id="f-rental_months" value="{{ ale.rental_months|default:'12' }}" min="1" max="120" onchange="calcEndDate()">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── FINANCIAL TERMS ────────────────────────────────────────────── #}
+      <div class="lc-section" id="sec-finance">
+        <div class="lc-section-head" onclick="toggleSection('sec-finance')">
+          <span class="lc-section-icon" style="color:#10b981;"><i class="fas fa-dollar-sign"></i></span>
+          <h3>Financial Terms</h3>
+          <i class="fas fa-chevron-down lc-section-toggle"></i>
+        </div>
+        <div class="lc-section-body">
+          <div class="lc-grid">
+            <div class="lc-field">
+              <label>Monthly Rent <span class="req">*</span></label>
+              <div class="lc-money-wrap">
+                <span class="lc-dollar">$</span>
+                <input class="lc-input" type="number" name="monthly_rent" id="f-monthly_rent" value="{{ ale.monthly_rent|default:'' }}" step="0.01" min="0" required>
+              </div>
+            </div>
+            <div class="lc-field">
+              <label>Security Deposit</label>
+              <div class="lc-money-wrap">
+                <span class="lc-dollar">$</span>
+                <input class="lc-input" type="number" name="security_deposit" id="f-security_deposit" value="{{ ale.security_deposit|default:'' }}" step="0.01" min="0">
+              </div>
+            </div>
+            <div class="lc-field">
+              <label>Inspection / Clean-up Fee</label>
+              <div class="lc-money-wrap">
+                <span class="lc-dollar">$</span>
+                <input class="lc-input" type="number" name="inspection_fee" id="f-inspection_fee" value="{{ ale.inspection_fee|default:'300' }}" step="0.01" min="0">
+              </div>
+            </div>
+            <div class="lc-field">
+              <label>Rent Due Day (of month)</label>
+              <input class="lc-input" type="number" name="rent_due_day" id="f-rent_due_day" value="{{ ale.rent_due_day|default:'1' }}" min="1" max="28">
+            </div>
+            <div class="lc-field">
+              <label>Late Fee</label>
+              <div class="lc-money-wrap">
+                <span class="lc-dollar">$</span>
+                <input class="lc-input" type="number" name="late_fee" id="f-late_fee" value="{{ ale.late_fee|default:'50' }}" step="0.01" min="0">
+              </div>
+            </div>
+            <div class="lc-field">
+              <label>Late Fee Starts (day)</label>
+              <input class="lc-input" type="number" name="late_fee_start_day" id="f-late_fee_start_day" value="{{ ale.late_fee_start_day|default:'5' }}" min="1" max="28">
+            </div>
+            <div class="lc-field">
+              <label>NSF Fee</label>
+              <div class="lc-money-wrap">
+                <span class="lc-dollar">$</span>
+                <input class="lc-input" type="number" name="nsf_fee" id="f-nsf_fee" value="{{ ale.nsf_fee|default:'35' }}" step="0.01" min="0">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── REAL ESTATE COMPANY ────────────────────────────────────────── #}
+      <div class="lc-section" id="sec-re">
+        <div class="lc-section-head" onclick="toggleSection('sec-re')">
+          <span class="lc-section-icon" style="color:#8b5cf6;"><i class="fas fa-handshake"></i></span>
+          <h3>Real Estate Company</h3>
+          <i class="fas fa-chevron-down lc-section-toggle"></i>
+        </div>
+        <div class="lc-section-body">
+          <div class="lc-grid">
+            <div class="lc-field span-2">
+              <label>Company Name</label>
+              <input class="lc-input" type="text" name="real_estate_company" id="f-real_estate_company" value="{{ ale.real_estate_company|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Contact Person</label>
+              <input class="lc-input" type="text" name="company_contact_person" id="f-company_contact_person" value="{{ ale.company_contact_person|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Phone</label>
+              <input class="lc-input" type="tel" name="company_phone" id="f-company_phone" value="{{ ale.company_phone|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Email</label>
+              <input class="lc-input" type="email" name="company_email" id="f-company_email" value="{{ ale.company_email|default:'' }}">
+            </div>
+            <div class="lc-field"></div>
+            <div class="lc-field span-3">
+              <label>Mailing Address (street)</label>
+              <input class="lc-input" type="text" name="company_mailing_address" id="f-company_mailing_address" value="{{ ale.company_mailing_address|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>City</label>
+              <input class="lc-input" type="text" name="company_city" id="f-company_city" value="{{ ale.company_city|default:'' }}">
+            </div>
+            <div style="display:grid;grid-template-columns:1fr 1fr;gap:.625rem 1rem;">
+              <div class="lc-field">
+                <label>State</label>
+                <input class="lc-input" type="text" name="company_state" id="f-company_state" value="{{ ale.company_state|default:'' }}" maxlength="2" style="text-transform:uppercase;" placeholder="OH">
+              </div>
+              <div class="lc-field">
+                <label>ZIP</label>
+                <input class="lc-input" type="text" name="company_zip" id="f-company_zip" value="{{ ale.company_zip|default:'' }}" maxlength="10">
+              </div>
+            </div>
+            <div class="lc-field" style="margin-top:.5rem;border-top:1px solid var(--lc-border);padding-top:.75rem;grid-column:span 3;">
+              <p style="font-size:.75rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--lc-text-3);margin:0 0 .5rem;">Broker</p>
+            </div>
+            <div class="lc-field">
+              <label>Broker Name</label>
+              <input class="lc-input" type="text" name="broker_name" id="f-broker_name" value="{{ ale.broker_name|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Broker Phone</label>
+              <input class="lc-input" type="tel" name="broker_phone" id="f-broker_phone" value="{{ ale.broker_phone|default:'' }}">
+            </div>
+            <div class="lc-field">
+              <label>Broker Email</label>
+              <input class="lc-input" type="email" name="broker_email" id="f-broker_email" value="{{ ale.broker_email|default:'' }}">
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {# ── OPTIONS & NOTES ────────────────────────────────────────────── #}
+      <div class="lc-section" id="sec-options">
+        <div class="lc-section-head" onclick="toggleSection('sec-options')">
+          <span class="lc-section-icon" style="color:#6b7280;"><i class="fas fa-sliders-h"></i></span>
+          <h3>Lease Options &amp; Notes</h3>
+          <i class="fas fa-chevron-down lc-section-toggle"></i>
+        </div>
+        <div class="lc-section-body">
+
+          {# Lease type #}
+          <div style="margin-bottom:1rem;">
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--lc-text-3);margin:0 0 .4rem;">Lease Type</p>
+            <div class="lc-type-row">
+              <label class="lc-type-opt selected" id="opt-new" onclick="setType('new')">
+                <input type="radio" name="lease_type" value="new" id="r-new"
+                  {% if not existing_lease %}checked{% endif %}>
+                <div>
+                  <div class="lc-opt-label"><i class="fas fa-star" style="color:#10b981;margin-right:.3rem;"></i> Original Lease</div>
+                  <div class="lc-opt-sub">First lease for this client</div>
+                </div>
+              </label>
+              <label class="lc-type-opt {% if existing_lease %}selected{% endif %}" id="opt-renewal" onclick="setType('renewal')">
+                <input type="radio" name="lease_type" value="renewal" id="r-renewal"
+                  {% if existing_lease %}checked{% endif %}>
+                <div>
+                  <div class="lc-opt-label"><i class="fas fa-redo" style="color:#6366f1;margin-right:.3rem;"></i> Renewal</div>
+                  <div class="lc-opt-sub">Extension of existing lease</div>
+                </div>
+              </label>
+            </div>
+          </div>
+
+          {# Waiver checkboxes #}
+          <div style="margin-bottom:1rem;">
+            <p style="font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:var(--lc-text-3);margin:0 0 .4rem;">Waivers</p>
+            <div class="lc-check-row">
+              <input type="checkbox" name="exclude_security_deposit" id="excl-deposit" value="1">
+              <label for="excl-deposit">Waive Security Deposit (exclude from lease documents)</label>
+            </div>
+            <div class="lc-check-row">
+              <input type="checkbox" name="exclude_inspection_fee" id="excl-insp" value="1">
+              <label for="excl-insp">Waive Inspection / Clean-up Fee</label>
+            </div>
+          </div>
+
+          {# Special notes #}
+          <div>
+            <label class="lc-picker-label">Special Notes / Instructions</label>
+            <textarea class="lc-textarea" name="special_notes" id="f-special_notes" rows="3" placeholder="Any special terms or instructions to include in the lease…"></textarea>
+          </div>
+        </div>
+      </div>
+
+    </div>{# /lease-form-body #}
+
+    {# ── Footer ───────────────────────────────────────────────────────── #}
+    <div class="lc-footer">
+      <div class="lc-footer-info">
+        <span id="footer-client-name">
+          {% if selected_client %}
+          Creating lease for <strong>{{ selected_client.pOwner }}</strong>
+          {% else %}
+          Select a client to continue
+          {% endif %}
+        </span>
+      </div>
+      <div class="lc-footer-actions">
+        <a href="{% url 'lease_manager:lease_manager' %}" class="lc-btn lc-btn-ghost">Cancel</a>
+        <button type="submit" id="submit-btn" class="lc-btn lc-btn-primary"
+                {% if not selected_client %}disabled{% endif %}>
+          <i class="fas fa-file-contract"></i> Create Lease Draft
+        </button>
+      </div>
+    </div>
+
+  </form>
+
+</div>
+
+<div id="lc-toast"></div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+'use strict';
+const CSRF = '{{ csrf_token }}';
+
+// ── Toast ─────────────────────────────────────────────────────────────────────
+function toast(msg, type='success') {
+  const el = document.getElementById('lc-toast');
+  el.textContent = msg;
+  el.className = type;
+  el.style.display = 'block';
+  el.style.opacity = '1';
+  clearTimeout(el._t);
+  el._t = setTimeout(() => {
+    el.style.opacity = '0';
+    setTimeout(() => el.style.display = 'none', 300);
+  }, 4500);
+}
+
+// ── Section collapse ──────────────────────────────────────────────────────────
+function toggleSection(id) {
+  document.getElementById(id).classList.toggle('collapsed');
+}
+
+// ── Client filter search ──────────────────────────────────────────────────────
+(function () {
+  const searchInput = document.getElementById('client-search');
+  const select      = document.getElementById('client-select');
+  if (!searchInput || !select) return;
+
+  const allOptions = Array.from(select.options);
+
+  searchInput.addEventListener('input', () => {
+    const q = searchInput.value.trim().toLowerCase();
+    Array.from(select.options).forEach(opt => {
+      if (!opt.value) return; // keep placeholder
+      opt.hidden = q ? !opt.text.toLowerCase().includes(q) : false;
+    });
+  });
+})();
+
+// ── Client selection → load ALE data ─────────────────────────────────────────
+const clientSelect  = document.getElementById('client-select');
+const formBody      = document.getElementById('lease-form-body');
+const submitBtn     = document.getElementById('submit-btn');
+const footerName    = document.getElementById('footer-client-name');
+const aleBadge      = document.getElementById('ale-status-badge');
+const aleText       = document.getElementById('ale-status-text');
+const existingBanner = document.getElementById('existing-lease-banner');
+const existingText   = document.getElementById('existing-lease-text');
+const existingLink   = document.getElementById('existing-lease-link');
+
+clientSelect.addEventListener('change', async () => {
+  const clientId = clientSelect.value;
+  if (!clientId) {
+    formBody.style.display = 'none';
+    submitBtn.disabled = true;
+    footerName.innerHTML = 'Select a client to continue';
+    aleBadge.style.display = 'none';
+    existingBanner.style.display = 'none';
+    return;
+  }
+
+  // Show form, enable submit
+  formBody.style.display = '';
+  submitBtn.disabled = false;
+
+  try {
+    const resp = await fetch(`/lease-manager/api/client/${clientId}/create-data/`, {
+      headers: { 'X-CSRFToken': CSRF }
+    });
+    const data = await resp.json();
+
+    // Populate footer
+    footerName.innerHTML = `Creating lease for <strong>${data.client_name}</strong>`;
+
+    // ALE status badge
+    aleBadge.style.display = '';
+    if (data.ale_complete) {
+      aleBadge.className = 'lc-ale-badge lc-ale-ok';
+      aleText.textContent = 'ALE Complete';
+    } else {
+      const keys = ['lessor_name','property_address','lease_start_date','lease_end_date','monthly_rent'];
+      const filledCount = keys.filter(k => data[k]).length;
+      aleBadge.className = filledCount > 0 ? 'lc-ale-badge lc-ale-warn' : 'lc-ale-badge lc-ale-empty';
+      aleText.textContent = filledCount > 0 ? `${filledCount}/5 ALE fields` : 'No ALE data';
+    }
+
+    // Existing lease
+    if (data.has_existing_lease) {
+      existingBanner.style.display = '';
+      existingText.textContent = `This client already has a lease (${data.existing_lease_status}). Consider creating a Renewal below.`;
+      existingLink.href = `/lease-manager/lease/${data.existing_lease_id}/`;
+      // Auto-select renewal
+      setType('renewal');
+    } else {
+      existingBanner.style.display = 'none';
+      setType('new');
+    }
+
+    // Populate all form fields
+    fillForm(data);
+
+  } catch (err) {
+    toast('Could not load client data: ' + err.message, 'error');
+  }
+});
+
+// ── Fill form from data dict ──────────────────────────────────────────────────
+function fillForm(data, imported = false) {
+  const cssClass = imported ? 'imported' : 'filled';
+  const FIELDS = [
+    'lessee_name','lessee_phone','lessee_email','lessee_address','lessee_city_state_zip',
+    'lessor_name','lessor_contact_person_1','lessor_phone','lessor_email',
+    'lessor_address','lessor_city','lessor_state','lessor_zip',
+    'property_address','property_city','property_state','property_zip','bedrooms',
+    'rental_months','lease_start_date','lease_end_date','lease_agreement_date',
+    'monthly_rent','security_deposit','inspection_fee','rent_due_day',
+    'late_fee','late_fee_start_day','nsf_fee',
+    'real_estate_company','company_contact_person','company_phone','company_email',
+    'company_mailing_address','company_city','company_state','company_zip',
+    'broker_name','broker_phone','broker_email',
+  ];
+
+  FIELDS.forEach(field => {
+    if (data[field] !== undefined && data[field] !== '') {
+      const el = document.getElementById('f-' + field);
+      if (el) {
+        el.value = data[field];
+        el.classList.remove('filled', 'imported');
+        el.classList.add(cssClass);
+      }
+    }
+  });
+
+  // Handle waiver flags from PDF import
+  if (data.exclude_security_deposit) {
+    document.getElementById('excl-deposit').checked = true;
+  }
+  if (data.exclude_inspection_fee) {
+    document.getElementById('excl-insp').checked = true;
+  }
+  if (data.is_renewal) {
+    setType('renewal');
+  }
+}
+
+// ── Lease type toggle ─────────────────────────────────────────────────────────
+function setType(type) {
+  document.getElementById('r-new').checked     = (type === 'new');
+  document.getElementById('r-renewal').checked = (type === 'renewal');
+  document.getElementById('opt-new').classList.toggle('selected',     type === 'new');
+  document.getElementById('opt-renewal').classList.toggle('selected', type === 'renewal');
+}
+
+// ── Date auto-calculation ─────────────────────────────────────────────────────
+function calcEndDate() {
+  const startEl  = document.getElementById('f-lease_start_date');
+  const monthsEl = document.getElementById('f-rental_months');
+  const endEl    = document.getElementById('f-lease_end_date');
+  if (!startEl.value || !monthsEl.value) return;
+  const start  = new Date(startEl.value + 'T00:00:00');
+  const months = parseInt(monthsEl.value, 10);
+  if (isNaN(months) || months < 1) return;
+  start.setMonth(start.getMonth() + months);
+  start.setDate(start.getDate() - 1); // end = start + months - 1 day
+  endEl.value = start.toISOString().slice(0, 10);
+}
+
+function calcMonths() {
+  const startEl  = document.getElementById('f-lease_start_date');
+  const endEl    = document.getElementById('f-lease_end_date');
+  const monthsEl = document.getElementById('f-rental_months');
+  if (!startEl.value || !endEl.value) return;
+  const s = new Date(startEl.value + 'T00:00:00');
+  const e = new Date(endEl.value   + 'T00:00:00');
+  if (e <= s) return;
+  const months = (e.getFullYear() - s.getFullYear()) * 12 + (e.getMonth() - s.getMonth());
+  monthsEl.value = months > 0 ? months : '';
+}
+
+// ── PDF file picker ───────────────────────────────────────────────────────────
+const pdfInput   = document.getElementById('pdf-file-input');
+const pdfParseBtn = document.getElementById('pdf-parse-btn');
+const pdfFilename = document.getElementById('pdf-filename');
+
+pdfInput.addEventListener('change', () => {
+  if (pdfInput.files.length) {
+    pdfFilename.textContent = pdfInput.files[0].name;
+    pdfParseBtn.style.display = '';
+  } else {
+    pdfFilename.textContent = '';
+    pdfParseBtn.style.display = 'none';
+  }
+});
+
+async function parsePDF() {
+  if (!pdfInput.files.length) {
+    toast('Please choose a PDF file first.', 'error');
+    return;
+  }
+
+  const origHTML = pdfParseBtn.innerHTML;
+  pdfParseBtn.disabled = true;
+  pdfParseBtn.innerHTML = '<i class="fas fa-spinner spin"></i> Parsing…';
+
+  const fd = new FormData();
+  fd.append('pdf', pdfInput.files[0]);
+  fd.append('csrfmiddlewaretoken', CSRF);
+
+  try {
+    const resp = await fetch('/lease-manager/api/import-pdf/', {
+      method: 'POST',
+      headers: { 'X-CSRFToken': CSRF },
+      body: fd,
+    });
+    const data = await resp.json();
+
+    if (!data.success) {
+      toast('Parse error: ' + (data.error || 'Unknown'), 'error');
+      return;
+    }
+
+    // Show form if hidden
+    formBody.style.display = '';
+    submitBtn.disabled = !clientSelect.value;
+
+    fillForm(data.fields, true);
+
+    const count = Object.keys(data.fields).length;
+    toast(`Imported ${count} fields from PDF. Blue fields are from the PDF — review and edit as needed.`, 'info');
+
+  } catch (err) {
+    toast('Network error: ' + err.message, 'error');
+  } finally {
+    pdfParseBtn.disabled = false;
+    pdfParseBtn.innerHTML = origHTML;
+  }
+}
+
+// ── Pre-select client from URL param ─────────────────────────────────────────
+(function () {
+  const clientId = '{{ selected_client.id|default:"" }}';
+  if (clientId) {
+    // Data already rendered server-side; just trigger badge and banner display
+    const ale_complete = {{ ale.monthly_rent|default:"0" }} > 0 &&
+                         '{{ ale.lessor_name|default:"" }}' !== '' &&
+                         '{{ ale.property_address|default:"" }}' !== '';
+    aleBadge.style.display = '';
+    if (ale_complete) {
+      aleBadge.className = 'lc-ale-badge lc-ale-ok';
+      aleText.textContent = 'ALE Complete';
+    } else {
+      aleBadge.className = 'lc-ale-badge lc-ale-warn';
+      aleText.textContent = 'Partial ALE';
+    }
+    {% if existing_lease %}
+    existingBanner.style.display = '';
+    existingText.textContent = 'This client already has a lease ({{ existing_lease.get_status_display }}). Consider creating a Renewal.';
+    existingLink.href = '{% url "lease_manager:lease_detail" existing_lease.id %}';
+    {% endif %}
+  }
+})();
+
+// ── Keyboard shortcut: Cmd/Ctrl+Enter submits ─────────────────────────────────
+document.addEventListener('keydown', e => {
+  if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') {
+    if (!submitBtn.disabled) document.getElementById('lease-form').submit();
+  }
+});
+</script>
+{% endblock %}

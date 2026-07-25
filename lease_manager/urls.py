@@ -30,6 +30,14 @@ urlpatterns = [
     path('lease/<uuid:lease_id>/demand-letter/preview-pdf/',
          views.demand_letter_preview_pdf, name='demand_letter_preview_pdf'),
 
+    # ── Lease creation wizard ────────────────────────────────────────────────
+    path('create/',
+         views.lease_create_page, name='lease_create'),
+    path('api/client/<int:client_id>/create-data/',
+         views.api_lease_create_data, name='api_lease_create_data'),
+    path('api/import-pdf/',
+         views.api_import_lease_pdf, name='api_import_lease_pdf'),
+
     # ── ALE import / prefill ─────────────────────────────────────────────────
     path('api/lease/<uuid:lease_id>/ale-import/',
          views.api_ale_import, name='api_ale_import'),

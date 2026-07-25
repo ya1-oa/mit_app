@@ -727,7 +727,7 @@ def lease_manager(request):
         'total_expired':        total_expired,
         'total_non_cancelled':  total_non_cancelled,
         'clients_with_leases':  clients_with_leases,
-        'all_clients':          Client.unscoped.all().order_by('pOwner'),
+        'all_clients':          Client.unscoped.filter(archived=False).order_by('pOwner'),
         'status_choices':       Lease.LEASE_STATUS_CHOICES,
         'current_status_filter': status_filter,
         'current_client_filter': client_filter,
@@ -1587,3 +1587,409 @@ def update_lease_task(request, task_id):
     except Exception as exc:
         logger.error('update_lease_task: %s', exc)
         return JsonResponse({'success': False, 'error': str(exc)}, status=500)
+
+
+# ============================================================================
+# LEASE CREATION WIZARD
+# ============================================================================
+
+def _ale_form_data(client):
+    """
+    Return ALE data as a dict keyed by form field names (address parts split)
+    so individual <input> elements are pre-filled correctly.
+    """
+    lc, ls, lz = _parse_city_state_zip(client.ale_lessor_mailing_city_zip or '')
+    pc, ps, pz = _parse_city_state_zip(client.ale_lessor_city_zip or '')
+    rc, rs, rz = _parse_city_state_zip(client.ale_re_city_zip or '')
+
+    def _fmt_date(d):
+        return d.strftime('%Y-%m-%d') if d else ''
+
+    def _fmt_dec(v):
+        return str(v) if v is not None else ''
+
+    return {
+        'lessee_name':             client.ale_lessee_name or client.pOwner or '',
+        'lessee_address':          client.ale_lessee_home_address or client.pAddress or '',
+        'lessee_city_state_zip':   client.ale_lessee_city_state_zip or client.pCityStateZip or '',
+        'lessee_email':            client.ale_lessee_email or client.cEmail or '',
+        'lessee_phone':            client.ale_lessee_phone or client.cPhone or '',
+        'lessor_name':             client.ale_lessor_name or '',
+        'lessor_address':          client.ale_lessor_mailing_address or '',
+        'lessor_city':             lc,
+        'lessor_state':            ls,
+        'lessor_zip':              lz,
+        'lessor_phone':            client.ale_lessor_phone or '',
+        'lessor_email':            client.ale_lessor_email or '',
+        'lessor_contact_person_1': client.ale_lessor_contact_person or '',
+        'property_address':        client.ale_lessor_leased_address or '',
+        'property_city':           pc,
+        'property_state':          ps,
+        'property_zip':            pz,
+        'bedrooms':                str(client.ale_rental_bedrooms) if client.ale_rental_bedrooms else '',
+        'rental_months':           str(client.ale_rental_months) if client.ale_rental_months else '',
+        'lease_start_date':        _fmt_date(client.ale_rental_start_date),
+        'lease_end_date':          _fmt_date(client.ale_rental_end_date),
+        'lease_agreement_date':    _fmt_date(client.ale_lease_agreement_date),
+        'monthly_rent':            _fmt_dec(client.ale_rental_amount_per_month),
+        'security_deposit':        _fmt_dec(client.ale_rental_security_deposit),
+        'inspection_fee':          _fmt_dec(client.ale_inspection_fee),
+        'late_fee':                _fmt_dec(client.ale_late_fee),
+        'late_fee_start_day':      str(client.ale_late_fee_start_day) if client.ale_late_fee_start_day else '',
+        'nsf_fee':                 _fmt_dec(client.ale_nsf_fee),
+        'rent_due_day':            str(client.ale_rent_due_day) if client.ale_rent_due_day else '',
+        'real_estate_company':     client.ale_re_company_name or '',
+        'company_mailing_address': client.ale_re_mailing_address or '',
+        'company_city':            rc,
+        'company_state':           rs,
+        'company_zip':             rz,
+        'company_contact_person':  client.ale_re_contact_person or '',
+        'company_phone':           client.ale_re_phone or '',
+        'company_email':           client.ale_re_email or '',
+        'broker_name':             client.ale_re_owner_broker_name or '',
+        'broker_phone':            client.ale_re_owner_broker_phone or '',
+        'broker_email':            client.ale_re_owner_broker_email or '',
+    }
+
+
+@login_required
+def lease_create_page(request):
+    """
+    Lease creation wizard.
+    GET  -> render form (pre-select client via ?client_id=X)
+    POST -> save ALE to client, create draft lease, redirect to detail
+    """
+    from docsAppR.models import PipelineStageAssignment, LeaseStageCompletion
+
+    clients = Client.objects.filter(archived=False).order_by('pOwner')
+
+    if request.method == 'GET':
+        client_id = request.GET.get('client_id')
+        selected_client = None
+        ale = {}
+        existing_lease = None
+        if client_id:
+            selected_client = clients.filter(id=client_id).first()
+            if selected_client:
+                ale = _ale_form_data(selected_client)
+                existing_lease = (
+                    Lease.objects.filter(client=selected_client)
+                    .exclude(status='cancelled')
+                    .order_by('-created_at')
+                    .first()
+                )
+        return render(request, 'lease_manager/lease_create.html', {
+            'clients':         clients,
+            'selected_client': selected_client,
+            'ale':             ale,
+            'existing_lease':  existing_lease,
+        })
+
+    # POST
+    client_id = request.POST.get('client_id')
+    if not client_id:
+        messages.error(request, 'No client selected.')
+        return redirect('lease_manager:lease_create')
+
+    client = get_object_or_404(Client, id=client_id, archived=False)
+    p = request.POST
+
+    def _d(val):
+        if not val or str(val).strip() in ('', '\xe2\x80\x94'):
+            return None
+        from django.utils.dateparse import parse_date as _pd
+        try:
+            return _pd(str(val).strip())
+        except Exception:
+            return None
+
+    def _dec(val, default=None):
+        if val is None or str(val).strip() in ('', '\xe2\x80\x94'):
+            return default
+        try:
+            return float(str(val).replace(',', '').replace('$', '').strip())
+        except (ValueError, TypeError):
+            return default
+
+    def _int_val(val, default=0):
+        if val is None or str(val).strip() == '':
+            return default
+        try:
+            return int(float(str(val).strip()))
+        except (ValueError, TypeError):
+            return default
+
+    def _csz(city, state, zipcode):
+        city, state, zipcode = city.strip(), state.strip(), zipcode.strip()
+        if city and (state or zipcode):
+            return '{}, {} {}'.format(city, state, zipcode).strip()
+        return city or ''
+
+    client.lossOfUseALE               = 'Yes'
+    client.ale_lessee_name            = p.get('lessee_name', '').strip()
+    client.ale_lessee_home_address    = p.get('lessee_address', '').strip()
+    client.ale_lessee_city_state_zip  = p.get('lessee_city_state_zip', '').strip()
+    client.ale_lessee_email           = p.get('lessee_email', '').strip()
+    client.ale_lessee_phone           = p.get('lessee_phone', '').strip()
+    client.ale_lessor_name            = p.get('lessor_name', '').strip()
+    client.ale_lessor_mailing_address = p.get('lessor_address', '').strip()
+    client.ale_lessor_mailing_city_zip = _csz(
+        p.get('lessor_city', ''), p.get('lessor_state', ''), p.get('lessor_zip', '')
+    )
+    client.ale_lessor_phone           = p.get('lessor_phone', '').strip()
+    client.ale_lessor_email           = p.get('lessor_email', '').strip()
+    client.ale_lessor_contact_person  = p.get('lessor_contact_person_1', '').strip()
+    client.ale_lessor_leased_address  = p.get('property_address', '').strip()
+    client.ale_lessor_city_zip        = _csz(
+        p.get('property_city', ''), p.get('property_state', ''), p.get('property_zip', '')
+    )
+    client.ale_rental_bedrooms        = _int_val(p.get('bedrooms'), 1)
+    client.ale_rental_months          = _int_val(p.get('rental_months'), 12)
+    client.ale_rental_start_date      = _d(p.get('lease_start_date'))
+    client.ale_rental_end_date        = _d(p.get('lease_end_date'))
+    client.ale_rental_amount_per_month = _dec(p.get('monthly_rent'), 0) or 0
+    client.ale_rental_security_deposit = _dec(p.get('security_deposit'))
+    client.ale_lease_agreement_date   = _d(p.get('lease_agreement_date'))
+    client.ale_inspection_fee         = _dec(p.get('inspection_fee'), 300)
+    client.ale_late_fee               = _dec(p.get('late_fee'), 50)
+    client.ale_late_fee_start_day     = _int_val(p.get('late_fee_start_day'), 5)
+    client.ale_nsf_fee                = _dec(p.get('nsf_fee'), 35)
+    client.ale_rent_due_day           = _int_val(p.get('rent_due_day'), 1)
+    client.ale_re_company_name        = p.get('real_estate_company', '').strip()
+    client.ale_re_mailing_address     = p.get('company_mailing_address', '').strip()
+    client.ale_re_city_zip            = _csz(
+        p.get('company_city', ''), p.get('company_state', ''), p.get('company_zip', '')
+    )
+    client.ale_re_contact_person      = p.get('company_contact_person', '').strip()
+    client.ale_re_phone               = p.get('company_phone', '').strip()
+    client.ale_re_email               = p.get('company_email', '').strip()
+    client.ale_re_owner_broker_name   = p.get('broker_name', '').strip()
+    client.ale_re_owner_broker_phone  = p.get('broker_phone', '').strip()
+    client.ale_re_owner_broker_email  = p.get('broker_email', '').strip()
+    client.save()
+
+    ale_fields = _ale_to_lease_fields(client)
+
+    if p.get('exclude_security_deposit') == '1':
+        ale_fields['exclude_security_deposit'] = True
+    if p.get('exclude_inspection_fee') == '1':
+        ale_fields['exclude_inspection_fee'] = True
+    if p.get('lease_type') == 'renewal':
+        ale_fields['is_renewal'] = True
+
+    special_notes = p.get('special_notes', '').strip()
+    if special_notes:
+        ale_fields['lease_special_notes'] = special_notes
+
+    lease = Lease.objects.create(
+        client=client,
+        status='draft',
+        created_by=request.user,
+        last_modified_by=request.user,
+        **ale_fields,
+    )
+
+    for assignment in PipelineStageAssignment.objects.all():
+        LeaseStageCompletion.objects.create(
+            lease=lease,
+            stage=assignment.stage,
+            assigned_user=assignment.assigned_user,
+            is_completed=(assignment.stage == 'draft'),
+            completed_by=request.user if assignment.stage == 'draft' else None,
+            completed_at=timezone.now() if assignment.stage == 'draft' else None,
+        )
+
+    LeaseActivity.objects.create(
+        lease=lease,
+        activity_type='draft',
+        description=(
+            'Draft lease created via Lease Wizard for {}. '
+            'ALE data saved to claim record.'.format(client.pOwner)
+        ),
+        performed_by=request.user,
+    )
+
+    messages.success(
+        request,
+        'Lease draft created for {}. Review and generate documents below.'.format(client.pOwner)
+    )
+    return redirect('lease_manager:lease_detail', lease_id=str(lease.id))
+
+
+@login_required
+def api_lease_create_data(request, client_id):
+    """
+    GET: Return form-ready ALE data for a client. Called by JS when the user
+    selects a client in the creation wizard to auto-populate all form fields.
+    """
+    client = get_object_or_404(Client, id=client_id)
+    data = _ale_form_data(client)
+    data['client_name']    = client.pOwner
+    data['client_address'] = client.pAddress or ''
+    data['claim_number']   = client.claimNumber or ''
+
+    existing = (
+        Lease.objects.filter(client=client)
+        .exclude(status='cancelled')
+        .order_by('-created_at')
+        .first()
+    )
+    data['has_existing_lease']    = existing is not None
+    data['existing_lease_id']     = str(existing.id) if existing else ''
+    data['existing_lease_status'] = existing.get_status_display() if existing else ''
+    data['ale_complete'] = bool(
+        client.ale_lessor_name and
+        client.ale_lessor_leased_address and
+        client.ale_rental_start_date and
+        client.ale_rental_end_date and
+        client.ale_rental_amount_per_month
+    )
+    return JsonResponse(data)
+
+
+@login_required
+@require_POST
+def api_import_lease_pdf(request):
+    """
+    POST (multipart): Parse a previously-generated Lease Input Sheet PDF.
+    Returns extracted field values as JSON so the wizard can auto-populate.
+    """
+    pdf_file = request.FILES.get('pdf')
+    if not pdf_file:
+        return JsonResponse({'error': 'No PDF file uploaded.'}, status=400)
+    try:
+        from pypdf import PdfReader
+        reader = PdfReader(pdf_file)
+        full_text = ''
+        for page in reader.pages:
+            t = page.extract_text()
+            if t:
+                full_text += t + '\n'
+        fields = _parse_input_sheet_pdf(full_text)
+        return JsonResponse({'success': True, 'fields': fields})
+    except Exception as exc:
+        logger.error('api_import_lease_pdf: %s', exc, exc_info=True)
+        return JsonResponse({'error': 'Could not parse PDF: {}'.format(exc)}, status=500)
+
+
+def _parse_input_sheet_pdf(text):
+    """
+    Parse extracted text from a Lease Input Sheet PDF (WeasyPrint table layout).
+    Handles inline and next-line value placement.
+    Returns dict of form field name -> value string.
+    """
+    import re
+    from datetime import datetime
+
+    def _parse_date_str(val):
+        if not val:
+            return ''
+        val = val.strip()
+        for fmt in ('%B %d, %Y', '%b %d, %Y', '%m/%d/%Y', '%Y-%m-%d', '%m-%d-%Y'):
+            try:
+                return datetime.strptime(val, fmt).strftime('%Y-%m-%d')
+            except ValueError:
+                continue
+        return val
+
+    def find(label, after_section=None):
+        search_text = text
+        if after_section:
+            idx = text.upper().find(after_section.upper())
+            if idx >= 0:
+                search_text = text[idx:]
+        m = re.search(re.escape(label) + r'\s+([^\n]{1,150})', search_text, re.IGNORECASE)
+        if m:
+            val = m.group(1).strip()
+            if val and val not in ('\xe2\x80\x94', '-') and not re.match(r'^[A-Z\s]{10,}$', val):
+                return val
+        m2 = re.search(re.escape(label) + r'\s*\n\s*([^\n]{1,150})', search_text, re.IGNORECASE)
+        if m2:
+            val = m2.group(1).strip()
+            if val and val not in ('\xe2\x80\x94', '-'):
+                return val
+        return ''
+
+    def money(val):
+        if not val:
+            return ''
+        if 'WAIVED' in val.upper():
+            return ''
+        m = re.search(r'[\d,]+\.?\d*', val.replace('$', '').replace(',', ''))
+        return m.group(0) if m else ''
+
+    def digits(val):
+        m = re.search(r'\d+', val or '')
+        return m.group(0) if m else ''
+
+    S_LESSEE = 'LESSEE (TENANT)'
+    S_LESSOR = 'LESSOR (LANDLORD)'
+    S_RENTAL = 'RENTAL PROPERTY'
+    S_TERMS  = 'LEASE TERMS'
+    S_FIN    = 'FINANCIAL TERMS'
+    S_RE     = 'REAL ESTATE COMPANY'
+
+    out = {}
+    out['lessee_name']             = find('Tenant Name',         S_LESSEE)
+    out['lessee_address']          = find('Property Address',    S_LESSEE)
+    out['lessee_city_state_zip']   = find('City, State ZIP',     S_LESSEE)
+    out['lessee_phone']            = find('Primary Phone',       S_LESSEE)
+    out['lessee_email']            = find('Primary Email',       S_LESSEE)
+
+    out['lessor_name']             = find('Landlord Full Name',  S_LESSOR)
+    out['lessor_address']          = find('Landlord Address',    S_LESSOR)
+    out['lessor_phone']            = find('Landlord Phone',      S_LESSOR)
+    out['lessor_email']            = find('Landlord Email',      S_LESSOR)
+    out['lessor_contact_person_1'] = find('Contact Person 1',   S_LESSOR)
+    lessor_csz = find('City, State ZIP', S_LESSOR)
+    if lessor_csz:
+        lc, ls, lz = _parse_city_state_zip(lessor_csz)
+        out['lessor_city'] = lc
+        out['lessor_state'] = ls
+        out['lessor_zip'] = lz
+
+    out['property_address']        = find('Property Address',    S_RENTAL)
+    out['property_city']           = find('Property City',       S_RENTAL)
+    out['property_state']          = find('Property State',      S_RENTAL)
+    out['property_zip']            = find('Property ZIP',        S_RENTAL)
+    out['bedrooms']                = digits(find('Number of Bedrooms', S_RENTAL))
+
+    out['lease_agreement_date']    = _parse_date_str(find('Agreement Date',    S_TERMS))
+    out['lease_start_date']        = _parse_date_str(find('Lease Start Date',  S_TERMS))
+    out['lease_end_date']          = _parse_date_str(find('Lease End Date',    S_TERMS))
+    out['rental_months']           = digits(find('Rental Period',              S_TERMS))
+
+    raw_deposit = find('Security Deposit',      S_FIN)
+    raw_insp    = find('Inspection/Clean-up Fee', S_FIN)
+    out['monthly_rent']            = money(find('Monthly Rent',   S_FIN))
+    out['security_deposit']        = money(raw_deposit)
+    out['inspection_fee']          = money(raw_insp)
+    out['late_fee']                = money(find('Late Fee',       S_FIN))
+    out['late_fee_start_day']      = digits(find('Late Fee Starts', S_FIN))
+    out['nsf_fee']                 = money(find('NSF Fee',        S_FIN))
+    out['rent_due_day']            = digits(find('Rent Due Day',  S_FIN))
+    if raw_deposit and 'WAIVED' in raw_deposit.upper():
+        out['exclude_security_deposit'] = True
+    if raw_insp and 'WAIVED' in raw_insp.upper():
+        out['exclude_inspection_fee'] = True
+
+    out['real_estate_company']     = find('Company Name',    S_RE)
+    out['company_mailing_address'] = find('Company Address', S_RE)
+    out['company_contact_person']  = find('Contact Person',  S_RE)
+    out['company_phone']           = find('Company Phone',   S_RE)
+    out['company_email']           = find('Company Email',   S_RE)
+    out['broker_name']             = find('Broker Name',     S_RE)
+    out['broker_phone']            = find('Broker Phone',    S_RE)
+    out['broker_email']            = find('Broker Email',    S_RE)
+    co_csz = find('City, State ZIP', S_RE)
+    if co_csz:
+        rc, rs, rz = _parse_city_state_zip(co_csz)
+        out['company_city'] = rc
+        out['company_state'] = rs
+        out['company_zip'] = rz
+
+    doc_type = find('Document Type', S_TERMS)
+    if 'RENEWAL' in doc_type.upper():
+        out['is_renewal'] = True
+
+    return {k: v for k, v in out.items() if v not in ('', None, False)}
