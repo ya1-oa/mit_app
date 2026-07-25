@@ -668,7 +668,7 @@ h1, h2, h3, h4 {
                         {% for client in clients %}
                             <option value="{{ client.id }}"
                                     {% if client.id == current_client_id %}selected{% endif %}>
-                                        {{ client.pOwner }}{% if client.claimNumber %} — {{ client.claimNumber }}{% endif %}
+                                        {{ client.pOwner }}{% if client.claimNumber %} — {{ client.claimNumber }}{% endif %} — #{{ client.id }}{% if client.ale_lessor_name %} ✓ALE{% endif %}
                             </option>
                         {% endfor %}
                     </select>

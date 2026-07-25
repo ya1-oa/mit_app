@@ -4489,7 +4489,9 @@ def client_list(request):
             document_names = ['Engagement Agreement', 'Term Sheet', 'Month to Month Rental']
             selected_documents = Document.objects.filter(name__in=document_names)
 
-            if selected_documents and selected_documents.first().document_type == 'lease':
+            # Always auto-fill from ALE when a client is selected (no longer gated
+            # on document_type, which silently skipped population).
+            if selected_client:
                 # Create a Landlord instance pre-populated with ALE data from the client
                 landlord = Landlord()
 
