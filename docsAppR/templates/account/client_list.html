@@ -666,9 +666,9 @@ h1, h2, h3, h4 {
                     <select name="client_name" id="client_id" class="form-control">
                         <option value="">-- Select a Claim --</option>
                         {% for client in clients %}
-                            <option value="{{ client.pOwner }}" 
-                                    {% if client.pOwner == selected_client_id %}selected{% endif %}>
-                                        {{ client.pOwner }}
+                            <option value="{{ client.id }}"
+                                    {% if client.id == current_client_id %}selected{% endif %}>
+                                        {{ client.pOwner }}{% if client.claimNumber %} — {{ client.claimNumber }}{% endif %}
                             </option>
                         {% endfor %}
                     </select>
@@ -1063,7 +1063,7 @@ h1, h2, h3, h4 {
 <!-- Batch Generation Form -->
 <form id="batch-generation-form" action="{% url 'generate_all_documents' %}" method="post" style="display:none;">
     {% csrf_token %}
-    <input type="hidden" name="client_name" value="{{ selected_client.pOwner }}">
+    <input type="hidden" name="client_name" value="{{ selected_client.id }}">
     <input type="hidden" name="preview" id="previewFlag" value="true">
     
     <!-- Hidden fields for all form data -->
@@ -1297,7 +1297,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
         // Prepare form data
         const formData = new FormData();
-        formData.append('client_name', "{{ selected_client.pOwner }}");
+        formData.append('client_name', "{{ selected_client.id }}");
         formData.append('preview', 'true');
         
         // Add all form data including exclude checkboxes

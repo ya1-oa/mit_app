@@ -742,6 +742,66 @@ def delete_lease(request, lease_id):
     return redirect('lease_manager:lease_manager')
 
 
+@login_required
+@require_POST
+def create_renewal(request, lease_id):
+    """
+    POST: Clone an existing lease into a new renewal (is_renewal=True, draft
+    status). Copies every field so terms/address are pre-filled, then lands on
+    the detail page so the user can change dates, rent, or address and send.
+    """
+    src = get_object_or_404(Lease, id=lease_id)
+
+    # Fields that must NOT carry over to the new renewal.
+    skip = {
+        'id', 'created_at', 'updated_at', 'status', 'is_renewal',
+        'created_by', 'last_modified_by',
+        'generated_at', 'reviewed_at', 'sent_for_signature_at', 'signed_at',
+        'invoice_created_at', 'package_sent_at', 'payment_received_at', 'completed_at',
+    }
+    data = {f.name: getattr(src, f.name)
+            for f in src._meta.fields
+            if f.name not in skip and not f.primary_key}
+
+    # Convenience: start the renewal the day the old term ends and shift the
+    # end date forward by the same number of months (user can edit either).
+    def _add_months(d, months):
+        if not d:
+            return None
+        m = d.month - 1 + int(months or 0)
+        y = d.year + m // 12
+        m = m % 12 + 1
+        import calendar
+        day = min(d.day, calendar.monthrange(y, m)[1])
+        return d.replace(year=y, month=m, day=day)
+
+    if src.lease_end_date:
+        data['lease_start_date'] = src.lease_end_date
+        data['lease_end_date'] = _add_months(src.lease_end_date, src.rental_months)
+    data['lease_agreement_date'] = dt.date.today()
+
+    new_lease = Lease.objects.create(
+        **data,
+        is_renewal=True,
+        status='draft',
+        created_by=request.user if request.user.is_authenticated else None,
+        last_modified_by=request.user if request.user.is_authenticated else None,
+    )
+
+    try:
+        LeaseActivity.objects.create(
+            lease=new_lease,
+            activity_type='created',
+            description=f'Renewal created from {src.lease_label}',
+            created_by=request.user if request.user.is_authenticated else None,
+        )
+    except Exception:
+        pass
+
+    messages.success(request, f'Renewal created for {src.client.pOwner}. Update the terms below and send.')
+    return redirect('lease_manager:lease_detail', lease_id=new_lease.id)
+
+
 # ============================================================================
 # LEASE DETAIL
 # ============================================================================

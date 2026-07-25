@@ -4596,7 +4596,16 @@ def generate_all_documents(request):
 
         # Get models
         try:
-            client = get_object_or_404(Client, pOwner=client_name)
+            # client_name is now the client PK (name kept as fallback for old links).
+            client = None
+            if str(client_name).isdigit():
+                client = Client.objects.filter(id=client_name).first()
+            if client is None:
+                client = Client.objects.filter(pOwner=client_name).order_by('id').first()
+            if client is None:
+                raise Http404("Client not found")
+            # Downstream filenames/paths/descriptions expect the display name.
+            client_name = client.pOwner or str(client_name)
             # Get all 3 specific documents
             document_names = ['Engagement Agreement', 'Term Sheet', 'Month to Month Rental']
             documents = Document.objects.filter(name__in=document_names)

@@ -78,6 +78,10 @@ urlpatterns = [
     path('lease/<uuid:lease_id>/delete/',
          sv.delete_lease, name='delete_lease'),
 
+    # Create a renewal (clone terms into a new draft lease)
+    path('lease/<uuid:lease_id>/renew/',
+         sv.create_renewal, name='create_renewal'),
+
     # ── Public signing pages (no login required) ─────────────────────────────
     path('sign/<uuid:token>/',
          sv.sign_page, name='sign_page'),
