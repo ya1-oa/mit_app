@@ -13,7 +13,7 @@ from django.core.mail import EmailMessage
 from django.core.management import call_command
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.db.models import Avg, Case, Count, F, Q, When, IntegerField
-from django.http import HttpResponse, HttpResponseForbidden, JsonResponse, HttpRequest
+from django.http import HttpResponse, HttpResponseForbidden, JsonResponse, HttpRequest, Http404
 from django.shortcuts import get_object_or_404, redirect, render
 from django.template import Template, Context
 from django.template.loader import render_to_string
@@ -4475,7 +4475,15 @@ def client_list(request):
     if 'client_name' in request.GET:
         client_id = request.GET['client_name']
         if client_id:  # Only try to get client if an ID was provided
-            selected_client = get_object_or_404(clients, pOwner=client_id)
+            # Prefer the unique PK; fall back to name (several clients can share
+            # a pOwner, which used to 500 with MultipleObjectsReturned).
+            selected_client = None
+            if str(client_id).isdigit():
+                selected_client = clients.filter(id=client_id).first()
+            if selected_client is None:
+                selected_client = clients.filter(pOwner=client_id).order_by('id').first()
+            if selected_client is None:
+                raise Http404("Client not found")
 
             # Always select the 3 specific documents
             document_names = ['Engagement Agreement', 'Term Sheet', 'Month to Month Rental']
