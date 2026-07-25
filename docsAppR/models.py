@@ -178,6 +178,8 @@ class Client(models.Model):
     claimID = models.CharField(max_length=150, blank=True, default='')
     #Customer
     pOwner = models.CharField(max_length=255, blank=True)
+    # Soft-delete: archived claims are hidden from lists/pickers but kept in the DB.
+    archived = models.BooleanField(default=False, db_index=True)
     pAddress = models.CharField(max_length=255, blank=True)
     pCityStateZip = models.CharField(max_length=255, blank=True)
     cEmail = models.CharField(max_length=255, blank=True)

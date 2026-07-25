@@ -20,6 +20,7 @@ urlpatterns = [
     # Update
     path('<int:claim_id>/update/', views.update_claim, name='update_claim'),
     path('<int:claim_id>/delete/', views.delete_claim, name='delete_claim'),
+    path('<int:claim_id>/archive/', views.archive_claim, name='archive_claim'),
 
     # Task status
     path('task-status/', views.claim_task_status, name='claim_task_status'),

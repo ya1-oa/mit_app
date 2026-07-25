@@ -332,6 +332,12 @@
     <a href="/claims/{{ client.id }}/files/" target="_blank" class="btn-action outline" title="Open shareable file browser">
         <i class="fas fa-external-link-alt"></i> Files Page
     </a>
+    <form method="post" action="{% url 'archive_claim' client.id %}" style="display:inline">
+        {% csrf_token %}
+        <button type="submit" class="btn-action outline" title="{% if client.archived %}Restore this claim{% else %}Hide this claim without deleting its data{% endif %}">
+            <i class="fas fa-box-archive"></i> {% if client.archived %}Restore Claim{% else %}Archive Claim{% endif %}
+        </button>
+    </form>
     <form method="post" action="{% url 'delete_claim' client.id %}" style="display:inline"
           onsubmit="var n=prompt('This permanently deletes this claim and ALL its data (rooms, leases, documents). Type the claim name to confirm:\n\n{{ client.pOwner|escapejs }}'); if(n===null){return false;} this.confirm_name.value=n; return true;">
         {% csrf_token %}

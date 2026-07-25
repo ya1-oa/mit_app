@@ -6,6 +6,7 @@ from docsAppR.claims_views import (
     claim_list,
     claim_detail,
     delete_claim,
+    archive_claim,
     create_claim_step1,
     create_claim_step2,
     create_claim_step3,

@@ -4465,8 +4465,8 @@ def calculate_percentage_change(old_value, new_value):
 
 # LEASE GENERATION VIEWS
 def client_list(request):
-    # Get all clients from the database, alphabetical by owner name
-    clients = Client.objects.order_by('pOwner')
+    # Get all clients from the database, alphabetical by owner name (hide archived)
+    clients = Client.objects.filter(archived=False).order_by('pOwner')
     documents = Document.objects.all()
     selected_client = None
     selected_documents = []  # Changed to handle multiple documents

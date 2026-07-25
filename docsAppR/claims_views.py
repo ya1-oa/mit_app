@@ -37,7 +37,8 @@ def claim_list(request):
     search  = request.GET.get('search', '').strip()
     sort_by = request.GET.get('sort', '-updated_at')
 
-    clients = Client.objects.all()
+    show_archived = request.GET.get('archived') == '1'
+    clients = Client.objects.filter(archived=show_archived)
 
     # ── Search ─────────────────────────────────────────────────────
     if search:
@@ -66,10 +67,11 @@ def claim_list(request):
     page_obj  = paginator.get_page(request.GET.get('page'))
 
     return render(request, 'docsAppR/claim_list.html', {
-        'page_obj':    page_obj,
-        'search':      search,
-        'sort_by':     sort_by,
-        'total_count': paginator.count,
+        'page_obj':      page_obj,
+        'search':        search,
+        'sort_by':       sort_by,
+        'total_count':   paginator.count,
+        'show_archived': show_archived,
     })
 
 
@@ -172,6 +174,20 @@ def delete_claim(request, claim_id):
     client.delete()
     messages.success(request, f'Claim "{name}" and all its data were permanently deleted.')
     return redirect('claim_list')
+
+
+@login_required
+@require_POST
+def archive_claim(request, claim_id):
+    """Toggle a claim's archived state (soft-delete). Data is kept."""
+    client = get_object_or_404(Client.unscoped, id=claim_id)
+    client.archived = not client.archived
+    client.save(update_fields=['archived'])
+    if client.archived:
+        messages.success(request, f'Claim "{client.pOwner}" archived.')
+        return redirect('claim_list')
+    messages.success(request, f'Claim "{client.pOwner}" restored.')
+    return redirect('claim_detail', claim_id=claim_id)
 
 
 # ==================== Step 1: Client Information ====================

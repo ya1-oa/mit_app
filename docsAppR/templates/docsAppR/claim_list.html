@@ -236,6 +236,15 @@
             <p>{{ total_count }} claim{{ total_count|pluralize }} in the system{% if search %} — filtered by "{{ search }}"{% endif %}</p>
         </div>
         <div class="claims-hero-right">
+            {% if show_archived %}
+            <a href="{% url 'claim_list' %}" class="btn-hero btn-outline">
+                <i class="fas fa-arrow-left"></i> Active Claims
+            </a>
+            {% else %}
+            <a href="?archived=1" class="btn-hero btn-outline">
+                <i class="fas fa-box-archive"></i> Archived
+            </a>
+            {% endif %}
             <a href="{% url 'data_check_audit' %}" class="btn-hero btn-outline">
                 <i class="fas fa-clipboard-check"></i> Data Check
             </a>
