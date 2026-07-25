@@ -332,6 +332,14 @@
     <a href="/claims/{{ client.id }}/files/" target="_blank" class="btn-action outline" title="Open shareable file browser">
         <i class="fas fa-external-link-alt"></i> Files Page
     </a>
+    <form method="post" action="{% url 'delete_claim' client.id %}" style="display:inline"
+          onsubmit="var n=prompt('This permanently deletes this claim and ALL its data (rooms, leases, documents). Type the claim name to confirm:\n\n{{ client.pOwner|escapejs }}'); if(n===null){return false;} this.confirm_name.value=n; return true;">
+        {% csrf_token %}
+        <input type="hidden" name="confirm_name" value="">
+        <button type="submit" class="btn-action outline" style="color:#b91c1c;border-color:#f3b4b4" title="Permanently delete this claim">
+            <i class="fas fa-trash-alt"></i> Delete Claim
+        </button>
+    </form>
 </div>
 
 {# ═══════════════════════════════════════════════════════════ TOP-LEVEL TABS #}

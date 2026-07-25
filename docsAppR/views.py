@@ -4465,8 +4465,8 @@ def calculate_percentage_change(old_value, new_value):
 
 # LEASE GENERATION VIEWS
 def client_list(request):
-    # Get all clients from the database
-    clients = Client.objects.all()
+    # Get all clients from the database, alphabetical by owner name
+    clients = Client.objects.order_by('pOwner')
     documents = Document.objects.all()
     selected_client = None
     selected_documents = []  # Changed to handle multiple documents
@@ -4525,6 +4525,20 @@ def client_list(request):
                 landlord.default_rent_amount = selected_client.ale_rental_amount_per_month or 0
                 landlord.bedrooms = int(selected_client.ale_rental_bedrooms) if selected_client.ale_rental_bedrooms and selected_client.ale_rental_bedrooms.isdigit() else 1
                 landlord.rental_months = int(selected_client.ale_rental_months) if selected_client.ale_rental_months and selected_client.ale_rental_months.isdigit() else 12
+
+                # Fees & deposits — pull from ALE so the whole section auto-fills
+                if selected_client.ale_rental_security_deposit is not None:
+                    landlord.default_security_deposit = selected_client.ale_rental_security_deposit
+                if selected_client.ale_inspection_fee is not None:
+                    landlord.default_inspection_fee = selected_client.ale_inspection_fee
+                if selected_client.ale_late_fee is not None:
+                    landlord.default_late_fee = selected_client.ale_late_fee
+                if selected_client.ale_late_fee_start_day is not None:
+                    landlord.default_late_fee_start_day = selected_client.ale_late_fee_start_day
+                if selected_client.ale_nsf_fee is not None:
+                    landlord.default_nsf_fee = selected_client.ale_nsf_fee
+                if selected_client.ale_rent_due_day is not None:
+                    landlord.default_rent_due_day = selected_client.ale_rent_due_day
 
                 # Real Estate Company Information
                 landlord.real_estate_company = selected_client.ale_re_company_name or ''

@@ -153,6 +153,27 @@ def claim_detail(request, claim_id):
     return render(request, 'docsAppR/claim_detail.html', context)
 
 
+@login_required
+@require_POST
+def delete_claim(request, claim_id):
+    """
+    Delete a claim (Client) and everything cascading from it (rooms, leases,
+    documents, etc.). Destructive — gated behind a POST + typed confirmation.
+    """
+    client = get_object_or_404(Client.unscoped, id=claim_id)
+    name = client.pOwner or f'Claim {claim_id}'
+
+    # Require the user to type the claim name to confirm (guards against misclicks).
+    confirm = (request.POST.get('confirm_name') or '').strip()
+    if confirm != (client.pOwner or '').strip():
+        messages.error(request, 'Deletion cancelled — the confirmation name did not match.')
+        return redirect('claim_detail', claim_id=claim_id)
+
+    client.delete()
+    messages.success(request, f'Claim "{name}" and all its data were permanently deleted.')
+    return redirect('claim_list')
+
+
 # ==================== Step 1: Client Information ====================
 
 @login_required
