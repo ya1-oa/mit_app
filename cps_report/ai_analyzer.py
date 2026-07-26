@@ -849,7 +849,8 @@ def decide_prices(items: list[dict], pricing_mode: str = 'normal') -> dict:
         opts = it.get('price_options') or []
         if opts:
             for o in opts[:8]:
-                lines.append(f"     - {o.get('vendor','?')}: ${o.get('price')} | {o.get('url','')}")
+                url_short = (o.get('url') or '')[:80]
+                lines.append(f"     - {o.get('vendor','?')}: ${o.get('price')} | {url_short}")
         else:
             lines.append("     - (no listings found)")
     items_block = "\n".join(lines)
@@ -862,7 +863,7 @@ def decide_prices(items: list[dict], pricing_mode: str = 'normal') -> dict:
     try:
         response = client.messages.create(
             model=_SELECTION_MODEL,
-            max_tokens=4096,
+            max_tokens=8192,
             system=_DECIDE_SYSTEM_PROMPT,
             messages=[{"role": "user",
                        "content": _DECIDE_USER_PROMPT.format(mode_line=mode_line, items_block=items_block)}],
@@ -1019,11 +1020,19 @@ def analyze_room_with_live_pricing(
             for it in priceable:
                 it['price_options'] = []
 
-        # ── Stage 3: expert selection / estimate ─────────────────────────────
-        _log("Selecting best price per item…")
-        dusage = decide_prices(priceable, pricing_mode=pricing_mode)
-        tok_in  += dusage.get('input_tokens', 0)
-        tok_out += dusage.get('output_tokens', 0)
+        # ── Stage 3: expert selection / estimate (batched, 15 items at a time) ─
+        _PRICE_CHUNK = 15
+        _total_price_batches = math.ceil(len(priceable) / _PRICE_CHUNK)
+        _log(f"Selecting best price for {len(priceable)} items ({_total_price_batches} batch{'es' if _total_price_batches != 1 else ''})…")
+        for _pi in range(0, len(priceable), _PRICE_CHUNK):
+            _chunk = priceable[_pi:_pi + _PRICE_CHUNK]
+            _pb = _pi // _PRICE_CHUNK + 1
+            if _pb > 1:
+                time.sleep(1)
+            _log(f"  Pricing batch {_pb}/{_total_price_batches} ({len(_chunk)} items)…")
+            dusage = decide_prices(_chunk, pricing_mode=pricing_mode)
+            tok_in  += dusage.get('input_tokens', 0)
+            tok_out += dusage.get('output_tokens', 0)
 
     # Structural items: no price, flagged, no options
     for it in all_items:
