@@ -18,7 +18,11 @@ from django.shortcuts import render
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.http import require_POST
 
-from equipment_checker.tasks import process_equipment_check_task, SUPPORTED_EXTS
+from equipment_checker.tasks import (
+    process_equipment_check_task,
+    process_equipment_detect_task,
+    SUPPORTED_EXTS,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -162,3 +166,67 @@ def equipment_export_csv(request):
     response = HttpResponse(buf.getvalue(), content_type='text/csv')
     response['Content-Disposition'] = 'attachment; filename="equipment_check.csv"'
     return response
+
+
+@login_required
+@csrf_exempt
+@require_POST
+def equipment_detect_upload(request):
+    """
+    Accept photos / PDF → auto-detect all equipment without a pre-defined list.
+    """
+    image_files = request.FILES.getlist('images')
+    job_pdf_file = request.FILES.get('job_pdf')
+
+    if not image_files and not job_pdf_file:
+        return JsonResponse(
+            {'error': 'Please upload a PDF report or photos (or both).'},
+            status=400
+        )
+
+    session_id = str(uuid.uuid4())
+    input_dir = Path(settings.MEDIA_ROOT) / 'equipment_sessions' / session_id / 'input'
+    input_dir.mkdir(parents=True, exist_ok=True)
+
+    job_pdf_path = ''
+    if job_pdf_file:
+        if Path(job_pdf_file.name).suffix.lower() != '.pdf':
+            return JsonResponse({'error': 'Job report must be a PDF file'}, status=400)
+        pdf_dest = input_dir / 'job_report.pdf'
+        with open(pdf_dest, 'wb') as out:
+            for chunk in job_pdf_file.chunks():
+                out.write(chunk)
+        job_pdf_path = str(pdf_dest)
+
+    saved_paths = []
+    skipped = []
+    for f in image_files:
+        if Path(f.name).suffix.lower() not in SUPPORTED_EXTS:
+            skipped.append(f.name)
+            continue
+        dest = input_dir / f.name
+        if dest.exists():
+            stem, sfx = Path(f.name).stem, Path(f.name).suffix
+            dest = input_dir / f'{stem}_{uuid.uuid4().hex[:6]}{sfx}'
+        with open(dest, 'wb') as out:
+            for chunk in f.chunks():
+                out.write(chunk)
+        saved_paths.append(str(dest))
+
+    model = request.POST.get('model', 'claude-sonnet-4-6')
+    task = process_equipment_detect_task.delay(
+        session_id, saved_paths, model, job_pdf_path
+    )
+
+    logger.info(
+        f"[equipment_detect] session={session_id} pdf={bool(job_pdf_path)} "
+        f"images={len(saved_paths)} task={task.id}"
+    )
+
+    return JsonResponse({
+        'task_id': task.id,
+        'session_id': session_id,
+        'has_pdf': bool(job_pdf_path),
+        'image_count': len(saved_paths),
+        'skipped': skipped,
+    })
