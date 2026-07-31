@@ -1,5 +1,19 @@
-{% extends "base.html" %}
+{% extends "account/base.html" %}
 {% block title %}Report Configuration — Claimet{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'dev_hub:dashboard' %}">Dev Hub</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'daily_reports:daily_reports_dashboard' %}">Daily Reports</a></li>
+      <li class="breadcrumb-item active">Configuration</li>
+    </ol>
+  </nav>
+  <h1 class="ms-3">Report Configuration</h1>
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="container py-4" style="max-width:680px;">

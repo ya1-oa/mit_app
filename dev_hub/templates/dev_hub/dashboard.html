@@ -22,6 +22,13 @@
     <a href="{% url 'dev_hub:weekly_report_list' %}" class="btn btn-outline-primary btn-sm">
         <i class="bi bi-journal-text me-1"></i>Weekly Progress Reports
     </a>
+    <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="btn btn-outline-danger btn-sm">
+        <i class="fas fa-bell me-1"></i>Daily Reports
+        {% if hp_count %}<span class="badge bg-danger ms-1">{{ hp_count }}</span>{% endif %}
+    </a>
+    <a href="{% url 'daily_reports:daily_reports_tasks' %}" class="btn btn-outline-dark btn-sm">
+        <i class="fas fa-tasks me-1"></i>Ops Tasks
+    </a>
     <a href="{% url 'dev_hub:ai_resources' %}" class="btn btn-outline-secondary btn-sm">
         <i class="bi bi-cpu me-1"></i>AI Resources
     </a>
@@ -56,6 +63,48 @@
                 </button>
             </form>
             <div class="text-muted mt-1" style="font-size:11px;">Ad-hoc to {{ notify_email }}</div>
+        </div>
+    </div>
+</div>
+
+<!-- ── Daily Operations Status ────────────────────────────────────────────── -->
+<div class="card border-0 shadow-sm mb-4" style="border-left:4px solid #dc3545 !important;">
+    <div class="card-body py-2 px-3">
+        <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+            <div class="d-flex align-items-center gap-3 flex-wrap">
+                <span class="fw-bold text-danger" style="font-size:13px;">
+                    <i class="fas fa-bell me-1"></i>Daily Ops
+                </span>
+                <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="text-decoration-none">
+                    <span class="badge {% if ppr_unsigned %}bg-danger{% else %}bg-success{% endif %} me-1">
+                        {{ ppr_unsigned }} PPR unsigned
+                    </span>
+                </a>
+                <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="text-decoration-none">
+                    <span class="badge {% if leases_awaiting %}bg-warning text-dark{% else %}bg-success{% endif %} me-1">
+                        {{ leases_awaiting }} leases awaiting sig
+                    </span>
+                </a>
+                <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="text-decoration-none">
+                    <span class="badge {% if hp_count %}bg-dark{% else %}bg-success{% endif %}">
+                        {{ hp_count }} high priority
+                    </span>
+                </a>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-xs btn-danger" style="font-size:12px;padding:3px 10px;"
+                        onclick="devHubSendReport('daily')">
+                    <i class="fas fa-paper-plane me-1"></i>Send Daily Now
+                </button>
+                <button class="btn btn-xs btn-outline-dark" style="font-size:12px;padding:3px 10px;"
+                        onclick="devHubSendReport('deep')">
+                    <i class="fas fa-chart-bar me-1"></i>Deep Report
+                </button>
+                <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="btn btn-xs btn-outline-secondary"
+                   style="font-size:12px;padding:3px 10px;">
+                    View All <i class="fas fa-arrow-right ms-1"></i>
+                </a>
+            </div>
         </div>
     </div>
 </div>
@@ -203,6 +252,22 @@
 {% block extra_js %}
 <script>
 const CSRF = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+// ── Daily ops send-now ────────────────────────────────────────────────────
+function devHubSendReport(type) {
+    const label = type === 'deep' ? 'Weekly Deep' : 'Daily High Priority';
+    if (!confirm('Send the ' + label + ' Report now?')) return;
+    fetch("{% url 'daily_reports:daily_reports_send_now' %}", {
+        method: 'POST',
+        headers: {'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded'},
+        body: 'report_type=' + type,
+    })
+    .then(r => r.json())
+    .then(d => {
+        if (d.ok) alert('Report queued! Check your inbox in a few seconds.');
+        else alert('Error: ' + (d.error || 'Unknown'));
+    });
+}
 
 // ── Task checkbox toggle ──────────────────────────────────────────────────
 document.querySelectorAll('.task-checkbox').forEach(cb => {

@@ -55,11 +55,35 @@ def dashboard(request):
             'opened':      last.email_log.is_opened if last and last.email_log else None,
         })
 
+    # Daily reports quick stats — shown in the ops status panel
+    ppr_unsigned = leases_awaiting = hp_count = 0
+    try:
+        from cps_report.models import CPSReportSession
+        ppr_unsigned = CPSReportSession.objects.filter(
+            rooms__signature_name=''
+        ).distinct().count()
+    except Exception:
+        pass
+    try:
+        from docsAppR.models import Lease
+        leases_awaiting = Lease.objects.filter(status='sent_for_signature').count()
+    except Exception:
+        pass
+    try:
+        from daily_reports.models import HighPriorityItem
+        hp_count = HighPriorityItem.objects.filter(is_resolved=False).count()
+    except Exception:
+        pass
+
     context = {
-        'module_data': module_data,
-        'total_modules': modules.count(),
-        'stable_count':  modules.filter(status='stable').count(),
-        'in_dev_count':  modules.filter(status='in_dev').count(),
+        'module_data':     module_data,
+        'total_modules':   modules.count(),
+        'stable_count':    modules.filter(status='stable').count(),
+        'in_dev_count':    modules.filter(status='in_dev').count(),
+        'notify_email':    NOTIFY_EMAIL,
+        'ppr_unsigned':    ppr_unsigned,
+        'leases_awaiting': leases_awaiting,
+        'hp_count':        hp_count,
     }
     return render(request, 'dev_hub/dashboard.html', context)
 

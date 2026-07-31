@@ -1,7 +1,20 @@
-{% extends "base.html" %}
+{% extends "account/base.html" %}
 {% load static %}
 
 {% block title %}Daily Reports — Claimet{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+  <nav aria-label="breadcrumb">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'home' %}">Home</a></li>
+      <li class="breadcrumb-item"><a href="{% url 'dev_hub:dashboard' %}">Dev Hub</a></li>
+      <li class="breadcrumb-item active">Daily Reports</li>
+    </ol>
+  </nav>
+  <h1 class="ms-3">Daily Reports</h1>
+</div>
+{% endblock %}
 
 {% block content %}
 <div class="container-fluid py-3">
