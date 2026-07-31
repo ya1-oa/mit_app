@@ -70,4 +70,7 @@ urlpatterns = [
     # Task Manager — team to-do / kanban board
     path('tasks/', include('tasks.urls')),
 
+    # Daily Reports — high priority tracking + weekly deep operations report
+    path('daily-reports/', include('daily_reports.urls')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

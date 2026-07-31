@@ -68,6 +68,7 @@ INSTALLED_APPS = [
     'dev_hub',
     'tasks',
     'ar_tracking',
+    'daily_reports',
 
     # Auth
     #'django.contrib.sites',
@@ -334,6 +335,16 @@ CELERY_BEAT_SCHEDULE = {
     'check-followup-triggers': {
         'task': 'email_manager.tasks.check_followup_triggers',
         'schedule': crontab(minute=0),
+    },
+    # ── Daily High Priority Status Report — every morning at configured hour (default 7 AM ET)
+    'daily-high-priority-report': {
+        'task': 'daily_reports.tasks.send_daily_high_priority_report',
+        'schedule': crontab(hour=7, minute=0),
+    },
+    # ── Weekly Deep Operations Report — Monday 8:10 AM ET (after dev-hub reports)
+    'weekly-deep-operations-report': {
+        'task': 'daily_reports.tasks.send_deep_operations_report',
+        'schedule': crontab(hour=8, minute=10, day_of_week=1),
     },
 }
 

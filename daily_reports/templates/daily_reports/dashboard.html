@@ -1,0 +1,312 @@
+{% extends "base.html" %}
+{% load static %}
+
+{% block title %}Daily Reports — Claimet{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  <!-- Header -->
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h4 class="mb-0 fw-bold"><i class="fas fa-bell me-2 text-danger"></i>Daily Status Reports</h4>
+      <small class="text-muted">High Priority tracking + Weekly Deep Operations Report</small>
+    </div>
+    <div class="d-flex gap-2">
+      <a href="{% url 'daily_reports:daily_reports_config' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-cog me-1"></i> Configure
+      </a>
+      <a href="{% url 'daily_reports:daily_reports_tasks' %}" class="btn btn-sm btn-outline-primary">
+        <i class="fas fa-tasks me-1"></i> Manage Tasks
+      </a>
+      <button class="btn btn-sm btn-danger" onclick="sendNow('daily')">
+        <i class="fas fa-paper-plane me-1"></i> Send Daily Now
+      </button>
+      <button class="btn btn-sm btn-outline-dark" onclick="sendNow('deep')">
+        <i class="fas fa-chart-bar me-1"></i> Send Deep Report
+      </button>
+    </div>
+  </div>
+
+  <!-- Live stats row -->
+  <div class="row g-3 mb-4">
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body py-3 text-center">
+          <div class="display-6 fw-bold text-danger">{{ ppr_unsigned }}</div>
+          <div class="small text-muted">PPR — Unsigned Rooms</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body py-3 text-center">
+          <div class="display-6 fw-bold text-warning">{{ ppr_pending }}</div>
+          <div class="small text-muted">PPR — Processing</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body py-3 text-center">
+          <div class="display-6 fw-bold text-danger">{{ leases_awaiting }}</div>
+          <div class="small text-muted">Leases — Awaiting Signature</div>
+        </div>
+      </div>
+    </div>
+    <div class="col-sm-6 col-lg-3">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body py-3 text-center">
+          <div class="display-6 fw-bold text-secondary">{{ leases_draft }}</div>
+          <div class="small text-muted">Leases — Draft / Not Sent</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-3">
+
+    <!-- High Priority Items -->
+    <div class="col-lg-7">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center py-2">
+          <span><i class="fas fa-exclamation-circle me-1"></i> High Priority Tracked Items</span>
+          <span class="badge bg-white text-danger">{{ hp_items|length }} active</span>
+        </div>
+        <div class="card-body p-0">
+          {% if hp_items %}
+          <div class="list-group list-group-flush">
+            {% for item in hp_items %}
+            <div class="list-group-item px-3 py-2" id="hp-{{ item.id }}">
+              <div class="d-flex justify-content-between align-items-start">
+                <div>
+                  <strong>{{ item.client.pOwner|default:"—" }}</strong>
+                  <span class="ms-2 badge bg-light text-dark border">{{ item.get_item_type_display }}</span>
+                  {% if item.ppr_session %}<span class="ms-1 small text-muted">{{ item.ppr_session.display_name }}</span>{% endif %}
+                  {% if item.lease %}<span class="ms-1 small text-muted">Lease: {{ item.lease.get_status_display }}</span>{% endif %}
+                  {% if item.priority_note %}
+                  <div class="small text-secondary mt-1">{{ item.priority_note }}</div>
+                  {% endif %}
+                  {% if item.resolution_criteria %}
+                  <div class="small text-info">Needs: {{ item.resolution_criteria }}</div>
+                  {% endif %}
+                </div>
+                <div class="d-flex align-items-center gap-2 ms-3">
+                  <span class="small text-muted">{{ item.added_at|timesince }} ago</span>
+                  <button class="btn btn-xs btn-outline-success" style="font-size:11px;padding:1px 8px;"
+                          onclick="resolveItem({{ item.id }})">
+                    ✓ Resolve
+                  </button>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="p-4 text-center text-muted">
+            <i class="fas fa-check-circle fa-2x mb-2 text-success"></i>
+            <div>No high priority items flagged.</div>
+          </div>
+          {% endif %}
+        </div>
+        <div class="card-footer bg-transparent py-2">
+          <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#flagModal">
+            <i class="fas fa-flag me-1"></i> Flag New Item
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Report Log + Config Summary -->
+    <div class="col-lg-5">
+      <!-- Config summary -->
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header py-2 d-flex justify-content-between align-items-center">
+          <span><i class="fas fa-cog me-1"></i> Report Configuration</span>
+          <a href="{% url 'daily_reports:daily_reports_config' %}" class="small text-primary">Edit</a>
+        </div>
+        <div class="card-body py-2" style="font-size:13px;">
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-muted">Status</span>
+            <span>{% if config.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Paused</span>{% endif %}</span>
+          </div>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-muted">Send Time</span>
+            <span>{{ config.send_hour }}:00 ET daily</span>
+          </div>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-muted">Escalation</span>
+            <span>After {{ config.escalation_days }} days → URGENT</span>
+          </div>
+          <div class="d-flex justify-content-between py-1 border-bottom">
+            <span class="text-muted">Recipients</span>
+            <span>{{ config.recipients|length }} address{{ config.recipients|length|pluralize:"es" }}</span>
+          </div>
+          <div class="d-flex justify-content-between py-1">
+            <span class="text-muted">Attach PDFs</span>
+            <span>{% if config.attach_ppr_pdf %}Yes{% else %}No{% endif %}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent report logs -->
+      <div class="card border-0 shadow-sm">
+        <div class="card-header py-2">
+          <i class="fas fa-history me-1"></i> Recent Report Sends
+        </div>
+        <div class="card-body p-0">
+          {% if recent_logs %}
+          <div class="list-group list-group-flush" style="font-size:12px;">
+            {% for log in recent_logs %}
+            <div class="list-group-item px-3 py-2 d-flex justify-content-between align-items-center">
+              <div>
+                <span class="badge {% if log.report_type == 'daily' %}bg-danger{% else %}bg-dark{% endif %} me-1">
+                  {{ log.get_report_type_display }}
+                </span>
+                {{ log.sent_at|date:"M d H:i" }}
+                {% if log.report_type == 'daily' %}
+                <span class="text-muted ms-1">{{ log.total_items }} items · {{ log.urgent_items }} urgent</span>
+                {% endif %}
+              </div>
+              {% if log.email_success %}
+                <i class="fas fa-check-circle text-success"></i>
+              {% else %}
+                <i class="fas fa-times-circle text-danger" title="{{ log.error_message }}"></i>
+              {% endif %}
+            </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="p-3 text-center text-muted small">No reports sent yet.</div>
+          {% endif %}
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Flag Item Modal -->
+<div class="modal fade" id="flagModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header bg-danger text-white">
+        <h5 class="modal-title"><i class="fas fa-flag me-2"></i>Flag High Priority Item</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Item Type</label>
+          <select class="form-select form-select-sm" id="flagType">
+            <option value="ppr">PPR Report</option>
+            <option value="lease">ALE Lease</option>
+            <option value="general">General Claim Item</option>
+          </select>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Claim / Client ID</label>
+          <input type="number" class="form-control form-control-sm" id="flagClientId" placeholder="Client ID number">
+          <div class="form-text">Find the Client ID in the claim URL</div>
+        </div>
+        <div class="mb-3" id="pprSessionRow">
+          <label class="form-label small fw-bold">PPR Session ID (optional)</label>
+          <input type="number" class="form-control form-control-sm" id="flagPprId" placeholder="PPR Session ID">
+        </div>
+        <div class="mb-3" id="leaseRow" style="display:none;">
+          <label class="form-label small fw-bold">Lease ID (optional)</label>
+          <input type="number" class="form-control form-control-sm" id="flagLeaseId" placeholder="Lease ID">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Why is this being tracked?</label>
+          <textarea class="form-control form-control-sm" id="flagNote" rows="2" placeholder="e.g. Client has been unresponsive for 2 weeks"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">What needs to happen to resolve?</label>
+          <input type="text" class="form-control form-control-sm" id="flagResolution" placeholder="e.g. All 3 parties must sign the lease">
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Demand language for email (optional)</label>
+          <textarea class="form-control form-control-sm" id="flagDemand" rows="2" placeholder="e.g. This item requires immediate attention from the field team"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-danger btn-sm" onclick="submitFlag()">
+          <i class="fas fa-flag me-1"></i> Flag as High Priority
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function sendNow(type) {
+  if (!confirm('Send the ' + (type === 'deep' ? 'Weekly Deep' : 'Daily High Priority') + ' Report now?')) return;
+  fetch("{% url 'daily_reports:daily_reports_send_now' %}", {
+    method: 'POST',
+    headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
+    body: 'report_type=' + type,
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      alert('Report queued! Check your inbox in a few seconds.');
+    } else {
+      alert('Error: ' + (d.error || 'Unknown error'));
+    }
+  });
+}
+
+function resolveItem(id) {
+  if (!confirm('Mark this item as resolved?')) return;
+  fetch(`/daily-reports/resolve/${id}/`, {
+    method: 'POST',
+    headers: {'X-CSRFToken': '{{ csrf_token }}'},
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      const el = document.getElementById('hp-' + id);
+      if (el) { el.style.opacity = '.3'; setTimeout(() => el.remove(), 400); }
+    }
+  });
+}
+
+document.getElementById('flagType').addEventListener('change', function() {
+  const v = this.value;
+  document.getElementById('pprSessionRow').style.display = v === 'ppr' ? '' : 'none';
+  document.getElementById('leaseRow').style.display = v === 'lease' ? '' : 'none';
+});
+
+function submitFlag() {
+  const type = document.getElementById('flagType').value;
+  const cid  = document.getElementById('flagClientId').value;
+  if (!cid) { alert('Please enter a Client ID'); return; }
+  const body = {
+    item_type: type,
+    client_id: parseInt(cid),
+    ppr_session_id: document.getElementById('flagPprId').value ? parseInt(document.getElementById('flagPprId').value) : null,
+    lease_id: document.getElementById('flagLeaseId').value ? parseInt(document.getElementById('flagLeaseId').value) : null,
+    priority_note: document.getElementById('flagNote').value,
+    resolution_criteria: document.getElementById('flagResolution').value,
+    demand_language: document.getElementById('flagDemand').value,
+  };
+  fetch("{% url 'daily_reports:daily_reports_flag' %}", {
+    method: 'POST',
+    headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'},
+    body: JSON.stringify(body),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      bootstrap.Modal.getInstance(document.getElementById('flagModal')).hide();
+      location.reload();
+    } else {
+      alert('Error: ' + (d.error || 'Unknown error'));
+    }
+  });
+}
+</script>
+{% endblock %}

@@ -1,0 +1,15 @@
+from django.urls import path
+from . import views
+
+app_name = 'daily_reports'
+
+urlpatterns = [
+    path('',             views.dashboard,    name='daily_reports_dashboard'),
+    path('config/',      views.config_view,  name='daily_reports_config'),
+    path('tasks/',       views.tasks_view,   name='daily_reports_tasks'),
+    path('tasks/<int:task_id>/update/',  views.update_task,  name='daily_reports_update_task'),
+    path('tasks/<int:task_id>/delete/',  views.delete_task,  name='daily_reports_delete_task'),
+    path('flag/',        views.flag_item,    name='daily_reports_flag'),
+    path('resolve/<int:item_id>/', views.resolve_item, name='daily_reports_resolve'),
+    path('send-now/',    views.send_now,     name='daily_reports_send_now'),
+]

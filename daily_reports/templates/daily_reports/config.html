@@ -1,0 +1,115 @@
+{% extends "base.html" %}
+{% block title %}Report Configuration — Claimet{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:680px;">
+  <div class="d-flex align-items-center mb-3">
+    <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="btn btn-sm btn-outline-secondary me-3">
+      <i class="fas fa-arrow-left"></i>
+    </a>
+    <h5 class="mb-0 fw-bold"><i class="fas fa-cog me-2"></i>Report Configuration</h5>
+  </div>
+
+  <form method="post">
+    {% csrf_token %}
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold">General Settings</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Report Name</label>
+          <input type="text" name="name" class="form-control form-control-sm" value="{{ config.name }}">
+        </div>
+        <div class="row g-3">
+          <div class="col-sm-4">
+            <label class="form-label small fw-bold">Send Hour (ET, 0–23)</label>
+            <input type="number" name="send_hour" class="form-control form-control-sm"
+                   min="0" max="23" value="{{ config.send_hour }}">
+            <div class="form-text">e.g. 7 = 7:00 AM</div>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small fw-bold">Escalation Days</label>
+            <input type="number" name="escalation_days" class="form-control form-control-sm"
+                   min="1" max="30" value="{{ config.escalation_days }}">
+            <div class="form-text">Days before URGENT</div>
+          </div>
+          <div class="col-sm-4 d-flex align-items-end pb-1">
+            <div class="form-check">
+              <input class="form-check-input" type="checkbox" name="is_active" id="isActive"
+                     {% if config.is_active %}checked{% endif %}>
+              <label class="form-check-label small fw-bold" for="isActive">Active (send daily)</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold">Recipients</div>
+      <div class="card-body">
+        <div class="mb-3">
+          <label class="form-label small fw-bold">To — one email per line</label>
+          <textarea name="recipients" class="form-control form-control-sm" rows="3"
+                    placeholder="name@example.com">{{ config.recipients|join:"\n" }}</textarea>
+        </div>
+        <div>
+          <label class="form-label small fw-bold">CC — one email per line (optional)</label>
+          <textarea name="cc_emails" class="form-control form-control-sm" rows="2"
+                    placeholder="name@example.com">{{ config.cc_emails|join:"\n" }}</textarea>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-3">
+      <div class="card-header py-2 fw-bold">Sections to Include</div>
+      <div class="card-body">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="include_ppr_signatures" id="include_ppr_signatures"
+                 {% if config.include_ppr_signatures %}checked{% endif %}>
+          <label class="form-check-label small" for="include_ppr_signatures">PPR — Awaiting Signatures</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="include_ppr_pricing" id="include_ppr_pricing"
+                 {% if config.include_ppr_pricing %}checked{% endif %}>
+          <label class="form-check-label small" for="include_ppr_pricing">PPR — Pricing Incomplete ($0 items)</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="include_lease_sigs" id="include_lease_sigs"
+                 {% if config.include_lease_sigs %}checked{% endif %}>
+          <label class="form-check-label small" for="include_lease_sigs">ALE Leases — Signature Status</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="include_lease_pipeline" id="include_lease_pipeline"
+                 {% if config.include_lease_pipeline %}checked{% endif %}>
+          <label class="form-check-label small" for="include_lease_pipeline">ALE Leases — Full Pipeline Overview</label>
+        </div>
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="include_high_priority" id="include_high_priority"
+                 {% if config.include_high_priority %}checked{% endif %}>
+          <label class="form-check-label small" for="include_high_priority">High Priority Tracked Items (user-flagged)</label>
+        </div>
+      </div>
+    </div>
+
+    <div class="card border-0 shadow-sm mb-4">
+      <div class="card-header py-2 fw-bold">Attachments</div>
+      <div class="card-body">
+        <div class="form-check mb-2">
+          <input class="form-check-input" type="checkbox" name="attach_ppr_pdf" id="attachPPR"
+                 {% if config.attach_ppr_pdf %}checked{% endif %}>
+          <label class="form-check-label small" for="attachPPR">
+            Attach Schedule of Loss PDF for each session with pending signatures
+            <span class="text-muted">(may make email large — max 5 per send)</span>
+          </label>
+        </div>
+      </div>
+    </div>
+
+    <div class="d-flex gap-2">
+      <button type="submit" class="btn btn-primary btn-sm">
+        <i class="fas fa-save me-1"></i> Save Configuration
+      </button>
+      <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="btn btn-outline-secondary btn-sm">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}
