@@ -5,6 +5,7 @@ but with an additional "AI Notes / Evaluation" column per item.
 from __future__ import annotations
 import datetime
 import io
+import math
 
 from openpyxl import Workbook
 from openpyxl.comments import Comment
@@ -194,9 +195,28 @@ def _write_room_header(ws, row: int, room) -> None:
     c.border    = _border()
 
 
+def _estimate_row_height(notes: str, col_width: int = 40, pt_per_line: float = 11.5) -> float:
+    """Estimate the row height in points needed to display `notes` fully.
+
+    openpyxl cannot auto-size rows, so we estimate: split the text into
+    logical paragraphs first (newlines), then wrap each paragraph at
+    `col_width` characters.  Add a little padding and cap at 400pt.
+    """
+    if not notes:
+        return 14
+    lines = 0
+    for paragraph in notes.split('\n'):
+        lines += max(1, math.ceil(len(paragraph) / col_width)) if paragraph else 1
+    return min(max(lines * pt_per_line + 4, 14), 400)
+
+
 def _write_item_row(ws, row: int, item, item_num: int, room_name: str = '',
                     alt: bool = False) -> None:
-    ws.row_dimensions[row].height = 14
+    notes_text = (item.notes or '').strip()
+    row_h = _estimate_row_height(notes_text, col_width=40)
+    ws.row_dimensions[row].height = row_h
+    tall = row_h > 14   # need top-align when the row is taller than one line
+
     fill = _fill(CLR_ALT_ROW) if alt else None
 
     rv_each  = float(item.replacement_value_each or 0)
@@ -214,23 +234,28 @@ def _write_item_row(ws, row: int, item, item_num: int, room_name: str = '',
         item.age_months if item.age_months is not None else '',
         rv_each,
         rv_total,
-        (item.notes or '').strip(),   # column 11 — AI notes/evaluation
+        notes_text,   # column 11 — AI notes/evaluation
     ]
 
     for col_idx, value in enumerate(row_data, start=1):
         c = ws.cell(row=row, column=col_idx, value=value)
-        c.border    = _border()
-        c.font      = _font(size=9)
-        c.alignment = _left(wrap=(col_idx in (3, COL_AI_NOTES)))
+        c.border = _border()
+        c.font   = _font(size=9)
         if fill:
             c.fill = fill
+
+        wrap = col_idx in (3, COL_AI_NOTES)
+        valign = 'top' if tall else 'center'
+
         if col_idx in CURRENCY_COLS and isinstance(value, (int, float)):
             c.number_format = _currency_fmt()
-            c.alignment     = _right()
+            c.alignment = Alignment(horizontal='right', vertical=valign)
         elif col_idx in NUM_COLS_SET:
-            c.alignment = _center()
+            c.alignment = Alignment(horizontal='center', vertical=valign)
+        else:
+            c.alignment = Alignment(horizontal='left', vertical=valign, wrap_text=wrap)
 
-        # AI notes column gets its own amber tint when content is present
+        # AI notes column — amber tint + slightly smaller font for readability
         if col_idx == COL_AI_NOTES and value:
             c.fill = _fill(CLR_NOTES_BG)
             c.font = _font(size=8.5, color=CLR_NOTES_FONT)
