@@ -1672,17 +1672,21 @@ def ppr_box_count_pdf(request, session_id):
 
 
 @login_required
-def export_evaluation_pdf(request, session_id):
-    """Generate and return the Evaluation Report PDF (Schedule of Loss + AI room notes)."""
+def export_evaluation_excel(request, session_id):
+    """Generate and return the Evaluation Report Excel (Schedule of Loss + per-item AI notes)."""
     session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
     try:
-        from .evaluation_pdf_builder import build_evaluation_pdf
-        pdf_bytes = build_evaluation_pdf(session)
+        from .evaluation_excel_builder import build_evaluation_excel
+        share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')
+        xlsx_bytes = build_evaluation_excel(session, share_url=share_url)
         prefix = _ppr_file_prefix(session)
-        filename = f"{prefix} EVALUATION REPORT.pdf"
-        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        filename = f"{prefix} EVALUATION REPORT.xlsx"
+        response = HttpResponse(
+            xlsx_bytes,
+            content_type='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        )
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
     except Exception as e:
-        logger.error(f"export_evaluation_pdf error: {e}", exc_info=True)
-        return HttpResponse(f"Error generating Evaluation Report PDF: {e}", status=500)
+        logger.error(f"export_evaluation_excel error: {e}", exc_info=True)
+        return HttpResponse(f"Error generating Evaluation Report: {e}", status=500)
