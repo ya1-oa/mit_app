@@ -34,6 +34,7 @@ def _ppr_resolve_url(key):
 @login_required
 def cps_home(request):
     """Landing page — select a claim to run a CPS report."""
+    show_archived = request.GET.get('show_archived') == '1'
     # Group all sessions by claim so the user can browse and compare runs
     all_sessions = (
         CPSReportSession.objects
@@ -41,6 +42,8 @@ def cps_home(request):
         .prefetch_related('rooms')
         .order_by('insured_name', '-created_at')
     )
+    if not show_archived:
+        all_sessions = all_sessions.filter(archived=False)
 
     # Build grouped structure: {encircle_claim_id: {label, sessions[]}}
     from collections import OrderedDict
@@ -57,6 +60,7 @@ def cps_home(request):
 
     return render(request, 'cps_report/home.html', {
         'grouped_sessions': grouped,
+        'show_archived': show_archived,
         # keep for any legacy template references
         'recent_sessions': list(all_sessions.order_by('-updated_at')[:10]),
     })
@@ -137,7 +141,7 @@ def session_view(request, session_id):
     share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')
     other_sessions = (
         CPSReportSession.objects
-        .filter(encircle_claim_id=session.encircle_claim_id)
+        .filter(encircle_claim_id=session.encircle_claim_id, archived=False)
         .exclude(id=session.id)
         .prefetch_related('rooms')
         .order_by('-created_at')
@@ -954,6 +958,17 @@ def get_room_share_link(request, session_id, room_id):
     room = get_object_or_404(CPSReportRoom, id=room_id, session=session)
     url = request.build_absolute_uri(f'/cps-report/sign/room/{room.share_token}/')
     return JsonResponse({'url': url})
+
+
+@login_required
+@require_POST
+def api_archive_session(request, session_id):
+    """Archive (hide) or unarchive a PPR session run."""
+    session = get_object_or_404(CPSReportSession, id=session_id)
+    action = request.POST.get('action', 'archive')
+    session.archived = (action != 'unarchive')
+    session.save(update_fields=['archived', 'updated_at'])
+    return JsonResponse({'ok': True, 'archived': session.archived})
 
 
 @login_required

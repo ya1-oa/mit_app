@@ -1,3 +1,4 @@
+import re as _re
 import uuid
 
 from django.db import models
@@ -40,6 +41,7 @@ class CPSReportSession(models.Model):
     celery_task_id = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     share_token = models.UUIDField(default=uuid.uuid4, unique=True)
+    archived = models.BooleanField(default=False, db_index=True)
     # Which room series were selected at session-start, e.g. ["400s","100s","bu"]
     room_sources = models.JSONField(default=list, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
@@ -50,6 +52,30 @@ class CPSReportSession(models.Model):
 
     def __str__(self):
         return f"PPR Schedule of Loss — {self.client.pOwner} ({self.updated_at:%Y-%m-%d})"
+
+    @property
+    def display_name(self):
+        """Return 'OH26 PUGH PPR REPORT' — state abbr + 2-digit year + insured last name."""
+        # State from client's "City, ST 12345" city-state-zip field
+        state = ''
+        csz = (self.client.pCityStateZip or '').upper()
+        m = _re.search(r',\s*([A-Z]{2})\b', csz)
+        if m:
+            state = m.group(1)
+
+        # 2-digit year: loss date first, fall back to session creation year
+        year_src = self.loss_date or (self.created_at.date() if self.created_at else None)
+        year = f"{year_src.year % 100:02d}" if year_src else ''
+
+        # Last name: last word of insured_name, uppercased
+        last_name = (self.insured_name or '').strip().split()[-1].upper() if self.insured_name else ''
+
+        prefix = f"{state}{year}" if (state or year) else ''
+        if prefix and last_name:
+            return f"{prefix} {last_name} PPR REPORT"
+        if last_name:
+            return f"{last_name} PPR REPORT"
+        return self.insured_name or f"Session {self.id}"
 
     def total_replacement_value(self):
         total = 0

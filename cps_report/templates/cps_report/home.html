@@ -281,7 +281,18 @@
       <div class="card shadow-sm">
         <div class="card-header d-flex justify-content-between align-items-center">
           <span><i class="fas fa-history me-1"></i> Previous Runs</span>
-          <span class="text-muted small">{{ grouped_sessions|length }} claim{{ grouped_sessions|length|pluralize }}</span>
+          <div class="d-flex align-items-center gap-3">
+            <span class="text-muted small">{{ grouped_sessions|length }} claim{{ grouped_sessions|length|pluralize }}</span>
+            {% if show_archived %}
+              <a href="?" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.75rem;">
+                <i class="fas fa-eye-slash me-1"></i> Hide Archived
+              </a>
+            {% else %}
+              <a href="?show_archived=1" class="btn btn-outline-secondary btn-sm py-0 px-2" style="font-size:.75rem;">
+                <i class="fas fa-archive me-1"></i> Show Archived
+              </a>
+            {% endif %}
+          </div>
         </div>
         <div class="accordion accordion-flush" id="sessions-accordion">
           {% for claim_id, group in grouped_sessions.items %}
@@ -305,10 +316,11 @@
                 <div class="list-group list-group-flush">
                   {% for s in group.sessions %}
                   <a href="{% url 'cps_report_session' s.id %}"
-                     class="list-group-item list-group-item-action py-2 px-3">
+                     class="list-group-item list-group-item-action py-2 px-3{% if s.archived %} list-group-item-secondary text-muted{% endif %}">
                     <div class="d-flex justify-content-between align-items-center">
                       <div>
-                        <span class="small fw-semibold">Run {{ forloop.revcounter }}</span>
+                        <span class="small fw-semibold">{{ s.display_name }}</span>
+                        {% if s.archived %}<span class="badge bg-secondary ms-1" style="font-size:.68rem;">archived</span>{% endif %}
                         <span class="text-muted small ms-2">{{ s.created_at|date:"M d, Y g:i A" }}</span>
                       </div>
                       <div class="d-flex align-items-center gap-2">
@@ -340,6 +352,11 @@
                           <i class="fas fa-rotate-right me-1"></i> Re-run
                         </button>
                         {% endif %}
+                        <button class="btn btn-outline-secondary btn-sm px-2"
+                                onclick="event.stopPropagation(); archiveRun({{ s.id }}, this, {{ s.archived|yesno:'true,false' }})"
+                                title="{% if s.archived %}Unarchive this run{% else %}Archive this run{% endif %}">
+                          <i class="fas fa-{% if s.archived %}box-open{% else %}archive{% endif %}"></i>
+                        </button>
                       </div>
                     </div>
                   </a>
@@ -1091,6 +1108,38 @@ async function submitImport() {
 }
 
 const CSRF_TOK = () => document.cookie.match(/csrftoken=([^;]+)/)?.[1] ?? '';
+
+async function archiveRun(sessionId, btn, isArchived) {
+  const action = isArchived ? 'unarchive' : 'archive';
+  const label  = isArchived ? 'Unarchive' : 'Archive';
+  if (!confirm(`${label} this run?`)) return;
+  btn.disabled = true;
+  btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span>';
+  try {
+    const res = await fetch(`/cps-report/session/${sessionId}/archive/`, {
+      method: 'POST', headers: { 'X-CSRFToken': CSRF_TOK() },
+      body: new URLSearchParams({ action }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const row = btn.closest('.list-group-item');
+      row.style.transition = 'opacity .3s, max-height .3s';
+      row.style.opacity = '0';
+      row.style.overflow = 'hidden';
+      row.style.maxHeight = row.offsetHeight + 'px';
+      setTimeout(() => { row.style.maxHeight = '0'; row.style.padding = '0'; }, 50);
+      setTimeout(() => row.remove(), 350);
+    } else {
+      btn.disabled = false;
+      btn.innerHTML = `<i class="fas fa-archive"></i>`;
+      alert('Could not archive. Try refreshing.');
+    }
+  } catch {
+    btn.disabled = false;
+    btn.innerHTML = `<i class="fas fa-archive"></i>`;
+    alert('Request failed. Check your connection.');
+  }
+}
 
 async function cancelSession(sessionId, btn) {
   if (!confirm('Cancel this stuck report? You can re-run it afterwards.')) return;
