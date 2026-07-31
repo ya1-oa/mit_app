@@ -704,6 +704,29 @@ def api_delete_photo(request):
     return JsonResponse({'success': True, 'source_image_urls': urls})
 
 
+def _ppr_file_prefix(session) -> str:
+    """Return 'OH26 PUGH' — state abbr + 2-digit year + insured last name.
+
+    Uses the same logic as CPSReportSession.display_name but returns only
+    the prefix portion (no ' PPR REPORT' suffix) for use in filenames.
+    """
+    import re as _re
+    state = ''
+    csz = (getattr(session.client, 'pCityStateZip', '') or '').upper()
+    m = _re.search(r',\s*([A-Z]{2})\b', csz)
+    if m:
+        state = m.group(1)
+    year_src = session.loss_date or (session.created_at.date() if session.created_at else None)
+    year = f"{year_src.year % 100:02d}" if year_src else ''
+    last_name = (session.insured_name or '').strip().split()[-1].upper() if session.insured_name else ''
+    prefix = f"{state}{year}" if (state or year) else ''
+    if prefix and last_name:
+        return f"{prefix} {last_name}"
+    if last_name:
+        return last_name
+    return (getattr(session.client, 'claimNumber', '') or '').strip() or session.encircle_claim_id or f"SESSION{session.id}"
+
+
 @login_required
 def export_pdf(request, session_id):
     """Generate and return the Schedule of Loss PDF file."""
@@ -711,8 +734,8 @@ def export_pdf(request, session_id):
     try:
         from .pdf_builder import build_pdf
         pdf_bytes = build_pdf(session)
-        _cnum = (getattr(session.client, 'claimNumber', '') or '').strip() or session.claim_number or session.encircle_claim_id
-        filename = f"NON_SALVAGEABLE_PPR_Schedule_Of_Loss_{_cnum}_{session.updated_at:%Y%m%d}.pdf"
+        prefix = _ppr_file_prefix(session)
+        filename = f"{prefix} NON SALVAGEABLE PPR SCHEDULE OF LOSS.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -761,8 +784,8 @@ def export_photo_pdf(request, session_id):
                 )
             pdf_bytes = build_photo_pdf(session)
 
-        _cnum = (getattr(session.client, 'claimNumber', '') or '').strip() or session.claim_number or session.encircle_claim_id
-        filename = f"NON_SALVAGEABLE_PPR_Photo_Evidence_Report_{_cnum}_{session.updated_at:%Y%m%d}.pdf"
+        prefix = _ppr_file_prefix(session)
+        filename = f"{prefix} PHOTO EVIDENCE REPORT.pdf"
         response = HttpResponse(pdf_bytes, content_type='application/pdf')
         response['Content-Disposition'] = f'attachment; filename="{filename}"'
         return response
@@ -1109,8 +1132,8 @@ def export_excel(request, session_id):
         from .excel_builder import build_excel
         share_url = request.build_absolute_uri(f'/cps-report/sign/{session.share_token}/')
         xlsx_bytes = build_excel(session, share_url=share_url)
-        _cnum = (getattr(session.client, 'claimNumber', '') or '').strip() or session.claim_number or session.encircle_claim_id
-        filename = f"NON_SALVAGEABLE_PPR_Schedule_Of_Loss_{_cnum}_{session.updated_at:%Y%m%d}.xlsx"
+        prefix = _ppr_file_prefix(session)
+        filename = f"{prefix} NON SALVAGEABLE PPR SCHEDULE OF LOSS.xlsx"
 
         # Best-effort: save to claim folder + notify via email
         _cps_save_and_notify(session, xlsx_bytes, filename)
@@ -1640,12 +1663,26 @@ def ppr_box_count_pdf(request, session_id):
 
     pdf_bytes = build_ppr_pdf(cps_session)
 
-    client    = session.client
-    safe_name = (client.pOwner or 'Unknown').replace(' ', '_').replace('/', '-')
-    claim_num = (client.claimNumber or '').replace(' ', '_').replace('/', '-')
-    suffix    = f"_{claim_num}" if claim_num else ''
-    filename  = f"NON_SALVAGEABLE_PPR_Box_Count{suffix}_{safe_name}.pdf"
+    prefix   = _ppr_file_prefix(session)
+    filename = f"{prefix} BOX COUNT.pdf"
 
     response = HttpResponse(pdf_bytes, content_type='application/pdf')
     response['Content-Disposition'] = f'attachment; filename="{filename}"'
     return response
+
+
+@login_required
+def export_evaluation_pdf(request, session_id):
+    """Generate and return the Evaluation Report PDF (Schedule of Loss + AI room notes)."""
+    session = get_object_or_404(CPSReportSession.objects.select_related('client'), id=session_id)
+    try:
+        from .evaluation_pdf_builder import build_evaluation_pdf
+        pdf_bytes = build_evaluation_pdf(session)
+        prefix = _ppr_file_prefix(session)
+        filename = f"{prefix} EVALUATION REPORT.pdf"
+        response = HttpResponse(pdf_bytes, content_type='application/pdf')
+        response['Content-Disposition'] = f'attachment; filename="{filename}"'
+        return response
+    except Exception as e:
+        logger.error(f"export_evaluation_pdf error: {e}", exc_info=True)
+        return HttpResponse(f"Error generating Evaluation Report PDF: {e}", status=500)
