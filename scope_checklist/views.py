@@ -25,7 +25,7 @@ def scope_checklist(request):
     Main Scope Checklist page - Interior Inspection Work Scope
     Displays claim selection, room tabs, and detailed checklist with Xactimate codes
     """
-    claims = Client.objects.all().order_by('-created_at')
+    claims = Client.objects.filter(archived=False).order_by('-created_at')
 
     return render(request, 'account/scope_checklist.html', {
         'claims': claims

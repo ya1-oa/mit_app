@@ -438,7 +438,7 @@ class EmailForm(forms.Form):
 
     # ── Claim-linked recipients ───────────────────────────────────────────────
     claim = forms.ModelChoiceField(
-        queryset=Client.objects.order_by('pOwner'),
+        queryset=Client.objects.filter(archived=False).order_by('pOwner'),
         required=False,
         empty_label='-- Select a claim to load contacts --',
         label='Link to Claim',
@@ -868,7 +868,7 @@ class RoomSelectionForm(forms.Form):
     """Form for selecting a source claim to load rooms from"""
 
     source_claim = forms.ModelChoiceField(
-        queryset=Client.objects.all().order_by('-created_at'),
+        queryset=Client.objects.filter(archived=False).order_by('-created_at'),
         required=False,
         empty_label="Select a claim to copy rooms from...",
         widget=forms.Select(attrs={

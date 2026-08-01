@@ -50,4 +50,7 @@ urlpatterns = [
 
     # NON SALVAGEABLE / PPR Box Count — direct PDF download (CPS box count data, rebranded)
     path('session/<int:session_id>/box-count/pdf/', views.ppr_box_count_pdf, name='ppr_box_count_pdf'),
+
+    # Duplicate item + image checker
+    path('session/<int:session_id>/duplicate-check/', views.duplicate_check, name='cps_duplicate_check'),
 ]

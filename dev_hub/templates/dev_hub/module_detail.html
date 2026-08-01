@@ -151,6 +151,55 @@
         </div>
         {% endif %}
 
+        <!-- Linked Task Board items -->
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-tasks me-1 text-primary"></i>Task Board
+                    <small class="text-muted fw-normal ms-1" style="font-size:12px;">linked via Task Manager</small>
+                </h5>
+                <a href="{% url 'tasks:task_board' %}?module={{ module.id }}" class="btn btn-sm btn-outline-primary" style="font-size:11px;">
+                    View in Board
+                </a>
+            </div>
+            <div class="card-body p-0">
+                {% with board_tasks=module.board_tasks.exclude_cancelled %}
+                {% if module.board_tasks.all %}
+                <div class="list-group list-group-flush" style="font-size:12px;">
+                    {% for t in module.board_tasks.all|slice:":10" %}
+                    <div class="list-group-item px-3 py-2 d-flex justify-content-between align-items-start gap-2">
+                        <div>
+                            <span class="{% if t.status == 'done' %}text-decoration-line-through text-muted{% endif %}">{{ t.title }}</span>
+                            {% if t.assigned_to %}<span class="text-muted ms-1" style="font-size:10px;">· {{ t.assigned_to.email }}</span>{% endif %}
+                        </div>
+                        <div class="d-flex gap-1 flex-shrink-0">
+                            <span class="badge bg-{% if t.status == 'done' %}success{% elif t.status == 'in_progress' %}warning text-dark{% elif t.status == 'review' %}info{% else %}secondary{% endif %}" style="font-size:10px;">
+                                {{ t.get_status_display }}
+                            </span>
+                            <span class="badge bg-{% if t.priority == 'urgent' %}danger{% elif t.priority == 'high' %}warning text-dark{% else %}light text-dark border{% endif %}" style="font-size:10px;">
+                                {{ t.priority }}
+                            </span>
+                        </div>
+                    </div>
+                    {% endfor %}
+                    {% if module.board_tasks.count > 10 %}
+                    <div class="list-group-item px-3 py-2 text-center text-muted" style="font-size:11px;">
+                        + {{ module.board_tasks.count|add:"-10" }} more —
+                        <a href="{% url 'tasks:task_board' %}?module={{ module.id }}">view all in board</a>
+                    </div>
+                    {% endif %}
+                </div>
+                {% else %}
+                <div class="p-3 text-center text-muted" style="font-size:12px;">
+                    No Task Board items linked yet.<br>
+                    <a href="{% url 'tasks:task_board' %}" class="small">Open the Task Board</a>
+                    and set the module on any task to link it here.
+                </div>
+                {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+
         <!-- Test coverage -->
         <div class="card mb-4">
             <div class="card-header">

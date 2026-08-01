@@ -265,6 +265,9 @@
         <a href="{% url 'cps_report_export_evaluation' session.id %}" class="btn btn-sm btn-outline-success">
           <i class="fas fa-clipboard-list me-1"></i> Evaluation Report
         </a>
+        <button class="btn btn-sm btn-outline-warning" onclick="openDuplicateChecker()" title="Check for duplicate items and images">
+          <i class="fas fa-clone me-1"></i> Dupe Check
+        </button>
         <button id="photoPdfBtn"
                 class="btn btn-sm {% if photo_pdf_ready %}btn-warning{% else %}btn-outline-warning{% endif %}"
                 onclick="handlePhotoPdf(this)">
@@ -669,6 +672,47 @@
           </button>
           {% endfor %}
         </div>
+      </div>
+    </div>
+  </div>
+</div>
+<!-- ── Duplicate Checker Modal ─────────────────────────────────────────────── -->
+<div class="modal fade" id="dupeCheckModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header" style="background:#1e3a5f;color:#fff;">
+        <h5 class="modal-title"><i class="fas fa-clone me-2"></i>Duplicate Checker</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="dupeCheckBody">
+        <div class="text-center py-5" id="dupeCheckLoading">
+          <div class="spinner-border text-primary mb-3" role="status"></div>
+          <div class="text-muted">Scanning items and downloading images for comparison…<br>
+            <small>This may take 15–60 seconds for large sessions.</small>
+          </div>
+        </div>
+        <div id="dupeCheckResults" style="display:none;">
+          <!-- Summary bar -->
+          <div class="row g-3 mb-4" id="dupeSummary"></div>
+          <!-- Text dupes -->
+          <div id="textDupesSection">
+            <h6 class="fw-bold text-danger mb-2"><i class="fas fa-copy me-1"></i>Duplicate Items (text)</h6>
+            <div id="textDupesContainer"></div>
+          </div>
+          <hr>
+          <!-- Image dupes -->
+          <div id="imageDupesSection">
+            <h6 class="fw-bold text-warning mb-2"><i class="fas fa-images me-1"></i>Duplicate Images (visual)</h6>
+            <div id="imageDupesContainer"></div>
+          </div>
+        </div>
+        <div id="dupeCheckError" style="display:none;" class="alert alert-danger"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="runDupeCheck()">
+          <i class="fas fa-sync me-1"></i> Re-run Check
+        </button>
       </div>
     </div>
   </div>
@@ -1900,6 +1944,126 @@ function copyRoomLink(btn, roomToken) {
   }).catch(() => {
     prompt('Copy this room link to send to your client:', url);
   });
+}
+</script>
+
+<!-- ── Duplicate Checker JS ───────────────────────────────────────────────── -->
+<script>
+const DUPE_CHECK_URL = "{% url 'cps_duplicate_check' session.id %}";
+const CSRF_TOKEN = document.cookie.match(/csrftoken=([^;]+)/)?.[1] || '';
+
+function openDuplicateChecker() {
+  const modal = new bootstrap.Modal(document.getElementById('dupeCheckModal'));
+  modal.show();
+  runDupeCheck();
+}
+
+async function runDupeCheck() {
+  document.getElementById('dupeCheckLoading').style.display = '';
+  document.getElementById('dupeCheckResults').style.display = 'none';
+  document.getElementById('dupeCheckError').style.display = 'none';
+
+  try {
+    const resp = await fetch(DUPE_CHECK_URL, {
+      headers: { 'X-CSRFToken': CSRF_TOKEN },
+    });
+    if (!resp.ok) throw new Error(`Server error ${resp.status}`);
+    const data = await resp.json();
+    if (data.error) throw new Error(data.error);
+    renderDupeResults(data);
+  } catch (err) {
+    document.getElementById('dupeCheckLoading').style.display = 'none';
+    const el = document.getElementById('dupeCheckError');
+    el.textContent = 'Check failed: ' + err.message;
+    el.style.display = '';
+  }
+}
+
+function renderDupeResults(data) {
+  document.getElementById('dupeCheckLoading').style.display = 'none';
+  document.getElementById('dupeCheckResults').style.display = '';
+
+  // Summary tiles
+  const summary = document.getElementById('dupeSummary');
+  const textColor  = data.text_count  > 0 ? 'text-danger'  : 'text-success';
+  const imageColor = data.image_count > 0 ? 'text-warning' : 'text-success';
+  summary.innerHTML = `
+    <div class="col-sm-3">
+      <div class="card border-0 shadow-sm text-center p-3">
+        <div class="display-6 fw-bold ${textColor}">${data.text_count}</div>
+        <div class="small text-muted">Duplicate Item Pairs</div>
+        ${data.exact_text ? `<div class="small text-danger fw-bold">${data.exact_text} exact match${data.exact_text > 1 ? 'es' : ''}</div>` : ''}
+      </div>
+    </div>
+    <div class="col-sm-3">
+      <div class="card border-0 shadow-sm text-center p-3">
+        <div class="display-6 fw-bold ${imageColor}">${data.image_count}</div>
+        <div class="small text-muted">Duplicate Image Pairs</div>
+        ${data.exact_images ? `<div class="small text-danger fw-bold">${data.exact_images} identical</div>` : ''}
+      </div>
+    </div>
+    <div class="col-sm-6">
+      <div class="card border-0 shadow-sm p-3 h-100 d-flex align-items-center justify-content-center">
+        ${data.text_count === 0 && data.image_count === 0
+          ? '<span class="text-success fw-bold"><i class="fas fa-check-circle me-1"></i>No duplicates found — report is clean!</span>'
+          : '<span class="text-muted small">Review flagged items below. Duplicates may indicate the same item was identified in multiple rooms.</span>'
+        }
+      </div>
+    </div>
+  `;
+
+  // Text duplicates
+  const textContainer = document.getElementById('textDupesContainer');
+  if (data.text_duplicates.length === 0) {
+    textContainer.innerHTML = '<p class="text-muted small">No duplicate items detected.</p>';
+  } else {
+    textContainer.innerHTML = data.text_duplicates.map(d => `
+      <div class="card mb-2 border-${d.exact ? 'danger' : 'warning'}">
+        <div class="card-body py-2 px-3" style="font-size:13px;">
+          <div class="d-flex justify-content-between align-items-center mb-1">
+            <span class="badge ${d.exact ? 'bg-danger' : 'bg-warning text-dark'}">
+              ${d.exact ? 'EXACT MATCH' : Math.round(d.score * 100) + '% similar'}
+            </span>
+          </div>
+          <div class="row g-2">
+            <div class="col-sm-6">
+              <div class="small text-muted fw-bold">${d.item_a.room}</div>
+              <div>${d.item_a.description}</div>
+            </div>
+            <div class="col-sm-6">
+              <div class="small text-muted fw-bold">${d.item_b.room}</div>
+              <div>${d.item_b.description}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  // Image duplicates
+  const imageContainer = document.getElementById('imageDupesContainer');
+  if (data.image_duplicates.length === 0) {
+    imageContainer.innerHTML = '<p class="text-muted small">No visually duplicate images detected.</p>';
+  } else {
+    imageContainer.innerHTML = data.image_duplicates.map(d => `
+      <div class="card mb-2 border-${d.exact ? 'danger' : 'warning'}">
+        <div class="card-body py-2 px-3">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <span class="badge ${d.exact ? 'bg-danger' : 'bg-warning text-dark'}">
+              ${d.exact ? 'IDENTICAL' : 'Similar (Δ' + d.hamming + ' bits)'}
+            </span>
+            <small class="text-muted">${d.rooms_a.join(', ')} → ${d.rooms_b.join(', ')}</small>
+          </div>
+          <div class="d-flex gap-3 flex-wrap">
+            <img src="${d.url_a}" style="max-height:120px;max-width:180px;object-fit:cover;border-radius:4px;border:2px solid #f59e0b;"
+                 onerror="this.style.display='none'">
+            <img src="${d.url_b}" style="max-height:120px;max-width:180px;object-fit:cover;border-radius:4px;border:2px solid #f59e0b;"
+                 onerror="this.style.display='none'">
+          </div>
+        </div>
+      </div>
+    `).join('');
+  }
 }
 </script>
 {% endblock %}

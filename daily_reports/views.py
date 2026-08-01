@@ -51,10 +51,10 @@ def dashboard(request):
     try:
         from cps_report.models import CPSReportSession
         ppr_unsigned = CPSReportSession.objects.filter(
-            rooms__signature_name=''
+            archived=False, rooms__signature_name=''
         ).distinct().count()
         ppr_pending  = CPSReportSession.objects.filter(
-            status__in=['pending', 'processing']
+            archived=False, status__in=['pending', 'processing']
         ).count()
     except Exception:
         ppr_unsigned = ppr_pending = 0

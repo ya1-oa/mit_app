@@ -871,7 +871,7 @@ def batch_schedule_emails(request):
     """
     from docsAppR.models import EmailBatch, ScheduledEmail, Lease
 
-    claims = Client.objects.all().order_by('pOwner')
+    claims = Client.objects.filter(archived=False).order_by('pOwner')
 
     if request.method == 'POST':
         try:
@@ -977,7 +977,7 @@ def sent_emails_history(request):
             'recipient_count': len(email.recipients) if email.recipients else 0,
         })
 
-    claims = Client.objects.all().order_by('pOwner')
+    claims = Client.objects.filter(archived=False).order_by('pOwner')
 
     context = {
         'page_obj': page_obj,

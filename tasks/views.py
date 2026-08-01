@@ -62,6 +62,8 @@ def _task_to_dict(task):
         'beta_tested':      task.beta_tested,
         'test_notes':       task.test_notes,
         'created_at':       task.created_at.isoformat(),
+        'app_module_id':    task.app_module_id,
+        'app_module_name':  task.app_module.name if task.app_module_id else '',
     }
 
 
@@ -202,15 +204,18 @@ def task_board(request):
     f_client   = request.GET.get('client',   '')
     f_category = request.GET.get('category', '')
 
+    f_module = request.GET.get('module', '')
+
     qs = TaskItem.objects.select_related(
         'assigned_to', 'created_by', 'completed_by',
-        'related_client', 'related_lease',
+        'related_client', 'related_lease', 'app_module',
     )
     if f_status:   qs = qs.filter(status=f_status)
     if f_priority: qs = qs.filter(priority=f_priority)
     if f_mine:     qs = qs.filter(assigned_to=request.user)
     if f_client:   qs = qs.filter(related_client__id=f_client)
     if f_category: qs = qs.filter(category=f_category)
+    if f_module:   qs = qs.filter(app_module__id=f_module)
 
     backlog = qs.filter(status='backlog').order_by('priority', 'due_date')[:30]
     todo    = qs.filter(status='todo').order_by('priority', 'due_date')
@@ -236,20 +241,29 @@ def task_board(request):
         'status_choices':   TaskItem.STATUS_CHOICES,
         'priority_choices': TaskItem.PRIORITY_CHOICES,
         'category_choices': TaskItem.CATEGORY_CHOICES,
-        'all_clients':      Client.objects.order_by('pOwner')[:100],
+        'all_clients':      Client.objects.filter(archived=False).order_by('pOwner')[:100],
         'all_users':        CustomUser.objects.filter(is_active=True).order_by('email'),
         'f_status': f_status, 'f_priority': f_priority, 'f_mine': f_mine,
-        'f_client': f_client, 'f_category': f_category,
+        'f_client': f_client, 'f_category': f_category, 'f_module': f_module,
         'clients_json': json.dumps([
             {'id': c.id, 'name': c.pOwner}
-            for c in Client.objects.order_by('pOwner')[:200]
+            for c in Client.objects.filter(archived=False).order_by('pOwner')[:200]
         ]),
         'users_json': json.dumps([
             {'id': u.id, 'email': u.email}
             for u in CustomUser.objects.filter(is_active=True).order_by('email')
         ]),
+        'modules_json': json.dumps(_modules_json()),
     }
     return render(request, 'account/task_board.html', context)
+
+
+def _modules_json():
+    try:
+        from dev_hub.models import AppModule
+        return [{'id': m.id, 'name': m.name} for m in AppModule.objects.order_by('order', 'name')]
+    except Exception:
+        return []
 
 
 # ── Create ────────────────────────────────────────────────────────────────────
@@ -281,6 +295,7 @@ def task_create(request):
             assigned_to_id=data.get('assigned_to_id') or None,
             related_client_id=data.get('related_client_id') or None,
             related_lease_id=data.get('related_lease_id') or None,
+            app_module_id=data.get('app_module_id') or None,
         )
 
         _send_assignment_email(task, assigner=request.user)

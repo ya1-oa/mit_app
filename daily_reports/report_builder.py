@@ -105,6 +105,7 @@ def _section_ppr_signatures(config) -> tuple[str, int, int]:
     # Sessions with at least one unsigned room
     sessions = (
         CPSReportSession.objects
+        .filter(archived=False)
         .exclude(status='error')
         .prefetch_related('rooms__items', 'client')
         .order_by('-updated_at')
@@ -174,7 +175,7 @@ def _section_ppr_pricing(config) -> tuple[str, int, int]:
 
     sessions = (
         CPSReportSession.objects
-        .filter(status='complete')
+        .filter(archived=False, status='complete')
         .prefetch_related('rooms__items', 'client')
         .order_by('-updated_at')
     )
@@ -552,10 +553,10 @@ def build_deep_report_html() -> str:
     # ── Live app stats ─────────────────────────────────────────────────────────
     def _ppr_stats():
         from cps_report.models import CPSReportSession
-        total    = CPSReportSession.objects.count()
-        complete = CPSReportSession.objects.filter(status='complete').count()
-        pending  = CPSReportSession.objects.filter(status__in=['pending', 'processing']).count()
-        unsigned = CPSReportSession.objects.filter(rooms__signature_name='').distinct().count()
+        total    = CPSReportSession.objects.filter(archived=False).count()
+        complete = CPSReportSession.objects.filter(archived=False, status='complete').count()
+        pending  = CPSReportSession.objects.filter(archived=False, status__in=['pending', 'processing']).count()
+        unsigned = CPSReportSession.objects.filter(archived=False, rooms__signature_name='').distinct().count()
         pct = round(complete / total * 100) if total else 0
         return {'total': total, 'complete': complete, 'pending': pending,
                 'unsigned_rooms': unsigned, 'pct': pct,

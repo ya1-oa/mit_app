@@ -2648,6 +2648,15 @@ class TaskItem(models.Model):
         help_text='Unit test / beta test details for development tasks',
     )
 
+    # Link to a Dev Hub AppModule so this task contributes to module completion %
+    app_module = models.ForeignKey(
+        'dev_hub.AppModule',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='board_tasks',
+        verbose_name='Dev Hub Module',
+    )
+
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     tenant = models.ForeignKey(

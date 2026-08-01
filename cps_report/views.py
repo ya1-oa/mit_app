@@ -1690,3 +1690,33 @@ def export_evaluation_excel(request, session_id):
     except Exception as e:
         logger.error(f"export_evaluation_excel error: {e}", exc_info=True)
         return HttpResponse(f"Error generating Evaluation Report: {e}", status=500)
+
+
+# ---------------------------------------------------------------------------
+# Duplicate checker — item text + perceptual image hash comparison
+# ---------------------------------------------------------------------------
+
+@login_required
+def duplicate_check(request, session_id):
+    """
+    AJAX/page endpoint — runs duplicate item (text) and duplicate image
+    (perceptual dHash) checks across the entire session.
+
+    Returns JSON: { text_duplicates, image_duplicates, text_count, image_count,
+                    exact_text, exact_images }
+    """
+    from django.http import JsonResponse
+    from .duplicate_checker import run_duplicate_check
+
+    session = get_object_or_404(
+        CPSReportSession.objects.select_related('client').prefetch_related(
+            'rooms__items'
+        ),
+        id=session_id,
+    )
+    try:
+        results = run_duplicate_check(session)
+        return JsonResponse(results)
+    except Exception as exc:
+        logger.error('duplicate_check error session %s: %s', session_id, exc, exc_info=True)
+        return JsonResponse({'error': str(exc)}, status=500)

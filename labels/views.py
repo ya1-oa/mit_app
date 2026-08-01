@@ -734,7 +734,7 @@ def labels(request):
     # GET request handling - show the form
     if request.method == 'GET':
         try:
-            claims = Client.objects.all()
+            claims = Client.objects.filter(archived=False)
             selected_claim_id = request.GET.get('claim')
             rooms = []
 
@@ -978,7 +978,7 @@ def wall_labels(request):
 
     if request.method == 'GET':
         try:
-            claims = Client.objects.all()
+            claims = Client.objects.filter(archived=False)
             selected_claim_id = request.GET.get('claim')
             rooms = []
 

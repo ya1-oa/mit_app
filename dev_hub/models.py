@@ -46,21 +46,37 @@ class AppModule(models.Model):
 
     @property
     def completion_pct(self):
-        """Percentage of tasks with status='done'."""
-        total = self.tasks.count()
+        """Percentage done across DevTasks + linked TaskBoard items."""
+        dev_total = self.tasks.count()
+        dev_done  = self.tasks.filter(status='done').count()
+        # board_tasks may not exist before migration runs — guard with try
+        try:
+            board_qs    = self.board_tasks.exclude(status='cancelled')
+            board_total = board_qs.count()
+            board_done  = board_qs.filter(status='done').count()
+        except Exception:
+            board_total = board_done = 0
+        total = dev_total + board_total
         if not total:
             return 0
-        done = self.tasks.filter(status='done').count()
-        return round(done / total * 100)
+        return round((dev_done + board_done) / total * 100)
 
     @property
     def task_counts(self):
-        qs = self.tasks
+        dev_qs = self.tasks
+        try:
+            board_qs = self.board_tasks.exclude(status='cancelled')
+            b_done   = board_qs.filter(status='done').count()
+            b_inprog = board_qs.filter(status='in_progress').count()
+            b_todo   = board_qs.filter(status__in=['todo', 'backlog', 'review']).count()
+            b_total  = board_qs.count()
+        except Exception:
+            b_done = b_inprog = b_todo = b_total = 0
         return {
-            'total':       qs.count(),
-            'done':        qs.filter(status='done').count(),
-            'in_progress': qs.filter(status='in_progress').count(),
-            'todo':        qs.filter(status='todo').count(),
+            'total':       dev_qs.count() + b_total,
+            'done':        dev_qs.filter(status='done').count() + b_done,
+            'in_progress': dev_qs.filter(status='in_progress').count() + b_inprog,
+            'todo':        dev_qs.filter(status='todo').count() + b_todo,
         }
 
     @property

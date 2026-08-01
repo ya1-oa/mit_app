@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 @login_required
 def calculator_home(request):
     """Landing page — client selector."""
-    clients = Client.objects.order_by('pOwner').values('id', 'pOwner', 'pAddress', 'claimNumber', 'encircle_claim_id')
+    clients = Client.objects.filter(archived=False).order_by('pOwner').values('id', 'pOwner', 'pAddress', 'claimNumber', 'encircle_claim_id')
     return render(request, 'box_calculator/calculator.html', {
         'clients': list(clients),
         'category_choices': CATEGORY_CHOICES,
@@ -259,7 +259,7 @@ def cps_home(request):
     }
     rows = [
         {'client': c, 'session': sessions_by_client.get(c.id)}
-        for c in Client.objects.order_by('pOwner')
+        for c in Client.objects.filter(archived=False).order_by('pOwner')
     ]
     return render(request, 'box_calculator/cps.html', {'rows': rows})
 

@@ -78,7 +78,7 @@ def _build_ppr_attachments(config) -> list:
 
         sessions = (
             CPSReportSession.objects
-            .filter(status='complete')
+            .filter(archived=False, status='complete')
             .filter(rooms__signature_name='')
             .distinct()
             .select_related('client')[:5]   # cap at 5 to keep email size reasonable

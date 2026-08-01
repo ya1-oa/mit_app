@@ -1386,7 +1386,7 @@ def get_claims_for_room_generator(request):
     Returns claims with basic info needed for selection
     """
     try:
-        clients = Client.objects.all().order_by('-created_at')[:200]  # Get 200 most recent claims
+        clients = Client.objects.filter(archived=False).order_by('-created_at')[:200]
         claims_data = []
 
         for client in clients:
@@ -3694,7 +3694,7 @@ def excel_hub(request):
 @login_required
 def excel_hub_api(request):
     """JSON: all claims with their Excel files, grouped by folder."""
-    clients = Client.objects.all().order_by('pOwner')
+    clients = Client.objects.filter(archived=False).order_by('pOwner')
     result = []
     for client in clients:
         groups = _eh_claim_excel_files(client)
@@ -3742,7 +3742,7 @@ def excel_hub_download_zip(request, claim_id):
 def excel_hub_download_all_zip(request):
     """Download all Excel files across every claim as a single ZIP."""
     from django.http import HttpResponse
-    clients = Client.objects.all().order_by('pOwner')
+    clients = Client.objects.filter(archived=False).order_by('pOwner')
 
     buf = _io.BytesIO()
     with _zipfile.ZipFile(buf, 'w', _zipfile.ZIP_DEFLATED) as zf:

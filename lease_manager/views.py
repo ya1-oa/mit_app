@@ -1691,7 +1691,7 @@ def lease_create_page(request):
         messages.error(request, 'No client selected.')
         return redirect('lease_manager:lease_create')
 
-    client = get_object_or_404(Client, id=client_id, archived=False)
+    client = get_object_or_404(Client, id=client_id)
     p = request.POST
 
     def _d(val):

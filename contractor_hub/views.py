@@ -417,7 +417,7 @@ def section_invoice_html_pdf(request, pk, section_pk):
 
 @login_required
 def dashboard(request):
-    clients     = Client.objects.prefetch_related('box_count_report').order_by('pOwner')
+    clients     = Client.objects.filter(archived=False).prefetch_related('box_count_report').order_by('pOwner')
     subs        = Contractor.objects.filter(is_active=True).exclude(role='gc').order_by('name')
     latest_pl   = PriceListVersion.objects.order_by('-imported_at').first()
     total_rates = RateItem.objects.count()
@@ -439,7 +439,7 @@ def dashboard(request):
 @login_required
 def estimate_create(request):
     from docsAppR.models import Client
-    clients  = Client.objects.order_by('pOwner')
+    clients  = Client.objects.filter(archived=False).order_by('pOwner')
     gcs      = Contractor.objects.filter(is_active=True).order_by('name')
     estimators = Contractor.objects.filter(is_active=True).order_by('name')
 
@@ -867,7 +867,7 @@ def quick_sub_invoice(request):
     from .pdf_builder import generate_quick_sub_invoice_pdf
     from decimal import Decimal
 
-    clients         = Client.objects.prefetch_related('box_count_report').order_by('pOwner')
+    clients         = Client.objects.filter(archived=False).prefetch_related('box_count_report').order_by('pOwner')
     subs            = Contractor.objects.filter(is_active=True).exclude(role='gc').order_by('name')
     section_choices = [(st.value, st.label) for st in QUICK_INVOICE_SECTIONS]
 

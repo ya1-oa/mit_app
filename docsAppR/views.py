@@ -2548,8 +2548,8 @@ def checklist(request):
     labels = ["CLG", "LIT", "HVC", "MISC-1", "WAL", "ELE", "FLR", "BB", "MISC-2", "DOR", "OPEN", "WDW", "WDT"]
     activity = ["ALL", "QTY+", "CLN", "R&R", "D&R", "MSK", "MN", "S++", "PNT", "SND", "LF"]
     labelValues = [""]
-    claims = Client.objects.all()
-    
+    claims = Client.objects.filter(archived=False)
+
     # Get rooms for selected claim
     selected_claim_id = request.GET.get('claim')
     rooms = []
@@ -3209,10 +3209,10 @@ def labels(request):
     # GET request handling - show the form
     if request.method == 'GET':
         try:
-            claims = Client.objects.all()
+            claims = Client.objects.filter(archived=False)
             selected_claim_id = request.GET.get('claim')
             rooms = []
-            
+
             if selected_claim_id:
                 try:
                     client = get_object_or_404(Client, pOwner=selected_claim_id)
@@ -3468,7 +3468,7 @@ def wall_labels(request):
     # GET request handling - show the form (same as room labels)
     if request.method == 'GET':
         try:
-            claims = Client.objects.all()
+            claims = Client.objects.filter(archived=False)
             selected_claim_id = request.GET.get('claim')
             rooms = []
 
@@ -4028,7 +4028,7 @@ def dashboard(request):
     selected_client = None
 
     # Get all clients
-    clients = Client.objects.all()
+    clients = Client.objects.filter(archived=False)
 
     # Apply search filter
     search = request.GET.get('search', '')
@@ -7061,7 +7061,7 @@ def get_all_clients(request):
     Get all clients for dropdown selection
     """
     try:
-        clients = Client.objects.all().order_by('-created_at')[:100]  # Limit to 100 most recent
+        clients = Client.objects.filter(archived=False).order_by('-created_at')[:100]
         clients_data = []
 
         for client in clients:
@@ -8453,7 +8453,7 @@ def lease_manager(request):
     ).order_by('-leases__created_at')
 
     # Get all clients for filter dropdown
-    all_clients = Client.objects.all().order_by('pOwner')
+    all_clients = Client.objects.filter(archived=False).order_by('pOwner')
 
     # Status choices for filter
     status_choices = Lease.LEASE_STATUS_CHOICES
@@ -8904,7 +8904,7 @@ def scope_checklist(request):
     Main Scope Checklist page - Interior Inspection Work Scope
     Displays claim selection, room tabs, and detailed checklist with Xactimate codes
     """
-    claims = Client.objects.all().order_by('-created_at')
+    claims = Client.objects.filter(archived=False).order_by('-created_at')
 
     return render(request, 'account/scope_checklist.html', {
         'claims': claims
