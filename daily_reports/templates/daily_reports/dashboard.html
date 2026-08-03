@@ -20,23 +20,26 @@
 <div class="container-fluid py-3">
 
   <!-- Header -->
-  <div class="d-flex align-items-center justify-content-between mb-3">
+  <div class="d-flex align-items-center justify-content-between mb-3 flex-wrap gap-2">
     <div>
       <h4 class="mb-0 fw-bold"><i class="fas fa-bell me-2 text-danger"></i>Daily Status Reports</h4>
-      <small class="text-muted">High Priority tracking + Weekly Deep Operations Report</small>
+      <small class="text-muted">Define priority tasks, track items, preview and send</small>
     </div>
-    <div class="d-flex gap-2">
+    <div class="d-flex gap-2 flex-wrap">
+      <a href="{% url 'daily_reports:daily_reports_preview' %}" target="_blank" class="btn btn-sm btn-outline-primary">
+        <i class="fas fa-eye me-1"></i> Preview Report
+      </a>
       <a href="{% url 'daily_reports:daily_reports_config' %}" class="btn btn-sm btn-outline-secondary">
         <i class="fas fa-cog me-1"></i> Configure
       </a>
-      <a href="{% url 'daily_reports:daily_reports_tasks' %}" class="btn btn-sm btn-outline-primary">
-        <i class="fas fa-tasks me-1"></i> Manage Tasks
+      <a href="{% url 'daily_reports:daily_reports_tasks' %}" class="btn btn-sm btn-outline-secondary">
+        <i class="fas fa-tasks me-1"></i> Op Tasks
       </a>
       <button class="btn btn-sm btn-danger" onclick="sendNow('daily')">
-        <i class="fas fa-paper-plane me-1"></i> Send Daily Now
+        <i class="fas fa-paper-plane me-1"></i> Send Daily
       </button>
       <button class="btn btn-sm btn-outline-dark" onclick="sendNow('deep')">
-        <i class="fas fa-chart-bar me-1"></i> Send Deep Report
+        <i class="fas fa-chart-bar me-1"></i> Send Deep
       </button>
     </div>
   </div>
@@ -79,69 +82,207 @@
 
   <div class="row g-3">
 
-    <!-- High Priority Items -->
-    <div class="col-lg-7">
+    <!-- ── Priority Tasks (main column) ─────────────────────────────────── -->
+    <div class="col-lg-8">
       <div class="card border-0 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center py-2" style="background:#7c3aed;color:#fff;">
+          <span><i class="fas fa-layer-group me-1"></i> Priority Tasks</span>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-white text-dark" id="task-count-badge">
+              {{ priority_tasks|length }} task{{ priority_tasks|length|pluralize }}
+            </span>
+            <button class="btn btn-sm btn-light" onclick="toggleAddForm()" id="add-task-btn" style="font-size:12px;padding:2px 10px;">
+              <i class="fas fa-plus me-1"></i> Add Task
+            </button>
+          </div>
+        </div>
+
+        <!-- Add Task Form -->
+        <div id="add-task-form" style="display:none;background:#f8f5ff;border-bottom:1px solid #e2e8f0;padding:16px 20px;">
+          <div class="row g-2 mb-2">
+            <div class="col-md-6">
+              <label class="form-label small fw-bold mb-1">Task Title <span class="text-danger">*</span></label>
+              <input type="text" class="form-control form-control-sm" id="pt-title" placeholder="What needs to be done?">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-bold mb-1">Priority Level</label>
+              <select class="form-select form-select-sm" id="pt-level">
+                <option value="level_1">🔴 Level 1 — Critical</option>
+                <option value="level_2" selected>🟠 Level 2 — High</option>
+                <option value="level_3">🔵 Level 3 — Standard</option>
+              </select>
+            </div>
+            <div class="col-md-3">
+              <label class="form-label small fw-bold mb-1">Due Date</label>
+              <input type="date" class="form-control form-control-sm" id="pt-due">
+            </div>
+          </div>
+          <div class="row g-2 mb-3">
+            <div class="col-md-8">
+              <label class="form-label small fw-bold mb-1">Description</label>
+              <textarea class="form-control form-control-sm" id="pt-description" rows="2" placeholder="Context, acceptance criteria, blockers..."></textarea>
+            </div>
+            <div class="col-md-4">
+              <label class="form-label small fw-bold mb-1">App Module <span class="text-muted">(optional)</span></label>
+              <select class="form-select form-select-sm" id="pt-module">
+                <option value="">— Not linked —</option>
+              </select>
+              <div class="form-text" style="font-size:10px;">Links to Dev Hub module</div>
+            </div>
+          </div>
+          <div class="d-flex gap-2 justify-content-end">
+            <button class="btn btn-sm btn-outline-secondary" onclick="toggleAddForm()">Cancel</button>
+            <button class="btn btn-sm btn-purple" onclick="createTask()" style="background:#7c3aed;color:#fff;border:none;">
+              <i class="fas fa-plus me-1"></i> Add Task
+            </button>
+          </div>
+        </div>
+
+        <!-- Task list grouped by level -->
+        <div class="card-body p-0" id="task-list-body">
+          {% with l1=priority_tasks|dictsort:"level" %}
+
+          {% comment %}Level 1{% endcomment %}
+          {% for task in priority_tasks %}{% if task.level == 'level_1' %}
+          {% if forloop.first %}<div class="px-3 pt-3 pb-1"><span class="badge fw-bold" style="background:#fee2e2;color:#b91c1c;font-size:11px;">🔴 LEVEL 1 — CRITICAL</span></div>{% endif %}
+          <div class="task-card px-3 py-2 border-bottom" id="ptask-{{ task.id }}" style="border-left:4px solid #b91c1c !important;">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div style="flex:1;min-width:0;">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="fw-bold" style="font-size:13px;">{{ task.title }}</span>
+                  {% if task.app_module %}<span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:500;">{{ task.app_module.name }}</span>{% endif %}
+                  {% if task.due_date %}<span style="font-size:11px;color:#dc2626;">Due {{ task.due_date }}</span>{% endif %}
+                </div>
+                {% if task.description %}<div class="text-secondary mt-1" style="font-size:12px;">{{ task.description }}</div>{% endif %}
+              </div>
+              <div class="d-flex align-items-center gap-2 ms-2" style="flex-shrink:0;">
+                <select class="form-select form-select-sm" style="font-size:11px;padding:2px 6px;width:auto;" onchange="updateStatus({{ task.id }}, this.value)">
+                  <option value="open"        {% if task.status == 'open' %}selected{% endif %}>Open</option>
+                  <option value="in_progress" {% if task.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                  <option value="done"        {% if task.status == 'done' %}selected{% endif %}>Done</option>
+                </select>
+                <button class="btn btn-link text-danger p-0" style="font-size:14px;" onclick="deleteTask({{ task.id }})" title="Delete">×</button>
+              </div>
+            </div>
+          </div>
+          {% endif %}{% endfor %}
+
+          {% comment %}Level 2{% endcomment %}
+          {% for task in priority_tasks %}{% if task.level == 'level_2' %}
+          {% if forloop.first %}<div class="px-3 pt-3 pb-1"><span class="badge fw-bold" style="background:#fff7ed;color:#c2410c;font-size:11px;">🟠 LEVEL 2 — HIGH</span></div>{% endif %}
+          <div class="task-card px-3 py-2 border-bottom" id="ptask-{{ task.id }}" style="border-left:4px solid #f97316 !important;">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div style="flex:1;min-width:0;">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="fw-bold" style="font-size:13px;">{{ task.title }}</span>
+                  {% if task.app_module %}<span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:500;">{{ task.app_module.name }}</span>{% endif %}
+                  {% if task.due_date %}<span style="font-size:11px;color:#c2410c;">Due {{ task.due_date }}</span>{% endif %}
+                </div>
+                {% if task.description %}<div class="text-secondary mt-1" style="font-size:12px;">{{ task.description }}</div>{% endif %}
+              </div>
+              <div class="d-flex align-items-center gap-2 ms-2" style="flex-shrink:0;">
+                <select class="form-select form-select-sm" style="font-size:11px;padding:2px 6px;width:auto;" onchange="updateStatus({{ task.id }}, this.value)">
+                  <option value="open"        {% if task.status == 'open' %}selected{% endif %}>Open</option>
+                  <option value="in_progress" {% if task.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                  <option value="done"        {% if task.status == 'done' %}selected{% endif %}>Done</option>
+                </select>
+                <button class="btn btn-link text-danger p-0" style="font-size:14px;" onclick="deleteTask({{ task.id }})" title="Delete">×</button>
+              </div>
+            </div>
+          </div>
+          {% endif %}{% endfor %}
+
+          {% comment %}Level 3{% endcomment %}
+          {% for task in priority_tasks %}{% if task.level == 'level_3' %}
+          {% if forloop.first %}<div class="px-3 pt-3 pb-1"><span class="badge fw-bold" style="background:#eff6ff;color:#1d4ed8;font-size:11px;">🔵 LEVEL 3 — STANDARD</span></div>{% endif %}
+          <div class="task-card px-3 py-2 border-bottom" id="ptask-{{ task.id }}" style="border-left:4px solid #3b82f6 !important;">
+            <div class="d-flex justify-content-between align-items-start gap-2">
+              <div style="flex:1;min-width:0;">
+                <div class="d-flex align-items-center gap-2 flex-wrap">
+                  <span class="fw-bold" style="font-size:13px;">{{ task.title }}</span>
+                  {% if task.app_module %}<span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:500;">{{ task.app_module.name }}</span>{% endif %}
+                  {% if task.due_date %}<span style="font-size:11px;color:#1d4ed8;">Due {{ task.due_date }}</span>{% endif %}
+                </div>
+                {% if task.description %}<div class="text-secondary mt-1" style="font-size:12px;">{{ task.description }}</div>{% endif %}
+              </div>
+              <div class="d-flex align-items-center gap-2 ms-2" style="flex-shrink:0;">
+                <select class="form-select form-select-sm" style="font-size:11px;padding:2px 6px;width:auto;" onchange="updateStatus({{ task.id }}, this.value)">
+                  <option value="open"        {% if task.status == 'open' %}selected{% endif %}>Open</option>
+                  <option value="in_progress" {% if task.status == 'in_progress' %}selected{% endif %}>In Progress</option>
+                  <option value="done"        {% if task.status == 'done' %}selected{% endif %}>Done</option>
+                </select>
+                <button class="btn btn-link text-danger p-0" style="font-size:14px;" onclick="deleteTask({{ task.id }})" title="Delete">×</button>
+              </div>
+            </div>
+          </div>
+          {% endif %}{% endfor %}
+          {% endwith %}
+
+          {% if not priority_tasks %}
+          <div class="p-4 text-center text-muted">
+            <i class="fas fa-layer-group fa-2x mb-2 text-muted opacity-50"></i>
+            <div class="mb-1">No priority tasks yet.</div>
+            <button class="btn btn-sm btn-outline-primary mt-1" onclick="toggleAddForm()">
+              <i class="fas fa-plus me-1"></i> Add your first task
+            </button>
+          </div>
+          {% endif %}
+
+          <!-- Placeholder for JS-injected new tasks -->
+          <div id="new-tasks-placeholder"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Right Sidebar ─────────────────────────────────────────────────── -->
+    <div class="col-lg-4">
+
+      <!-- High Priority Items -->
+      <div class="card border-0 shadow-sm mb-3">
         <div class="card-header bg-danger text-white d-flex justify-content-between align-items-center py-2">
-          <span><i class="fas fa-exclamation-circle me-1"></i> High Priority Tracked Items</span>
-          <span class="badge bg-white text-danger">{{ hp_items|length }} active</span>
+          <span style="font-size:13px;"><i class="fas fa-exclamation-circle me-1"></i> Flagged HP Items</span>
+          <span class="badge bg-white text-danger">{{ hp_items|length }}</span>
         </div>
         <div class="card-body p-0">
           {% if hp_items %}
-          <div class="list-group list-group-flush">
+          <div class="list-group list-group-flush" style="max-height:280px;overflow-y:auto;">
             {% for item in hp_items %}
-            <div class="list-group-item px-3 py-2" id="hp-{{ item.id }}">
+            <div class="list-group-item px-3 py-2" id="hp-{{ item.id }}" style="font-size:12px;">
               <div class="d-flex justify-content-between align-items-start">
-                <div>
+                <div style="min-width:0;">
                   <strong>{{ item.client.pOwner|default:"—" }}</strong>
-                  <span class="ms-2 badge bg-light text-dark border">{{ item.get_item_type_display }}</span>
-                  {% if item.ppr_session %}<span class="ms-1 small text-muted">{{ item.ppr_session.display_name }}</span>{% endif %}
-                  {% if item.lease %}<span class="ms-1 small text-muted">Lease: {{ item.lease.get_status_display }}</span>{% endif %}
-                  {% if item.priority_note %}
-                  <div class="small text-secondary mt-1">{{ item.priority_note }}</div>
-                  {% endif %}
-                  {% if item.resolution_criteria %}
-                  <div class="small text-info">Needs: {{ item.resolution_criteria }}</div>
-                  {% endif %}
+                  <span class="ms-1 badge bg-light text-dark border" style="font-size:10px;">{{ item.get_item_type_display }}</span>
+                  {% if item.priority_note %}<div class="text-secondary mt-1 text-truncate">{{ item.priority_note }}</div>{% endif %}
                 </div>
-                <div class="d-flex align-items-center gap-2 ms-3">
-                  <span class="small text-muted">{{ item.added_at|timesince }} ago</span>
-                  <button class="btn btn-xs btn-outline-success" style="font-size:11px;padding:1px 8px;"
-                          onclick="resolveItem({{ item.id }})">
-                    ✓ Resolve
-                  </button>
-                </div>
+                <button class="btn btn-xs text-success ms-2" style="font-size:10px;padding:1px 6px;border:1px solid #ccc;white-space:nowrap;"
+                        onclick="resolveItem({{ item.id }})">✓</button>
               </div>
             </div>
             {% endfor %}
           </div>
           {% else %}
-          <div class="p-4 text-center text-muted">
-            <i class="fas fa-check-circle fa-2x mb-2 text-success"></i>
-            <div>No high priority items flagged.</div>
+          <div class="p-3 text-center text-muted small">
+            <i class="fas fa-check-circle text-success me-1"></i> No flagged items.
           </div>
           {% endif %}
         </div>
         <div class="card-footer bg-transparent py-2">
-          <button class="btn btn-sm btn-outline-danger" data-bs-toggle="modal" data-bs-target="#flagModal">
+          <button class="btn btn-sm btn-outline-danger w-100" data-bs-toggle="modal" data-bs-target="#flagModal" style="font-size:12px;">
             <i class="fas fa-flag me-1"></i> Flag New Item
           </button>
         </div>
       </div>
-    </div>
 
-    <!-- Report Log + Config Summary -->
-    <div class="col-lg-5">
       <!-- Config summary -->
       <div class="card border-0 shadow-sm mb-3">
-        <div class="card-header py-2 d-flex justify-content-between align-items-center">
-          <span><i class="fas fa-cog me-1"></i> Report Configuration</span>
+        <div class="card-header py-2 d-flex justify-content-between align-items-center" style="font-size:13px;">
+          <span><i class="fas fa-cog me-1"></i> Report Config</span>
           <a href="{% url 'daily_reports:daily_reports_config' %}" class="small text-primary">Edit</a>
         </div>
-        <div class="card-body py-2" style="font-size:13px;">
+        <div class="card-body py-2" style="font-size:12px;">
           <div class="d-flex justify-content-between py-1 border-bottom">
             <span class="text-muted">Status</span>
-            <span>{% if config.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Paused</span>{% endif %}</span>
+            {% if config.is_active %}<span class="badge bg-success">Active</span>{% else %}<span class="badge bg-secondary">Paused</span>{% endif %}
           </div>
           <div class="d-flex justify-content-between py-1 border-bottom">
             <span class="text-muted">Send Time</span>
@@ -149,43 +290,31 @@
           </div>
           <div class="d-flex justify-content-between py-1 border-bottom">
             <span class="text-muted">Escalation</span>
-            <span>After {{ config.escalation_days }} days → URGENT</span>
-          </div>
-          <div class="d-flex justify-content-between py-1 border-bottom">
-            <span class="text-muted">Recipients</span>
-            <span>{{ config.recipients|length }} address{{ config.recipients|length|pluralize:"es" }}</span>
+            <span>{{ config.escalation_days }} days → URGENT</span>
           </div>
           <div class="d-flex justify-content-between py-1">
-            <span class="text-muted">Attach PDFs</span>
-            <span>{% if config.attach_ppr_pdf %}Yes{% else %}No{% endif %}</span>
+            <span class="text-muted">Recipients</span>
+            <span>{{ config.recipients|length }} address{{ config.recipients|length|pluralize:"es" }}</span>
           </div>
         </div>
       </div>
 
-      <!-- Recent report logs -->
+      <!-- Recent logs -->
       <div class="card border-0 shadow-sm">
-        <div class="card-header py-2">
-          <i class="fas fa-history me-1"></i> Recent Report Sends
+        <div class="card-header py-2" style="font-size:13px;">
+          <i class="fas fa-history me-1"></i> Recent Sends
         </div>
         <div class="card-body p-0">
           {% if recent_logs %}
-          <div class="list-group list-group-flush" style="font-size:12px;">
+          <div class="list-group list-group-flush" style="font-size:11px;">
             {% for log in recent_logs %}
             <div class="list-group-item px-3 py-2 d-flex justify-content-between align-items-center">
               <div>
-                <span class="badge {% if log.report_type == 'daily' %}bg-danger{% else %}bg-dark{% endif %} me-1">
-                  {{ log.get_report_type_display }}
-                </span>
+                <span class="badge {% if log.report_type == 'daily' %}bg-danger{% else %}bg-dark{% endif %} me-1">{{ log.get_report_type_display|truncatechars:5 }}</span>
                 {{ log.sent_at|date:"M d H:i" }}
-                {% if log.report_type == 'daily' %}
-                <span class="text-muted ms-1">{{ log.total_items }} items · {{ log.urgent_items }} urgent</span>
-                {% endif %}
+                {% if log.report_type == 'daily' %}<span class="text-muted ms-1">{{ log.total_items }}i · {{ log.urgent_items }}u</span>{% endif %}
               </div>
-              {% if log.email_success %}
-                <i class="fas fa-check-circle text-success"></i>
-              {% else %}
-                <i class="fas fa-times-circle text-danger" title="{{ log.error_message }}"></i>
-              {% endif %}
+              {% if log.email_success %}<i class="fas fa-check-circle text-success"></i>{% else %}<i class="fas fa-times-circle text-danger" title="{{ log.error_message }}"></i>{% endif %}
             </div>
             {% endfor %}
           </div>
@@ -194,6 +323,7 @@
           {% endif %}
         </div>
       </div>
+
     </div>
   </div>
 </div>
@@ -238,7 +368,7 @@
         </div>
         <div class="mb-3">
           <label class="form-label small fw-bold">Demand language for email (optional)</label>
-          <textarea class="form-control form-control-sm" id="flagDemand" rows="2" placeholder="e.g. This item requires immediate attention from the field team"></textarea>
+          <textarea class="form-control form-control-sm" id="flagDemand" rows="2"></textarea>
         </div>
       </div>
       <div class="modal-footer">
@@ -255,28 +385,145 @@
 
 {% block extra_js %}
 <script>
-function sendNow(type) {
-  if (!confirm('Send the ' + (type === 'deep' ? 'Weekly Deep' : 'Daily High Priority') + ' Report now?')) return;
-  fetch("{% url 'daily_reports:daily_reports_send_now' %}", {
+const CSRF = '{{ csrf_token }}';
+const MODULES = {{ modules_json|safe }};
+
+// ── Module dropdown ───────────────────────────────────────────────────────────
+(function() {
+  const sel = document.getElementById('pt-module');
+  MODULES.forEach(m => {
+    const opt = document.createElement('option');
+    opt.value = m.id;
+    opt.textContent = m.name;
+    sel.appendChild(opt);
+  });
+})();
+
+// ── Add form toggle ───────────────────────────────────────────────────────────
+function toggleAddForm() {
+  const form = document.getElementById('add-task-form');
+  const showing = form.style.display !== 'none';
+  form.style.display = showing ? 'none' : 'block';
+  if (!showing) document.getElementById('pt-title').focus();
+}
+
+// ── Level config (colors / labels) ───────────────────────────────────────────
+const LEVEL_CFG = {
+  level_1: { border: '#b91c1c', bg: '#fff8f8', badge_bg: '#fee2e2', badge_color: '#b91c1c', label: '🔴 LEVEL 1 — CRITICAL', due_color: '#dc2626' },
+  level_2: { border: '#f97316', bg: '#fffbf5', badge_bg: '#fff7ed', badge_color: '#c2410c', label: '🟠 LEVEL 2 — HIGH',     due_color: '#c2410c' },
+  level_3: { border: '#3b82f6', bg: '#f8fbff', badge_bg: '#eff6ff', badge_color: '#1d4ed8', label: '🔵 LEVEL 3 — STANDARD', due_color: '#1d4ed8' },
+};
+
+// ── Create task ───────────────────────────────────────────────────────────────
+function createTask() {
+  const title = document.getElementById('pt-title').value.trim();
+  if (!title) { document.getElementById('pt-title').focus(); return; }
+
+  const level     = document.getElementById('pt-level').value;
+  const desc      = document.getElementById('pt-description').value.trim();
+  const due       = document.getElementById('pt-due').value;
+  const moduleId  = document.getElementById('pt-module').value;
+  const moduleName = moduleId
+    ? (MODULES.find(m => m.id == moduleId) || {}).name || ''
+    : '';
+
+  fetch("{% url 'daily_reports:daily_create_priority_task' %}", {
     method: 'POST',
-    headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/x-www-form-urlencoded'},
-    body: 'report_type=' + type,
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ title, description: desc, level, due_date: due, app_module_id: moduleId || null }),
   })
   .then(r => r.json())
   .then(d => {
-    if (d.ok) {
-      alert('Report queued! Check your inbox in a few seconds.');
-    } else {
-      alert('Error: ' + (d.error || 'Unknown error'));
+    if (!d.ok) { alert('Error: ' + (d.error || 'Unknown')); return; }
+    appendTaskCard(d.task);
+    // Reset form
+    document.getElementById('pt-title').value = '';
+    document.getElementById('pt-description').value = '';
+    document.getElementById('pt-due').value = '';
+    document.getElementById('pt-module').value = '';
+    document.getElementById('pt-level').value = 'level_2';
+    document.getElementById('add-task-form').style.display = 'none';
+    // Update count badge
+    const badge = document.getElementById('task-count-badge');
+    const cur = parseInt(badge.textContent) || 0;
+    badge.textContent = (cur + 1) + ' task' + (cur + 1 === 1 ? '' : 's');
+  });
+}
+
+function appendTaskCard(task) {
+  const cfg = LEVEL_CFG[task.level] || LEVEL_CFG.level_2;
+  const moduleHtml = task.module_name
+    ? `<span class="badge" style="background:#e0e7ff;color:#3730a3;font-size:10px;font-weight:500;">${task.module_name}</span>`
+    : '';
+  const dueHtml = task.due_date
+    ? `<span style="font-size:11px;color:${cfg.due_color};">Due ${task.due_date}</span>`
+    : '';
+  const descHtml = task.description
+    ? `<div class="text-secondary mt-1" style="font-size:12px;">${task.description}</div>`
+    : '';
+
+  const html = `
+<div class="task-card px-3 py-2 border-bottom" id="ptask-${task.id}" style="border-left:4px solid ${cfg.border} !important;">
+  <div class="d-flex justify-content-between align-items-start gap-2">
+    <div style="flex:1;min-width:0;">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <span class="fw-bold" style="font-size:13px;">${task.title}</span>
+        ${moduleHtml}${dueHtml}
+      </div>
+      ${descHtml}
+    </div>
+    <div class="d-flex align-items-center gap-2 ms-2" style="flex-shrink:0;">
+      <select class="form-select form-select-sm" style="font-size:11px;padding:2px 6px;width:auto;" onchange="updateStatus(${task.id}, this.value)">
+        <option value="open" selected>Open</option>
+        <option value="in_progress">In Progress</option>
+        <option value="done">Done</option>
+      </select>
+      <button class="btn btn-link text-danger p-0" style="font-size:14px;" onclick="deleteTask(${task.id})" title="Delete">×</button>
+    </div>
+  </div>
+</div>`;
+
+  document.getElementById('new-tasks-placeholder').insertAdjacentHTML('beforeend', html);
+}
+
+// ── Update status ─────────────────────────────────────────────────────────────
+function updateStatus(id, status) {
+  fetch(`/daily-reports/priority-tasks/${id}/update/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ status }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok && status === 'done') {
+      const el = document.getElementById('ptask-' + id);
+      if (el) { el.style.opacity = '.3'; setTimeout(() => el.remove(), 500); }
     }
   });
 }
 
+// ── Delete task ───────────────────────────────────────────────────────────────
+function deleteTask(id) {
+  if (!confirm('Delete this task?')) return;
+  fetch(`/daily-reports/priority-tasks/${id}/delete/`, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF },
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      const el = document.getElementById('ptask-' + id);
+      if (el) { el.style.opacity = '.3'; setTimeout(() => el.remove(), 400); }
+    }
+  });
+}
+
+// ── Resolve HP item ───────────────────────────────────────────────────────────
 function resolveItem(id) {
   if (!confirm('Mark this item as resolved?')) return;
   fetch(`/daily-reports/resolve/${id}/`, {
     method: 'POST',
-    headers: {'X-CSRFToken': '{{ csrf_token }}'},
+    headers: { 'X-CSRFToken': CSRF },
   })
   .then(r => r.json())
   .then(d => {
@@ -287,39 +534,54 @@ function resolveItem(id) {
   });
 }
 
-document.getElementById('flagType').addEventListener('change', function() {
-  const v = this.value;
-  document.getElementById('pprSessionRow').style.display = v === 'ppr' ? '' : 'none';
-  document.getElementById('leaseRow').style.display = v === 'lease' ? '' : 'none';
-});
-
-function submitFlag() {
-  const type = document.getElementById('flagType').value;
-  const cid  = document.getElementById('flagClientId').value;
-  if (!cid) { alert('Please enter a Client ID'); return; }
-  const body = {
-    item_type: type,
-    client_id: parseInt(cid),
-    ppr_session_id: document.getElementById('flagPprId').value ? parseInt(document.getElementById('flagPprId').value) : null,
-    lease_id: document.getElementById('flagLeaseId').value ? parseInt(document.getElementById('flagLeaseId').value) : null,
-    priority_note: document.getElementById('flagNote').value,
-    resolution_criteria: document.getElementById('flagResolution').value,
-    demand_language: document.getElementById('flagDemand').value,
-  };
-  fetch("{% url 'daily_reports:daily_reports_flag' %}", {
+// ── Send now ─────────────────────────────────────────────────────────────────
+function sendNow(type) {
+  if (!confirm('Send the ' + (type === 'deep' ? 'Weekly Deep' : 'Daily High Priority') + ' Report now?')) return;
+  fetch("{% url 'daily_reports:daily_reports_send_now' %}", {
     method: 'POST',
-    headers: {'X-CSRFToken': '{{ csrf_token }}', 'Content-Type': 'application/json'},
-    body: JSON.stringify(body),
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: 'report_type=' + type,
   })
   .then(r => r.json())
   .then(d => {
-    if (d.ok) {
-      bootstrap.Modal.getInstance(document.getElementById('flagModal')).hide();
-      location.reload();
-    } else {
-      alert('Error: ' + (d.error || 'Unknown error'));
-    }
+    if (d.ok) alert('Report queued — check your inbox in a few seconds.');
+    else alert('Error: ' + (d.error || 'Unknown error'));
   });
 }
+
+// ── Flag modal ────────────────────────────────────────────────────────────────
+document.getElementById('flagType').addEventListener('change', function() {
+  const v = this.value;
+  document.getElementById('pprSessionRow').style.display = v === 'ppr'   ? '' : 'none';
+  document.getElementById('leaseRow').style.display      = v === 'lease' ? '' : 'none';
+});
+
+function submitFlag() {
+  const cid = document.getElementById('flagClientId').value;
+  if (!cid) { alert('Please enter a Client ID'); return; }
+  fetch("{% url 'daily_reports:daily_reports_flag' %}", {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      item_type:           document.getElementById('flagType').value,
+      client_id:           parseInt(cid),
+      ppr_session_id:      document.getElementById('flagPprId').value    ? parseInt(document.getElementById('flagPprId').value)   : null,
+      lease_id:            document.getElementById('flagLeaseId').value  ? parseInt(document.getElementById('flagLeaseId').value) : null,
+      priority_note:       document.getElementById('flagNote').value,
+      resolution_criteria: document.getElementById('flagResolution').value,
+      demand_language:     document.getElementById('flagDemand').value,
+    }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) { bootstrap.Modal.getInstance(document.getElementById('flagModal')).hide(); location.reload(); }
+    else alert('Error: ' + (d.error || 'Unknown'));
+  });
+}
+
+// Enter key submits add form
+document.getElementById('pt-title').addEventListener('keydown', e => {
+  if (e.key === 'Enter') { e.preventDefault(); createTask(); }
+});
 </script>
 {% endblock %}

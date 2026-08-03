@@ -97,6 +97,59 @@ def _fmt_status(status: str) -> str:
 
 # ── Section builders ──────────────────────────────────────────────────────────
 
+def _section_priority_tasks(config) -> tuple[str, int, int]:
+    """Priority tasks (Level 1/2/3) defined by the user. Returns (html, total, urgent)."""
+    from daily_reports.models import PriorityTask
+
+    tasks = (
+        PriorityTask.objects
+        .filter(config=config)
+        .exclude(status='done')
+        .select_related('app_module')
+        .order_by('level', 'created_at')
+    )
+
+    if not tasks:
+        return '<div class="no-items">No open priority tasks.</div>', 0, 0
+
+    LEVEL_CFG = {
+        'level_1': ('#fee2e2', '#b91c1c', '🔴 L1 — CRITICAL'),
+        'level_2': ('#fff7ed', '#c2410c', '🟠 L2 — HIGH'),
+        'level_3': ('#eff6ff', '#1d4ed8', '🔵 L3 — STANDARD'),
+    }
+
+    cards = []
+    for t in tasks:
+        bg, color, label = LEVEL_CFG.get(t.level, ('#fff', '#000', t.level))
+        module_str = (
+            f'<span style="font-size:10px;background:#e0e7ff;color:#3730a3;'
+            f'border-radius:3px;padding:1px 6px;margin-left:6px;">'
+            f'{t.app_module.name}</span>'
+        ) if t.app_module else ''
+        due_str = (
+            f'<span style="font-size:10px;color:#dc2626;margin-left:6px;">'
+            f'Due {t.due_date}</span>'
+        ) if t.due_date else ''
+        desc_str = (
+            f'<div style="font-size:12px;color:#475569;margin-top:4px;">{t.description}</div>'
+        ) if t.description else ''
+        status_label = {'open': 'Open', 'in_progress': 'In Progress'}.get(t.status, t.status)
+        cards.append(
+            f'<div class="claim-card" style="border-left:4px solid {color};background:{bg};">'
+            f'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+            f'<div>'
+            f'<span style="font-size:11px;font-weight:bold;color:{color};">{label}</span>'
+            f'{module_str}{due_str}'
+            f'<div style="font-size:13px;font-weight:bold;color:#0f172a;margin-top:2px;">{t.title}</div>'
+            f'{desc_str}'
+            f'</div>'
+            f'<span class="badge-pending" style="white-space:nowrap;margin-left:8px;">{status_label}</span>'
+            f'</div></div>'
+        )
+
+    return ''.join(cards), len(tasks), 0
+
+
 def _section_ppr_signatures(config) -> tuple[str, int, int]:
     """Returns (html, total_items, urgent_count)."""
     from cps_report.models import CPSReportSession, CPSReportRoom
@@ -455,6 +508,16 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
     sections_html = ''
     grand_total = 0
     grand_urgent = 0
+
+    if getattr(config, 'include_priority_tasks', True):
+        body, count, urg = _section_priority_tasks(config)
+        grand_total += count
+        sections_html += (
+            f'<div class="section">'
+            f'<div class="section-title" style="background:#7c3aed;">📌 PRIORITY TASKS'
+            f'<span class="count">{count} open</span></div>'
+            f'{body}</div>'
+        )
 
     if config.include_ppr_signatures:
         body, count, urg = _section_ppr_signatures(config)

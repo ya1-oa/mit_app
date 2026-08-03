@@ -200,6 +200,41 @@
             </div>
         </div>
 
+        <!-- Priority Tasks from Daily Reports -->
+        {% if priority_tasks %}
+        <div class="card mb-4">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h5 class="mb-0">
+                    <i class="fas fa-layer-group me-1 text-purple" style="color:#7c3aed;"></i>
+                    Priority Tasks
+                    <small class="text-muted fw-normal ms-1" style="font-size:12px;">from Daily Reports</small>
+                </h5>
+                <a href="{% url 'daily_reports:daily_reports_dashboard' %}" class="btn btn-sm btn-outline-secondary" style="font-size:11px;">
+                    Open Daily Reports
+                </a>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush" style="font-size:12px;">
+                    {% for pt in priority_tasks %}
+                    <div class="list-group-item px-3 py-2 d-flex justify-content-between align-items-start"
+                         style="border-left:3px solid {% if pt.level == 'level_1' %}#b91c1c{% elif pt.level == 'level_2' %}#f97316{% else %}#3b82f6{% endif %};">
+                        <div>
+                            <span class="badge me-1" style="font-size:9px;background:{% if pt.level == 'level_1' %}#fee2e2;color:#b91c1c{% elif pt.level == 'level_2' %}#fff7ed;color:#c2410c{% else %}#eff6ff;color:#1d4ed8{% endif %};">
+                                {% if pt.level == 'level_1' %}L1{% elif pt.level == 'level_2' %}L2{% else %}L3{% endif %}
+                            </span>
+                            {{ pt.title }}
+                            {% if pt.description %}<div class="text-muted mt-1" style="font-size:11px;">{{ pt.description|truncatechars:80 }}</div>{% endif %}
+                        </div>
+                        <span class="badge bg-{% if pt.status == 'in_progress' %}warning text-dark{% else %}secondary{% endif %} flex-shrink-0 ms-2" style="font-size:10px;">
+                            {{ pt.get_status_display }}
+                        </span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
         <!-- Test coverage -->
         <div class="card mb-4">
             <div class="card-header">

@@ -103,12 +103,21 @@ def module_detail(request, slug):
 
     reports = module.progress_reports.order_by('-sent_at')[:5]
 
+    try:
+        from daily_reports.models import PriorityTask
+        priority_tasks = PriorityTask.objects.filter(
+            app_module=module
+        ).exclude(status='done').order_by('level', 'created_at')
+    except Exception:
+        priority_tasks = []
+
     context = {
-        'module':   module,
-        'tasks':    tasks,
-        'coverage': coverage,
-        'reports':  reports,
-        'task_counts': module.task_counts,
+        'module':         module,
+        'tasks':          tasks,
+        'coverage':       coverage,
+        'reports':        reports,
+        'task_counts':    module.task_counts,
+        'priority_tasks': priority_tasks,
     }
     return render(request, 'dev_hub/module_detail.html', context)
 

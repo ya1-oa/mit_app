@@ -12,4 +12,8 @@ urlpatterns = [
     path('flag/',        views.flag_item,    name='daily_reports_flag'),
     path('resolve/<int:item_id>/', views.resolve_item, name='daily_reports_resolve'),
     path('send-now/',    views.send_now,     name='daily_reports_send_now'),
+    path('preview/',     views.preview_report, name='daily_reports_preview'),
+    path('priority-tasks/create/', views.create_priority_task, name='daily_create_priority_task'),
+    path('priority-tasks/<int:task_id>/update/', views.update_priority_task, name='daily_update_priority_task'),
+    path('priority-tasks/<int:task_id>/delete/', views.delete_priority_task, name='daily_delete_priority_task'),
 ]

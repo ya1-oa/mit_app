@@ -32,6 +32,7 @@ class DailyReportConfig(models.Model):
     include_lease_sigs      = models.BooleanField(default=True, verbose_name='Lease Signature Status')
     include_lease_pipeline  = models.BooleanField(default=True, verbose_name='Lease Pipeline Overview')
     include_high_priority   = models.BooleanField(default=True, verbose_name='High Priority Tracked Items')
+    include_priority_tasks  = models.BooleanField(default=True, verbose_name='Priority Tasks (L1/L2/L3)')
 
     # ── Attachments ───────────────────────────────────────────────────────────
     attach_ppr_pdf    = models.BooleanField(
@@ -214,6 +215,62 @@ class OperationalTask(models.Model):
         if self.status == 'done' and not self.completed_at:
             self.completed_at = timezone.now()
             self.percent_complete = 100
+        super().save(*args, **kwargs)
+
+
+class PriorityTask(models.Model):
+    """
+    User-defined priority task that appears in the daily report and can link
+    to a Dev Hub AppModule to contribute to module completion tracking.
+    """
+    LEVEL_CHOICES = [
+        ('level_1', 'Level 1 — Critical'),
+        ('level_2', 'Level 2 — High'),
+        ('level_3', 'Level 3 — Standard'),
+    ]
+    STATUS_CHOICES = [
+        ('open',        'Open'),
+        ('in_progress', 'In Progress'),
+        ('done',        'Done'),
+    ]
+
+    config      = models.ForeignKey(
+        DailyReportConfig,
+        on_delete=models.CASCADE,
+        related_name='priority_tasks',
+    )
+    title       = models.CharField(max_length=300)
+    description = models.TextField(blank=True)
+    level       = models.CharField(max_length=20, choices=LEVEL_CHOICES, default='level_2', db_index=True)
+    status      = models.CharField(max_length=20, choices=STATUS_CHOICES, default='open', db_index=True)
+    app_module  = models.ForeignKey(
+        'dev_hub.AppModule',
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='priority_tasks',
+        verbose_name='Dev Hub Module',
+    )
+    due_date    = models.DateField(null=True, blank=True)
+    created_by  = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.SET_NULL,
+        null=True, blank=True,
+        related_name='created_priority_tasks',
+    )
+    created_at   = models.DateTimeField(auto_now_add=True)
+    updated_at   = models.DateTimeField(auto_now=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['level', 'created_at']
+        verbose_name = 'Priority Task'
+
+    def __str__(self):
+        return f"[{self.get_level_display()}] {self.title}"
+
+    def save(self, *args, **kwargs):
+        if self.status == 'done' and not self.completed_at:
+            self.completed_at = timezone.now()
         super().save(*args, **kwargs)
 
 

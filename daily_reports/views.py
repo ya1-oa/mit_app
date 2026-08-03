@@ -36,7 +36,7 @@ def _get_or_create_config():
 
 @login_required
 def dashboard(request):
-    from daily_reports.models import HighPriorityItem, DailyReportLog, OperationalTask
+    from daily_reports.models import HighPriorityItem, DailyReportLog, OperationalTask, PriorityTask
 
     config      = _get_or_create_config()
     hp_items    = HighPriorityItem.objects.filter(is_resolved=False).select_related(
@@ -46,6 +46,16 @@ def dashboard(request):
     open_tasks  = OperationalTask.objects.exclude(status='done').select_related(
         'assigned_to', 'created_by'
     ).order_by('app', '-priority')
+
+    priority_tasks = PriorityTask.objects.filter(config=config).select_related(
+        'app_module', 'created_by'
+    ).order_by('level', 'created_at')
+
+    try:
+        from dev_hub.models import AppModule
+        modules = list(AppModule.objects.order_by('order', 'name').values('id', 'name'))
+    except Exception:
+        modules = []
 
     # Live quick stats
     try:
@@ -71,6 +81,8 @@ def dashboard(request):
         'hp_items':        hp_items,
         'recent_logs':     recent_logs,
         'open_tasks':      open_tasks,
+        'priority_tasks':  priority_tasks,
+        'modules_json':    json.dumps(modules),
         'ppr_unsigned':    ppr_unsigned,
         'ppr_pending':     ppr_pending,
         'leases_awaiting': leases_awaiting,
@@ -92,8 +104,9 @@ def config_view(request):
         config.include_ppr_pricing    = 'include_ppr_pricing' in p
         config.include_lease_sigs     = 'include_lease_sigs' in p
         config.include_lease_pipeline = 'include_lease_pipeline' in p
-        config.include_high_priority  = 'include_high_priority' in p
-        config.attach_ppr_pdf         = 'attach_ppr_pdf' in p
+        config.include_high_priority   = 'include_high_priority' in p
+        config.include_priority_tasks  = 'include_priority_tasks' in p
+        config.attach_ppr_pdf          = 'attach_ppr_pdf' in p
 
         # Recipients — one per line
         raw = p.get('recipients', '')
@@ -105,11 +118,12 @@ def config_view(request):
         return redirect('daily_reports_dashboard')
 
     SECTIONS = [
-        ('include_ppr_signatures', 'PPR — Awaiting Signatures'),
-        ('include_ppr_pricing',    'PPR — Pricing Incomplete ($0 items)'),
-        ('include_lease_sigs',     'ALE Leases — Signature Status'),
-        ('include_lease_pipeline', 'ALE Leases — Full Pipeline Overview'),
-        ('include_high_priority',  'High Priority Tracked Items (user-flagged)'),
+        ('include_priority_tasks',  'Priority Tasks (L1 / L2 / L3)'),
+        ('include_ppr_signatures',  'PPR — Awaiting Signatures'),
+        ('include_ppr_pricing',     'PPR — Pricing Incomplete ($0 items)'),
+        ('include_lease_sigs',      'ALE Leases — Signature Status'),
+        ('include_lease_pipeline',  'ALE Leases — Full Pipeline Overview'),
+        ('include_high_priority',   'High Priority Tracked Items (user-flagged)'),
     ]
     return render(request, 'daily_reports/config.html', {'config': config, 'sections': SECTIONS})
 
@@ -226,6 +240,103 @@ def resolve_item(request, item_id):
     item.is_resolved = True
     item.resolved_at = timezone.now()
     item.save(update_fields=['is_resolved', 'resolved_at'])
+    return JsonResponse({'ok': True})
+
+
+@login_required
+def preview_report(request):
+    """Render the current daily report HTML in-browser (no email sent)."""
+    from django.http import HttpResponse
+    from daily_reports.report_builder import build_high_priority_html
+    config = _get_or_create_config()
+    html, _total, _urgent = build_high_priority_html(config)
+    return HttpResponse(html)
+
+
+@login_required
+@require_POST
+def create_priority_task(request):
+    from daily_reports.models import PriorityTask
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        data = request.POST
+
+    config = _get_or_create_config()
+    app_module = None
+    if data.get('app_module_id'):
+        try:
+            from dev_hub.models import AppModule
+            app_module = AppModule.objects.get(id=data['app_module_id'])
+        except Exception:
+            pass
+
+    task = PriorityTask.objects.create(
+        config=config,
+        title=(data.get('title') or '').strip(),
+        description=(data.get('description') or '').strip(),
+        level=data.get('level', 'level_2'),
+        status=data.get('status', 'open'),
+        app_module=app_module,
+        due_date=data.get('due_date') or None,
+        created_by=request.user,
+    )
+    return JsonResponse({
+        'ok': True,
+        'task': {
+            'id':          task.id,
+            'title':       task.title,
+            'description': task.description,
+            'level':       task.level,
+            'level_label': task.get_level_display(),
+            'status':      task.status,
+            'due_date':    str(task.due_date) if task.due_date else '',
+            'module_name': task.app_module.name if task.app_module else '',
+            'module_id':   task.app_module_id or '',
+        },
+    })
+
+
+@login_required
+@require_POST
+def update_priority_task(request, task_id):
+    from daily_reports.models import PriorityTask
+    task = get_object_or_404(PriorityTask, id=task_id)
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        data = request.POST
+
+    if 'title' in data:
+        task.title = (data['title'] or '').strip()
+    if 'description' in data:
+        task.description = (data['description'] or '').strip()
+    if 'level' in data:
+        task.level = data['level']
+    if 'status' in data:
+        task.status = data['status']
+    if 'due_date' in data:
+        task.due_date = data['due_date'] or None
+    if 'app_module_id' in data:
+        mid = data['app_module_id']
+        if mid:
+            try:
+                from dev_hub.models import AppModule
+                task.app_module = AppModule.objects.get(id=mid)
+            except Exception:
+                task.app_module = None
+        else:
+            task.app_module = None
+    task.save()
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
+def delete_priority_task(request, task_id):
+    from daily_reports.models import PriorityTask
+    task = get_object_or_404(PriorityTask, id=task_id)
+    task.delete()
     return JsonResponse({'ok': True})
 
 
