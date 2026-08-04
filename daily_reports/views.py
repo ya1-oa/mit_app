@@ -57,6 +57,52 @@ def dashboard(request):
     except Exception:
         modules = []
 
+    # PPR sessions with unsigned rooms — for the session picker
+    ppr_sessions_for_picker = []
+    try:
+        from cps_report.models import CPSReportSession
+        for s in (CPSReportSession.objects
+                  .filter(archived=False)
+                  .exclude(status='error')
+                  .select_related('client')
+                  .prefetch_related('rooms')
+                  .order_by('-updated_at')):
+            unsigned = s.rooms.filter(signature_name='').count()
+            if unsigned:
+                ppr_sessions_for_picker.append({
+                    'id':       s.id,
+                    'name':     s.display_name,
+                    'client':   s.client.pOwner if s.client else '—',
+                    'claim_no': s.client.claimNumber if s.client else '—',
+                    'unsigned': unsigned,
+                    'total':    s.rooms.count(),
+                    'pinned':   s.id in (config.pinned_ppr_sessions or []),
+                })
+    except Exception:
+        pass
+
+    # Leases awaiting signature — for the lease picker
+    leases_for_picker = []
+    try:
+        from docsAppR.models import Lease
+        for l in (Lease.objects
+                  .exclude(status__in=['cancelled', 'completed', 'signed'])
+                  .filter(sent_for_signature_at__isnull=False)
+                  .select_related('client')
+                  .prefetch_related('signature_requests')
+                  .order_by('sent_for_signature_at')):
+            pending = l.signature_requests.filter(status='pending').count()
+            leases_for_picker.append({
+                'id':      l.id,
+                'client':  l.client.pOwner if l.client else '—',
+                'address': ' '.join(filter(None, [l.property_address, l.property_city, l.property_state])),
+                'status':  l.get_status_display(),
+                'pending': pending,
+                'pinned':  l.id in (config.pinned_leases or []),
+            })
+    except Exception:
+        pass
+
     # Live quick stats
     try:
         from cps_report.models import CPSReportSession
@@ -77,16 +123,18 @@ def dashboard(request):
         leases_awaiting = leases_draft = 0
 
     return render(request, 'daily_reports/dashboard.html', {
-        'config':          config,
-        'hp_items':        hp_items,
-        'recent_logs':     recent_logs,
-        'open_tasks':      open_tasks,
-        'priority_tasks':  priority_tasks,
-        'modules_json':    json.dumps(modules),
-        'ppr_unsigned':    ppr_unsigned,
-        'ppr_pending':     ppr_pending,
-        'leases_awaiting': leases_awaiting,
-        'leases_draft':    leases_draft,
+        'config':                  config,
+        'hp_items':                hp_items,
+        'recent_logs':             recent_logs,
+        'open_tasks':              open_tasks,
+        'priority_tasks':          priority_tasks,
+        'modules_json':            json.dumps(modules),
+        'ppr_sessions_json':       json.dumps(ppr_sessions_for_picker),
+        'leases_json':             json.dumps(leases_for_picker),
+        'ppr_unsigned':            ppr_unsigned,
+        'ppr_pending':             ppr_pending,
+        'leases_awaiting':         leases_awaiting,
+        'leases_draft':            leases_draft,
     })
 
 
@@ -240,6 +288,21 @@ def resolve_item(request, item_id):
     item.is_resolved = True
     item.resolved_at = timezone.now()
     item.save(update_fields=['is_resolved', 'resolved_at'])
+    return JsonResponse({'ok': True})
+
+
+@login_required
+@require_POST
+def save_pinned(request):
+    """AJAX: save pinned PPR session and lease selections."""
+    config = _get_or_create_config()
+    try:
+        data = json.loads(request.body)
+    except Exception:
+        return JsonResponse({'error': 'Invalid JSON'}, status=400)
+    config.pinned_ppr_sessions = [int(x) for x in data.get('ppr_sessions', []) if x]
+    config.pinned_leases       = [int(x) for x in data.get('leases', []) if x]
+    config.save(update_fields=['pinned_ppr_sessions', 'pinned_leases'])
     return JsonResponse({'ok': True})
 
 

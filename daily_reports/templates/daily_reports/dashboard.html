@@ -326,6 +326,61 @@
 
     </div>
   </div>
+
+  <!-- ── Report Content Selector ──────────────────────────────────────────── -->
+  <div class="row g-3 mt-1">
+    <div class="col-12">
+      <div class="card border-0 shadow-sm">
+        <div class="card-header d-flex justify-content-between align-items-center py-2"
+             style="cursor:pointer;" onclick="togglePicker()">
+          <span style="font-size:13px;font-weight:600;">
+            <i class="fas fa-sliders-h me-2 text-secondary"></i>Report Content — Pin PPR Sessions &amp; Leases
+          </span>
+          <div class="d-flex align-items-center gap-2">
+            <span class="badge bg-secondary" id="pinned-count-badge">0 pinned</span>
+            <i class="fas fa-chevron-down text-muted" id="picker-chevron"></i>
+          </div>
+        </div>
+        <div id="picker-body" style="display:none;">
+          <div class="row g-0">
+
+            <!-- PPR Sessions -->
+            <div class="col-md-6 border-end">
+              <div class="px-3 pt-3 pb-2 border-bottom d-flex justify-content-between align-items-center">
+                <span class="fw-bold" style="font-size:12px;">PPR Sessions with Unsigned Rooms</span>
+                <span class="text-muted" style="font-size:11px;">Pin to feature details in report</span>
+              </div>
+              <div id="ppr-picker-list" style="max-height:320px;overflow-y:auto;">
+                <div class="p-3 text-muted text-center small" id="ppr-picker-empty">Loading…</div>
+              </div>
+            </div>
+
+            <!-- Leases -->
+            <div class="col-md-6">
+              <div class="px-3 pt-3 pb-2 border-bottom d-flex justify-content-between align-items-center">
+                <span class="fw-bold" style="font-size:12px;">Leases Awaiting Signatures</span>
+                <span class="text-muted" style="font-size:11px;">Pin to feature details in report</span>
+              </div>
+              <div id="lease-picker-list" style="max-height:320px;overflow-y:auto;">
+                <div class="p-3 text-muted text-center small" id="lease-picker-empty">Loading…</div>
+              </div>
+            </div>
+
+          </div>
+          <div class="px-3 py-2 border-top d-flex justify-content-end gap-2">
+            <span class="text-muted me-auto" style="font-size:11px;align-self:center;">
+              Unpinned items appear as compact summary lines in the report.
+            </span>
+            <button class="btn btn-sm btn-outline-secondary" onclick="togglePicker()">Close</button>
+            <button class="btn btn-sm btn-primary" onclick="savePinned()" style="background:#7c3aed;border-color:#7c3aed;">
+              <i class="fas fa-save me-1"></i> Save Selections
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
 </div>
 
 <!-- Flag Item Modal -->
@@ -583,5 +638,105 @@ function submitFlag() {
 document.getElementById('pt-title').addEventListener('keydown', e => {
   if (e.key === 'Enter') { e.preventDefault(); createTask(); }
 });
+
+// ── PPR / Lease picker ────────────────────────────────────────────────────────
+const PPR_SESSIONS = {{ ppr_sessions_json|safe }};
+const LEASES       = {{ leases_json|safe }};
+
+function togglePicker() {
+  const body    = document.getElementById('picker-body');
+  const chevron = document.getElementById('picker-chevron');
+  const open    = body.style.display !== 'none';
+  body.style.display = open ? 'none' : 'block';
+  chevron.classList.toggle('fa-chevron-down', open);
+  chevron.classList.toggle('fa-chevron-up',   !open);
+  if (!open) renderPicker();
+}
+
+function renderPicker() {
+  // PPR
+  const pprList = document.getElementById('ppr-picker-list');
+  if (PPR_SESSIONS.length === 0) {
+    pprList.innerHTML = '<div class="p-3 text-muted text-center small">No sessions with unsigned rooms.</div>';
+  } else {
+    pprList.innerHTML = PPR_SESSIONS.map(s => `
+      <label class="d-flex align-items-start gap-2 px-3 py-2 border-bottom ppr-pick-row" style="cursor:pointer;margin:0;">
+        <input type="checkbox" class="form-check-input mt-1 ppr-check" value="${s.id}" ${s.pinned ? 'checked' : ''}>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;">${s.client}</div>
+          <div style="font-size:11px;color:#64748b;">Claim #${s.claim_no} · ${s.name}</div>
+          <div style="font-size:11px;">
+            <span style="color:#dc2626;font-weight:bold;">${s.unsigned}</span>
+            <span style="color:#64748b;">/ ${s.total} rooms unsigned</span>
+          </div>
+        </div>
+        ${s.pinned ? '<span style="font-size:10px;color:#7c3aed;font-weight:600;">PINNED</span>' : ''}
+      </label>`).join('');
+  }
+
+  // Leases
+  const leaseList = document.getElementById('lease-picker-list');
+  if (LEASES.length === 0) {
+    leaseList.innerHTML = '<div class="p-3 text-muted text-center small">No leases awaiting signatures.</div>';
+  } else {
+    leaseList.innerHTML = LEASES.map(l => `
+      <label class="d-flex align-items-start gap-2 px-3 py-2 border-bottom" style="cursor:pointer;margin:0;">
+        <input type="checkbox" class="form-check-input mt-1 lease-check" value="${l.id}" ${l.pinned ? 'checked' : ''}>
+        <div style="flex:1;min-width:0;">
+          <div style="font-size:13px;font-weight:600;">${l.client}</div>
+          <div style="font-size:11px;color:#64748b;">${l.address || '—'}</div>
+          <div style="font-size:11px;">
+            <span style="color:#dc2626;font-weight:bold;">${l.pending}</span>
+            <span style="color:#64748b;"> pending · ${l.status}</span>
+          </div>
+        </div>
+        ${l.pinned ? '<span style="font-size:10px;color:#7c3aed;font-weight:600;">PINNED</span>' : ''}
+      </label>`).join('');
+  }
+
+  updatePinnedBadge();
+}
+
+function updatePinnedBadge() {
+  const pprPinned   = document.querySelectorAll('.ppr-check:checked').length;
+  const leasePinned = document.querySelectorAll('.lease-check:checked').length;
+  document.getElementById('pinned-count-badge').textContent =
+    (pprPinned + leasePinned) + ' pinned';
+}
+
+document.addEventListener('change', e => {
+  if (e.target.classList.contains('ppr-check') || e.target.classList.contains('lease-check')) {
+    updatePinnedBadge();
+  }
+});
+
+function savePinned() {
+  const pprIds   = [...document.querySelectorAll('.ppr-check:checked')].map(el => parseInt(el.value));
+  const leaseIds = [...document.querySelectorAll('.lease-check:checked')].map(el => parseInt(el.value));
+  fetch("{% url 'daily_reports:daily_reports_save_pinned' %}", {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ ppr_sessions: pprIds, leases: leaseIds }),
+  })
+  .then(r => r.json())
+  .then(d => {
+    if (d.ok) {
+      updatePinnedBadge();
+      // Flash the save button green briefly
+      const btn = event.target;
+      const orig = btn.innerHTML;
+      btn.innerHTML = '<i class="fas fa-check me-1"></i> Saved';
+      btn.style.background = '#16a34a';
+      btn.style.borderColor = '#16a34a';
+      setTimeout(() => { btn.innerHTML = orig; btn.style.background = '#7c3aed'; btn.style.borderColor = '#7c3aed'; }, 1800);
+    }
+  });
+}
+
+// Init pinned badge on load
+(function() {
+  const pinned = PPR_SESSIONS.filter(s => s.pinned).length + LEASES.filter(l => l.pinned).length;
+  document.getElementById('pinned-count-badge').textContent = pinned + ' pinned';
+})();
 </script>
 {% endblock %}

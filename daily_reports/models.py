@@ -34,6 +34,12 @@ class DailyReportConfig(models.Model):
     include_high_priority   = models.BooleanField(default=True, verbose_name='High Priority Tracked Items')
     include_priority_tasks  = models.BooleanField(default=True, verbose_name='Priority Tasks (L1/L2/L3)')
 
+    # Pinned sessions/leases to feature in the report (empty = show summary count only)
+    pinned_ppr_sessions = models.JSONField(default=list, blank=True,
+        help_text='List of CPSReportSession IDs to feature in the daily report')
+    pinned_leases       = models.JSONField(default=list, blank=True,
+        help_text='List of Lease IDs to feature in the daily report')
+
     # ── Attachments ───────────────────────────────────────────────────────────
     attach_ppr_pdf    = models.BooleanField(
         default=False,

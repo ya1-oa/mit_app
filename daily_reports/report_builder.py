@@ -151,74 +151,116 @@ def _section_priority_tasks(config) -> tuple[str, int, int]:
 
 
 def _section_ppr_signatures(config) -> tuple[str, int, int]:
-    """Returns (html, total_items, urgent_count)."""
-    from cps_report.models import CPSReportSession, CPSReportRoom
+    """Compact per-session summary. Pinned sessions get a detail card; rest get a count line."""
+    from cps_report.models import CPSReportSession
     esc = config.escalation_days
+    pinned_ids = list(getattr(config, 'pinned_ppr_sessions', None) or [])
 
-    # Sessions with at least one unsigned room
-    sessions = (
+    all_sessions = (
         CPSReportSession.objects
         .filter(archived=False)
         .exclude(status='error')
-        .prefetch_related('rooms__items', 'client')
+        .select_related('client')
+        .prefetch_related('rooms')
         .order_by('-updated_at')
     )
-    # Filter to only sessions with any unsigned room
-    sessions = [s for s in sessions if s.rooms.filter(signature_name='').exists()]
+    # Only sessions with at least one unsigned room
+    all_sessions = [s for s in all_sessions if s.rooms.filter(signature_name='').exists()]
 
-    if not sessions:
+    if not all_sessions:
         return '<div class="no-items">✅ All PPR rooms are signed.</div>', 0, 0
 
-    total_rooms = urgent = 0
+    total_unsigned = sum(s.rooms.filter(signature_name='').count() for s in all_sessions)
+    total_sessions = len(all_sessions)
+    urgent = 0
     cards = []
-    for session in sessions:
-        rooms = list(session.rooms.all().order_by('order', 'room_number'))
-        unsigned = [r for r in rooms if not r.signature_name]
-        total_rooms += len(unsigned)
 
-        days = _days_ago(session.updated_at)
-        if days >= esc:
-            urgent += len(unsigned)
+    if pinned_ids:
+        # Feature pinned sessions with detail cards
+        pinned = [s for s in all_sessions if s.id in pinned_ids]
+        unpinned_count = total_sessions - len(pinned)
+        unpinned_unsigned = sum(s.rooms.filter(signature_name='').count()
+                                for s in all_sessions if s.id not in pinned_ids)
 
-        rows = []
-        for room in rooms:
-            if room.signature_name:
-                rows.append(
-                    f'<div class="item-row">'
-                    f'<span class="tag-signed">✔</span>'
-                    f'<span>{room.room_number} {room.room_name}</span>'
-                    f'<span class="badge-ok">Signed — {room.signature_name}</span>'
-                    f'</div>'
+        for session in pinned:
+            rooms = list(session.rooms.all().order_by('order', 'room_number'))
+            unsigned_rooms = [r for r in rooms if not r.signature_name]
+            signed_count   = len(rooms) - len(unsigned_rooms)
+            days = _days_ago(session.updated_at)
+            if days >= esc:
+                urgent += len(unsigned_rooms)
+
+            status_color = '#b91c1c' if days >= esc else '#64748b'
+            demand_html = ''
+            if days >= esc:
+                demand_html = (
+                    f'<div class="demand">⚠ DEMAND: Unsigned for <strong>{days} days</strong>. '
+                    f'Immediate signature collection required.</div>'
                 )
-            else:
-                rows.append(
-                    f'<div class="item-row">'
-                    f'<span class="tag-unsigned">✗</span>'
-                    f'<span><strong>{room.room_number} {room.room_name}</strong></span>'
-                    f'<span class="badge-urgent">UNSIGNED</span>'
-                    f'{_days_badge(days, esc)}'
-                    f'</div>'
-                )
-
-        demand_html = ''
-        if days >= esc:
-            demand_html = (
-                f'<div class="demand">⚠ DEMAND: This session has had unsigned rooms for '
-                f'<strong>{days} days</strong>. Immediate signature collection required.</div>'
+            unsigned_names = ', '.join(
+                f'{r.room_number} {r.room_name}'.strip() for r in unsigned_rooms
+            ) or '—'
+            cards.append(
+                f'<div class="claim-card" style="border-left:4px solid {status_color};">'
+                f'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+                f'<div>'
+                f'<div class="claim-name">{session.client.pOwner or "—"}</div>'
+                f'<div class="claim-sub">Claim #{session.client.claimNumber or "—"} &nbsp;·&nbsp; '
+                f'{session.display_name} &nbsp;·&nbsp; {_days_badge(days, esc)}</div>'
+                f'</div>'
+                f'<span class="badge-urgent">{len(unsigned_rooms)} UNSIGNED</span>'
+                f'</div>'
+                f'<div style="font-size:12px;margin-top:6px;">'
+                f'<strong>{signed_count}/{len(rooms)}</strong> rooms signed &nbsp;·&nbsp; '
+                f'Pending: {unsigned_names}'
+                f'</div>'
+                f'{demand_html}'
+                f'</div>'
             )
 
+        if unpinned_count:
+            cards.append(
+                f'<div class="no-items" style="color:#64748b;font-style:italic;">'
+                f'+ {unpinned_count} more session(s) with {unpinned_unsigned} unsigned room(s) '
+                f'not featured — pin them on the dashboard to include details.'
+                f'</div>'
+            )
+    else:
+        # No pinned sessions — show one summary line per session
+        for session in all_sessions:
+            rooms = list(session.rooms.all())
+            unsigned_rooms = [r for r in rooms if not r.signature_name]
+            days = _days_ago(session.updated_at)
+            if days >= esc:
+                urgent += len(unsigned_rooms)
+            status_color = '#b91c1c' if days >= esc else '#e2e8f0'
+            demand_html = ''
+            if days >= esc:
+                demand_html = (
+                    f'<div class="demand" style="margin-top:4px;">⚠ Unsigned for '
+                    f'<strong>{days} days</strong> — follow up immediately.</div>'
+                )
+            cards.append(
+                f'<div class="claim-card" style="border-left:3px solid {status_color};padding:8px 14px;">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                f'<div>'
+                f'<span style="font-weight:bold;font-size:13px;">{session.client.pOwner or "—"}</span>'
+                f'<span class="claim-sub" style="display:inline;margin-left:8px;">'
+                f'#{session.client.claimNumber or "—"} &nbsp;·&nbsp; {session.display_name}</span>'
+                f'</div>'
+                f'<span class="badge-urgent" style="white-space:nowrap;">'
+                f'{len(unsigned_rooms)}/{len(rooms)} unsigned</span>'
+                f'</div>'
+                f'{demand_html}'
+                f'</div>'
+            )
         cards.append(
-            f'<div class="claim-card">'
-            f'<div class="claim-name">{session.client.pOwner or "—"}</div>'
-            f'<div class="claim-sub">Claim #{session.client.claimNumber or "—"} &nbsp;·&nbsp; '
-            f'PPR Run: {session.display_name} &nbsp;·&nbsp; Status: {session.status}</div>'
-            f'{demand_html}'
-            f'{"".join(rows)}'
+            f'<div class="no-items" style="color:#64748b;font-style:italic;">'
+            f'Pin specific sessions on the dashboard to expand their details in the report.'
             f'</div>'
         )
 
-    html = ''.join(cards)
-    return html, total_rooms, urgent
+    return ''.join(cards), total_unsigned, urgent
 
 
 def _section_ppr_pricing(config) -> tuple[str, int, int]:
@@ -286,11 +328,12 @@ def _section_ppr_pricing(config) -> tuple[str, int, int]:
 
 
 def _section_lease_signatures(config) -> tuple[str, int, int]:
-    """Leases in 'sent_for_signature' status with pending signer requests."""
-    from docsAppR.models import Lease, LeaseSignatureRequest
+    """Compact lease signature summary. Pinned leases get a detail card; rest get a summary line."""
+    from docsAppR.models import Lease
     esc = config.escalation_days
+    pinned_ids = list(getattr(config, 'pinned_leases', None) or [])
 
-    leases = (
+    all_leases = (
         Lease.objects
         .exclude(status__in=['cancelled', 'completed', 'signed'])
         .filter(sent_for_signature_at__isnull=False)
@@ -299,70 +342,99 @@ def _section_lease_signatures(config) -> tuple[str, int, int]:
         .order_by('sent_for_signature_at')
     )
 
-    if not leases.exists():
+    if not all_leases.exists():
         return '<div class="no-items">✅ No leases awaiting signatures.</div>', 0, 0
 
     total = urgent = 0
     cards = []
-    for lease in leases:
-        reqs = list(lease.signature_requests.all())
-        pending_reqs = [r for r in reqs if r.status == 'pending']
-        total += len(pending_reqs)
-        days = _days_ago(lease.sent_for_signature_at)
-        if days >= esc:
-            urgent += len(pending_reqs)
 
-        rows = []
-        for req in reqs:
-            if req.status == 'signed':
-                rows.append(
-                    f'<div class="item-row">'
-                    f'<span class="tag-signed">✔</span>'
-                    f'<span>{req.get_signer_role_display()} — {req.signer_name}</span>'
-                    f'<span class="badge-ok">Signed</span>'
-                    f'</div>'
-                )
-            elif req.status == 'pending':
-                rows.append(
-                    f'<div class="item-row">'
-                    f'<span class="tag-unsigned">✗</span>'
-                    f'<span><strong>{req.get_signer_role_display()} — {req.signer_name}</strong> ({req.signer_email})</span>'
-                    f'<span class="badge-urgent">PENDING</span>'
-                    f'{_days_badge(days, esc)}'
-                    f'</div>'
-                )
-            else:
-                rows.append(
-                    f'<div class="item-row">'
-                    f'<span>·</span>'
-                    f'<span>{req.get_signer_role_display()} — {req.signer_name}</span>'
-                    f'<span class="badge-pending">{req.status.title()}</span>'
-                    f'</div>'
-                )
+    if pinned_ids:
+        pinned   = [l for l in all_leases if l.id in pinned_ids]
+        unpinned = [l for l in all_leases if l.id not in pinned_ids]
 
-        demand_html = ''
-        if days >= esc and pending_reqs:
-            names = ', '.join(r.signer_name for r in pending_reqs)
-            demand_html = (
-                f'<div class="demand">⚠ DEMAND: Lease sent {days} days ago. '
-                f'Still waiting on: <strong>{names}</strong>. Follow up immediately.</div>'
+        for lease in pinned:
+            reqs         = list(lease.signature_requests.all())
+            pending_reqs = [r for r in reqs if r.status == 'pending']
+            total += len(pending_reqs)
+            days = _days_ago(lease.sent_for_signature_at)
+            if days >= esc:
+                urgent += len(pending_reqs)
+
+            signed_names  = [r.signer_name for r in reqs if r.status == 'signed']
+            pending_names = [r.signer_name for r in pending_reqs]
+            addr = ' '.join(filter(None, [lease.property_address, lease.property_city, lease.property_state]))
+            status_color = '#b91c1c' if days >= esc else '#64748b'
+            demand_html = ''
+            if days >= esc and pending_reqs:
+                names_str = ', '.join(pending_names)
+                demand_html = (
+                    f'<div class="demand">⚠ DEMAND: Sent {days} days ago. '
+                    f'Waiting on: <strong>{names_str}</strong>. Follow up immediately.</div>'
+                )
+            signed_str  = (', '.join(signed_names)  or 'none') if signed_names  else 'none'
+            pending_str = (', '.join(pending_names) or 'none') if pending_names else 'none'
+            cards.append(
+                f'<div class="claim-card" style="border-left:4px solid {status_color};">'
+                f'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
+                f'<div>'
+                f'<div class="claim-name">{lease.client.pOwner if lease.client else "—"}</div>'
+                f'<div class="claim-sub">{addr or "—"} &nbsp;·&nbsp; Sent: '
+                f'{lease.sent_for_signature_at.strftime("%b %d") if lease.sent_for_signature_at else "—"}'
+                f' &nbsp;·&nbsp; {_days_badge(days, esc)}</div>'
+                f'</div>'
+                f'<span class="badge-urgent">{len(pending_reqs)} PENDING</span>'
+                f'</div>'
+                f'<div style="font-size:12px;margin-top:6px;">'
+                f'<span class="tag-signed">✔</span> Signed: {signed_str} &nbsp;&nbsp;'
+                f'<span class="tag-unsigned">✗</span> Pending: {pending_str}'
+                f'</div>'
+                f'{demand_html}'
+                f'</div>'
             )
 
-        addr = ' '.join(filter(None, [
-            lease.property_address,
-            lease.property_city,
-            lease.property_state,
-        ]))
+        if unpinned:
+            u_pending = sum(len([r for r in l.signature_requests.all() if r.status == 'pending'])
+                            for l in unpinned)
+            total += u_pending
+            cards.append(
+                f'<div class="no-items" style="color:#64748b;font-style:italic;">'
+                f'+ {len(unpinned)} more lease(s) with {u_pending} pending signature(s) '
+                f'— pin them on the dashboard to include details.'
+                f'</div>'
+            )
+    else:
+        for lease in all_leases:
+            reqs         = list(lease.signature_requests.all())
+            pending_reqs = [r for r in reqs if r.status == 'pending']
+            total += len(pending_reqs)
+            days = _days_ago(lease.sent_for_signature_at)
+            if days >= esc:
+                urgent += len(pending_reqs)
+            status_color = '#b91c1c' if days >= esc else '#e2e8f0'
+            addr = ' '.join(filter(None, [lease.property_address, lease.property_city, lease.property_state]))
+            pending_str = ', '.join(r.signer_name for r in pending_reqs) or '—'
+            demand_html = ''
+            if days >= esc and pending_reqs:
+                demand_html = (
+                    f'<div class="demand" style="margin-top:4px;">'
+                    f'⚠ Sent {days} days ago — follow up immediately.</div>'
+                )
+            cards.append(
+                f'<div class="claim-card" style="border-left:3px solid {status_color};padding:8px 14px;">'
+                f'<div style="display:flex;justify-content:space-between;align-items:center;">'
+                f'<div>'
+                f'<span style="font-weight:bold;font-size:13px;">{lease.client.pOwner if lease.client else "—"}</span>'
+                f'<span class="claim-sub" style="display:inline;margin-left:8px;">{addr or "—"}</span>'
+                f'</div>'
+                f'<span class="badge-urgent" style="white-space:nowrap;">{len(pending_reqs)} pending</span>'
+                f'</div>'
+                f'<div style="font-size:12px;margin-top:4px;color:#475569;">Waiting on: {pending_str}</div>'
+                f'{demand_html}'
+                f'</div>'
+            )
         cards.append(
-            f'<div class="claim-card">'
-            f'<div class="claim-name">{lease.client.pOwner if lease.client else "—"}</div>'
-            f'<div class="claim-sub">'
-            f'Property: {addr or "—"} &nbsp;·&nbsp; '
-            f'Status: {_fmt_status(lease.status)} &nbsp;·&nbsp; '
-            f'Sent: {lease.sent_for_signature_at.strftime("%b %d, %Y") if lease.sent_for_signature_at else "—"}'
-            f'</div>'
-            f'{demand_html}'
-            f'{"".join(rows)}'
+            f'<div class="no-items" style="color:#64748b;font-style:italic;">'
+            f'Pin specific leases on the dashboard to expand their details.'
             f'</div>'
         )
 
@@ -453,7 +525,7 @@ def _section_high_priority(config) -> tuple[str, int, int]:
     items = items.filter(is_resolved=False)
 
     if not items.exists():
-        return '<div class="no-items">No high priority items currently flagged.</div>', 0, 0
+        return '', 0, 0  # Hide section entirely when empty
 
     total = items.count()
     esc = config.escalation_days
@@ -572,14 +644,15 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
 
     if config.include_high_priority:
         body, count, urg = _section_high_priority(config)
-        grand_total += count
-        grand_urgent += urg
-        sections_html += (
-            f'<div class="section">'
-            f'<div class="section-title" style="background:#b91c1c;">⚡ HIGH PRIORITY TRACKED ITEMS'
-            f'<span class="count">{count} active</span></div>'
-            f'{body}</div>'
-        )
+        if body:  # only render section when there are actual items
+            grand_total += count
+            grand_urgent += urg
+            sections_html += (
+                f'<div class="section">'
+                f'<div class="section-title" style="background:#b91c1c;">⚡ HIGH PRIORITY TRACKED ITEMS'
+                f'<span class="count">{count} active</span></div>'
+                f'{body}</div>'
+            )
 
     urgent_text = (
         f'<strong>{grand_urgent} URGENT</strong> (pending &gt;{esc} days) &nbsp;|&nbsp; '
