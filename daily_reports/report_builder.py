@@ -479,6 +479,14 @@ def _section_high_priority(config) -> tuple[str, int, int]:
                 f'<strong>{days} days</strong> with no resolution. Immediate action required.</div>'
             )
 
+        note_html = (
+            f'<div style="font-size:12px;color:#0f172a;margin:4px 0;">{item.priority_note}</div>'
+            if item.priority_note else ''
+        )
+        resolution_html = (
+            f'<div style="font-size:11px;color:#64748b;">Needs: {item.resolution_criteria}</div>'
+            if item.resolution_criteria else ''
+        )
         cards.append(
             f'<div class="claim-card" style="border-left:3px solid #e11d48;">'
             f'<div class="claim-name">⚡ {item.client.pOwner or "—"}</div>'
@@ -486,8 +494,8 @@ def _section_high_priority(config) -> tuple[str, int, int]:
             f'Claim #{item.client.claimNumber or "—"} &nbsp;·&nbsp; {item.get_item_type_display()} &nbsp;·&nbsp; '
             f'Flagged {days}d ago &nbsp;·&nbsp; {sub_info}'
             f'</div>'
-            f'{"<div style=\"font-size:12px;color:#0f172a;margin:4px 0;\">"+item.priority_note+"</div>" if item.priority_note else ""}'
-            f'{"<div style=\"font-size:11px;color:#64748b;\">Needs: "+item.resolution_criteria+"</div>" if item.resolution_criteria else ""}'
+            f'{note_html}'
+            f'{resolution_html}'
             f'{demand_html}'
             f'</div>'
         )
