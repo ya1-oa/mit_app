@@ -63,6 +63,63 @@ _BASE = """
 """
 
 
+def _dedup_sig_requests(reqs):
+    """
+    Deduplicate signature requests by signer_role — the most recently sent
+    request for each role is the active one.
+
+    Why: re-sending a signing link creates a new LeaseSignatureRequest row
+    with a new token for the same party (same role/email).  A lease has at
+    most 3 parties (tenant / landlord / re_company), so at most 3 active
+    requests.  We want to show 3 parties max, not N sends.
+
+    Returns a list of LeaseSignatureRequest objects, one per role, each
+    annotated with ._resend_count (int, ≥1) so the UI can flag re-sends.
+    """
+    from collections import defaultdict
+    by_role = defaultdict(list)
+    for r in reqs:
+        by_role[r.signer_role].append(r)
+    result = []
+    for role_reqs in by_role.values():
+        active = max(role_reqs, key=lambda r: r.sent_at)
+        active._resend_count = len(role_reqs)
+        result.append(active)
+    return result
+
+
+def _render_description(text: str) -> str:
+    """
+    Convert a plain-text description into structured HTML.
+    Lines starting with  *  or  •  become <li> bullet points.
+    Other non-empty lines become <p> paragraphs.
+    """
+    if not text:
+        return ''
+    lines = text.split('\n')
+    parts = []
+    in_list = False
+    for line in lines:
+        s = line.strip()
+        if s.startswith('* ') or s.startswith('• ') or s.startswith('- '):
+            if not in_list:
+                parts.append('<ul style="margin:4px 0 4px 14px;padding:0;">')
+                in_list = True
+            bullet_text = s[2:]
+            parts.append(f'<li style="margin:2px 0;">{bullet_text}</li>')
+        else:
+            if in_list:
+                parts.append('</ul>')
+                in_list = False
+            if s:
+                parts.append(
+                    f'<p style="margin:3px 0;color:#475569;font-size:12px;">{s}</p>'
+                )
+    if in_list:
+        parts.append('</ul>')
+    return ''.join(parts)
+
+
 def _days_ago(dt) -> int:
     """Days since a datetime (timezone-aware or naive)."""
     if dt is None:
@@ -130,9 +187,10 @@ def _section_priority_tasks(config) -> tuple[str, int, int]:
             f'<span style="font-size:10px;color:#dc2626;margin-left:6px;">'
             f'Due {t.due_date}</span>'
         ) if t.due_date else ''
+        desc_rendered = _render_description(t.description)
         desc_str = (
-            f'<div style="font-size:12px;color:#475569;margin-top:4px;">{t.description}</div>'
-        ) if t.description else ''
+            f'<div style="font-size:12px;color:#475569;margin-top:4px;">{desc_rendered}</div>'
+        ) if desc_rendered else ''
         status_label = {'open': 'Open', 'in_progress': 'In Progress'}.get(t.status, t.status)
         cards.append(
             f'<div class="claim-card" style="border-left:4px solid {color};background:{bg};">'
@@ -328,12 +386,19 @@ def _section_ppr_pricing(config) -> tuple[str, int, int]:
 
 
 def _section_lease_signatures(config) -> tuple[str, int, int]:
-    """Compact lease signature summary. Pinned leases get a detail card; rest get a summary line."""
+    """
+    Lease signature summary, deduplicated by signer role.
+
+    A lease has at most 3 parties (tenant / landlord / re_company).
+    Re-sending a link creates a new LeaseSignatureRequest row but the party
+    count stays at 3.  We show the latest request per role and flag any role
+    that was sent more than once with a "(re-sent Nx)" note.
+    """
     from docsAppR.models import Lease
     esc = config.escalation_days
-    pinned_ids = list(getattr(config, 'pinned_leases', None) or [])
+    pinned_ids = [str(x) for x in (getattr(config, 'pinned_leases', None) or [])]
 
-    all_leases = (
+    all_leases = list(
         Lease.objects
         .exclude(status__in=['cancelled', 'completed', 'signed'])
         .filter(sent_for_signature_at__isnull=False)
@@ -342,37 +407,78 @@ def _section_lease_signatures(config) -> tuple[str, int, int]:
         .order_by('sent_for_signature_at')
     )
 
-    if not all_leases.exists():
+    if not all_leases:
         return '<div class="no-items">✅ No leases awaiting signatures.</div>', 0, 0
+
+    ROLE_LABEL = {'tenant': 'Tenant', 'landlord': 'Landlord', 're_company': 'RE Company'}
+
+    def _signer_rows(active_reqs):
+        """Build signed / pending rows from the deduplicated request list."""
+        signed_parts  = []
+        pending_parts = []
+        for r in sorted(active_reqs, key=lambda x: x.signer_role):
+            role_label = ROLE_LABEL.get(r.signer_role, r.signer_role)
+            resend_tag = (
+                f' <span style="font-size:9px;color:#f59e0b;font-weight:bold;">'
+                f'(re-sent {r._resend_count}×)</span>'
+            ) if r._resend_count > 1 else ''
+            if r.status == 'signed':
+                sent_date = r.signed_at.strftime('%b %d') if r.signed_at else '—'
+                signed_parts.append(
+                    f'<span class="tag-signed">✔ {role_label}: {r.signer_name}'
+                    f'<span style="font-size:9px;color:#64748b;margin-left:4px;">'
+                    f'signed {sent_date}</span></span>'
+                )
+            else:
+                status_icon = {'viewed': '👁', 'declined': '❌', 'expired': '⌛'}.get(r.status, '⏳')
+                pending_parts.append(
+                    f'<span class="tag-unsigned">{status_icon} {role_label}: {r.signer_name}'
+                    f'{resend_tag}</span>'
+                )
+        return signed_parts, pending_parts
 
     total = urgent = 0
     cards = []
 
     if pinned_ids:
-        pinned   = [l for l in all_leases if l.id in pinned_ids]
-        unpinned = [l for l in all_leases if l.id not in pinned_ids]
+        pinned   = [l for l in all_leases if str(l.id) in pinned_ids]
+        unpinned = [l for l in all_leases if str(l.id) not in pinned_ids]
 
         for lease in pinned:
-            reqs         = list(lease.signature_requests.all())
-            pending_reqs = [r for r in reqs if r.status == 'pending']
-            total += len(pending_reqs)
-            days = _days_ago(lease.sent_for_signature_at)
+            all_reqs    = list(lease.signature_requests.all())
+            active_reqs = _dedup_sig_requests(all_reqs)
+            pending_active = [r for r in active_reqs if r.status != 'signed']
+            total  += len(pending_active)
+            days    = _days_ago(lease.sent_for_signature_at)
             if days >= esc:
-                urgent += len(pending_reqs)
+                urgent += len(pending_active)
 
-            signed_names  = [r.signer_name for r in reqs if r.status == 'signed']
-            pending_names = [r.signer_name for r in pending_reqs]
-            addr = ' '.join(filter(None, [lease.property_address, lease.property_city, lease.property_state]))
+            signed_parts, pending_parts = _signer_rows(active_reqs)
+            addr         = ' '.join(filter(None, [lease.property_address,
+                                                   lease.property_city, lease.property_state]))
             status_color = '#b91c1c' if days >= esc else '#64748b'
+
             demand_html = ''
-            if days >= esc and pending_reqs:
-                names_str = ', '.join(pending_names)
+            if days >= esc and pending_active:
+                pending_names = ', '.join(r.signer_name for r in pending_active)
                 demand_html = (
                     f'<div class="demand">⚠ DEMAND: Sent {days} days ago. '
-                    f'Waiting on: <strong>{names_str}</strong>. Follow up immediately.</div>'
+                    f'Waiting on: <strong>{pending_names}</strong>. '
+                    f'Follow up immediately.</div>'
                 )
-            signed_str  = (', '.join(signed_names)  or 'none') if signed_names  else 'none'
-            pending_str = (', '.join(pending_names) or 'none') if pending_names else 'none'
+
+            signer_html = ''
+            if signed_parts:
+                signer_html += (
+                    f'<div style="font-size:11px;margin-top:6px;display:flex;gap:12px;flex-wrap:wrap;">'
+                    + '&nbsp;&nbsp;'.join(signed_parts) + '</div>'
+                )
+            if pending_parts:
+                signer_html += (
+                    f'<div style="font-size:11px;margin-top:4px;display:flex;gap:12px;flex-wrap:wrap;">'
+                    + '&nbsp;&nbsp;'.join(pending_parts) + '</div>'
+                )
+
             cards.append(
                 f'<div class="claim-card" style="border-left:4px solid {status_color};">'
                 f'<div style="display:flex;justify-content:space-between;align-items:flex-start;">'
@@ -382,39 +488,46 @@ def _section_lease_signatures(config) -> tuple[str, int, int]:
                 f'{lease.sent_for_signature_at.strftime("%b %d") if lease.sent_for_signature_at else "—"}'
                 f' &nbsp;·&nbsp; {_days_badge(days, esc)}</div>'
                 f'</div>'
-                f'<span class="badge-urgent">{len(pending_reqs)} PENDING</span>'
+                f'<span class="badge-urgent">{len(pending_active)}/3 UNSIGNED</span>'
                 f'</div>'
-                f'<div style="font-size:12px;margin-top:6px;">'
-                f'<span class="tag-signed">✔</span> Signed: {signed_str} &nbsp;&nbsp;'
-                f'<span class="tag-unsigned">✗</span> Pending: {pending_str}'
-                f'</div>'
+                f'{signer_html}'
                 f'{demand_html}'
                 f'</div>'
             )
 
         if unpinned:
-            u_pending = sum(len([r for r in l.signature_requests.all() if r.status == 'pending'])
-                            for l in unpinned)
+            u_pending = 0
+            for l in unpinned:
+                active = _dedup_sig_requests(list(l.signature_requests.all()))
+                u_pending += sum(1 for r in active if r.status != 'signed')
             total += u_pending
             cards.append(
                 f'<div class="no-items" style="color:#64748b;font-style:italic;">'
-                f'+ {len(unpinned)} more lease(s) with {u_pending} pending signature(s) '
+                f'+ {len(unpinned)} more lease(s) with {u_pending} unsigned party/parties '
                 f'— pin them on the dashboard to include details.'
                 f'</div>'
             )
     else:
         for lease in all_leases:
-            reqs         = list(lease.signature_requests.all())
-            pending_reqs = [r for r in reqs if r.status == 'pending']
-            total += len(pending_reqs)
-            days = _days_ago(lease.sent_for_signature_at)
+            all_reqs    = list(lease.signature_requests.all())
+            active_reqs = _dedup_sig_requests(all_reqs)
+            pending_active = [r for r in active_reqs if r.status != 'signed']
+            total  += len(pending_active)
+            days    = _days_ago(lease.sent_for_signature_at)
             if days >= esc:
-                urgent += len(pending_reqs)
+                urgent += len(pending_active)
+
             status_color = '#b91c1c' if days >= esc else '#e2e8f0'
-            addr = ' '.join(filter(None, [lease.property_address, lease.property_city, lease.property_state]))
-            pending_str = ', '.join(r.signer_name for r in pending_reqs) or '—'
+            addr         = ' '.join(filter(None, [lease.property_address,
+                                                   lease.property_city, lease.property_state]))
+            _, pending_parts = _signer_rows(active_reqs)
+            pending_inline = ', '.join(
+                r.signer_name + (f' (re-sent {r._resend_count}×)' if r._resend_count > 1 else '')
+                for r in pending_active
+            ) or '—'
+
             demand_html = ''
-            if days >= esc and pending_reqs:
+            if days >= esc and pending_active:
                 demand_html = (
                     f'<div class="demand" style="margin-top:4px;">'
                     f'⚠ Sent {days} days ago — follow up immediately.</div>'
@@ -423,12 +536,15 @@ def _section_lease_signatures(config) -> tuple[str, int, int]:
                 f'<div class="claim-card" style="border-left:3px solid {status_color};padding:8px 14px;">'
                 f'<div style="display:flex;justify-content:space-between;align-items:center;">'
                 f'<div>'
-                f'<span style="font-weight:bold;font-size:13px;">{lease.client.pOwner if lease.client else "—"}</span>'
+                f'<span style="font-weight:bold;font-size:13px;">'
+                f'{lease.client.pOwner if lease.client else "—"}</span>'
                 f'<span class="claim-sub" style="display:inline;margin-left:8px;">{addr or "—"}</span>'
                 f'</div>'
-                f'<span class="badge-urgent" style="white-space:nowrap;">{len(pending_reqs)} pending</span>'
+                f'<span class="badge-urgent" style="white-space:nowrap;">'
+                f'{len(pending_active)}/3 unsigned</span>'
                 f'</div>'
-                f'<div style="font-size:12px;margin-top:4px;color:#475569;">Waiting on: {pending_str}</div>'
+                f'<div style="font-size:11px;margin-top:4px;color:#475569;">'
+                f'Waiting on: {pending_inline}</div>'
                 f'{demand_html}'
                 f'</div>'
             )

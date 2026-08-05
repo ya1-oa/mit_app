@@ -91,7 +91,7 @@ def dashboard(request):
                   .select_related('client')
                   .prefetch_related('signature_requests')
                   .order_by('sent_for_signature_at')):
-            pending = l.signature_requests.filter(status='pending').count()
+            pending = l.signature_requests.filter(status='pending').values('signer_role').distinct().count()
             lease_id = str(l.id)
             leases_for_picker.append({
                 'id':      lease_id,
