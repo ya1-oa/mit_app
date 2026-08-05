@@ -92,13 +92,14 @@ def dashboard(request):
                   .prefetch_related('signature_requests')
                   .order_by('sent_for_signature_at')):
             pending = l.signature_requests.filter(status='pending').count()
+            lease_id = str(l.id)
             leases_for_picker.append({
-                'id':      l.id,
+                'id':      lease_id,
                 'client':  l.client.pOwner if l.client else '—',
                 'address': ' '.join(filter(None, [l.property_address, l.property_city, l.property_state])),
                 'status':  l.get_status_display(),
                 'pending': pending,
-                'pinned':  l.id in (config.pinned_leases or []),
+                'pinned':  lease_id in [str(x) for x in (config.pinned_leases or [])],
             })
     except Exception:
         pass
@@ -301,7 +302,7 @@ def save_pinned(request):
     except Exception:
         return JsonResponse({'error': 'Invalid JSON'}, status=400)
     config.pinned_ppr_sessions = [int(x) for x in data.get('ppr_sessions', []) if x]
-    config.pinned_leases       = [int(x) for x in data.get('leases', []) if x]
+    config.pinned_leases       = [str(x) for x in data.get('leases', []) if x]
     config.save(update_fields=['pinned_ppr_sessions', 'pinned_leases'])
     return JsonResponse({'ok': True})
 
