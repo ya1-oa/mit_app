@@ -53,12 +53,14 @@ _CATEGORY_KEYWORDS = {
     'double_zipper': ['double zipper', 'dbl zipper'],
     'blower':        ['blower', 'air mover', 'axial', 'centrifugal', 'fan'],
     'wall_cavity':   ['wall cavity', 'injectidry', 'wall dry'],
-    'floor_drying':  ['floor mat', 'floor dry'],
+    'floor_drying':  ['floor mat', 'floor dry', 'drying mat', 'extraction mat'],
+    'hydroxyl':      ['hydroxyl', 'dodhy', 'odor counteract'],
     'heater':        ['heater', 'heat'],
 }
 
-# Stabilization items (require dedicated stabilization photos)
-_STABILIZATION_TYPES = {'dehumidifier', 'air_cleaner', 'zipper_wall', 'double_zipper'}
+# Stabilization items require dedicated stabilization photos showing the equipment
+# connected and running — not just present in the room.
+_STABILIZATION_TYPES = {'dehumidifier', 'air_cleaner', 'zipper_wall', 'double_zipper', 'hydroxyl'}
 
 
 def _categorise(name: str) -> tuple[str, bool]:

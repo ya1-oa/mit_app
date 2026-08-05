@@ -1,0 +1,381 @@
+{% extends "account/base.html" %}
+{% load mit_audit_extras %}
+{% block title %}MIT Reference Photo Library{% endblock %}
+
+{% block extra_css %}
+<style>
+  .ref-sidebar {
+    width: 220px;
+    flex-shrink: 0;
+  }
+  .ref-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+    align-items: start;
+  }
+  .photo-card {
+    background: #fff;
+    border-radius: 10px;
+    box-shadow: 0 1px 4px rgba(0,0,0,.1);
+    overflow: hidden;
+    transition: box-shadow .2s;
+  }
+  .photo-card:hover { box-shadow: 0 4px 14px rgba(0,0,0,.15); }
+  .photo-card.approved { border-left: 4px solid #16a34a; }
+  .photo-img {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    cursor: zoom-in;
+    background: #e2e8f0;
+    display: block;
+  }
+  .photo-body { padding: 12px; }
+  .photo-badge {
+    display: inline-block;
+    padding: 2px 9px;
+    border-radius: 20px;
+    font-size: 11px;
+    font-weight: 600;
+    margin-bottom: 8px;
+  }
+  .badge-pending  { background: #fef3c7; color: #92400e; }
+  .badge-approved { background: #dcfce7; color: #166534; }
+  .cat-select {
+    width: 100%;
+    font-size: 13px;
+    padding: 5px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    margin-bottom: 8px;
+    background: #f8fafc;
+  }
+  .desc-input {
+    width: 100%;
+    font-size: 12px;
+    padding: 5px 8px;
+    border: 1px solid #cbd5e1;
+    border-radius: 6px;
+    resize: vertical;
+    min-height: 56px;
+    margin-bottom: 8px;
+    background: #f8fafc;
+    font-family: inherit;
+  }
+  .photo-actions { display: flex; gap: 6px; }
+  .btn-approve {
+    flex: 1;
+    padding: 6px;
+    border: none;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    background: #16a34a;
+    color: #fff;
+    transition: background .15s;
+  }
+  .btn-approve:hover { background: #15803d; }
+  .btn-approve.approved-state { background: #0f172a; }
+  .btn-reject {
+    padding: 6px 12px;
+    border: 1px solid #e2e8f0;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    background: #fff;
+    color: #64748b;
+    transition: background .15s;
+  }
+  .btn-reject:hover { background: #fee2e2; color: #c62828; border-color: #fca5a5; }
+  .sidebar-cat {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 7px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-size: 13px;
+    color: #334155;
+    text-decoration: none;
+    transition: background .12s;
+  }
+  .sidebar-cat:hover, .sidebar-cat.active { background: #e0f2fe; color: #1e40af; }
+  .sidebar-badge {
+    background: #dbeafe;
+    color: #1e40af;
+    padding: 1px 7px;
+    border-radius: 10px;
+    font-size: 11px;
+    font-weight: 700;
+  }
+  .lightbox {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.85);
+    z-index: 9999;
+    align-items: center;
+    justify-content: center;
+  }
+  .lightbox.open { display: flex; }
+  .lightbox img { max-width: 90vw; max-height: 90vh; border-radius: 4px; }
+  .lightbox-close {
+    position: absolute;
+    top: 16px; right: 20px;
+    color: #fff;
+    font-size: 32px;
+    cursor: pointer;
+    line-height: 1;
+  }
+  .filter-tabs { display: flex; gap: 4px; margin-bottom: 20px; }
+  .filter-tab {
+    padding: 6px 16px;
+    border-radius: 6px;
+    border: 1px solid #e2e8f0;
+    font-size: 13px;
+    cursor: pointer;
+    background: #fff;
+    color: #64748b;
+    text-decoration: none;
+    transition: background .12s;
+  }
+  .filter-tab.active { background: #1e40af; color: #fff; border-color: #1e40af; }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+  <h1><i class="fas fa-images me-2"></i>Reference Photo Library</h1>
+  <nav aria-label="breadcrumb" class="ms-auto">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'mit_audit:dashboard' %}">MIT Audit</a></li>
+      <li class="breadcrumb-item active">Reference Photos</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block content %}
+
+<!-- Import instructions banner -->
+<div class="alert alert-info d-flex align-items-start gap-3 mb-4" role="alert">
+  <i class="fas fa-terminal mt-1 fa-lg"></i>
+  <div>
+    <strong>Import from Encircle:</strong>
+    Run the following on your server to pull 600-series room photos from a claim:
+    <code class="d-block mt-1 p-2 bg-dark text-white rounded" style="font-size:12px">
+      python manage.py import_reference_photos &lt;encircle_claim_id&gt; --room-series 6
+    </code>
+    Then tag each photo below and click <strong>Approve</strong> to add it to the AI review library.
+  </div>
+</div>
+
+<div class="d-flex gap-4 align-items-start">
+
+  <!-- Sidebar -->
+  <aside class="ref-sidebar">
+    <div class="card p-3 mb-3">
+      <p class="fw-bold mb-2" style="font-size:13px; color:#475569">FILTER BY CATEGORY</p>
+      <a href="?status={{ filter_status }}" class="sidebar-cat {% if not filter_cat %}active{% endif %}">
+        All equipment
+        <span class="sidebar-badge">{{ photos.count }}</span>
+      </a>
+      {% for val, label in category_choices %}
+      <a href="?category={{ val }}&status={{ filter_status }}"
+         class="sidebar-cat {% if filter_cat == val %}active{% endif %}">
+        {{ label }}
+        {% if approved_by_cat|get_item:val %}
+        <span class="sidebar-badge">{{ approved_by_cat|get_item:val }}</span>
+        {% endif %}
+      </a>
+      {% endfor %}
+    </div>
+
+    <div class="card p-3">
+      <p class="fw-bold mb-2" style="font-size:13px; color:#475569">LIBRARY STATUS</p>
+      <div class="d-flex justify-content-between align-items-center mb-1" style="font-size:13px">
+        <span>Pending review</span>
+        <span class="badge bg-warning text-dark">{{ pending_count }}</span>
+      </div>
+      <div class="d-flex justify-content-between align-items-center" style="font-size:13px">
+        <span>Approved</span>
+        <span class="badge bg-success">{{ total_approved }}</span>
+      </div>
+      <hr class="my-2">
+      <p style="font-size:11px; color:#94a3b8; margin:0">
+        Approved photos are included in every AI equipment review as visual reference examples.
+      </p>
+    </div>
+  </aside>
+
+  <!-- Main grid -->
+  <div style="flex:1; min-width:0">
+
+    <!-- Status tabs -->
+    <div class="filter-tabs">
+      <a href="?category={{ filter_cat }}&status=pending"
+         class="filter-tab {% if filter_status == 'pending' %}active{% endif %}">
+        Pending ({{ pending_count }})
+      </a>
+      <a href="?category={{ filter_cat }}&status=approved"
+         class="filter-tab {% if filter_status == 'approved' %}active{% endif %}">
+        Approved
+      </a>
+      <a href="?category={{ filter_cat }}&status=all"
+         class="filter-tab {% if filter_status == 'all' %}active{% endif %}">
+        All
+      </a>
+    </div>
+
+    {% if photos %}
+    <div class="ref-grid" id="photoGrid">
+      {% for photo in photos %}
+      <div class="photo-card {% if photo.approved %}approved{% endif %}" id="card-{{ photo.pk }}">
+
+        <!-- Photo -->
+        {% if photo.file_path %}
+        <img class="photo-img"
+             src="{{ photo.media_url }}"
+             alt="{{ photo.display_name|default:'Reference photo' }}"
+             onclick="openLightbox(this.src)"
+             onerror="this.style.background='#e2e8f0'; this.style.height='180px'">
+        {% else %}
+        <div class="photo-img d-flex align-items-center justify-content-center text-muted">
+          <i class="fas fa-image fa-2x"></i>
+        </div>
+        {% endif %}
+
+        <div class="photo-body">
+          <span class="photo-badge {% if photo.approved %}badge-approved{% else %}badge-pending{% endif %}">
+            {% if photo.approved %}✓ Approved{% else %}Pending{% endif %}
+          </span>
+
+          <div style="font-size:11px; color:#94a3b8; margin-bottom:8px">
+            {{ photo.source_encircle_claim_id|default:"—" }} / {{ photo.source_room_name|default:"unknown room"|truncatechars:30 }}
+          </div>
+
+          <!-- Category selector -->
+          <select class="cat-select" id="cat-{{ photo.pk }}">
+            <option value="">— select equipment type —</option>
+            {% for val, label in category_choices %}
+            <option value="{{ val }}" {% if photo.category == val %}selected{% endif %}>{{ label }}</option>
+            {% endfor %}
+          </select>
+
+          <!-- Description -->
+          <textarea class="desc-input" id="desc-{{ photo.pk }}"
+                    placeholder="What does this photo show? (e.g. drain hose visible, indicator light on)"
+                    >{{ photo.description }}</textarea>
+
+          <!-- Actions -->
+          <div class="photo-actions">
+            <button class="btn-approve {% if photo.approved %}approved-state{% endif %}"
+                    id="appbtn-{{ photo.pk }}"
+                    onclick="approvePhoto({{ photo.pk }}, {% if photo.approved %}false{% else %}true{% endif %})">
+              {% if photo.approved %}✓ Approved — Click to Undo{% else %}Approve{% endif %}
+            </button>
+            <button class="btn-reject" onclick="deletePhoto({{ photo.pk }}, this)"
+                    title="Remove from library">
+              <i class="fas fa-trash"></i>
+            </button>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+
+    {% else %}
+    <div class="text-center py-5 text-muted">
+      <i class="fas fa-images fa-3x mb-3 d-block"></i>
+      <h5>No photos here</h5>
+      <p style="font-size:14px">
+        Run <code>import_reference_photos</code> on the server to pull photos from Encircle,
+        then come back here to tag and approve them.
+      </p>
+    </div>
+    {% endif %}
+  </div>
+</div>
+
+<!-- Lightbox -->
+<div class="lightbox" id="lightbox" onclick="closeLightbox()">
+  <span class="lightbox-close" onclick="closeLightbox()">×</span>
+  <img id="lightboxImg" src="" alt="Reference photo enlarged">
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function approvePhoto(id, approve) {
+  const cat  = document.getElementById('cat-' + id).value;
+  const desc = document.getElementById('desc-' + id).value.trim();
+  const btn  = document.getElementById('appbtn-' + id);
+  const card = document.getElementById('card-' + id);
+
+  if (approve && !cat) {
+    alert('Please select an equipment category before approving.');
+    return;
+  }
+
+  fetch("{% url 'mit_audit:tag_reference_photo' 0 %}".replace('/0/', '/' + id + '/'), {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': '{{ csrf_token }}',
+    },
+    body: JSON.stringify({ category: cat, description: desc, approve: approve }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      const badge = card.querySelector('.photo-badge');
+      if (data.approved) {
+        card.classList.add('approved');
+        badge.className = 'photo-badge badge-approved';
+        badge.textContent = '✓ Approved';
+        btn.className = 'btn-approve approved-state';
+        btn.textContent = '✓ Approved — Click to Undo';
+        btn.onclick = () => approvePhoto(id, false);
+      } else {
+        card.classList.remove('approved');
+        badge.className = 'photo-badge badge-pending';
+        badge.textContent = 'Pending';
+        btn.className = 'btn-approve';
+        btn.textContent = 'Approve';
+        btn.onclick = () => approvePhoto(id, true);
+      }
+    }
+  })
+  .catch(() => alert('Save failed — please try again.'));
+}
+
+function deletePhoto(id, btn) {
+  if (!confirm('Remove this photo from the library?')) return;
+  fetch("{% url 'mit_audit:delete_reference_photo' 0 %}".replace('/0/', '/' + id + '/'), {
+    method: 'POST',
+    headers: { 'X-CSRFToken': '{{ csrf_token }}' },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      const card = document.getElementById('card-' + id);
+      card.style.transition = 'opacity .3s';
+      card.style.opacity = '0';
+      setTimeout(() => card.remove(), 300);
+    }
+  });
+}
+
+function openLightbox(src) {
+  document.getElementById('lightboxImg').src = src;
+  document.getElementById('lightbox').classList.add('open');
+}
+function closeLightbox() {
+  document.getElementById('lightbox').classList.remove('open');
+}
+document.addEventListener('keydown', e => { if (e.key === 'Escape') closeLightbox(); });
+</script>
+{% endblock %}

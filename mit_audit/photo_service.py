@@ -24,9 +24,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-MAX_IMAGES      = 40     # Claude Vision limit per request (practical limit)
-AI_MODEL        = 'claude-sonnet-4-6'
-AI_MAX_TOKENS   = 4096
+MAX_IMAGES          = 40   # Claude Vision limit per request (practical limit)
+MAX_REFERENCE_PHOTOS = 1   # approved reference photos to include per equipment category
+AI_MODEL             = 'claude-sonnet-4-6'
+AI_MAX_TOKENS        = 4096
 
 # ---------------------------------------------------------------------------
 # Encircle photo retrieval
@@ -85,26 +86,71 @@ def download_photo_b64(url: str, api_key: str = '') -> tuple[str, str]:
 # AI photo review
 # ---------------------------------------------------------------------------
 
+# ---------------------------------------------------------------------------
+# Reference photo library
+# ---------------------------------------------------------------------------
+
+def load_reference_photos(categories: list[str]) -> list[dict]:
+    """
+    Return up to MAX_REFERENCE_PHOTOS approved reference photos per category
+    as a list of dicts: [{ 'category', 'display_name', 'description', 'b64', 'media_type' }]
+
+    Returns an empty list if the model table doesn't exist yet (pre-migration).
+    """
+    try:
+        from mit_audit.models import MITReferencePhoto
+    except ImportError:
+        return []
+
+    refs = []
+    for cat in categories:
+        photos = (
+            MITReferencePhoto.objects
+            .filter(category=cat, approved=True, is_active=True)
+            .order_by('-approved_at')[:MAX_REFERENCE_PHOTOS]
+        )
+        for photo in photos:
+            try:
+                data = Path(photo.file_path).read_bytes()
+                b64  = base64.standard_b64encode(data).decode()
+                # Guess media type from extension
+                ext  = Path(photo.file_path).suffix.lower()
+                mt   = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                        'png': 'image/png',  'webp': 'image/webp'}.get(ext.lstrip('.'), 'image/jpeg')
+                refs.append({
+                    'category':     cat,
+                    'display_name': photo.display_name or photo.get_category_display(),
+                    'description':  photo.description,
+                    'b64':          b64,
+                    'media_type':   mt,
+                })
+            except Exception as exc:
+                logger.warning('[MIT] Could not load reference photo %s: %s', photo.pk, exc)
+    return refs
+
+
 _REVIEW_PROMPT = """You are a licensed water mitigation specialist and insurance documentation expert.
 You are reviewing job-site photos from an Encircle claim to audit whether all required mitigation equipment is present and documented.
 
-REQUIRED EQUIPMENT LIST:
+{reference_section}REQUIRED EQUIPMENT LIST:
 {items_list}
 
-For each item in the required equipment list, examine all provided photos and determine:
-  - How many units of that equipment are CLEARLY visible (do not count partially obscured equipment unless you are confident)
+For each item in the required equipment list, examine all provided claim photos and determine:
+  - How many units of that equipment are CLEARLY visible (do not count partially obscured units unless you are confident)
   - Which photo IDs (from the list below) support your finding
   - Your confidence level: "high", "medium", or "low"
 
-For items marked as STABILIZATION_REQUIRED, also determine whether there is a photo that clearly shows the equipment properly set up (e.g. dehumidifier with hose connected, zipper wall with both poles visible, double zipper wall with at least TWO poles visible).
+For items marked as STABILIZATION_REQUIRED, also determine whether there is a photo that clearly shows the equipment properly set up and running (e.g. dehumidifier with condensate hose connected, zipper wall with both poles tensioned, hydroxyl generator powered on with indicator light visible, double zipper wall with at least TWO poles visible).
 
-Photo IDs available in this review:
+Claim photo IDs available in this review:
 {photo_ids}
 
 IMPORTANT RULES:
+- Use the REFERENCE PHOTOS above (if provided) as your benchmark for what a good documentation photo looks like
 - Only mark as confirmed when you can clearly count the equipment units in the photos
 - If a photo is blurry, distant, or the equipment is partially obstructed, note this but do NOT count it
 - For double zipper walls: a photo only passes if BOTH the wall AND at least 2 poles are clearly visible
+- For hydroxyl generators: confirm the unit brand/model is identifiable and the power indicator is visible
 - Return ONLY a raw JSON array, no markdown fences, no explanation
 
 JSON format:
@@ -182,18 +228,54 @@ def review_photos_with_ai(
         )
     items_list = '\n'.join(items_lines)
 
-    # Select photos to send (cap at MAX_IMAGES)
-    selected_photos = photos[:MAX_IMAGES]
+    # ── Load reference photos ──────────────────────────────────────
+    # Get unique categories from required_items, then load 1 approved
+    # reference photo per category.  These are prepended to the request
+    # so Claude has a visual benchmark before it sees the claim photos.
+    categories = list(dict.fromkeys(
+        it.get('category', 'other') for it in required_items
+    ))
+    refs = load_reference_photos(categories)
+
+    # Reserve slots for reference photos, leaving at least 10 for claim photos
+    ref_slots  = min(len(refs), MAX_IMAGES - 10)
+    refs       = refs[:ref_slots]
+    claim_slots = MAX_IMAGES - len(refs)
+
+    # Select claim photos to send
+    selected_photos = photos[:claim_slots]
     photo_ids_str   = ', '.join(p['id'] for p in selected_photos)
 
     # Fetch API key for Encircle photo downloads
     encircle_key = getattr(EncircleAPIClient, 'API_KEY', '') or \
                    __import__('os').environ.get('ENCIRCLE_API_KEY', '')
 
-    # Build content list: images first, then the prompt text
+    # ── Build content list ─────────────────────────────────────────
+    # Order: reference photos → separator → claim photos → prompt
     content = []
-    loaded  = 0
-    total   = len(selected_photos)
+
+    # 1. Reference photos (if any)
+    if refs:
+        content.append({'type': 'text', 'text': (
+            '=== REFERENCE PHOTOS ===\n'
+            'The following photos show correctly documented mitigation equipment '
+            'from previous jobs. Use these as your benchmark when reviewing the '
+            'claim photos below.\n'
+        )})
+        for ref in refs:
+            content.append({'type': 'text', 'text': (
+                f'REFERENCE [{ref["display_name"]}]: {ref["description"]}'
+            )})
+            content.append({
+                'type': 'image',
+                'source': {'type': 'base64', 'media_type': ref['media_type'], 'data': ref['b64']},
+            })
+        content.append({'type': 'text', 'text': '=== END REFERENCE PHOTOS ==='})
+        logger.info('[MIT] Included %d reference photos in review', len(refs))
+
+    # 2. Claim photos
+    loaded = 0
+    total  = len(selected_photos)
 
     for i, photo in enumerate(selected_photos):
         if task_self and i % 5 == 0:
@@ -208,7 +290,7 @@ def review_photos_with_ai(
             'type': 'image',
             'source': {'type': 'base64', 'media_type': mt, 'data': b64},
         })
-        # Annotate with photo ID so Claude can reference it
+        # Annotate with photo ID so Claude can reference it by number
         content.append({
             'type': 'text',
             'text': f'[Photo ID: {photo["id"]} | Room: {photo.get("room", "unknown")}]',
@@ -228,7 +310,16 @@ def review_photos_with_ai(
             'recommended_action':  'Manually review Encircle photos.',
         } for item in required_items]
 
-    prompt = _REVIEW_PROMPT.format(items_list=items_list, photo_ids=photo_ids_str)
+    # 3. Prompt text
+    reference_section = (
+        f'(You have been given {len(refs)} reference photo(s) above as examples.)\n\n'
+        if refs else ''
+    )
+    prompt = _REVIEW_PROMPT.format(
+        reference_section=reference_section,
+        items_list=items_list,
+        photo_ids=photo_ids_str,
+    )
     content.append({'type': 'text', 'text': prompt})
 
     if task_self:

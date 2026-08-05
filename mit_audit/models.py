@@ -210,6 +210,7 @@ class MITRequiredEquipment(models.Model):
         ('blower',        'Blower / Air Mover'),
         ('wall_cavity',   'Wall Cavity Drying'),
         ('floor_drying',  'Floor Drying Equipment'),
+        ('hydroxyl',      'Hydroxyl Generator'),
         ('heater',        'Heater'),
         ('other',         'Other'),
     ]
@@ -349,3 +350,86 @@ class MITReport(models.Model):
 
     def __str__(self):
         return f'{self.get_report_type_display()} — {self.audit}'
+
+
+# ---------------------------------------------------------------------------
+# Reference photo library
+# ---------------------------------------------------------------------------
+
+class MITReferencePhoto(models.Model):
+    """
+    A curated photo from a real claim that shows a piece of mitigation
+    equipment correctly documented.
+
+    These are included as few-shot visual examples in the Claude Vision
+    review request so the AI knows what a "good" photo looks like for
+    each equipment category.
+
+    Workflow:
+      1. Import from Encircle via the import_reference_photos management
+         command (sets approved=False).
+      2. Staff reviews in /mit/reference-photos/, assigns a category,
+         adds a description, and clicks Approve.
+      3. Approved photos are automatically included in future AI reviews.
+    """
+    # Re-use the same category vocabulary as MITRequiredEquipment
+    CATEGORY_CHOICES = MITRequiredEquipment.CATEGORY_CHOICES
+    UNTAGGED = ''
+
+    # Which equipment category this photo demonstrates.
+    # Blank = not yet tagged (pending review).
+    category = models.CharField(
+        max_length=30, choices=CATEGORY_CHOICES, blank=True, db_index=True,
+        help_text='Equipment type shown in this photo.',
+    )
+
+    # Xactimate billing code this photo supports (e.g. DHMAC, DRY, DODHY>)
+    xact_code = models.CharField(max_length=20, blank=True)
+
+    # Short human-readable title (e.g. "LGR dehumidifier — drain hose visible")
+    display_name = models.CharField(max_length=200, blank=True)
+
+    # What makes this photo a good reference (guidance for the reviewer and for AI)
+    description = models.TextField(
+        blank=True,
+        help_text='Describe what the photo shows and why it is a good reference '
+                  '(e.g. "Unit serial tag visible, drain hose connected, running indicator lit").',
+    )
+
+    # Absolute path to the downloaded copy stored in MEDIA_ROOT
+    file_path = models.CharField(max_length=512)
+    file_size_bytes = models.PositiveIntegerField(default=0)
+
+    # Provenance — where did this photo come from?
+    source_encircle_claim_id = models.CharField(max_length=100, blank=True)
+    source_room_name          = models.CharField(max_length=200, blank=True)
+    source_media_id           = models.CharField(
+        max_length=100, blank=True,
+        help_text='Encircle media ID — prevents re-importing the same photo.',
+    )
+
+    # Review state
+    is_active   = models.BooleanField(default=True, db_index=True,
+        help_text='Uncheck to hide from the AI without deleting.')
+    approved    = models.BooleanField(default=False, db_index=True)
+    approved_by = models.ForeignKey(
+        settings.AUTH_USER_MODEL, null=True, blank=True,
+        on_delete=models.SET_NULL, related_name='mit_reference_photos_approved',
+    )
+    approved_at = models.DateTimeField(null=True, blank=True)
+    created_at  = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering            = ['category', '-approved', '-created_at']
+        verbose_name        = 'MIT Reference Photo'
+        verbose_name_plural = 'MIT Reference Photos'
+
+    def __str__(self):
+        cat = self.get_category_display() if self.category else 'Untagged'
+        return f'{cat} — {self.display_name or self.source_media_id or f"#{self.pk}"}'
+
+    def media_url(self):
+        """Return a MEDIA_URL-relative URL for template use."""
+        from django.conf import settings as _s
+        rel = self.file_path.replace(str(_s.MEDIA_ROOT), '').lstrip('/\\').replace('\\', '/')
+        return f'{_s.MEDIA_URL}{rel}'

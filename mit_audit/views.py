@@ -275,3 +275,105 @@ def upload_template(request):
 
     logger.info('[MIT] Template uploaded → %s', dest)
     return JsonResponse({'ok': True, 'path': str(dest)})
+
+
+# ---------------------------------------------------------------------------
+# Reference photo library
+# ---------------------------------------------------------------------------
+
+@login_required
+def reference_photos(request):
+    """
+    Grid view of all imported reference photos.
+    Staff can tag each photo with an equipment category and approve/reject.
+    """
+    from mit_audit.models import MITReferencePhoto, MITRequiredEquipment
+
+    filter_cat = request.GET.get('category', '')
+    filter_status = request.GET.get('status', 'pending')   # pending | approved | all
+
+    qs = MITReferencePhoto.objects.filter(is_active=True)
+    if filter_cat:
+        qs = qs.filter(category=filter_cat)
+    if filter_status == 'pending':
+        qs = qs.filter(approved=False)
+    elif filter_status == 'approved':
+        qs = qs.filter(approved=True)
+
+    photos = qs.order_by('category', '-created_at')[:200]
+
+    # Count by category for the sidebar
+    from django.db.models import Count
+    counts = (
+        MITReferencePhoto.objects
+        .filter(is_active=True, approved=True)
+        .values('category')
+        .annotate(n=Count('id'))
+        .order_by('category')
+    )
+    approved_by_cat = {c['category']: c['n'] for c in counts}
+    total_approved  = sum(approved_by_cat.values())
+    pending_count   = MITReferencePhoto.objects.filter(is_active=True, approved=False).count()
+
+    return render(request, 'mit_audit/reference_photos.html', {
+        'photos':           photos,
+        'category_choices': MITRequiredEquipment.CATEGORY_CHOICES,
+        'approved_by_cat':  approved_by_cat,
+        'total_approved':   total_approved,
+        'pending_count':    pending_count,
+        'filter_cat':       filter_cat,
+        'filter_status':    filter_status,
+    })
+
+
+@login_required
+@require_POST
+def tag_reference_photo(request, photo_id):
+    """
+    AJAX: update category + description on a reference photo, optionally approve.
+    Body: { category, display_name, description, approve: bool }
+    """
+    from mit_audit.models import MITReferencePhoto
+    from django.utils import timezone
+
+    try:
+        photo = MITReferencePhoto.objects.get(pk=photo_id, is_active=True)
+    except MITReferencePhoto.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    data = json.loads(request.body)
+    photo.category     = data.get('category', photo.category)
+    photo.display_name = data.get('display_name', photo.display_name)
+    photo.description  = data.get('description', photo.description)
+
+    if data.get('approve'):
+        photo.approved    = True
+        photo.approved_by = request.user
+        photo.approved_at = timezone.now()
+    elif data.get('approve') is False:
+        photo.approved    = False
+        photo.approved_by = None
+        photo.approved_at = None
+
+    photo.save(update_fields=[
+        'category', 'display_name', 'description',
+        'approved', 'approved_by', 'approved_at',
+    ])
+    return JsonResponse({'ok': True, 'approved': photo.approved, 'category': photo.category})
+
+
+@login_required
+@require_POST
+def delete_reference_photo(request, photo_id):
+    """AJAX: soft-delete (is_active=False) a reference photo."""
+    from mit_audit.models import MITReferencePhoto
+
+    try:
+        photo = MITReferencePhoto.objects.get(pk=photo_id)
+    except MITReferencePhoto.DoesNotExist:
+        return JsonResponse({'error': 'Not found'}, status=404)
+
+    photo.is_active = False
+    photo.approved  = False
+    photo.save(update_fields=['is_active', 'approved'])
+    return JsonResponse({'ok': True})
