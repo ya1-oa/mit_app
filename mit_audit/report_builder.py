@@ -11,11 +11,17 @@ Two WeasyPrint PDF reports:
       Compares required vs observed (AI photo review).
       The actionable output: what to re-photograph or re-deploy.
 """
+import html as _html
 import logging
 from pathlib import Path
 
 from django.conf import settings
 from django.utils import timezone
+
+
+def _e(text) -> str:
+    """HTML-escape a value that will be inserted into report markup."""
+    return _html.escape(str(text)) if text is not None else ''
 
 logger = logging.getLogger(__name__)
 
@@ -51,11 +57,13 @@ def _base_css() -> str:
         padding: 8px 12px; margin: 10px 0; font-size: 9.5pt;
     }
     table { width: 100%; border-collapse: collapse; margin-top: 8px; }
+    thead { display: table-header-group; }   /* repeat header on every page */
     th {
         background: #1a237e; color: #fff; text-align: left;
         padding: 6px 8px; font-size: 9pt;
     }
     td { padding: 5px 8px; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
+    tr { page-break-inside: avoid; }
     tr:nth-child(even) td { background: #f5f5f5; }
     .badge {
         display: inline-block; padding: 2px 8px; border-radius: 3px;
@@ -100,7 +108,6 @@ def build_required_equipment_report(audit) -> str:
     Returns the absolute path to the saved PDF.
     Raises RuntimeError if no required equipment has been calculated yet.
     """
-    from weasyprint import HTML as WP_HTML
     items = list(audit.required_equipment.order_by('category', 'display_name'))
     if not items:
         raise RuntimeError(
@@ -113,12 +120,12 @@ def build_required_equipment_report(audit) -> str:
     # Build room-dimension table
     room_rows = ''.join(
         f"""<tr>
-              <td>{r.room_name}</td>
-              <td>{r.length or '—'}</td>
-              <td>{r.width or '—'}</td>
-              <td>{r.height or '—'}</td>
-              <td>{r.square_feet or '—'}</td>
-              <td>{r.cubic_feet or '—'}</td>
+              <td>{_e(r.room_name)}</td>
+              <td>{_e(r.length) or '—'}</td>
+              <td>{_e(r.width) or '—'}</td>
+              <td>{_e(r.height) or '—'}</td>
+              <td>{_e(r.square_feet) or '—'}</td>
+              <td>{_e(r.cubic_feet) or '—'}</td>
             </tr>"""
         for r in rooms
     )
@@ -143,21 +150,21 @@ def build_required_equipment_report(audit) -> str:
     for cat, cat_items in by_cat.items():
         rows = ''.join(
             f"""<tr>
-                  <td>{i.display_name}</td>
+                  <td>{_e(i.display_name)}</td>
                   <td style="text-align:center" class="qty-big">{i.required_quantity}</td>
-                  <td>{i.source_sheet} / {i.workbook_cell or '—'}</td>
+                  <td>{_e(i.source_sheet)} / {_e(i.workbook_cell) or '—'}</td>
                   <td>{'Yes' if i.requires_stabilization_photo else 'No'}</td>
                 </tr>"""
             for i in cat_items
         )
         equip_sections += f"""
-        <h2>{cat_label.get(cat, cat)} ({len(cat_items)} items)</h2>
+        <h2>{_e(cat_label.get(cat, cat))} ({len(cat_items)} items)</h2>
         <table>
-          <tr>
+          <thead><tr>
             <th>Equipment Item</th><th>Required Qty</th>
             <th>Workbook Source</th><th>Stab. Photo Req.</th>
-          </tr>
-          {rows}
+          </tr></thead>
+          <tbody>{rows}</tbody>
         </table>
         """
 
@@ -202,7 +209,6 @@ def build_missing_equipment_report(audit) -> str:
     Generate the Missing Equipment & Photos PDF for *audit*.
     Returns the absolute path to the saved PDF.
     """
-    from weasyprint import HTML as WP_HTML
     items = list(
         audit.required_equipment
         .select_related('photo_observation')
@@ -253,13 +259,13 @@ def build_missing_equipment_report(audit) -> str:
         miss_style = 'color:#c62828; font-weight:bold;' if miss > 0 else ''
 
         table_rows += f"""<tr>
-          <td>{item.display_name}</td>
+          <td>{_e(item.display_name)}</td>
           <td style="text-align:center">{item.required_quantity}</td>
           <td style="text-align:center">{vis}</td>
           <td style="text-align:center; {miss_style}">{miss}</td>
           <td><span class="badge" style="background:{color}">{label}</span></td>
-          <td style="font-size:8.5pt">{notes}</td>
-          <td style="font-size:8.5pt">{action}</td>
+          <td style="font-size:8.5pt">{_e(notes)}</td>
+          <td style="font-size:8.5pt">{_e(action)}</td>
         </tr>"""
 
     # Stabilization checklist
@@ -279,9 +285,9 @@ def build_missing_equipment_report(audit) -> str:
             sc = obs.ai_notes or ''
             note = sc
         stab_rows += f"""<tr>
-          <td>{item.display_name}</td>
+          <td>{_e(item.display_name)}</td>
           <td style="color:{stab_color}; font-weight:bold; text-align:center">{stab_icon}</td>
-          <td style="font-size:8.5pt">{note}</td>
+          <td style="font-size:8.5pt">{_e(note)}</td>
         </tr>"""
 
     stab_section = ''
@@ -289,8 +295,8 @@ def build_missing_equipment_report(audit) -> str:
         stab_section = f"""
         <h2>Stabilization Photo Checklist</h2>
         <table>
-          <tr><th>Equipment</th><th>Photo Found</th><th>Notes</th></tr>
-          {stab_rows}
+          <thead><tr><th>Equipment</th><th>Photo Found</th><th>Notes</th></tr></thead>
+          <tbody>{stab_rows}</tbody>
         </table>
         """
 
@@ -310,11 +316,11 @@ def build_missing_equipment_report(audit) -> str:
     </div>
     <h2>Equipment Audit Results ({len(items)} items)</h2>
     <table>
-      <tr>
+      <thead><tr>
         <th>Equipment</th><th>Required</th><th>Confirmed</th>
         <th>Missing</th><th>Status</th><th>AI Notes</th><th>Recommended Action</th>
-      </tr>
-      {table_rows}
+      </tr></thead>
+      <tbody>{table_rows}</tbody>
     </table>
     {stab_section}
     <div class="footer">Claimet App — MIT Day 3 Equipment Audit — Report #{audit.pk}</div>
