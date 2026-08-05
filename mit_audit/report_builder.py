@@ -25,19 +25,6 @@ def _e(text) -> str:
 
 logger = logging.getLogger(__name__)
 
-_STATUS_COLORS = {
-    'confirmed': '#2e7d32',   # green
-    'partial':   '#f57c00',   # orange
-    'missing':   '#c62828',   # red
-    'manual':    '#6a1b9a',   # purple
-}
-
-_STATUS_LABELS = {
-    'confirmed': '✓ Confirmed',
-    'partial':   '⚠ Partial',
-    'missing':   '✗ Missing',
-    'manual':    '? Manual Review',
-}
 
 
 def _base_css() -> str:
@@ -206,124 +193,177 @@ def build_required_equipment_report(audit) -> str:
 
 def build_missing_equipment_report(audit) -> str:
     """
-    Generate the Missing Equipment & Photos PDF for *audit*.
+    Generate the Outstanding Photo Requirements PDF for *audit*.
+
+    ONLY shows equipment that still needs photographs — confirmed items
+    are never listed.  Confirmed items are counted in a header note so
+    the recipient can see progress, but they take up no table space.
+
+    If every item is confirmed this generates a clean all-clear page
+    rather than an empty table.
+
     Returns the absolute path to the saved PDF.
     """
-    items = list(
+    all_items = list(
         audit.required_equipment
         .select_related('photo_observation')
         .order_by('category', 'display_name')
     )
-    if not items:
+    if not all_items:
         raise RuntimeError(
             f'No required equipment for audit #{audit.pk}. '
             'Run the workbook and photo review steps first.'
         )
 
-    # Summary counts
-    confirmed = missing = partial = manual = 0
-    for item in items:
+    # ── Separate confirmed from still-needed ────────────────────────
+    confirmed_count = 0
+    needs_work = []   # (item, obs|None)
+
+    for item in all_items:
         obs = getattr(item, 'photo_observation', None)
-        if not obs:
-            missing += 1
+        if obs is None:
+            needs_work.append((item, None))          # no review yet → missing
         elif obs.status == 'confirmed':
-            confirmed += 1
-        elif obs.status == 'partial':
-            partial += 1
-        elif obs.status == 'missing':
-            missing += 1
+            confirmed_count += 1                      # done — skip from report
         else:
-            manual += 1
+            needs_work.append((item, obs))            # partial / missing / manual
 
-    # Table rows
-    table_rows = ''
-    for item in items:
-        obs = getattr(item, 'photo_observation', None)
+    total      = len(all_items)
+    need_count = len(needs_work)
+
+    # ── Build table rows — only items that still need work ──────────
+    cat_label   = dict(audit.required_equipment.model.CATEGORY_CHOICES)
+    table_rows  = ''
+    current_cat = None
+
+    for item, obs in needs_work:
+        # Category sub-header row (groups items without a separate <h2>)
+        if item.category != current_cat:
+            current_cat = item.category
+            table_rows += (
+                f'<tr style="background:#e8eaf6;">'
+                f'<td colspan="4" style="font-weight:bold; font-size:9pt;'
+                f' padding:6px 8px; color:#283593;">'
+                f'{_e(cat_label.get(item.category, item.category))}'
+                f'</td></tr>'
+            )
+
         if obs:
-            vis   = obs.visible_quantity
-            miss  = obs.missing_quantity
-            st    = obs.status
-            conf  = obs.ai_confidence
-            notes = obs.ai_notes or '—'
-            action = obs.recommended_action or '—'
+            already    = obs.visible_quantity
+            still_need = obs.missing_quantity or max(0, item.required_quantity - obs.visible_quantity)
+            if obs.status == 'manual':
+                need_str   = '?'
+                need_style = 'color:#6a1b9a; font-weight:bold;'
+                action     = obs.recommended_action or 'Inspector must verify this item on-site.'
+            else:
+                need_str   = str(still_need)
+                need_style = 'color:#c62828; font-weight:bold;'
+                action     = obs.recommended_action or (
+                    f'Photograph {still_need} more unit(s) clearly visible in frame.'
+                )
         else:
-            vis   = 0
-            miss  = item.required_quantity
-            st    = 'missing'
-            conf  = '—'
-            notes = 'Photo review not yet run.'
-            action = 'Run photo review.'
+            already    = 0
+            still_need = item.required_quantity
+            need_str   = str(still_need)
+            need_style = 'color:#c62828; font-weight:bold;'
+            action     = 'Photo review has not been run yet — photograph all units.'
 
-        color = _STATUS_COLORS.get(st, '#555')
-        label = _STATUS_LABELS.get(st, st)
-        miss_style = 'color:#c62828; font-weight:bold;' if miss > 0 else ''
+        table_rows += (
+            f'<tr>'
+            f'<td>{_e(item.display_name)}</td>'
+            f'<td style="text-align:center">{item.required_quantity}</td>'
+            f'<td style="text-align:center">{already}</td>'
+            f'<td style="text-align:center; {need_style}">{need_str}</td>'
+            f'<td style="font-size:8.5pt">{_e(action)}</td>'
+            f'</tr>'
+        )
 
-        table_rows += f"""<tr>
-          <td>{_e(item.display_name)}</td>
-          <td style="text-align:center">{item.required_quantity}</td>
-          <td style="text-align:center">{vis}</td>
-          <td style="text-align:center; {miss_style}">{miss}</td>
-          <td><span class="badge" style="background:{color}">{label}</span></td>
-          <td style="font-size:8.5pt">{_e(notes)}</td>
-          <td style="font-size:8.5pt">{_e(action)}</td>
-        </tr>"""
+    # ── Main body: table or all-clear banner ────────────────────────
+    if need_count == 0:
+        body_section = """
+        <div style="text-align:center; padding:48px 20px; color:#2e7d32;">
+          <div style="font-size:30pt; margin-bottom:10px;">✓</div>
+          <div style="font-size:14pt; font-weight:bold;">All equipment confirmed</div>
+          <div style="font-size:10pt; color:#555; margin-top:8px;">
+            No outstanding photo requirements for this audit.
+          </div>
+        </div>"""
+    else:
+        body_section = f"""
+        <h2>Equipment Needing Photos &mdash; {need_count} of {total} items</h2>
+        <table>
+          <thead><tr>
+            <th>Equipment</th>
+            <th style="width:72px; text-align:center">Required</th>
+            <th style="width:72px; text-align:center">In Photos</th>
+            <th style="width:72px; text-align:center">Still Need</th>
+            <th>What to Photograph</th>
+          </tr></thead>
+          <tbody>{table_rows}</tbody>
+        </table>"""
 
-    # Stabilization checklist
-    stab_items  = [i for i in items if i.requires_stabilization_photo]
-    stab_rows   = ''
-    for item in stab_items:
+    # ── Stabilization section — only items WITHOUT a confirmed stab photo ──
+    stab_rows = ''
+    for item in all_items:
+        if not item.requires_stabilization_photo:
+            continue
         obs   = getattr(item, 'photo_observation', None)
         found = obs.stabilization_photo_found if obs else None
         if found is True:
-            stab_icon = '✓'; stab_color = '#2e7d32'
-        elif found is False:
-            stab_icon = '✗'; stab_color = '#c62828'
+            continue   # confirmed — do not list
+        if found is False:
+            icon  = '✗'
+            color = '#c62828'
+            note  = obs.ai_notes or 'Not found. Must show unit running with drain/hose visible.'
         else:
-            stab_icon = '?'; stab_color = '#6a1b9a'
-        note = ''
-        if obs:
-            sc = obs.ai_notes or ''
-            note = sc
-        stab_rows += f"""<tr>
-          <td>{_e(item.display_name)}</td>
-          <td style="color:{stab_color}; font-weight:bold; text-align:center">{stab_icon}</td>
-          <td style="font-size:8.5pt">{_e(note)}</td>
-        </tr>"""
+            icon  = '?'
+            color = '#6a1b9a'
+            note  = (obs.ai_notes if obs else '') or 'Unknown — inspector to verify on-site.'
+
+        stab_rows += (
+            f'<tr>'
+            f'<td>{_e(item.display_name)}</td>'
+            f'<td style="color:{color}; font-weight:bold; text-align:center;'
+            f' font-size:13pt">{icon}</td>'
+            f'<td style="font-size:8.5pt">{_e(note)}</td>'
+            f'</tr>'
+        )
 
     stab_section = ''
     if stab_rows:
         stab_section = f"""
-        <h2>Stabilization Photo Checklist</h2>
+        <h2>Missing Stabilization Photos</h2>
         <table>
-          <thead><tr><th>Equipment</th><th>Photo Found</th><th>Notes</th></tr></thead>
+          <thead><tr>
+            <th>Equipment</th>
+            <th style="width:80px; text-align:center">Status</th>
+            <th>What&rsquo;s Required</th>
+          </tr></thead>
           <tbody>{stab_rows}</tbody>
-        </table>
-        """
+        </table>"""
+
+    # ── Summary line below header ────────────────────────────────────
+    if need_count == 0:
+        summary_note = (
+            f'<p class="meta" style="color:#2e7d32; font-weight:bold; margin-top:6px;">'
+            f'&#10003; All {total} items confirmed &mdash; no action required.</p>'
+        )
+    else:
+        summary_note = (
+            f'<p class="meta" style="color:#c62828; margin-top:6px;">'
+            f'<strong>{need_count} of {total} item(s)</strong> still require photographs. '
+            f'{confirmed_count} already confirmed.'
+            f'</p>'
+        )
 
     html = f"""<!DOCTYPE html>
     <html><head><meta charset="UTF-8">
     <style>{_base_css()}</style></head><body>
-    {_header_html(audit, 'Missing Equipment & Photo Report — MIT Day 3')}
-    <div class="summary-grid">
-      <div class="stat"><div class="stat-num" style="color:#2e7d32">{confirmed}</div>
-        <div class="stat-lbl">Confirmed</div></div>
-      <div class="stat"><div class="stat-num" style="color:#f57c00">{partial}</div>
-        <div class="stat-lbl">Partial</div></div>
-      <div class="stat"><div class="stat-num" style="color:#c62828">{missing}</div>
-        <div class="stat-lbl">Missing</div></div>
-      <div class="stat"><div class="stat-num" style="color:#6a1b9a">{manual}</div>
-        <div class="stat-lbl">Manual Review</div></div>
-    </div>
-    <h2>Equipment Audit Results ({len(items)} items)</h2>
-    <table>
-      <thead><tr>
-        <th>Equipment</th><th>Required</th><th>Confirmed</th>
-        <th>Missing</th><th>Status</th><th>AI Notes</th><th>Recommended Action</th>
-      </tr></thead>
-      <tbody>{table_rows}</tbody>
-    </table>
+    {_header_html(audit, 'Outstanding Photo Requirements &mdash; MIT Day 3')}
+    {summary_note}
+    {body_section}
     {stab_section}
-    <div class="footer">Claimet App — MIT Day 3 Equipment Audit — Report #{audit.pk}</div>
+    <div class="footer">Claimet App &mdash; MIT Day 3 Equipment Audit &mdash; Report #{audit.pk}</div>
     </body></html>"""
 
     return _save_pdf(html, audit, 'missing_equipment')
