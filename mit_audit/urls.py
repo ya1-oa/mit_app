@@ -1,0 +1,23 @@
+from django.urls import path
+from . import views
+
+app_name = 'mit_audit'
+
+urlpatterns = [
+    # Dashboard
+    path('',                              views.dashboard,         name='dashboard'),
+    # Audit detail
+    path('<int:audit_id>/',               views.audit_detail,      name='audit_detail'),
+    # Start a new audit
+    path('trigger/',                      views.trigger_audit,     name='trigger_audit'),
+    # Approve / update dimensions
+    path('<int:audit_id>/approve/',       views.approve_dimensions, name='approve_dimensions'),
+    # Live status (AJAX polling)
+    path('<int:audit_id>/status/',        views.status_api,        name='status_api'),
+    # Download PDF by token (unauthenticated)
+    path('report/<str:token>/',           views.download_report,   name='download_report'),
+    # Settings / config
+    path('config/',                       views.config_view,       name='config'),
+    # Upload template workbook
+    path('config/upload-template/',       views.upload_template,   name='upload_template'),
+]

@@ -1,0 +1,364 @@
+{% extends "base.html" %}
+{% block title %}MIT Audit #{{ audit.pk }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# ── Header ── #}
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <a href="{% url 'mit_audit:dashboard' %}" class="btn btn-sm btn-outline-secondary">← Audits</a>
+    <div class="flex-grow-1">
+      <h5 class="mb-0 fw-bold">{{ audit.client.pOwner|default:"Unknown" }} — MIT Day 3 Audit #{{ audit.pk }}</h5>
+      <small class="text-muted">Claim {{ audit.client.claimNumber|default:"—" }} &nbsp;·&nbsp; {{ audit.created_at|date:"M d, Y H:i" }}</small>
+    </div>
+    <span class="badge fs-6
+      {% if audit.status == 'complete' %}bg-success
+      {% elif audit.status == 'error' %}bg-danger
+      {% elif audit.status == 'dims_review' %}bg-warning text-dark
+      {% else %}bg-primary
+      {% endif %}">
+      {{ audit.get_status_display }}
+    </span>
+  </div>
+
+  {% if audit.error_message %}
+  <div class="alert alert-danger">
+    <strong>Error:</strong> {{ audit.error_message }}
+  </div>
+  {% endif %}
+
+  {# ── Live progress bar (auto-polls while running) ── #}
+  {% if audit.status != 'complete' and audit.status != 'error' %}
+  <div id="progressSection" class="card border-0 shadow-sm mb-3">
+    <div class="card-body py-2">
+      <div class="d-flex justify-content-between align-items-center mb-1">
+        <small class="fw-semibold" id="progressLabel">{{ audit.get_status_display }}…</small>
+        <small class="text-muted" id="progressSub"></small>
+      </div>
+      <div class="progress" style="height:6px">
+        <div class="progress-bar progress-bar-striped progress-bar-animated" id="progressBar"
+             style="width:40%"></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {# ── Dimension review gate ── #}
+  {% if audit.status == 'dims_review' %}
+  <div class="card border-warning mb-3">
+    <div class="card-header bg-warning text-dark fw-semibold">
+      ⚠ Room Dimensions Require Review
+    </div>
+    <div class="card-body">
+      <p class="text-muted small mb-2">
+        The following rooms were extracted from the Encircle floor plan.
+        Rows flagged in orange have low confidence — verify before continuing.
+      </p>
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Room</th>
+              <th>Length (ft)</th><th>Width (ft)</th><th>Height (ft)</th>
+              <th>Sq Ft</th><th>Confidence</th><th>Approved</th>
+            </tr>
+          </thead>
+          <tbody id="dimTable">
+          {% for dim in audit.room_dimensions.all %}
+          <tr class="{% if dim.needs_review and not dim.approved %}table-warning{% endif %}"
+              data-dim-id="{{ dim.pk }}">
+            <td>{{ dim.room_name }}</td>
+            <td><input type="number" class="form-control form-control-sm dim-input"
+                       name="length" value="{{ dim.length|default:'' }}" step="0.1" style="width:80px"></td>
+            <td><input type="number" class="form-control form-control-sm dim-input"
+                       name="width"  value="{{ dim.width|default:'' }}"  step="0.1" style="width:80px"></td>
+            <td><input type="number" class="form-control form-control-sm dim-input"
+                       name="height" value="{{ dim.height|default:'' }}" step="0.1" style="width:80px"></td>
+            <td>{{ dim.square_feet|default:"—" }}</td>
+            <td>
+              <span class="badge {% if dim.confidence_score >= 0.75 %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                {{ dim.confidence_score|floatformat:2 }}
+              </span>
+            </td>
+            <td>
+              <input type="checkbox" class="form-check-input dim-approve"
+                     {% if dim.approved %}checked{% endif %}>
+            </td>
+          </tr>
+          {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      <div class="d-flex gap-2 mt-2">
+        <button class="btn btn-success btn-sm" id="approveAllBtn">✓ Approve All & Continue</button>
+        <button class="btn btn-primary btn-sm" id="saveCorrectionsBtn">Save Corrections</button>
+        <small class="text-muted align-self-center ms-2" id="dimSaveStatus"></small>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="row g-3">
+
+    {# ── Left: Equipment results ── #}
+    <div class="col-lg-8">
+
+      {# Required equipment ── #}
+      {% if audit.required_equipment.count %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header fw-semibold d-flex justify-content-between">
+          <span>Required Equipment ({{ audit.required_equipment.count }} items)</span>
+          {% for rpt in audit.reports.all %}
+          {% if rpt.report_type == 'required_equipment' %}
+          <a href="{{ rpt.get_download_url }}" class="btn btn-sm btn-outline-primary py-0">
+            ↓ Required Equipment PDF
+          </a>
+          {% endif %}
+          {% endfor %}
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0">
+              <thead class="table-light">
+                <tr>
+                  <th>Equipment</th><th>Category</th><th class="text-center">Required</th>
+                  <th class="text-center">Confirmed</th><th class="text-center">Missing</th>
+                  <th>Status</th><th>Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+              {% for item in audit.required_equipment.all %}
+              {% with obs=item.photo_observation %}
+              <tr>
+                <td class="fw-semibold" style="font-size:.85rem">{{ item.display_name }}</td>
+                <td><small class="text-muted">{{ item.get_category_display }}</small></td>
+                <td class="text-center fw-bold">{{ item.required_quantity }}</td>
+                <td class="text-center">
+                  {% if obs %}
+                    <span class="{% if obs.visible_quantity == item.required_quantity %}text-success fw-bold
+                                 {% elif obs.visible_quantity > 0 %}text-warning fw-bold
+                                 {% else %}text-danger{% endif %}">
+                      {{ obs.visible_quantity }}
+                    </span>
+                  {% else %}—{% endif %}
+                </td>
+                <td class="text-center">
+                  {% if obs %}
+                    {% if obs.missing_quantity > 0 %}
+                    <span class="text-danger fw-bold">{{ obs.missing_quantity }}</span>
+                    {% else %}
+                    <span class="text-success">0</span>
+                    {% endif %}
+                  {% else %}—{% endif %}
+                </td>
+                <td>
+                  {% if obs %}
+                  <span class="badge
+                    {% if obs.status == 'confirmed' %}bg-success
+                    {% elif obs.status == 'partial' %}bg-warning text-dark
+                    {% elif obs.status == 'missing' %}bg-danger
+                    {% else %}bg-secondary{% endif %}"
+                    style="font-size:.75rem">
+                    {{ obs.get_status_display }}
+                  </span>
+                  {% else %}
+                  <span class="badge bg-light text-muted">Pending</span>
+                  {% endif %}
+                </td>
+                <td style="font-size:.78rem; max-width:200px">
+                  {% if obs %}{{ obs.ai_notes|truncatechars:80 }}{% endif %}
+                </td>
+              </tr>
+              {% endwith %}
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# Missing equipment PDF ── #}
+      {% for rpt in audit.reports.all %}
+      {% if rpt.report_type == 'missing_equipment' %}
+      <div class="card border-0 shadow-sm border-start border-danger border-3 mb-3">
+        <div class="card-body py-2 d-flex justify-content-between align-items-center">
+          <div>
+            <strong>Missing Equipment & Photos Report</strong>
+            <small class="text-muted d-block">Generated {{ rpt.generated_at|date:"M d, Y H:i" }} — {{ rpt.file_size_bytes|filesizeformat }}</small>
+          </div>
+          <a href="{{ rpt.get_download_url }}" class="btn btn-danger btn-sm" target="_blank">
+            ↓ Download PDF
+          </a>
+        </div>
+      </div>
+      {% endif %}
+      {% endfor %}
+
+    </div>
+
+    {# ── Right: Rooms + info ── #}
+    <div class="col-lg-4">
+
+      {# Room dimensions ── #}
+      {% if audit.room_dimensions.count %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header fw-semibold">
+          Room Dimensions ({{ audit.room_dimensions.count }})
+        </div>
+        <div class="card-body p-0">
+          <div class="table-responsive">
+            <table class="table table-sm mb-0" style="font-size:.8rem">
+              <thead class="table-light">
+                <tr><th>Room</th><th>L</th><th>W</th><th>H</th><th>Sq Ft</th></tr>
+              </thead>
+              <tbody>
+              {% for dim in audit.room_dimensions.all %}
+              <tr class="{% if dim.needs_review and not dim.approved %}table-warning{% endif %}">
+                <td>{{ dim.room_name }}</td>
+                <td>{{ dim.length|default:"—" }}</td>
+                <td>{{ dim.width|default:"—" }}</td>
+                <td>{{ dim.height|default:"—" }}</td>
+                <td>{{ dim.square_feet|default:"—" }}</td>
+              </tr>
+              {% endfor %}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+      {% endif %}
+
+      {# Workbook info ── #}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header fw-semibold">Workbook</div>
+        <div class="card-body" style="font-size:.85rem">
+          {% if audit.workbook_path %}
+          <span class="text-success">✓ Populated</span>
+          <code class="d-block text-muted small mt-1" style="word-break:break-all">
+            {{ audit.workbook_path }}
+          </code>
+          {% else %}
+          <span class="text-muted">Not yet populated</span>
+          {% endif %}
+        </div>
+      </div>
+
+      {# Stabilization checklist ── #}
+      {% with stab_items=audit.required_equipment.filter %}
+      {% for item in audit.required_equipment.all %}
+      {% if item.requires_stabilization_photo %}
+      {% if forloop.first %}
+      <div class="card border-0 shadow-sm mb-3">
+        <div class="card-header fw-semibold">Stabilization Photo Checklist</div>
+        <ul class="list-group list-group-flush">
+      {% endif %}
+          {% with obs=item.photo_observation %}
+          <li class="list-group-item py-2 d-flex justify-content-between align-items-center"
+              style="font-size:.85rem">
+            {{ item.display_name }}
+            {% if obs %}
+              {% if obs.stabilization_photo_found %}
+              <span class="badge bg-success">✓ Found</span>
+              {% elif obs.stabilization_photo_found == False %}
+              <span class="badge bg-danger">✗ Missing</span>
+              {% else %}
+              <span class="badge bg-secondary">? Unknown</span>
+              {% endif %}
+            {% else %}
+              <span class="badge bg-light text-muted">Pending</span>
+            {% endif %}
+          </li>
+          {% endwith %}
+      {% if forloop.last %}
+        </ul>
+      </div>
+      {% endif %}
+      {% endif %}
+      {% endfor %}
+      {% endwith %}
+
+    </div>
+  </div>
+</div>
+
+<script>
+const AUDIT_ID   = {{ audit.pk }};
+const STATUS_URL = `/mit/${AUDIT_ID}/status/`;
+const APPROVE_URL = `/mit/${AUDIT_ID}/approve/`;
+const CSRF = '{{ csrf_token }}';
+
+// ── Live polling ──
+const isRunning = !['complete', 'error', 'dims_review'].includes('{{ audit.status }}');
+if (isRunning) {
+  const poll = setInterval(() => {
+    fetch(STATUS_URL)
+      .then(r => r.json())
+      .then(data => {
+        document.getElementById('progressLabel').textContent = data.status_label + '…';
+        document.getElementById('progressSub').textContent =
+          `Rooms: ${data.dims_total} · Equipment: ${data.equip_total} · Reports: ${data.reports_done}`;
+        if (data.complete || data.status === 'error') {
+          clearInterval(poll);
+          location.reload();
+        }
+      });
+  }, 4000);
+}
+
+// ── Approve all ──
+const approveAllBtn = document.getElementById('approveAllBtn');
+if (approveAllBtn) {
+  approveAllBtn.addEventListener('click', () => {
+    approveAllBtn.disabled = true;
+    approveAllBtn.textContent = 'Approving…';
+    fetch(APPROVE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ action: 'approve_all' }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) location.reload();
+        else alert('Error: ' + (data.error || 'Unknown'));
+      });
+  });
+}
+
+// ── Save corrections ──
+const saveBtn = document.getElementById('saveCorrectionsBtn');
+if (saveBtn) {
+  saveBtn.addEventListener('click', () => {
+    const rows = [];
+    document.querySelectorAll('#dimTable tr[data-dim-id]').forEach(tr => {
+      const id       = parseInt(tr.dataset.dimId);
+      const inputs   = tr.querySelectorAll('.dim-input');
+      const approved = tr.querySelector('.dim-approve')?.checked ?? false;
+      rows.push({
+        id,
+        length:   parseFloat(inputs[0]?.value) || null,
+        width:    parseFloat(inputs[1]?.value) || null,
+        height:   parseFloat(inputs[2]?.value) || null,
+        approved,
+      });
+    });
+    const status = document.getElementById('dimSaveStatus');
+    status.textContent = 'Saving…';
+    fetch(APPROVE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+      body: JSON.stringify({ action: 'update', rows }),
+    })
+      .then(r => r.json())
+      .then(data => {
+        if (data.ok) {
+          status.textContent = data.pipeline_started ? 'Saved — pipeline started!' : 'Saved.';
+          if (data.pipeline_started) setTimeout(() => location.reload(), 1500);
+        } else {
+          status.textContent = 'Error: ' + (data.error || 'Unknown');
+        }
+      });
+  });
+}
+</script>
+{% endblock %}

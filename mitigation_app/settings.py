@@ -69,6 +69,7 @@ INSTALLED_APPS = [
     'tasks',
     'ar_tracking',
     'daily_reports',
+    'mit_audit',
 
     # Auth
     #'django.contrib.sites',

@@ -1,0 +1,211 @@
+{% extends "base.html" %}
+{% block title %}MIT Day 3 Audit{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-3">
+
+  {# ── Header ── #}
+  <div class="d-flex align-items-center justify-content-between mb-3">
+    <div>
+      <h4 class="mb-0 fw-bold">MIT Day 3 Equipment Audits</h4>
+      <small class="text-muted">Workbook → Equipment Calculation → Photo Review → Reports</small>
+    </div>
+    <div class="d-flex gap-2">
+      {% if not template_exists %}
+      <a href="{% url 'mit_audit:config' %}" class="btn btn-warning btn-sm">
+        ⚠ Upload MIT Day 3 Template
+      </a>
+      {% endif %}
+      <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#triggerModal">
+        + New Audit
+      </button>
+      <a href="{% url 'mit_audit:config' %}" class="btn btn-outline-secondary btn-sm">⚙ Config</a>
+    </div>
+  </div>
+
+  {% if not template_exists %}
+  <div class="alert alert-warning">
+    <strong>No MIT Day 3 Template Found.</strong>
+    Upload the <code>.xlsx</code> template via Config before running audits.
+    The pipeline will error at the workbook population step without it.
+  </div>
+  {% endif %}
+
+  {# ── Audit cards ── #}
+  {% if audits %}
+  <div class="row g-3">
+    {% for audit in audits %}
+    {% with eq=audit.required_equipment.count rpt=audit.reports.count %}
+    <div class="col-12 col-lg-6">
+      <div class="card border-0 shadow-sm h-100">
+        <div class="card-body pb-2">
+          <div class="d-flex justify-content-between align-items-start">
+            <div>
+              <h6 class="mb-1 fw-semibold">
+                <a href="{% url 'mit_audit:audit_detail' audit.pk %}" class="text-decoration-none text-dark">
+                  {{ audit.client.pOwner|default:"Unknown" }}
+                </a>
+              </h6>
+              <small class="text-muted">Claim {{ audit.client.claimNumber|default:"—" }} &nbsp;·&nbsp; #{{ audit.pk }}</small>
+            </div>
+            <span class="badge
+              {% if audit.status == 'complete' %}bg-success
+              {% elif audit.status == 'error' %}bg-danger
+              {% elif audit.status == 'dims_review' %}bg-warning text-dark
+              {% else %}bg-primary
+              {% endif %}">
+              {{ audit.get_status_display }}
+            </span>
+          </div>
+
+          {% if audit.error_message %}
+          <div class="alert alert-danger py-1 px-2 mt-2 mb-1" style="font-size:.8rem">
+            {{ audit.error_message|truncatechars:120 }}
+          </div>
+          {% endif %}
+
+          <div class="row g-2 mt-1" style="font-size:.8rem">
+            <div class="col-4 text-center">
+              <div class="fw-bold">{{ audit.room_dimensions.count }}</div>
+              <div class="text-muted">Rooms</div>
+            </div>
+            <div class="col-4 text-center">
+              <div class="fw-bold">{{ eq }}</div>
+              <div class="text-muted">Equipment</div>
+            </div>
+            <div class="col-4 text-center">
+              <div class="fw-bold">{{ rpt }}</div>
+              <div class="text-muted">Reports</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card-footer bg-transparent border-top d-flex justify-content-between align-items-center py-2"
+             style="font-size:.78rem">
+          <span class="text-muted">{{ audit.created_at|date:"M d, Y H:i" }}</span>
+          <div class="d-flex gap-2">
+            {% if audit.status == 'dims_review' %}
+            <a href="{% url 'mit_audit:audit_detail' audit.pk %}" class="btn btn-warning btn-sm py-0 px-2">
+              Review Dims
+            </a>
+            {% endif %}
+            {% for report in audit.reports.all %}
+            <a href="{{ report.get_download_url }}" class="btn btn-outline-primary btn-sm py-0 px-2" target="_blank">
+              {{ report.get_report_type_display|truncatechars:20 }}
+            </a>
+            {% endfor %}
+            <a href="{% url 'mit_audit:audit_detail' audit.pk %}" class="btn btn-outline-secondary btn-sm py-0 px-2">
+              View
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endwith %}
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="text-center py-5 text-muted">
+    <div style="font-size:3rem">📋</div>
+    <h5 class="mt-2">No audits yet</h5>
+    <p>Create a new audit to begin the MIT Day 3 equipment audit pipeline.</p>
+    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#triggerModal">
+      + Start First Audit
+    </button>
+  </div>
+  {% endif %}
+
+</div>
+
+{# ── Trigger modal ── #}
+<div class="modal fade" id="triggerModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Start New MIT Day 3 Audit</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">
+          This will start the full pipeline: floor plan dimension extraction →
+          workbook population → equipment calculation → photo review → PDF reports.
+        </p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Select Claim</label>
+          <select class="form-select" id="claimSelect">
+            <option value="">— choose a claim —</option>
+          </select>
+          <div class="form-text">Only active (non-archived) claims are shown.</div>
+        </div>
+        <div id="triggerAlert" class="d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="triggerBtn" disabled>Start Audit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const CLAIMS_URL   = '/claims/api/list/?archived=false';   // adjust to your existing claims API
+const TRIGGER_URL  = '{% url "mit_audit:trigger_audit" %}';
+const CSRF         = '{{ csrf_token }}';
+
+// Load claims into the select when modal opens
+document.getElementById('triggerModal').addEventListener('show.bs.modal', () => {
+  const sel = document.getElementById('claimSelect');
+  if (sel.options.length > 1) return;   // already loaded
+  fetch(CLAIMS_URL)
+    .then(r => r.json())
+    .then(data => {
+      const claims = data.claims || data.results || data || [];
+      claims.forEach(c => {
+        const opt = document.createElement('option');
+        opt.value = c.id || c.pk;
+        opt.textContent = `${c.pOwner || c.name || 'Client'} — ${c.claimNumber || c.claim_number || ''}`;
+        sel.appendChild(opt);
+      });
+    })
+    .catch(() => {
+      sel.innerHTML = '<option value="">Error loading claims</option>';
+    });
+});
+
+document.getElementById('claimSelect').addEventListener('change', function () {
+  document.getElementById('triggerBtn').disabled = !this.value;
+});
+
+document.getElementById('triggerBtn').addEventListener('click', () => {
+  const clientId = document.getElementById('claimSelect').value;
+  const btn      = document.getElementById('triggerBtn');
+  const alert    = document.getElementById('triggerAlert');
+
+  btn.disabled    = true;
+  btn.textContent = 'Starting…';
+
+  fetch(TRIGGER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body:    JSON.stringify({ client_id: clientId }),
+  })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        window.location.href = `/mit/${data.audit_id}/`;
+      } else {
+        alert.className = 'alert alert-danger';
+        alert.textContent = data.error || 'Unknown error';
+      }
+    })
+    .catch(err => {
+      alert.className = 'alert alert-danger';
+      alert.textContent = `Network error: ${err}`;
+    })
+    .finally(() => {
+      btn.disabled    = false;
+      btn.textContent = 'Start Audit';
+    });
+});
+</script>
+{% endblock %}

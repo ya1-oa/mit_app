@@ -651,10 +651,47 @@ def _process_encircle_webhook(payload):
                 floorplan_url=floorplan_url,
                 claim_info=claim_info
             )
+            # Also kick off the MIT Day 3 audit pipeline if a matching Client exists
+            _queue_mit_audit_for_encircle_claim(str(claim_id))
             return {'action': 'floorplan_notification_queued', 'claim_id': claim_id}
         return {'action': 'skipped', 'reason': 'no_claim_id'}
 
     return {'action': 'ignored', 'event_type': event_type}
+
+
+def _queue_mit_audit_for_encircle_claim(encircle_claim_id: str):
+    """
+    If there is a Client whose encircle_claim_id matches, create a
+    MITDay3Audit and start the pipeline.  Silent on any error — the
+    floor plan notification is the primary action; MIT audit is additive.
+    """
+    try:
+        from docsAppR.models import Client
+        from mit_audit.models import MITDay3Audit
+        from mit_audit.tasks import start_audit_pipeline
+
+        client = Client.objects.filter(
+            encircle_claim_id=encircle_claim_id, archived=False
+        ).first()
+        if not client:
+            logger.info(
+                '[MIT] No active Client for Encircle ID %s — skipping auto-audit',
+                encircle_claim_id,
+            )
+            return
+
+        audit = MITDay3Audit.objects.create(
+            client=client,
+            encircle_claim_id=encircle_claim_id,
+            triggered_by_webhook=True,
+        )
+        start_audit_pipeline(audit.pk)
+        logger.info(
+            '[MIT] Auto-audit #%d queued for Encircle claim %s (Client %s)',
+            audit.pk, encircle_claim_id, client.pk,
+        )
+    except Exception as exc:
+        logger.warning('[MIT] _queue_mit_audit_for_encircle_claim error: %s', exc)
 
 
 # ===========================================================================

@@ -1,0 +1,134 @@
+{% extends "base.html" %}
+{% block title %}MIT Audit Config{% endblock %}
+
+{% block content %}
+<div class="container py-4" style="max-width:800px">
+
+  <div class="d-flex align-items-center gap-3 mb-3">
+    <a href="{% url 'mit_audit:dashboard' %}" class="btn btn-sm btn-outline-secondary">← Audits</a>
+    <h5 class="mb-0 fw-bold">MIT Day 3 Audit Configuration</h5>
+  </div>
+
+  {# ── Template upload ── #}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header fw-semibold">MIT Day 3 Workbook Template</div>
+    <div class="card-body">
+      {% if template_exists %}
+      <div class="alert alert-success py-2 mb-3">
+        ✓ Template on file: <code>{{ template_path }}</code>
+      </div>
+      {% else %}
+      <div class="alert alert-warning py-2 mb-3">
+        No template uploaded. Audits will fail at the workbook population step.
+      </div>
+      {% endif %}
+      <p class="text-muted small">
+        Upload the finalised MIT Day 3 <code>.xlsx</code> workbook.
+        The system copies it for each job and writes room dimensions into it.
+        <strong>Do not upload a file with locked/protected sheets.</strong>
+      </p>
+      <form id="uploadForm" enctype="multipart/form-data">
+        {% csrf_token %}
+        <div class="d-flex gap-2 align-items-center">
+          <input type="file" class="form-control form-control-sm" id="templateFile"
+                 accept=".xlsx" style="max-width:320px">
+          <button type="button" class="btn btn-primary btn-sm" id="uploadBtn">Upload Template</button>
+          <small id="uploadStatus" class="text-muted"></small>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {# ── Cell map settings ── #}
+  <div class="card border-0 shadow-sm mb-4">
+    <div class="card-header fw-semibold">Workbook Cell Mapping</div>
+    <div class="card-body">
+      <p class="text-muted small mb-3">
+        Once you have the finalised workbook, open it and note the exact cell addresses
+        then update the JSON maps below.  <strong>Phase 1 engineering task: map these first.</strong>
+      </p>
+      <form method="post">
+        {% csrf_token %}
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Job Information Sheet Name</label>
+          <input type="text" name="job_info_sheet" class="form-control form-control-sm"
+                 value="{{ config.job_info_sheet }}" style="max-width:240px">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Total Equipment Sheet Name</label>
+          <input type="text" name="total_equipment_sheet" class="form-control form-control-sm"
+                 value="{{ config.total_equipment_sheet }}" style="max-width:240px">
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Dimension Cell Map (JSON)</label>
+          <textarea name="dimension_cell_map" class="form-control font-monospace" rows="8"
+                    style="font-size:.8rem">{{ config.dimension_cell_map|default:"{}" }}</textarea>
+          <div class="form-text">
+            Keys: <code>room_start_row</code>, <code>room_name_col</code>, <code>length_col</code>,
+            <code>width_col</code>, <code>height_col</code>, <code>max_rows</code>, <code>job_info_sheet</code>
+          </div>
+        </div>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Equipment Cell Map (JSON array)</label>
+          <textarea name="equipment_cell_map" class="form-control font-monospace" rows="10"
+                    style="font-size:.8rem">{{ config.equipment_cell_map|default:"[]" }}</textarea>
+          <div class="form-text">
+            Array of <code>{"row": N, "name_col": "B", "qty_col": "D", "equipment_type": "dehumidifier", "category": "dehumidifier"}</code>
+            — one entry per row in the Total Equipment tab.
+            Leave empty to enable auto-scan mode (reads all non-zero rows).
+          </div>
+        </div>
+        <button type="submit" class="btn btn-primary btn-sm">Save Config</button>
+      </form>
+    </div>
+  </div>
+
+  {# ── Default map reference ── #}
+  <div class="card border-0 shadow-sm">
+    <div class="card-header fw-semibold">Default Cell Map (used when config is empty)</div>
+    <div class="card-body">
+      <pre class="bg-light p-3 rounded" style="font-size:.8rem">{
+  "job_info_sheet":  "Job Information",
+  "room_start_row":  8,
+  "room_name_col":   "B",
+  "length_col":      "C",
+  "width_col":       "D",
+  "height_col":      "E",
+  "max_rows":        50
+}</pre>
+      <p class="text-muted small mt-2">
+        <strong>Phase 1 task:</strong> Open the MIT Day 3 template in Excel,
+        find the first room row in the Job Information sheet, note which columns
+        hold the room name and L/W/H, then update the config above.
+        Then open the Total Equipment tab and map each row number → equipment type.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<script>
+document.getElementById('uploadBtn').addEventListener('click', () => {
+  const file = document.getElementById('templateFile').files[0];
+  if (!file) { alert('Select a .xlsx file first.'); return; }
+  const fd   = new FormData();
+  fd.append('template', file);
+  fd.append('csrfmiddlewaretoken', '{{ csrf_token }}');
+  const btn  = document.getElementById('uploadBtn');
+  const st   = document.getElementById('uploadStatus');
+  btn.disabled = true; btn.textContent = 'Uploading…';
+  fetch('{% url "mit_audit:upload_template" %}', { method: 'POST', body: fd })
+    .then(r => r.json())
+    .then(data => {
+      if (data.ok) {
+        st.className = 'text-success'; st.textContent = '✓ Uploaded successfully.';
+        setTimeout(() => location.reload(), 1200);
+      } else {
+        st.className = 'text-danger'; st.textContent = data.error || 'Upload failed.';
+      }
+    })
+    .catch(err => { st.className = 'text-danger'; st.textContent = 'Network error: ' + err; })
+    .finally(() => { btn.disabled = false; btn.textContent = 'Upload Template'; });
+});
+</script>
+{% endblock %}

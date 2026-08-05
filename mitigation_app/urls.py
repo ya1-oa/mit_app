@@ -73,4 +73,7 @@ urlpatterns = [
     # Daily Reports — high priority tracking + weekly deep operations report
     path('daily-reports/', include('daily_reports.urls')),
 
+    # MIT Day 3 Equipment Audit
+    path('mit/', include('mit_audit.urls', namespace='mit_audit')),
+
 ] + static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)
