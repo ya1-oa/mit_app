@@ -107,9 +107,10 @@
         }
         .nav-links a.active { font-weight: 600; }
 
-        /* ── DROPDOWN MENUS ────────────────────────────────────────── */
+        /* ── DROPDOWN MENUS (Bootstrap 5 powered) ──────────────────── */
         .nav-dropdown { position: relative; }
         .nav-dropdown-toggle { cursor: pointer; user-select: none; }
+        /* Custom caret — suppress Bootstrap's default */
         .nav-dropdown-toggle::after {
             content: '';
             display: inline-block;
@@ -120,26 +121,25 @@
             margin-left: 5px;
             transition: transform .15s, border-top-color .15s;
             vertical-align: middle;
+            border-bottom: none !important; /* override Bootstrap caret */
         }
-        .nav-dropdown.open .nav-dropdown-toggle::after { transform: rotate(180deg); }
+        /* Bootstrap sets aria-expanded="true" on open toggle */
+        .nav-dropdown-toggle[aria-expanded="true"]::after { transform: rotate(180deg); }
         .nav-dropdown.has-active > .nav-dropdown-toggle { color: var(--nav-active); }
         .nav-dropdown.has-active > .nav-dropdown-toggle::after { border-top-color: var(--nav-active); }
-        .nav-dropdown-menu {
-            display: none;
-            position: absolute;
-            top: calc(100% + 6px);
-            left: 0;
-            min-width: 210px;
+
+        /* Dark styled dropdown menu */
+        .nav-links .dropdown-menu {
             background: #1e293b;
             border: 1px solid rgba(255,255,255,.13);
             border-radius: 8px;
             padding: 5px 0;
             box-shadow: 0 10px 28px rgba(0,0,0,.45);
-            z-index: 9999;
+            min-width: 210px;
+            margin-top: 6px !important;
             list-style: none;
         }
-        .nav-dropdown.open .nav-dropdown-menu { display: block; }
-        .nav-dropdown-menu li a {
+        .nav-links .dropdown-menu li a {
             display: flex;
             align-items: center;
             gap: 9px;
@@ -151,15 +151,17 @@
             transition: background .12s;
             border-radius: 0;
             text-decoration: none;
+            background: transparent;
         }
-        .nav-dropdown-menu li a i { font-size: 12px; opacity: .8; }
-        .nav-dropdown-menu li a:hover,
-        .nav-dropdown-menu li a.active {
-            background: rgba(255,255,255,.08);
+        .nav-links .dropdown-menu li a i { font-size: 12px; opacity: .8; }
+        .nav-links .dropdown-menu li a:hover,
+        .nav-links .dropdown-menu li a:focus,
+        .nav-links .dropdown-menu li a.active {
+            background: rgba(255,255,255,.08) !important;
             color: #fff;
         }
-        .nav-dropdown-menu li a.active { font-weight: 600; }
-        .nav-dropdown-menu .menu-divider {
+        .nav-links .dropdown-menu li a.active { font-weight: 600; }
+        .nav-links .dropdown-menu .menu-divider {
             height: 1px;
             background: rgba(255,255,255,.09);
             margin: 4px 10px;
@@ -419,10 +421,10 @@
 
         <!-- Claims & Docs -->
         <li class="nav-dropdown">
-            <a href="#" class="nav-dropdown-toggle" onclick="return false">
+            <a href="#" class="nav-dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-folder-open"></i> Claims &amp; Docs
             </a>
-            <ul class="nav-dropdown-menu">
+            <ul class="nav-dropdown-menu dropdown-menu">
                 <li><a href="{% url 'claim_list' %}" class="{% if '/claims' in request.path and 'push-rooms' not in request.path and 'excel-hub' not in request.path %}active{% endif %}">
                     <i class="fas fa-folder-open"></i> Claims Manager</a></li>
                 <li><a href="{% url 'excel_hub' %}" class="{% if 'excel-hub' in request.path %}active{% endif %}">
@@ -438,10 +440,10 @@
 
         <!-- Field & AI -->
         <li class="nav-dropdown">
-            <a href="#" class="nav-dropdown-toggle" onclick="return false">
+            <a href="#" class="nav-dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-tools"></i> Field &amp; AI
             </a>
-            <ul class="nav-dropdown-menu">
+            <ul class="nav-dropdown-menu dropdown-menu">
                 <li><a href="{% url 'labels' %}" class="{% if '/labels' in request.path and '/wall' not in request.path %}active{% endif %}">
                     <i class="fas fa-tags"></i> Box Labels</a></li>
                 <li><a href="{% url 'wall_labels' %}" class="{% if '/labels/wall' in request.path %}active{% endif %}">
@@ -460,10 +462,10 @@
 
         <!-- Encircle -->
         <li class="nav-dropdown">
-            <a href="#" class="nav-dropdown-toggle" onclick="return false">
+            <a href="#" class="nav-dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-circle-nodes"></i> Encircle
             </a>
-            <ul class="nav-dropdown-menu">
+            <ul class="nav-dropdown-menu dropdown-menu">
                 <li><a href="{% url 'encircle_dashboard' %}" class="{% if '/encircle' in request.path %}active{% endif %}">
                     <i class="fas fa-circle-nodes"></i> Dashboard</a></li>
                 <li><a href="{% url 'push_rooms_page' %}" class="{% if 'push-rooms' in request.path %}active{% endif %}">
@@ -477,10 +479,10 @@
 
         <!-- Finance -->
         <li class="nav-dropdown">
-            <a href="#" class="nav-dropdown-toggle" onclick="return false">
+            <a href="#" class="nav-dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-file-invoice-dollar"></i> Finance
             </a>
-            <ul class="nav-dropdown-menu">
+            <ul class="nav-dropdown-menu dropdown-menu">
                 <li><a href="{% url 'cps_report_home' %}" class="{% if '/cps-report' in request.path %}active{% endif %}">
                     <i class="fas fa-file-invoice-dollar"></i> PPR Schedule of Loss</a></li>
                 <li><a href="{% url 'cps_home' %}" class="{% if '/box-calculator' in request.path %}active{% endif %}">
@@ -496,10 +498,10 @@
 
         <!-- System -->
         <li class="nav-dropdown">
-            <a href="#" class="nav-dropdown-toggle" onclick="return false">
+            <a href="#" class="nav-dropdown-toggle" data-bs-toggle="dropdown" aria-expanded="false">
                 <i class="fas fa-cog"></i> System
             </a>
-            <ul class="nav-dropdown-menu">
+            <ul class="nav-dropdown-menu dropdown-menu">
                 <li><a href="{% url 'dev_hub:dashboard' %}" class="{% if '/dev-hub' in request.path and 'ai-resources' not in request.path %}active{% endif %}">
                     <i class="fas fa-code-branch"></i> Dev Hub</a></li>
                 <li><a href="{% url 'dev_hub:ai_resources' %}" class="{% if 'ai-resources' in request.path %}active{% endif %}">
@@ -663,43 +665,10 @@
         }
     });
 
-    // ── Desktop dropdown toggles (click-based) ─────────────────────────────
-    document.querySelectorAll('.nav-dropdown-toggle').forEach(function(toggle) {
-        toggle.addEventListener('click', function(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            var parent = this.closest('.nav-dropdown');
-            var isOpen = parent.classList.contains('open');
-            // Close all dropdowns
-            document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
-                d.classList.remove('open');
-            });
-            // Toggle this one
-            if (!isOpen) parent.classList.add('open');
-        });
-    });
-
-    // Close any open dropdown when clicking elsewhere on the page
-    document.addEventListener('click', function(e) {
-        if (!e.target.closest('.nav-dropdown')) {
-            document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
-                d.classList.remove('open');
-            });
-        }
-    });
-
-    // Close open dropdown when pressing Escape
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            document.querySelectorAll('.nav-dropdown.open').forEach(function(d) {
-                d.classList.remove('open');
-            });
-        }
-    });
-
+    // ── Desktop dropdowns — Bootstrap 5 handles open/close via data-bs-toggle ──
     // Highlight parent when a child link is the active page
     document.querySelectorAll('.nav-dropdown').forEach(function(drop) {
-        if (drop.querySelector('.nav-dropdown-menu a.active')) {
+        if (drop.querySelector('.dropdown-menu a.active')) {
             drop.classList.add('has-active');
         }
     });
