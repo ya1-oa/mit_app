@@ -5,24 +5,21 @@ Download photos from Encircle claims and store them locally as reference
 photos for the MIT AI review system.
 
 Usage:
-    # Auto-discover the latest N claims (default 6) that have Encircle IDs:
+    # Auto-discover the N most-documented recent claims (scans Encircle, default 6):
     python manage.py import_reference_photos
 
     # Import specific claim IDs:
     python manage.py import_reference_photos abc123 def456
 
-    # Options:
-    --latest N          Pull the N most-recent claims (default 6, ignored if IDs given)
-    --room-series 6     Only import rooms whose number starts with this digit (default: 6)
-    --all-rooms         Ignore room numbering, import every room
+Options:
+    --latest N          How many claims to collect in auto-discover mode (default: 6)
+    --pool N            How many recent clients to scan when auto-discovering (default: 30)
+    --room-series 6     Only import rooms whose number starts with this digit.
+                        NOTE: if Encircle rooms aren't numerically named (e.g. "Living Room"
+                        rather than "601 Living Room"), use --all-rooms instead.
+    --all-rooms         Import every room regardless of name (default in auto-discover mode)
     --overwrite         Re-download even if source_media_id already exists
-    --dry-run           Print what would be imported, don't write anything
-
-Examples:
-    python manage.py import_reference_photos
-    python manage.py import_reference_photos --latest 10
-    python manage.py import_reference_photos abc123 def456 --room-series 6
-    python manage.py import_reference_photos --all-rooms --dry-run
+    --dry-run           Print what would be imported without writing anything
 """
 import re
 import time
@@ -56,25 +53,33 @@ XACT_TO_CATEGORY = {
 class Command(BaseCommand):
     help = (
         'Import Encircle photos as MIT reference photos for AI-assisted review. '
-        'When no claim IDs are given, auto-discovers the latest --latest active claims.'
+        'When no claim IDs are given, auto-discovers recent well-documented claims.'
     )
 
     def add_arguments(self, parser):
         parser.add_argument(
             'claim_ids', nargs='*', type=str,
-            help='Encircle claim ID(s) to import from. Omit to auto-discover.',
+            help='Encircle claim ID(s). Omit to auto-discover.',
         )
         parser.add_argument(
             '--latest', type=int, default=6,
-            help='Number of most-recent Encircle claims to pull when no IDs are given (default: 6).',
+            help='Number of claims to collect in auto-discover mode (default: 6).',
         )
         parser.add_argument(
-            '--room-series', type=str, default='6',
-            help='Only import rooms whose number begins with this digit (default: 6).',
+            '--pool', type=int, default=30,
+            help='Number of recent clients to scan when auto-discovering (default: 30).',
+        )
+        parser.add_argument(
+            '--room-series', type=str, default='',
+            help=(
+                'Only import rooms whose name starts with this digit '
+                '(e.g. "6" for 601, 602 …). '
+                'Leave blank (default) to import all rooms.'
+            ),
         )
         parser.add_argument(
             '--all-rooms', action='store_true',
-            help='Import every room, ignoring the room-series filter.',
+            help='Import every room. This is the default in auto-discover mode.',
         )
         parser.add_argument(
             '--overwrite', action='store_true',
@@ -85,40 +90,47 @@ class Command(BaseCommand):
             help='Print what would be imported without writing anything.',
         )
 
-    # ── Entry point ─────────────────────────────────────────────────────────
+    # ── Entry point ──────────────────────────────────────────────────────────
 
     def handle(self, *args, **options):
         from docsAppR.encircle_client import EncircleAPIClient
 
         claim_ids   = options['claim_ids']
         latest_n    = options['latest']
+        pool_size   = options['pool']
         room_series = options['room_series']
-        all_rooms   = options['all_rooms']
+        all_rooms   = options['all_rooms'] or not room_series  # default: all rooms
         overwrite   = options['overwrite']
         dry_run     = options['dry_run']
 
         if dry_run:
             self.stdout.write(self.style.WARNING('DRY RUN — nothing will be written.'))
 
-        # ── Resolve claim IDs ────────────────────────────────────────────────
-        if not claim_ids:
-            claim_ids = self._latest_claim_ids(latest_n)
-            if not claim_ids:
-                raise CommandError(
-                    'No active clients with Encircle claim IDs found in the database. '
-                    'Push at least one claim to Encircle first, or supply IDs manually.'
-                )
-            self.stdout.write(
-                f'Auto-discovered {len(claim_ids)} claim(s): {", ".join(claim_ids)}'
-            )
-        else:
-            self.stdout.write(f'Using {len(claim_ids)} explicit claim ID(s).')
-
-        # ── Encircle client ──────────────────────────────────────────────────
         try:
             api = EncircleAPIClient()
         except Exception as exc:
             raise CommandError(f'Could not initialise Encircle API client: {exc}')
+
+        # ── Resolve claim IDs ────────────────────────────────────────────────
+        if not claim_ids:
+            self.stdout.write(
+                f'Scanning up to {pool_size} recent claims for ones with photos…'
+            )
+            claim_ids, media_cache = self._discover_claims(latest_n, pool_size, api)
+            if not claim_ids:
+                raise CommandError(
+                    'No claims with photo content found in the last '
+                    f'{pool_size} clients. '
+                    'Supply claim IDs manually or increase --pool.'
+                )
+            self.stdout.write(
+                self.style.SUCCESS(
+                    f'Selected {len(claim_ids)} claim(s): {", ".join(claim_ids)}'
+                )
+            )
+        else:
+            media_cache = {}   # no pre-fetch for manual runs
+            self.stdout.write(f'Using {len(claim_ids)} explicit claim ID(s).')
 
         dest_base = Path(settings.MEDIA_ROOT) / 'mit_reference_photos' / 'pending'
         if not dry_run:
@@ -130,14 +142,18 @@ class Command(BaseCommand):
         for claim_id in claim_ids:
             self.stdout.write(f'\n── Claim {claim_id} ──')
 
-            try:
-                raw         = api.get_all_claim_media(claim_id)
-                media_items = raw if isinstance(raw, list) else raw.get('list', [])
-            except Exception as exc:
-                self.stderr.write(self.style.ERROR(f'  Failed to fetch media: {exc}'))
-                continue
-
-            self.stdout.write(f'  {len(media_items)} total media items')
+            # Use cached media if available (from discovery pass)
+            if claim_id in media_cache:
+                media_items = media_cache[claim_id]
+                self.stdout.write(f'  {len(media_items)} media items (cached from scan)')
+            else:
+                try:
+                    raw         = api.get_all_claim_media(claim_id)
+                    media_items = raw if isinstance(raw, list) else raw.get('list', [])
+                    self.stdout.write(f'  {len(media_items)} total media items')
+                except Exception as exc:
+                    self.stderr.write(self.style.ERROR(f'  Failed to fetch media: {exc}'))
+                    continue
 
             for item in media_items:
                 media_type = (item.get('media_type') or item.get('type') or '').lower()
@@ -153,7 +169,7 @@ class Command(BaseCommand):
                 if not url:
                     continue
 
-                # Room series filter
+                # Room series filter (skipped if all_rooms)
                 if not all_rooms and not self._is_target_room(room_name, room_series):
                     continue
 
@@ -164,11 +180,11 @@ class Command(BaseCommand):
                         continue
 
                 if dry_run:
-                    self.stdout.write(f'  [DRY] Would import: {room_name} / {media_id}')
+                    self.stdout.write(f'  [DRY] Would import: {room_name or "(no room)"} / {media_id}')
                     total_imported += 1
                     continue
 
-                # Download the photo
+                # Download
                 dest_dir = dest_base / claim_id / self._safe_name(room_name or 'unknown')
                 dest_dir.mkdir(parents=True, exist_ok=True)
 
@@ -182,61 +198,104 @@ class Command(BaseCommand):
                 dest_path = dest_dir / f'{media_id}{ext}'
                 dest_path.write_bytes(file_bytes)
 
-                obj, created = MITReferencePhoto.objects.update_or_create(
+                _, created = MITReferencePhoto.objects.update_or_create(
                     source_media_id=media_id,
                     defaults={
                         'file_path':                str(dest_path),
                         'file_size_bytes':          len(file_bytes),
                         'source_encircle_claim_id': claim_id,
                         'source_room_name':         room_name,
-                        'category':                 '',   # staff will tag during review
+                        'category':                 '',
                         'approved':                 False,
                         'is_active':                True,
                     },
                 )
                 action = 'Created' if created else 'Updated'
-                self.stdout.write(f'  [{action}] {room_name} / {media_id} → {dest_path.name}')
+                self.stdout.write(f'  [{action}] {room_name or "(no room)"} / {media_id} → {dest_path.name}')
                 total_imported += 1
-                time.sleep(0.05)   # gentle rate-limit
+                time.sleep(0.05)
 
         self.stdout.write(
             self.style.SUCCESS(
                 f'\nDone — {total_imported} photo(s) imported, {total_skipped} already present.'
             )
         )
-        if total_imported > 0 and not dry_run:
+        if total_imported == 0 and not dry_run:
+            self.stdout.write(self.style.WARNING(
+                'Tip: if Encircle rooms are named "Living Room" rather than '
+                '"601 Living Room", run without --room-series (the default '
+                'now imports all rooms).'
+            ))
+        elif total_imported > 0 and not dry_run:
             self.stdout.write(
                 'Next step: visit /mit/reference-photos/ to tag and approve each photo.'
             )
 
-    # ── Helpers ──────────────────────────────────────────────────────────────
+    # ── Discovery ────────────────────────────────────────────────────────────
 
-    @staticmethod
-    def _latest_claim_ids(n: int) -> list[str]:
+    def _discover_claims(
+        self,
+        n: int,
+        pool_size: int,
+        api,
+    ) -> tuple[list[str], dict]:
         """
-        Return the Encircle claim IDs for the N most-recently created active clients
-        that have a non-empty encircle_claim_id.
+        Scan up to pool_size recent clients with Encircle IDs.
+        Fetch media counts for each, then return the n claims with the
+        most photos (best-documented jobs → most useful reference material).
+
+        Returns (selected_claim_ids, media_cache) where media_cache maps
+        claim_id → media_items list so we don't re-fetch during import.
         """
         from docsAppR.models import Client
-        qs = (
+
+        candidates = list(
             Client.objects
             .filter(archived=False, encircle_claim_id__isnull=False)
             .exclude(encircle_claim_id='')
             .order_by('-created_at')
-            .values_list('encircle_claim_id', flat=True)[:n]
+            .values_list('encircle_claim_id', flat=True)[:pool_size]
         )
-        # Deduplicate while preserving order (multiple clients can share a claim)
+
+        # Deduplicate while preserving order
         seen = set()
-        ids  = []
-        for cid in qs:
+        unique = []
+        for cid in candidates:
             if cid not in seen:
                 seen.add(cid)
-                ids.append(cid)
-        return ids
+                unique.append(cid)
+
+        # Fetch media count for each candidate
+        results = []   # (photo_count, claim_id, media_items)
+        for cid in unique:
+            try:
+                raw   = api.get_all_claim_media(cid)
+                items = raw if isinstance(raw, list) else raw.get('list', [])
+                photos = [
+                    it for it in items
+                    if not (it.get('media_type') or it.get('type') or '').lower() or
+                       any(t in (it.get('media_type') or it.get('type') or '').lower()
+                           for t in ('photo', 'image'))
+                ]
+                count = len(photos)
+                self.stdout.write(f'  {cid}: {count} photos')
+                if count > 0:
+                    results.append((count, cid, items))
+            except Exception as exc:
+                self.stdout.write(f'  {cid}: API error — {exc}')
+
+        # Pick the n most-documented claims
+        results.sort(key=lambda r: r[0], reverse=True)
+        top = results[:n]
+
+        selected = [cid for _, cid, _ in top]
+        cache    = {cid: items for _, cid, items in top}
+        return selected, cache
+
+    # ── Helpers ──────────────────────────────────────────────────────────────
 
     @staticmethod
     def _is_target_room(room_name: str, series_prefix: str) -> bool:
-        """Return True if the room name starts with a number in the target series."""
         if not room_name:
             return False
         m = re.match(r'^(\d+)', room_name.strip())
@@ -246,12 +305,10 @@ class Command(BaseCommand):
 
     @staticmethod
     def _safe_name(name: str) -> str:
-        """Convert a room name to a filesystem-safe directory name."""
         return re.sub(r'[^\w\-]', '_', name.strip())[:60]
 
     @staticmethod
     def _download(url: str, api) -> tuple[str, bytes]:
-        """Download a photo URL and return (extension, bytes)."""
         headers = getattr(api, 'headers', {})
         r = requests.get(url, headers=headers, timeout=30)
         r.raise_for_status()
