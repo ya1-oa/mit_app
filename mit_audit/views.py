@@ -311,6 +311,7 @@ def test_run_view(request):
             client            = client,
             encircle_claim_id = client.encircle_claim_id,
             triggered_by      = request.user,
+            is_test_run       = True,
         )
 
         created_count = 0
@@ -373,10 +374,20 @@ def test_run_view(request):
         {'category': 'heater',       'display_name': 'Heater',                     'required_quantity': 0,  'requires_stabilization': False},
     ]
 
+    # Past runs — all non-archived test-run audits, newest first
+    past_runs = (
+        MITDay3Audit.objects
+        .filter(is_test_run=True, archived=False)
+        .select_related('client')
+        .prefetch_related('reports')
+        .order_by('-created_at')[:50]
+    )
+
     return render(request, 'mit_audit/test_run.html', {
         'clients':           clients,
         'category_choices':  category_choices,
         'default_equipment': defaults,
+        'past_runs':         past_runs,
     })
 
 
@@ -420,6 +431,21 @@ def test_run_results(request, audit_id):
         'rows':    rows,
         'reports': reports,
     })
+
+
+# ---------------------------------------------------------------------------
+# Archive a test run
+# ---------------------------------------------------------------------------
+
+@login_required
+@require_POST
+def archive_test_run(request, audit_id):
+    """Toggle archived flag on a test-run audit (soft-hide from run history)."""
+    from mit_audit.models import MITDay3Audit
+    audit = get_object_or_404(MITDay3Audit, pk=audit_id, is_test_run=True)
+    audit.archived = not audit.archived
+    audit.save(update_fields=['archived'])
+    return JsonResponse({'ok': True, 'archived': audit.archived})
 
 
 # ---------------------------------------------------------------------------

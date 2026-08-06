@@ -201,6 +201,77 @@
   </div><!-- /resultsPanel -->
 
 </div>
+{# ── Past runs history ── #}
+{% if past_runs %}
+<div class="mt-5">
+  <h5 class="fw-bold mb-3"><i class="fas fa-history me-2 text-muted"></i>Previous Runs</h5>
+  <div class="card shadow-sm">
+    <div class="table-responsive">
+      <table class="table table-sm align-middle mb-0">
+        <thead class="table-light">
+          <tr>
+            <th>Claim</th>
+            <th>Date</th>
+            <th>Status</th>
+            <th>Equipment</th>
+            <th>Reports</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for run in past_runs %}
+          <tr id="run-row-{{ run.pk }}">
+            <td class="fw-semibold" style="font-size:13px">
+              {{ run.client.pOwner|default:"—" }}
+              <div class="text-muted" style="font-size:11px">Encircle {{ run.encircle_claim_id }}</div>
+            </td>
+            <td style="font-size:12px;white-space:nowrap">{{ run.created_at|date:"M d, Y" }}<br>
+              <span class="text-muted">{{ run.created_at|date:"H:i" }}</span>
+            </td>
+            <td>
+              <span class="badge
+                {% if run.status == 'complete' %}bg-success
+                {% elif run.status == 'error' %}bg-danger
+                {% else %}bg-secondary{% endif %}"
+                style="font-size:11px">
+                {{ run.get_status_display }}
+              </span>
+              {% if run.error_message %}
+              <div class="text-danger" style="font-size:11px">{{ run.error_message|truncatechars:60 }}</div>
+              {% endif %}
+            </td>
+            <td style="font-size:12px">{{ run.required_equipment.count }} items</td>
+            <td>
+              <div class="d-flex gap-1 flex-wrap">
+                {% for rpt in run.reports.all %}
+                <a href="{{ rpt.get_download_url }}" target="_blank"
+                   class="btn btn-xs btn-outline-primary py-0 px-2"
+                   style="font-size:11px">
+                  {% if rpt.report_type == 'required_equipment' %}📋{% else %}⚠{% endif %}
+                  {{ rpt.get_report_type_display|truncatechars:18 }}
+                </a>
+                {% empty %}
+                <span class="text-muted" style="font-size:11px">—</span>
+                {% endfor %}
+              </div>
+            </td>
+            <td class="text-end" style="white-space:nowrap">
+              <a href="{% url 'mit_audit:audit_detail' run.pk %}"
+                 class="btn btn-sm btn-outline-secondary py-0 px-2 me-1"
+                 style="font-size:11px">View</a>
+              <button class="btn btn-sm btn-outline-danger py-0 px-2"
+                      style="font-size:11px"
+                      onclick="archiveRun({{ run.pk }}, this)">Hide</button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endif %}
+
 {% endblock %}
 
 {% block extra_js %}
@@ -254,7 +325,7 @@ function startRun() {
   }
 
   // Show results panel, hide form button
-  document.getElementById('resultsPanel').style.display = '';
+  document.getElementById('resultsPanel').style.display = 'block';
   document.getElementById('runBtn').disabled    = true;
   document.getElementById('runBtn').textContent = 'Running…';
   document.getElementById('reportButtons').style.display  = 'none';
@@ -407,6 +478,29 @@ function showError(msg) {
 
 function esc(str) {
   return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── Archive (hide) a past run ─────────────────────────────────────────────
+const ARCHIVE_BASE = "{% url 'mit_audit:archive_test_run' 0 %}";
+function archiveRun(auditId, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  const url = ARCHIVE_BASE.replace('/0/', '/' + auditId + '/');
+  fetch(url, {
+    method: 'POST',
+    headers: { 'X-CSRFToken': CSRF },
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) {
+      const row = document.getElementById('run-row-' + auditId);
+      if (row) row.remove();
+    } else {
+      btn.disabled = false;
+      btn.textContent = 'Hide';
+    }
+  })
+  .catch(() => { btn.disabled = false; btn.textContent = 'Hide'; });
 }
 </script>
 {% endblock %}

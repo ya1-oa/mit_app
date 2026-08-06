@@ -127,6 +127,13 @@ class MITDay3Audit(models.Model):
     triggered_by_webhook = models.BooleanField(default=False,
         help_text='True when this audit was automatically started by an Encircle floor-plan webhook.')
 
+    # Set True when the audit was started from the "Run MIT Reports" quick form
+    # rather than from the full workbook pipeline.
+    is_test_run = models.BooleanField(default=False)
+
+    # Soft-delete / hide from the run history list.
+    archived = models.BooleanField(default=False)
+
     created_at  = models.DateTimeField(auto_now_add=True)
     updated_at  = models.DateTimeField(auto_now=True)
     completed_at = models.DateTimeField(null=True, blank=True)
