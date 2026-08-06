@@ -5,20 +5,25 @@ Download photos from Encircle claims and store them locally as reference
 photos for the MIT AI review system.
 
 Usage:
-    python manage.py import_reference_photos <encircle_claim_id> [<id2> ...]
-        [--room-series 6]   # only import rooms whose number starts with this digit
-        [--all-rooms]       # ignore room numbering, import everything
-        [--overwrite]       # re-download even if source_media_id already exists
-        [--dry-run]         # print what would be imported, don't write anything
+    # Auto-discover the latest N claims (default 6) that have Encircle IDs:
+    python manage.py import_reference_photos
+
+    # Import specific claim IDs:
+    python manage.py import_reference_photos abc123 def456
+
+    # Options:
+    --latest N          Pull the N most-recent claims (default 6, ignored if IDs given)
+    --room-series 6     Only import rooms whose number starts with this digit (default: 6)
+    --all-rooms         Ignore room numbering, import every room
+    --overwrite         Re-download even if source_media_id already exists
+    --dry-run           Print what would be imported, don't write anything
 
 Examples:
-    # Import 600-series rooms from two claims:
+    python manage.py import_reference_photos
+    python manage.py import_reference_photos --latest 10
     python manage.py import_reference_photos abc123 def456 --room-series 6
-
-    # Import all rooms from one claim (let staff tag them during review):
-    python manage.py import_reference_photos abc123 --all-rooms
+    python manage.py import_reference_photos --all-rooms --dry-run
 """
-import os
 import re
 import time
 from pathlib import Path
@@ -30,7 +35,7 @@ from django.core.management.base import BaseCommand, CommandError
 from mit_audit.models import MITReferencePhoto
 
 
-# Xactimate code → category slug (used to auto-tag when room name contains a hint)
+# Xactimate code → category slug
 XACT_TO_CATEGORY = {
     'DHMAC':   'dehumidifier',
     'DRY':     'blower',
@@ -47,23 +52,21 @@ XACT_TO_CATEGORY = {
     'DODHY>':  'hydroxyl',
 }
 
-# Extension → MIME type
-MIME_TYPES = {
-    '.jpg':  'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.png':  'image/png',
-    '.webp': 'image/webp',
-    '.heic': 'image/heic',
-}
-
 
 class Command(BaseCommand):
-    help = 'Import Encircle photos as MIT reference photos for AI-assisted review.'
+    help = (
+        'Import Encircle photos as MIT reference photos for AI-assisted review. '
+        'When no claim IDs are given, auto-discovers the latest --latest active claims.'
+    )
 
     def add_arguments(self, parser):
         parser.add_argument(
-            'claim_ids', nargs='+', type=str,
-            help='Encircle claim ID(s) to import from.',
+            'claim_ids', nargs='*', type=str,
+            help='Encircle claim ID(s) to import from. Omit to auto-discover.',
+        )
+        parser.add_argument(
+            '--latest', type=int, default=6,
+            help='Number of most-recent Encircle claims to pull when no IDs are given (default: 6).',
         )
         parser.add_argument(
             '--room-series', type=str, default='6',
@@ -82,10 +85,13 @@ class Command(BaseCommand):
             help='Print what would be imported without writing anything.',
         )
 
+    # ── Entry point ─────────────────────────────────────────────────────────
+
     def handle(self, *args, **options):
         from docsAppR.encircle_client import EncircleAPIClient
 
         claim_ids   = options['claim_ids']
+        latest_n    = options['latest']
         room_series = options['room_series']
         all_rooms   = options['all_rooms']
         overwrite   = options['overwrite']
@@ -94,8 +100,23 @@ class Command(BaseCommand):
         if dry_run:
             self.stdout.write(self.style.WARNING('DRY RUN — nothing will be written.'))
 
+        # ── Resolve claim IDs ────────────────────────────────────────────────
+        if not claim_ids:
+            claim_ids = self._latest_claim_ids(latest_n)
+            if not claim_ids:
+                raise CommandError(
+                    'No active clients with Encircle claim IDs found in the database. '
+                    'Push at least one claim to Encircle first, or supply IDs manually.'
+                )
+            self.stdout.write(
+                f'Auto-discovered {len(claim_ids)} claim(s): {", ".join(claim_ids)}'
+            )
+        else:
+            self.stdout.write(f'Using {len(claim_ids)} explicit claim ID(s).')
+
+        # ── Encircle client ──────────────────────────────────────────────────
         try:
-            client = EncircleAPIClient()
+            api = EncircleAPIClient()
         except Exception as exc:
             raise CommandError(f'Could not initialise Encircle API client: {exc}')
 
@@ -109,9 +130,8 @@ class Command(BaseCommand):
         for claim_id in claim_ids:
             self.stdout.write(f'\n── Claim {claim_id} ──')
 
-            # Fetch all media for this claim
             try:
-                raw = client.get_all_claim_media(claim_id)
+                raw         = api.get_all_claim_media(claim_id)
                 media_items = raw if isinstance(raw, list) else raw.get('list', [])
             except Exception as exc:
                 self.stderr.write(self.style.ERROR(f'  Failed to fetch media: {exc}'))
@@ -149,21 +169,19 @@ class Command(BaseCommand):
                     continue
 
                 # Download the photo
-                dest_dir  = dest_base / claim_id / self._safe_name(room_name or 'unknown')
+                dest_dir = dest_base / claim_id / self._safe_name(room_name or 'unknown')
                 dest_dir.mkdir(parents=True, exist_ok=True)
 
                 try:
-                    ext, file_bytes = self._download(url, client)
+                    ext, file_bytes = self._download(url, api)
                 except Exception as exc:
                     self.stderr.write(f'  [SKIP] {media_id}: download failed — {exc}')
                     total_skipped += 1
                     continue
 
-                filename  = f'{media_id}{ext}'
-                dest_path = dest_dir / filename
+                dest_path = dest_dir / f'{media_id}{ext}'
                 dest_path.write_bytes(file_bytes)
 
-                # Upsert the reference photo record
                 obj, created = MITReferencePhoto.objects.update_or_create(
                     source_media_id=media_id,
                     defaults={
@@ -171,7 +189,7 @@ class Command(BaseCommand):
                         'file_size_bytes':          len(file_bytes),
                         'source_encircle_claim_id': claim_id,
                         'source_room_name':         room_name,
-                        'category':                 '',      # staff will tag during review
+                        'category':                 '',   # staff will tag during review
                         'approved':                 False,
                         'is_active':                True,
                     },
@@ -183,7 +201,7 @@ class Command(BaseCommand):
 
         self.stdout.write(
             self.style.SUCCESS(
-                f'\nDone — {total_imported} photo(s) imported, {total_skipped} skipped.'
+                f'\nDone — {total_imported} photo(s) imported, {total_skipped} already present.'
             )
         )
         if total_imported > 0 and not dry_run:
@@ -191,7 +209,30 @@ class Command(BaseCommand):
                 'Next step: visit /mit/reference-photos/ to tag and approve each photo.'
             )
 
-    # ── Helpers ─────────────────────────────────────────────────────────────
+    # ── Helpers ──────────────────────────────────────────────────────────────
+
+    @staticmethod
+    def _latest_claim_ids(n: int) -> list[str]:
+        """
+        Return the Encircle claim IDs for the N most-recently created active clients
+        that have a non-empty encircle_claim_id.
+        """
+        from docsAppR.models import Client
+        qs = (
+            Client.objects
+            .filter(archived=False, encircle_claim_id__isnull=False)
+            .exclude(encircle_claim_id='')
+            .order_by('-created_at')
+            .values_list('encircle_claim_id', flat=True)[:n]
+        )
+        # Deduplicate while preserving order (multiple clients can share a claim)
+        seen = set()
+        ids  = []
+        for cid in qs:
+            if cid not in seen:
+                seen.add(cid)
+                ids.append(cid)
+        return ids
 
     @staticmethod
     def _is_target_room(room_name: str, series_prefix: str) -> bool:
@@ -209,22 +250,12 @@ class Command(BaseCommand):
         return re.sub(r'[^\w\-]', '_', name.strip())[:60]
 
     @staticmethod
-    def _download(url: str, client) -> tuple[str, bytes]:
-        """
-        Download url and return (extension, bytes).
-        Uses the Encircle auth header if available.
-        """
-        headers = getattr(client, 'headers', {})
+    def _download(url: str, api) -> tuple[str, bytes]:
+        """Download a photo URL and return (extension, bytes)."""
+        headers = getattr(api, 'headers', {})
         r = requests.get(url, headers=headers, timeout=30)
         r.raise_for_status()
-
-        # Determine extension from Content-Type
-        ct = r.headers.get('content-type', '').split(';')[0].strip()
-        ext_map = {
-            'image/jpeg': '.jpg',
-            'image/png':  '.png',
-            'image/webp': '.webp',
-            'image/heic': '.heic',
-        }
-        ext = ext_map.get(ct, '.jpg')
+        ct  = r.headers.get('content-type', '').split(';')[0].strip()
+        ext = {'image/jpeg': '.jpg', 'image/png': '.png',
+               'image/webp': '.webp', 'image/heic': '.heic'}.get(ct, '.jpg')
         return ext, r.content
