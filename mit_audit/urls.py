@@ -20,6 +20,9 @@ urlpatterns = [
     path('config/',                       views.config_view,       name='config'),
     # Upload template workbook
     path('config/upload-template/',       views.upload_template,   name='upload_template'),
+    # Test-run page
+    path('test-run/',                               views.test_run_view,         name='test_run'),
+    path('test-run/<int:audit_id>/results/',        views.test_run_results,      name='test_run_results'),
     # Reference photo library
     path('reference-photos/',                       views.reference_photos,      name='reference_photos'),
     path('reference-photos/<int:photo_id>/tag/',    views.tag_reference_photo,   name='tag_reference_photo'),

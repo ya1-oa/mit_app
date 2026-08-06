@@ -278,6 +278,140 @@ def upload_template(request):
 
 
 # ---------------------------------------------------------------------------
+# Test-run page  — run reports against any claim without a workbook
+# ---------------------------------------------------------------------------
+
+@login_required
+def test_run_view(request):
+    """
+    GET  — show the test-run form (client picker + equipment quantities).
+    POST — create a MITDay3Audit + MITRequiredEquipment from the form,
+           skip to the photo-review step, return {ok, audit_id}.
+    """
+    from mit_audit.models import MITDay3Audit, MITRequiredEquipment
+    from docsAppR.models import Client
+
+    if request.method == 'POST':
+        try:
+            data = json.loads(request.body)
+        except Exception:
+            return JsonResponse({'error': 'Invalid JSON'}, status=400)
+
+        client_id = data.get('client_id')
+        equipment = data.get('equipment', [])   # [{category, display_name, required_quantity, requires_stabilization}]
+
+        if not client_id:
+            return JsonResponse({'error': 'client_id required'}, status=400)
+
+        client = get_object_or_404(Client, pk=client_id, archived=False)
+        if not client.encircle_claim_id:
+            return JsonResponse({'error': 'This client has no Encircle claim ID.'}, status=400)
+
+        audit = MITDay3Audit.objects.create(
+            client            = client,
+            encircle_claim_id = client.encircle_claim_id,
+            triggered_by      = request.user,
+        )
+
+        created_count = 0
+        for item in equipment:
+            qty = int(item.get('required_quantity') or 0)
+            if qty <= 0:
+                continue
+            MITRequiredEquipment.objects.create(
+                audit                        = audit,
+                display_name                 = item.get('display_name', '').strip() or item.get('category', 'other'),
+                equipment_type               = item.get('category', 'other'),
+                category                     = item.get('category', 'other'),
+                required_quantity            = qty,
+                source_sheet                 = 'test_run',
+                workbook_row                 = None,
+                workbook_cell                = '',
+                requires_stabilization_photo = bool(item.get('requires_stabilization')),
+            )
+            created_count += 1
+
+        if created_count == 0:
+            audit.delete()
+            return JsonResponse({'error': 'Enter at least one equipment type with qty > 0.'}, status=400)
+
+        # Skip workbook — go straight to photo review
+        from mit_audit.tasks import review_encircle_photos
+        review_encircle_photos.delay(audit.pk)
+
+        return JsonResponse({'ok': True, 'audit_id': audit.pk})
+
+    # GET ——————————————————————————————————————————————————————————————
+    clients = (
+        Client.objects
+        .filter(archived=False, encircle_claim_id__isnull=False)
+        .exclude(encircle_claim_id='')
+        .order_by('-created_at')[:80]
+    )
+    category_choices = MITRequiredEquipment.CATEGORY_CHOICES
+
+    # Default equipment quantities for the form
+    defaults = [
+        {'category': 'dehumidifier', 'display_name': 'LGR Dehumidifier',          'required_quantity': 3,  'requires_stabilization': True},
+        {'category': 'blower',       'display_name': 'Air Mover / Blower',         'required_quantity': 10, 'requires_stabilization': False},
+        {'category': 'air_cleaner',  'display_name': 'HEPA Air Scrubber',          'required_quantity': 1,  'requires_stabilization': True},
+        {'category': 'hydroxyl',     'display_name': 'Hydroxyl Generator',         'required_quantity': 0,  'requires_stabilization': True},
+        {'category': 'zipper_wall',  'display_name': 'Zipper Wall (containment)',  'required_quantity': 0,  'requires_stabilization': True},
+        {'category': 'wall_cavity',  'display_name': 'Wall Cavity Drying System',  'required_quantity': 0,  'requires_stabilization': False},
+        {'category': 'floor_drying', 'display_name': 'Floor Drying Mat',           'required_quantity': 0,  'requires_stabilization': False},
+        {'category': 'heater',       'display_name': 'Heater',                     'required_quantity': 0,  'requires_stabilization': False},
+    ]
+
+    return render(request, 'mit_audit/test_run.html', {
+        'clients':           clients,
+        'category_choices':  category_choices,
+        'default_equipment': defaults,
+    })
+
+
+@login_required
+def test_run_results(request, audit_id):
+    """
+    AJAX: return AI observations for a completed audit so the test-run page
+    can render them without a page reload.
+    """
+    from mit_audit.models import MITDay3Audit, MITPhotoObservation
+
+    audit = get_object_or_404(MITDay3Audit, pk=audit_id)
+    rows = []
+    for eq in audit.required_equipment.prefetch_related('photo_observation').all():
+        obs = getattr(eq, 'photo_observation', None)
+        rows.append({
+            'display_name':       eq.display_name,
+            'category':           eq.category,
+            'required_quantity':  eq.required_quantity,
+            'visible_quantity':   obs.visible_quantity if obs else None,
+            'ai_confidence':      obs.ai_confidence if obs else None,
+            'ai_notes':           obs.ai_notes if obs else '',
+            'recommended_action': obs.recommended_action if obs else '',
+            'status':             obs.status if obs else 'missing',
+            'stab_required':      eq.requires_stabilization_photo,
+            'stab_found':         obs.stabilization_photo_found if obs else None,
+        })
+
+    reports = []
+    for r in audit.reports.all():
+        reports.append({
+            'type':  r.report_type,
+            'label': r.get_report_type_display(),
+            'url':   r.get_download_url(),
+        })
+
+    return JsonResponse({
+        'ok':      True,
+        'status':  audit.status,
+        'error':   audit.error_message,
+        'rows':    rows,
+        'reports': reports,
+    })
+
+
+# ---------------------------------------------------------------------------
 # Reference photo library
 # ---------------------------------------------------------------------------
 

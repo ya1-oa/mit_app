@@ -1,0 +1,412 @@
+{% extends "account/base.html" %}
+{% block title %}Run MIT Reports — Test{% endblock %}
+
+{% block extra_css %}
+<style>
+  .eq-row input[type="number"] {
+    width: 72px;
+    text-align: center;
+  }
+  .eq-row td { vertical-align: middle; }
+  .stab-badge {
+    font-size: 10px;
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: #e0f2fe;
+    color: #0369a1;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+  /* Results panel */
+  #resultsPanel { display: none; }
+  .obs-row td { vertical-align: middle; font-size: 13px; }
+  .status-confirmed { color: #16a34a; font-weight: 700; }
+  .status-partial   { color: #d97706; font-weight: 700; }
+  .status-missing   { color: #dc2626; font-weight: 700; }
+  .progress-wrap { height: 8px; border-radius: 4px; overflow: hidden; background: #e2e8f0; }
+  .progress-bar-inner {
+    height: 100%;
+    background: linear-gradient(90deg, #1e40af, #3b82f6);
+    border-radius: 4px;
+    transition: width .4s ease;
+  }
+  .conf-pill {
+    font-size: 10px;
+    padding: 2px 7px;
+    border-radius: 10px;
+    font-weight: 600;
+  }
+  .conf-high   { background: #dcfce7; color: #166534; }
+  .conf-medium { background: #fef3c7; color: #92400e; }
+  .conf-low    { background: #fee2e2; color: #991b1b; }
+  .report-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 10px 20px;
+    border-radius: 8px;
+    font-weight: 600;
+    font-size: 14px;
+    text-decoration: none;
+    transition: opacity .15s;
+  }
+  .report-btn:hover { opacity: .85; }
+  .report-btn-primary   { background: #1e40af; color: #fff; }
+  .report-btn-secondary { background: #dc2626; color: #fff; }
+</style>
+{% endblock %}
+
+{% block page_header %}
+<div class="page-header">
+  <h1><i class="fas fa-flask me-2"></i>Run MIT Reports</h1>
+  <nav aria-label="breadcrumb" class="ms-auto">
+    <ol class="breadcrumb">
+      <li class="breadcrumb-item"><a href="{% url 'mit_audit:dashboard' %}">MIT Audit</a></li>
+      <li class="breadcrumb-item active">Test Run</li>
+    </ol>
+  </nav>
+</div>
+{% endblock %}
+
+{% block content %}
+<div class="row g-4">
+
+  {# ── Left: form ── #}
+  <div class="col-12 col-xl-5" id="formCol">
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-3">1 · Select Claim</h6>
+        <select class="form-select" id="clientSelect">
+          <option value="">— pick a claim —</option>
+          {% for c in clients %}
+          <option value="{{ c.pk }}"
+                  data-claim="{{ c.encircle_claim_id }}"
+                  data-name="{{ c.pOwner|default:c.pk }}">
+            {{ c.pOwner|default:"(no name)" }}
+            &nbsp;·&nbsp; {{ c.claimNumber|default:"" }}
+            &nbsp;·&nbsp; Encircle {{ c.encircle_claim_id }}
+          </option>
+          {% endfor %}
+        </select>
+        <div class="form-text" id="claimHint"></div>
+      </div>
+    </div>
+
+    <div class="card shadow-sm mb-4">
+      <div class="card-body">
+        <h6 class="fw-bold mb-1">2 · Equipment on This Job</h6>
+        <p class="text-muted small mb-3">
+          Enter the quantity of each equipment type invoiced.
+          Set to 0 to exclude from review.
+        </p>
+
+        <table class="table table-sm mb-0" id="eqTable">
+          <thead class="table-light">
+            <tr>
+              <th style="width:40%">Equipment</th>
+              <th class="text-center" style="width:22%">Qty Required</th>
+              <th style="width:38%">Label (editable)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for item in default_equipment %}
+            <tr class="eq-row" data-cat="{{ item.category }}" data-stab="{{ item.requires_stabilization|yesno:'true,false' }}">
+              <td>
+                <span class="fw-semibold">{{ item.display_name }}</span>
+                {% if item.requires_stabilization %}
+                <span class="stab-badge ms-1">★ stab photo</span>
+                {% endif %}
+              </td>
+              <td class="text-center">
+                <input type="number" class="form-control form-control-sm d-inline-block eq-qty"
+                       value="{{ item.required_quantity }}" min="0" max="99">
+              </td>
+              <td>
+                <input type="text" class="form-control form-control-sm eq-name"
+                       value="{{ item.display_name }}" placeholder="Label…">
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <button class="btn btn-primary w-100 py-2 fw-bold" id="runBtn" onclick="startRun()">
+      <i class="fas fa-play me-2"></i>Run AI Review &amp; Generate Reports
+    </button>
+    <p class="text-muted small text-center mt-2">
+      Fetches all Encircle photos for the claim, sends them to Claude, and produces both PDFs.
+      Usually takes 60–120 seconds.
+    </p>
+  </div>
+
+  {# ── Right: results ── #}
+  <div class="col-12 col-xl-7" id="resultsPanel">
+
+    {# Progress #}
+    <div class="card shadow-sm mb-4" id="progressCard">
+      <div class="card-body">
+        <div class="d-flex justify-content-between align-items-center mb-2">
+          <span class="fw-semibold" id="progressLabel">Starting…</span>
+          <span class="badge bg-primary" id="progressBadge">Running</span>
+        </div>
+        <div class="progress-wrap">
+          <div class="progress-bar-inner" id="progressBar" style="width:5%"></div>
+        </div>
+      </div>
+    </div>
+
+    {# Report download buttons (hidden until complete) #}
+    <div id="reportButtons" style="display:none" class="mb-4">
+      <div class="d-flex gap-3 flex-wrap">
+        <a id="btnRequired" href="#" target="_blank" class="report-btn report-btn-primary">
+          <i class="fas fa-clipboard-list"></i>Required Equipment Report
+        </a>
+        <a id="btnMissing" href="#" target="_blank" class="report-btn report-btn-secondary">
+          <i class="fas fa-exclamation-triangle"></i>Outstanding Photo Requirements
+        </a>
+        <a id="btnDetail" href="#" class="report-btn" style="background:#e2e8f0;color:#334155">
+          <i class="fas fa-external-link-alt"></i>Full Audit Detail
+        </a>
+      </div>
+    </div>
+
+    {# AI results table #}
+    <div class="card shadow-sm" id="obsCard" style="display:none">
+      <div class="card-header bg-white fw-bold">
+        <i class="fas fa-robot me-2 text-primary"></i>AI Review Results
+      </div>
+      <div class="table-responsive">
+        <table class="table table-sm mb-0">
+          <thead class="table-light">
+            <tr>
+              <th>Equipment</th>
+              <th class="text-center">Required</th>
+              <th class="text-center">Found</th>
+              <th class="text-center">Confidence</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody id="obsBody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    {# Error state #}
+    <div class="alert alert-danger" id="errorAlert" style="display:none">
+      <strong>Pipeline error:</strong> <span id="errorMsg"></span>
+    </div>
+
+  </div><!-- /resultsPanel -->
+
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const STATUS_URL  = "{% url 'mit_audit:status_api' 0 %}";
+const RESULTS_URL = "{% url 'mit_audit:test_run_results' 0 %}";
+const RUN_URL     = "{% url 'mit_audit:test_run' %}";
+const DETAIL_URL  = "{% url 'mit_audit:audit_detail' 0 %}";
+const CSRF        = '{{ csrf_token }}';
+
+let pollTimer = null;
+
+// ── Update claim hint ──────────────────────────────────────────────────────
+document.getElementById('clientSelect').addEventListener('change', function () {
+  const opt = this.options[this.selectedIndex];
+  const cid = opt.dataset.claim;
+  document.getElementById('claimHint').textContent = cid
+    ? `Encircle claim ID: ${cid}`
+    : '';
+});
+
+// ── Collect equipment rows from the table ─────────────────────────────────
+function collectEquipment() {
+  const rows = document.querySelectorAll('#eqTable tbody .eq-row');
+  const result = [];
+  rows.forEach(row => {
+    const qty  = parseInt(row.querySelector('.eq-qty').value, 10) || 0;
+    const name = row.querySelector('.eq-name').value.trim();
+    result.push({
+      category:                row.dataset.cat,
+      display_name:            name || row.dataset.cat,
+      required_quantity:       qty,
+      requires_stabilization:  row.dataset.stab === 'true',
+    });
+  });
+  return result;
+}
+
+// ── Start the run ──────────────────────────────────────────────────────────
+function startRun() {
+  const clientId = document.getElementById('clientSelect').value;
+  if (!clientId) {
+    alert('Please select a claim first.');
+    return;
+  }
+  const equipment = collectEquipment();
+  const hasAny    = equipment.some(e => e.required_quantity > 0);
+  if (!hasAny) {
+    alert('Enter a quantity > 0 for at least one equipment type.');
+    return;
+  }
+
+  // Show results panel, hide form button
+  document.getElementById('resultsPanel').style.display = '';
+  document.getElementById('runBtn').disabled    = true;
+  document.getElementById('runBtn').textContent = 'Running…';
+  document.getElementById('reportButtons').style.display  = 'none';
+  document.getElementById('obsCard').style.display        = 'none';
+  document.getElementById('errorAlert').style.display     = 'none';
+  setProgress(5, 'Submitting…', 'Running');
+
+  fetch(RUN_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body:    JSON.stringify({ client_id: clientId, equipment }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) {
+      showError(data.error || 'Unknown error starting the pipeline.');
+      return;
+    }
+    setProgress(10, 'Fetching Encircle photos…', 'Running');
+    pollStatus(data.audit_id);
+  })
+  .catch(err => showError('Network error: ' + err));
+}
+
+// ── Poll the audit status ─────────────────────────────────────────────────
+const STEP_LABELS = {
+  'pending':           'Queued…',
+  'extracting_dims':   'Extracting floor plan dimensions…',
+  'dims_review':       'Waiting for dimension approval…',
+  'populating_wb':     'Populating workbook…',
+  'calculating':       'Calculating required equipment…',
+  'reviewing_photos':  'Fetching photos & running AI review… (may take 60–120 s)',
+  'generating_reports':'Generating PDF reports…',
+  'complete':          'Done!',
+  'error':             'Error',
+};
+
+function pollStatus(auditId) {
+  if (pollTimer) clearTimeout(pollTimer);
+
+  const url = STATUS_URL.replace('/0/', '/' + auditId + '/');
+  fetch(url)
+  .then(r => r.json())
+  .then(data => {
+    const label   = STEP_LABELS[data.status] || data.status_label || data.status;
+    const percent = statusToPercent(data);
+
+    setProgress(percent, label, data.status === 'complete' ? 'Done' : 'Running');
+
+    if (data.status === 'complete') {
+      loadResults(auditId);
+    } else if (data.status === 'error') {
+      showError(data.error || 'The pipeline reported an error. Check server logs.');
+    } else {
+      pollTimer = setTimeout(() => pollStatus(auditId), 3000);
+    }
+  })
+  .catch(() => {
+    pollTimer = setTimeout(() => pollStatus(auditId), 5000);
+  });
+}
+
+function statusToPercent(data) {
+  const map = {
+    'pending': 5, 'extracting_dims': 15, 'dims_review': 20,
+    'populating_wb': 30, 'calculating': 45,
+    'reviewing_photos': 55, 'generating_reports': 90, 'complete': 100,
+  };
+  return map[data.status] || 10;
+}
+
+// ── Load & render AI observations ─────────────────────────────────────────
+function loadResults(auditId) {
+  const url = RESULTS_URL.replace('/0/', '/' + auditId + '/');
+  fetch(url)
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) { showError('Could not load results.'); return; }
+    renderResults(data, auditId);
+    document.getElementById('runBtn').disabled    = false;
+    document.getElementById('runBtn').textContent = '↺ Run Again';
+  });
+}
+
+function renderResults(data, auditId) {
+  // Report buttons
+  const reqReport = data.reports.find(r => r.type === 'required_equipment');
+  const misReport = data.reports.find(r => r.type === 'missing_equipment');
+  if (reqReport) document.getElementById('btnRequired').href = reqReport.url;
+  if (misReport) document.getElementById('btnMissing').href  = misReport.url;
+  document.getElementById('btnDetail').href = DETAIL_URL.replace('/0/', '/' + auditId + '/');
+  document.getElementById('reportButtons').style.display = '';
+
+  // Observations table
+  const tbody = document.getElementById('obsBody');
+  tbody.innerHTML = '';
+  data.rows.forEach(row => {
+    const vis = row.visible_quantity;
+    const req = row.required_quantity;
+    const statusClass = vis === null
+      ? 'status-missing'
+      : vis >= req ? 'status-confirmed'
+      : vis > 0   ? 'status-partial'
+      : 'status-missing';
+    const marker = vis === null ? '?' : vis >= req ? '✓' : vis > 0 ? '~' : '✗';
+    const confClass = { high: 'conf-high', medium: 'conf-medium', low: 'conf-low' }[row.ai_confidence] || 'conf-low';
+
+    let notes = row.ai_notes || '';
+    if (row.stab_required && row.stab_found === false) {
+      notes += ' ⚠ Stabilization photo missing.';
+    }
+
+    const tr = document.createElement('tr');
+    tr.className = 'obs-row';
+    tr.innerHTML = `
+      <td class="fw-semibold">${esc(row.display_name)}</td>
+      <td class="text-center">${req}</td>
+      <td class="text-center ${statusClass}">${marker} ${vis ?? '—'}</td>
+      <td class="text-center">
+        ${row.ai_confidence
+          ? `<span class="conf-pill ${confClass}">${row.ai_confidence}</span>`
+          : '—'}
+      </td>
+      <td style="font-size:12px;color:#475569;max-width:280px">${esc(notes.trim())}</td>
+    `;
+    tbody.appendChild(tr);
+  });
+  document.getElementById('obsCard').style.display = '';
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────
+function setProgress(pct, label, badgeText) {
+  document.getElementById('progressBar').style.width   = pct + '%';
+  document.getElementById('progressLabel').textContent = label;
+  document.getElementById('progressBadge').textContent = badgeText;
+  if (pct >= 100) {
+    document.getElementById('progressBadge').className = 'badge bg-success';
+  }
+}
+
+function showError(msg) {
+  document.getElementById('errorMsg').textContent    = msg;
+  document.getElementById('errorAlert').style.display = '';
+  document.getElementById('progressBadge').textContent = 'Error';
+  document.getElementById('progressBadge').className  = 'badge bg-danger';
+  document.getElementById('progressBar').style.background = '#dc2626';
+  document.getElementById('runBtn').disabled    = false;
+  document.getElementById('runBtn').textContent = '↺ Try Again';
+}
+
+function esc(str) {
+  return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+{% endblock %}
