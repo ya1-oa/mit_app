@@ -328,8 +328,10 @@ class MITReport(models.Model):
     download_token enables unauthenticated links inside notification emails.
     """
     TYPE_CHOICES = [
-        ('required_equipment', 'Required Equipment Report'),
-        ('missing_equipment',  'Missing Equipment & Photos Report'),
+        ('required_equipment', 'Required Water Mitigation Equipment'),
+        ('required_stab',      'Required Stabilization Photos'),
+        ('missing_equipment',  'Missing Water Mitigation Photos'),
+        ('missing_stab',       'Missing Stabilization Photos'),
     ]
 
     audit         = models.ForeignKey(

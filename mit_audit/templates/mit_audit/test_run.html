@@ -159,15 +159,26 @@
 
     {# Report download buttons (hidden until complete) #}
     <div id="reportButtons" style="display:none" class="mb-4">
-      <div class="d-flex gap-3 flex-wrap">
+      <p class="fw-semibold mb-2" style="font-size:13px">
+        <i class="fas fa-file-pdf me-1 text-primary"></i>Generated Reports
+      </p>
+      <div class="d-flex gap-2 flex-wrap mb-2">
         <a id="btnRequired" href="#" target="_blank" class="report-btn report-btn-primary">
-          <i class="fas fa-clipboard-list"></i>Required Equipment Report
+          <i class="fas fa-clipboard-list"></i>Required Equipment
         </a>
+        <a id="btnRequiredStab" href="#" target="_blank" class="report-btn" style="background:#1565c0;color:#fff">
+          <i class="fas fa-star"></i>Required Stab Photos
+        </a>
+      </div>
+      <div class="d-flex gap-2 flex-wrap">
         <a id="btnMissing" href="#" target="_blank" class="report-btn report-btn-secondary">
-          <i class="fas fa-exclamation-triangle"></i>Outstanding Photo Requirements
+          <i class="fas fa-exclamation-triangle"></i>Missing Equip Photos
+        </a>
+        <a id="btnMissingStab" href="#" target="_blank" class="report-btn" style="background:#b71c1c;color:#fff">
+          <i class="fas fa-exclamation-circle"></i>Missing Stab Photos
         </a>
         <a id="btnDetail" href="#" class="report-btn" style="background:#e2e8f0;color:#334155">
-          <i class="fas fa-external-link-alt"></i>Full Audit Detail
+          <i class="fas fa-external-link-alt"></i>Full Detail
         </a>
       </div>
     </div>
@@ -245,10 +256,14 @@
               <div class="d-flex gap-1 flex-wrap">
                 {% for rpt in run.reports.all %}
                 <a href="{{ rpt.get_download_url }}" target="_blank"
-                   class="btn btn-xs btn-outline-primary py-0 px-2"
+                   class="btn btn-xs py-0 px-2
+                     {% if rpt.report_type == 'required_equipment' %}btn-outline-primary
+                     {% elif rpt.report_type == 'required_stab' %}btn-outline-info
+                     {% elif rpt.report_type == 'missing_equipment' %}btn-outline-danger
+                     {% elif rpt.report_type == 'missing_stab' %}btn-danger
+                     {% else %}btn-outline-secondary{% endif %}"
                    style="font-size:11px">
-                  {% if rpt.report_type == 'required_equipment' %}📋{% else %}⚠{% endif %}
-                  {{ rpt.get_report_type_display|truncatechars:18 }}
+                  ↓ {{ rpt.get_report_type_display|truncatechars:20 }}
                 </a>
                 {% empty %}
                 <span class="text-muted" style="font-size:11px">—</span>
@@ -411,13 +426,17 @@ function loadResults(auditId) {
 }
 
 function renderResults(data, auditId) {
-  // Report buttons
-  const reqReport = data.reports.find(r => r.type === 'required_equipment');
-  const misReport = data.reports.find(r => r.type === 'missing_equipment');
-  if (reqReport) document.getElementById('btnRequired').href = reqReport.url;
-  if (misReport) document.getElementById('btnMissing').href  = misReport.url;
+  // Report buttons — 4 reports
+  const reqReport  = data.reports.find(r => r.type === 'required_equipment');
+  const reqStab    = data.reports.find(r => r.type === 'required_stab');
+  const misReport  = data.reports.find(r => r.type === 'missing_equipment');
+  const misStab    = data.reports.find(r => r.type === 'missing_stab');
+  if (reqReport) document.getElementById('btnRequired').href     = reqReport.url;
+  if (reqStab)   document.getElementById('btnRequiredStab').href = reqStab.url;
+  if (misReport) document.getElementById('btnMissing').href      = misReport.url;
+  if (misStab)   document.getElementById('btnMissingStab').href  = misStab.url;
   document.getElementById('btnDetail').href = DETAIL_URL.replace('/0/', '/' + auditId + '/');
-  document.getElementById('reportButtons').style.display = '';
+  document.getElementById('reportButtons').style.display = 'block';
 
   // Observations table
   const tbody = document.getElementById('obsBody');

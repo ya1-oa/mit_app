@@ -396,7 +396,9 @@ def generate_mit_reports(self, audit_id: int):
     errors = []
     for report_type, builder_fn in [
         ('required_equipment', rb.build_required_equipment_report),
+        ('required_stab',      rb.build_required_stab_report),
         ('missing_equipment',  rb.build_missing_equipment_report),
+        ('missing_stab',       rb.build_missing_stab_report),
     ]:
         try:
             pdf_path = builder_fn(audit)
