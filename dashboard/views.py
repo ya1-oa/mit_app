@@ -205,5 +205,19 @@ def home(request):
             'icon': 'fas fa-hand-holding-dollar',
             'color': '#0891b2',
         },
+        {
+            'name': 'MIT Day 3 Audit',
+            'description': 'AI equipment audit — workbook, photo review & PDF reports',
+            'url': '/mit/',
+            'icon': 'fas fa-file-medical-alt',
+            'color': '#7c3aed',
+        },
+        {
+            'name': 'Run MIT Reports',
+            'description': 'Quick-run required equipment & missing photo reports for any claim',
+            'url': '/mit/test-run/',
+            'icon': 'fas fa-flask',
+            'color': '#be185d',
+        },
     ]
     return render(request, 'account/home.html', {'apps': apps})
