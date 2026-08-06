@@ -342,12 +342,23 @@ def test_run_view(request):
         return JsonResponse({'ok': True, 'audit_id': audit.pk})
 
     # GET ——————————————————————————————————————————————————————————————
-    clients = (
+    # Load ALL active clients that have an Encircle claim ID, then deduplicate
+    # by pOwner (exact client name) keeping the most-recently-created record.
+    # This collapses duplicate entries caused by Encircle sync creating new rows
+    # instead of updating existing ones.
+    _all_clients = (
         Client.objects
         .filter(archived=False, encircle_claim_id__isnull=False)
         .exclude(encircle_claim_id='')
-        .order_by('-created_at')[:80]
+        .order_by('-created_at')   # newest first so first-seen wins per name
     )
+    _seen_names = {}
+    for c in _all_clients:
+        key = (c.pOwner or '').strip().lower()
+        if key not in _seen_names:
+            _seen_names[key] = c
+    # Sort alphabetically for the dropdown
+    clients = sorted(_seen_names.values(), key=lambda c: (c.pOwner or '').lower())
     category_choices = MITRequiredEquipment.CATEGORY_CHOICES
 
     # Default equipment quantities for the form
