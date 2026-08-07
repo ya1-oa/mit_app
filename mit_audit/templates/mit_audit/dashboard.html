@@ -11,11 +11,6 @@
       <small class="text-muted">Workbook → Equipment Calculation → Photo Review → Reports</small>
     </div>
     <div class="d-flex gap-2">
-      {% if not template_exists %}
-      <a href="{% url 'mit_audit:config' %}" class="btn btn-warning btn-sm">
-        ⚠ Upload MIT Day 3 Template
-      </a>
-      {% endif %}
       <a href="{% url 'mit_audit:test_run' %}" class="btn btn-outline-primary btn-sm">
         <i class="fas fa-flask me-1"></i>Run Reports
       </a>
@@ -25,14 +20,6 @@
       <a href="{% url 'mit_audit:config' %}" class="btn btn-outline-secondary btn-sm">⚙ Config</a>
     </div>
   </div>
-
-  {% if not template_exists %}
-  <div class="alert alert-warning">
-    <strong>No MIT Day 3 Template Found.</strong>
-    Upload the <code>.xlsx</code> template via Config before running audits.
-    The pipeline will error at the workbook population step without it.
-  </div>
-  {% endif %}
 
   {# ── Audit cards ── #}
   {% if audits %}

@@ -2,14 +2,17 @@
 mit_audit/views.py
 
 Views:
-  dashboard         — list of all MIT audits with status cards
-  audit_detail      — single audit: dimensions, equipment, photo observations
-  trigger_audit     — start a new audit for a claim (AJAX POST)
+  dashboard          — list of all MIT audits with status cards
+  audit_detail       — single audit: dimensions, equipment, photo observations
+  trigger_audit      — start a new audit for a claim (AJAX POST)
   approve_dimensions — approve / correct dimension rows (AJAX POST)
-  status_api        — JSON status for task polling
-  download_report   — serve a PDF by download_token (no auth required)
-  config_view       — edit MITDay3Config (admin-level)
-  upload_template   — upload the MIT Day 3 .xlsx template
+  status_api         — JSON status for task polling
+  download_report    — serve a PDF by download_token (no auth required)
+  config_view        — edit MITDay3Config (admin-level)
+
+Note: there is no longer a global template upload.  Each client's 82-MIT
+workbook is found automatically via ClaimFile(file_type='82-MIT') DB record,
+with a filesystem fallback to the client's Templates folder.
 """
 import json
 import logging
@@ -41,9 +44,10 @@ def dashboard(request):
     config = MITDay3Config.get()
 
     return render(request, 'mit_audit/dashboard.html', {
-        'audits':             audits,
-        'config':             config,
-        'template_exists':    bool(config.template_path),
+        'audits':  audits,
+        'config':  config,
+        # No global template needed — each client's 82-MIT workbook is found
+        # automatically via ClaimFile DB record or Templates folder scan.
     })
 
 
@@ -215,7 +219,6 @@ def download_report(request, token):
 @login_required
 def config_view(request):
     from mit_audit.models import MITDay3Config
-    from mit_audit.workbook_service import get_template_path
 
     config = MITDay3Config.get()
 
@@ -238,11 +241,8 @@ def config_view(request):
         config.save()
         return redirect('mit_audit:config')
 
-    template_path = get_template_path()
     return render(request, 'mit_audit/config.html', {
-        'config':         config,
-        'template_exists': bool(template_path),
-        'template_path':   str(template_path) if template_path else '—',
+        'config': config,
     })
 
 
