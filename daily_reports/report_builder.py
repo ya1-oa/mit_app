@@ -189,7 +189,8 @@ def _section_priority_tasks(config) -> tuple[str, int, int]:
         ) if t.due_date else ''
         desc_rendered = _render_description(t.description)
         desc_str = (
-            f'<div style="font-size:12px;color:#475569;margin-top:4px;">{desc_rendered}</div>'
+            f'<div style="font-size:12px;color:#475569;margin-top:6px;'
+            f'border-left:2px solid #c4b5fd;padding-left:8px;">{desc_rendered}</div>'
         ) if desc_rendered else ''
         status_label = {'open': 'Open', 'in_progress': 'In Progress'}.get(t.status, t.status)
         cards.append(
@@ -667,13 +668,18 @@ def _section_high_priority(config) -> tuple[str, int, int]:
                 f'<strong>{days} days</strong> with no resolution. Immediate action required.</div>'
             )
 
+        note_rendered = _render_description(item.priority_note)
         note_html = (
-            f'<div style="font-size:12px;color:#0f172a;margin:4px 0;">{item.priority_note}</div>'
-            if item.priority_note else ''
+            f'<div style="font-size:12px;color:#0f172a;margin:6px 0 4px;'
+            f'border-left:2px solid #fca5a5;padding-left:8px;">{note_rendered}</div>'
+            if note_rendered else ''
         )
+        res_rendered = _render_description(item.resolution_criteria)
         resolution_html = (
-            f'<div style="font-size:11px;color:#64748b;">Needs: {item.resolution_criteria}</div>'
-            if item.resolution_criteria else ''
+            f'<div style="font-size:11px;color:#64748b;margin-top:2px;'
+            f'border-left:2px solid #86efac;padding-left:8px;">'
+            f'<strong>Needs:</strong> {res_rendered}</div>'
+            if res_rendered else ''
         )
         cards.append(
             f'<div class="claim-card" style="border-left:3px solid #e11d48;">'
@@ -702,12 +708,17 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
     esc = config.escalation_days
 
     sections_html = ''
-    grand_total = 0
-    grand_urgent = 0
+    grand_total   = 0
+    grand_urgent  = 0
+
+    # Collect per-section counts for the summary table
+    section_summary = []   # list of (icon, label, count, urgent)
 
     if getattr(config, 'include_priority_tasks', True):
         body, count, urg = _section_priority_tasks(config)
         grand_total += count
+        if count:
+            section_summary.append(('📌', 'Priority Tasks', count, urg))
         sections_html += (
             f'<div class="section">'
             f'<div class="section-title" style="background:#7c3aed;">📌 PRIORITY TASKS'
@@ -717,8 +728,10 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
 
     if config.include_ppr_signatures:
         body, count, urg = _section_ppr_signatures(config)
-        grand_total += count
+        grand_total  += count
         grand_urgent += urg
+        if count:
+            section_summary.append(('📋', 'PPR Pending Signatures', count, urg))
         sections_html += (
             f'<div class="section">'
             f'<div class="section-title">📋 PPR REPORTS — AWAITING SIGNATURES'
@@ -728,8 +741,10 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
 
     if config.include_ppr_pricing:
         body, count, urg = _section_ppr_pricing(config)
-        grand_total += count
+        grand_total  += count
         grand_urgent += urg
+        if count:
+            section_summary.append(('💰', 'PPR Pricing Incomplete', count, urg))
         sections_html += (
             f'<div class="section">'
             f'<div class="section-title">💰 PPR REPORTS — PRICING INCOMPLETE'
@@ -739,8 +754,10 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
 
     if config.include_lease_sigs:
         body, count, urg = _section_lease_signatures(config)
-        grand_total += count
+        grand_total  += count
         grand_urgent += urg
+        if count:
+            section_summary.append(('✍️', 'Lease Signatures Pending', count, urg))
         sections_html += (
             f'<div class="section">'
             f'<div class="section-title">✍️ ALE LEASES — SIGNATURE STATUS'
@@ -751,6 +768,8 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
     if config.include_lease_pipeline:
         body, count, urg = _section_lease_pipeline(config)
         grand_urgent += urg
+        if urg:
+            section_summary.append(('📊', 'Stale Lease Pipeline Items', urg, urg))
         sections_html += (
             f'<div class="section">'
             f'<div class="section-title">📊 LEASE PIPELINE STATUS'
@@ -760,9 +779,11 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
 
     if config.include_high_priority:
         body, count, urg = _section_high_priority(config)
-        if body:  # only render section when there are actual items
-            grand_total += count
+        if body:
+            grand_total  += count
             grand_urgent += urg
+            if count:
+                section_summary.append(('⚡', 'High Priority Tracked Items', count, urg))
             sections_html += (
                 f'<div class="section">'
                 f'<div class="section-title" style="background:#b91c1c;">⚡ HIGH PRIORITY TRACKED ITEMS'
@@ -770,10 +791,51 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
                 f'{body}</div>'
             )
 
-    urgent_text = (
-        f'<strong>{grand_urgent} URGENT</strong> (pending &gt;{esc} days) &nbsp;|&nbsp; '
-        if grand_urgent else ''
-    )
+    # ── Summary table ─────────────────────────────────────────────────────────
+    if section_summary:
+        sum_rows = ''
+        for icon, label, cnt, urg in section_summary:
+            urg_cell = (
+                f'<td style="text-align:center;color:#b91c1c;font-weight:bold;">{urg} ⚠</td>'
+                if urg else
+                f'<td style="text-align:center;color:#059669;">—</td>'
+            )
+            sum_rows += (
+                f'<tr>'
+                f'<td style="padding:5px 10px;">{icon} {label}</td>'
+                f'<td style="text-align:center;font-weight:bold;">{cnt}</td>'
+                f'{urg_cell}'
+                f'</tr>'
+            )
+        summary_block = f"""
+<div class="section" style="margin-top:4px;">
+  <div style="border:1px solid #e2e8f0;border-radius:4px;overflow:hidden;">
+    <table style="width:100%;border-collapse:collapse;font-size:12px;">
+      <tr style="background:#f1f5f9;font-weight:bold;font-size:11px;text-transform:uppercase;letter-spacing:.5px;">
+        <th style="padding:7px 10px;text-align:left;">Section</th>
+        <th style="padding:7px 10px;">Open</th>
+        <th style="padding:7px 10px;">Urgent (&gt;{esc}d)</th>
+      </tr>
+      {sum_rows}
+    </table>
+  </div>
+</div>"""
+    else:
+        summary_block = (
+            '<div class="section" style="margin-top:4px;">'
+            '<div class="no-items">✅ All clear — no open items to report.</div>'
+            '</div>'
+        )
+
+    urgent_banner = ''
+    if grand_urgent:
+        urgent_banner = (
+            f'<div style="background:#fee2e2;border-left:4px solid #b91c1c;'
+            f'padding:8px 28px;font-size:13px;font-weight:bold;color:#7f1d1d;">'
+            f'⚠ {grand_urgent} item(s) are URGENT — pending more than {esc} days. '
+            f'Immediate follow-up required.'
+            f'</div>'
+        )
 
     html = f"""
 <html><head>{_BASE}</head><body>
@@ -783,13 +845,15 @@ def build_high_priority_html(config) -> tuple[str, int, int]:
     <div class="sub">Claimet App &nbsp;·&nbsp; {now_str}</div>
   </div>
   <div class="summary-bar">
-    {urgent_text}{grand_total} total open items tracked &nbsp;·&nbsp;
-    Report continues daily until all items resolved
+    {grand_total} open item(s) across {len(section_summary)} section(s) &nbsp;·&nbsp;
+    Report sends daily until all items are resolved
   </div>
+  {urgent_banner}
+  {summary_block}
   {sections_html}
   <div class="footer">
-    This is an automated daily report from Claimet App.<br>
-    Items marked <strong>URGENT</strong> have been pending for more than {esc} days.<br>
+    Automated daily report from Claimet App.<br>
+    Items marked <strong>URGENT</strong> have been pending &gt;{esc} days.<br>
     Reports stop for an item when it reaches a completed/signed status.
   </div>
 </div>
@@ -884,10 +948,21 @@ def build_deep_report_html() -> str:
                 icon = PRIORITY_ICON.get(t.priority, '·')
                 cls  = STATUS_CLASS.get(t.status, '')
                 due  = f' &nbsp;<span style="color:#94a3b8">due {t.due_date.strftime("%b %d")}</span>' if t.due_date else ''
+                desc_html = ''
+                detail_text = (t.description or '').strip() or (t.notes or '').strip()
+                if detail_text:
+                    rendered = _render_description(detail_text)
+                    desc_html = (
+                        f'<div style="font-size:11px;color:#64748b;margin-top:3px;'
+                        f'border-left:2px solid #cbd5e1;padding-left:6px;">{rendered}</div>'
+                    )
                 task_rows += (
-                    f'<div class="task-row">'
+                    f'<div class="task-row" style="flex-direction:column;align-items:flex-start;gap:2px;">'
+                    f'<div style="display:flex;justify-content:space-between;width:100%;align-items:center;">'
                     f'<div>{icon} <span class="{cls}">{t.title}</span>{due}</div>'
                     f'<div class="pct">{t.percent_complete}%</div>'
+                    f'</div>'
+                    f'{desc_html}'
                     f'</div>'
                 )
             fill_color = '#22c55e' if avg_pct >= 70 else '#f59e0b' if avg_pct >= 30 else '#ef4444'
