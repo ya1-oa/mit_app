@@ -161,12 +161,11 @@ _CATEGORY_KEYWORDS = {
 # the equipment is connected AND actively running (not merely deployed).
 _STABILIZATION_TYPES = {
     'dehumidifier',
-    'hydroxyl',          # hydroxyl generators must be running and active
-    'air_cleaner',       # AFD / NAFAN / HEPA scrubbers
-    'zipper_wall',       # containment must be sealed and intact
+    'air_cleaner',
+    'zipper_wall',
     'double_zipper',
-    'ceiling_cavity',    # CCDU connected and pulling air
-    'wall_cavity',       # WCDU connected
+    'ceiling_cavity',
+    'wall_cavity',
 }
 
 
