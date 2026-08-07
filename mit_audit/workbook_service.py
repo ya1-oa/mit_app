@@ -68,49 +68,101 @@ DEFAULT_DIMENSION_MAP = {
     'max_rows':        50,       # rows 53–102 → 50 rooms maximum
 }
 
-# Known row positions in TOTAL-EQPT (qty in col C).
-# Used when no explicit equipment_cell_map is configured.
+# ---------------------------------------------------------------------------
+# TOTAL-EQPT cell map — derived from inspecting 82-MIT 3-DAY.xlsm directly.
+# ---------------------------------------------------------------------------
+
+# Primary equipment: dedicated header rows in TOTAL-EQPT, qty in col C.
+#   Row  5  DRY   Air Movers       → ='MIT-EQPT'!C5   (=SUM of per-room AMs)
+#   Row 10  DH    Dehumidifiers    → ='MIT-EQPT'!C9   (=C117 adjusted per drying chambers)
+#   Row 14  NA    AFD / NAFAN      → ='MIT-EQPT'!C14  (=J116 total AFD count)
+#   Row 18  BARRZ Zippers          → ='MIT-EQPT'!C18  (=H116 total zippers)
+#   Row 20  BARRP Tension Poles    → hardcoded 10 in TOTAL-EQPT col C
+#   Row 23  CCDU  Ceiling cavity   → =M59 (SUM of M34:M58 optional CCDU per room)
+#   Row 26  WCDU  Wall cavity      → =L59 (SUM of L34:L58 optional WCDU per room)
 TOTAL_EQPT_ROWS = [
-    {'row': 5,  'name': 'Air Movers (DRY)',              'xact_code': 'DRY'},
-    {'row': 10, 'name': 'Dehumidifiers (DHM)',           'xact_code': 'DHM'},
-    {'row': 14, 'name': 'AFD Air Filtration Device',     'xact_code': 'AFD'},
-    {'row': 18, 'name': 'Zippers / Containment (BARRZ)', 'xact_code': 'BARRZ'},
-    {'row': 20, 'name': 'Tension Poles (BARRP)',         'xact_code': 'BARRP'},
-    {'row': 23, 'name': 'CCDU Ceiling Cavity Drying',   'xact_code': 'CCDU'},
-    {'row': 26, 'name': 'WCDU Wall Cavity Drying',      'xact_code': 'WCDU'},
+    {'row': 5,  'qty_col': 'C', 'name': 'Air Movers (DRY)',               'xact_code': 'DRY'},
+    {'row': 10, 'qty_col': 'C', 'name': 'Dehumidifiers (DHM)',            'xact_code': 'DH'},
+    {'row': 14, 'qty_col': 'C', 'name': 'AFD Air Filtration Device (NA)', 'xact_code': 'NA'},
+    {'row': 18, 'qty_col': 'C', 'name': 'Zippers / Containment (BARRZ)', 'xact_code': 'BARRZ'},
+    {'row': 20, 'qty_col': 'C', 'name': 'Tension Poles (BARRP)',          'xact_code': 'BARRP'},
+    {'row': 23, 'qty_col': 'C', 'name': 'CCDU Ceiling Cavity Drying',    'xact_code': 'CCDU'},
+    {'row': 26, 'qty_col': 'C', 'name': 'WCDU Wall Cavity Drying',       'xact_code': 'WCDU'},
 ]
 
-# Equipment type keywords for auto-categorisation when reading TOTAL-EQPT.
+# Secondary / optional equipment: totalled in row 59 of TOTAL-EQPT, in
+# different columns.  No dedicated col-C header row exists for these.
+#   Col H row 59 → HTAM Heat Air Mover     (SUM of H34:H58)
+#   Col I row 59 → HTBL Drying Blanket/Mat (SUM of I34:I58, MIT-EQPT!J61 ref)
+#   Col J row 59 → WFI  Wood Floor Dry Mat (SUM of J34:J58, MIT-EQPT!H61 ref)
+#   Col K row 59 → CABDU Cabinet Drying    (SUM of K34:K58, MIT-EQPT!F61 ref)
+#   Col N row 59 → CLSTDU Closet Drying    (SUM of N34:N58, MIT-EQPT!E61 ref)
+TOTAL_EQPT_ROW59 = [
+    {'qty_col': 'H', 'name': 'Heat Air Mover (HTAM)',        'xact_code': 'HTAM'},
+    {'qty_col': 'I', 'name': 'Drying Blanket / Mat (HTBL)',  'xact_code': 'HTBL'},
+    {'qty_col': 'J', 'name': 'Wood Floor Dry Mat (WFI)',     'xact_code': 'WFI'},
+    {'qty_col': 'K', 'name': 'Cabinet Drying Unit (CABDU)',  'xact_code': 'CABDU'},
+    {'qty_col': 'N', 'name': 'Closet Drying Unit (CLSTDU)', 'xact_code': 'CLSTDU'},
+]
+
+# ---------------------------------------------------------------------------
+# Category keywords — checked in order; first match wins.
+# IMPORTANT: keep more-specific terms first within each category so broader
+# words (like 'heat', 'dry') don't accidentally match the wrong type.
+# 'dry' was intentionally REMOVED from blower keywords — it would otherwise
+# match "ceiling cavity drying", "wall cavity drying", "wood floor dry mat".
+# ---------------------------------------------------------------------------
 _CATEGORY_KEYWORDS = {
-    'dehumidifier':  ['dehumid', 'dhm', 'lgr', 'desiccant'],
-    'air_cleaner':   ['air clean', 'afd', 'scrubber', 'hepa',
-                      'filtration', 'negative air', 'nafan', 'hydroxyl'],
-    'zipper_wall':   ['zipper', 'barrz', 'containment', 'poly barrier'],
-    'tension_poles': ['tension pole', 'barrp'],
-    'double_zipper': ['double zipper', 'dbl zipper'],
-    'blower':        ['blower', 'air mover', 'dry', 'axial',
-                      'centrifugal', 'fan'],
-    'wall_cavity':   ['wcdu', 'wall cavity', 'injectidry', 'wall dry'],
-    'ceiling_cavity':['ccdu', 'ceiling cavity'],
-    'floor_drying':  ['floor mat', 'floor dry', 'drying mat', 'extraction mat'],
-    'hydroxyl':      ['hydroxyl', 'dodhy', 'odor counteract'],
-    'heater':        ['heater', 'heat'],
+    # Cavity/specialty drying — check before generic terms
+    'ceiling_cavity': ['ccdu', 'ceiling cavity'],
+    'wall_cavity':    ['wcdu', 'wall cavity', 'injectidry'],
+    'floor_drying':   ['wfi', 'wood floor dry', 'floor mat', 'floor dry',
+                       'drying mat', 'extraction mat'],
+    'closet_drying':  ['clstdu', 'closet dry'],
+    'cabinet_drying': ['cabdu', 'cabinet dry'],
+    'drying_blanket': ['htbl', 'drying blanket', 'heat blanket'],
+    # Dehumidification
+    'dehumidifier':   ['dehumid', 'dhm', 'lgr', 'desiccant'],
+    # Air cleaning / hydroxyl (AFD includes NAFAN, HEPA, hydroxyl generators)
+    'air_cleaner':    ['afd', 'air filtration', 'air clean', 'scrubber',
+                       'hepa', 'nafan', 'hydroxyl', 'dodhy', 'odor counteract',
+                       'negative air'],
+    # Containment
+    'zipper_wall':    ['zipper', 'barrz', 'containment', 'poly barrier'],
+    'tension_poles':  ['tension pole', 'barrp'],
+    'double_zipper':  ['double zipper', 'dbl zipper'],
+    # Air movement (keep after cavity types — no 'dry' here)
+    'blower':         ['air mover', 'blower', 'axial', 'centrifugal',
+                       r'\bfan\b'],
+    # Heat equipment
+    'heat_air_mover': ['htam', 'heat air mover'],
+    'heater':         ['heater'],
 }
 
 # Items in these categories require a dedicated "stabilization" photo showing
-# the equipment connected and actively running.
+# the equipment is connected AND actively running (not merely deployed).
 _STABILIZATION_TYPES = {
-    'dehumidifier', 'air_cleaner', 'zipper_wall', 'double_zipper',
-    'ceiling_cavity', 'wall_cavity', 'hydroxyl',
+    'dehumidifier',
+    'air_cleaner',       # AFD / NAFAN / hydroxyl generators
+    'zipper_wall',       # containment must be sealed and intact
+    'double_zipper',
+    'ceiling_cavity',    # CCDU connected and pulling air
+    'wall_cavity',       # WCDU connected
 }
 
 
 def _categorise(name: str) -> tuple[str, bool]:
     """Return (category, requires_stabilization_photo) for a display name."""
+    import re as _re
     lower = name.lower()
     for cat, keywords in _CATEGORY_KEYWORDS.items():
-        if any(kw in lower for kw in keywords):
-            return cat, cat in _STABILIZATION_TYPES
+        for kw in keywords:
+            # Support optional regex patterns (e.g. r'\bfan\b' for whole-word match)
+            if kw.startswith(r'\\b') or '\\b' in kw:
+                if _re.search(kw, lower):
+                    return cat, cat in _STABILIZATION_TYPES
+            elif kw in lower:
+                return cat, cat in _STABILIZATION_TYPES
     return 'other', False
 
 
@@ -463,17 +515,20 @@ def read_total_equipment(workbook_path: str) -> list[dict]:
             })
 
     else:
-        # Known-rows mode: use the standard 82-MIT template row positions.
-        # col B = equipment name, col C = total quantity for that type.
+        # Known-rows mode: use the standard 82-MIT template layout.
+        #
+        # Pass 1 — Primary equipment: dedicated col-C header rows (rows 5-26).
         for entry in TOTAL_EQPT_ROWS:
-            row      = entry['row']
+            row     = entry['row']
+            qty_col = entry['qty_col']
+            # col B has the equipment label (may be merged — fall back to constant name)
             name_val = ws[f'B{row}'].value
-            qty_val  = ws[f'C{row}'].value
+            qty_val  = ws[f'{qty_col}{row}'].value
+            display  = str(name_val).strip() if name_val else entry['name']
 
-            # Fall back to the constant name if the cell is empty (merged cells etc.)
-            display = (str(name_val).strip() if name_val else entry['name'])
             if qty_val is None:
-                logger.debug('[MIT] TOTAL-EQPT row %d "%s" → None (no recalc?)', row, display)
+                logger.debug('[MIT] TOTAL-EQPT %s%d "%s" → None (no recalc?)',
+                             qty_col, row, display)
                 continue
             try:
                 qty = int(float(qty_val))
@@ -489,7 +544,35 @@ def read_total_equipment(workbook_path: str) -> list[dict]:
                 'required_quantity':           qty,
                 'source_sheet':                sheet_name,
                 'workbook_row':                row,
-                'workbook_cell':               f'C{row}',
+                'workbook_cell':               f'{qty_col}{row}',
+                'requires_stabilization_photo': stab,
+            })
+
+        # Pass 2 — Secondary/optional equipment: row 59 totals in side columns.
+        # These have no dedicated col-C header rows; quantities are the column
+        # sums of the per-room optional-equipment matrix (rows 34-58).
+        for entry in TOTAL_EQPT_ROW59:
+            qty_col = entry['qty_col']
+            qty_val = ws[f'{qty_col}59'].value
+            if qty_val is None:
+                logger.debug('[MIT] TOTAL-EQPT %s59 "%s" → None (no recalc?)',
+                             qty_col, entry['name'])
+                continue
+            try:
+                qty = int(float(qty_val))
+            except (ValueError, TypeError):
+                continue
+            if qty <= 0:
+                continue
+            cat, stab = _categorise(entry['name'])
+            results.append({
+                'display_name':                entry['name'],
+                'equipment_type':              entry['xact_code'].lower(),
+                'category':                    cat,
+                'required_quantity':           qty,
+                'source_sheet':                sheet_name,
+                'workbook_row':                59,
+                'workbook_cell':               f'{qty_col}59',
                 'requires_stabilization_photo': stab,
             })
 
