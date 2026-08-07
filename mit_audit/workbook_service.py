@@ -27,7 +27,10 @@ Actual workbook structure (from 82-MIT-3DAY.xlsm):
   │  Row 20 BARRP    │ Tension Poles                          │
   │  Row 23 CCDU     │ Ceiling Cavity Drying Unit             │
   │  Row 26 WCDU     │ Wall Cavity Drying Unit                │
-  └──────────────────┴───────────────────────────────────────┘
+  ├─────────────────┬────────────────────────────────────────┤
+  │ MIT-EQPT sheet  │ HYDROXYL tracked here — not in         │
+  │  Row 12  DODHY  │ TOTAL-EQPT col C; C12 = C9 (= DHM qty)│
+  └─────────────────┴────────────────────────────────────────┘
 
 Why LibreOffice for recalc?
   openpyxl cannot evaluate Excel formulas.  The TOTAL-EQPT totals are
@@ -105,6 +108,19 @@ TOTAL_EQPT_ROW59 = [
     {'qty_col': 'N', 'name': 'Closet Drying Unit (CLSTDU)', 'xact_code': 'CLSTDU'},
 ]
 
+# Items that live in MIT-EQPT but have no dedicated col-C row in TOTAL-EQPT.
+# HYDROXYL (row 12) — B12='HYDROXOYL', C12=C9 (= same qty as DHM dehumidifiers).
+# The Xactimate code for hydroxyl odor counteractant is DODHY.
+MIT_EQPT_SHEET_READS = [
+    {
+        'row':          12,
+        'qty_col':      'C',
+        'name':         'HYDROXYL',
+        'xact_code':    'DODHY',
+        'source_sheet': 'MIT-EQPT',
+    },
+]
+
 # ---------------------------------------------------------------------------
 # Category keywords — checked in order; first match wins.
 # IMPORTANT: keep more-specific terms first within each category so broader
@@ -123,10 +139,12 @@ _CATEGORY_KEYWORDS = {
     'drying_blanket': ['htbl', 'drying blanket', 'heat blanket'],
     # Dehumidification
     'dehumidifier':   ['dehumid', 'dhm', 'lgr', 'desiccant'],
-    # Air cleaning / hydroxyl (AFD includes NAFAN, HEPA, hydroxyl generators)
+    # Hydroxyl generators — checked BEFORE air_cleaner so 'hydroxyl'/'dodhy' don't
+    # fall into the generic AFD bucket.  MIT-EQPT row 12: HYDROXOYL (= DHM qty).
+    'hydroxyl':       ['hydroxyl', 'hydroxoyl', 'dodhy'],
+    # Air cleaning / AFD (NAFAN, HEPA scrubbers, negative air — NOT hydroxyl)
     'air_cleaner':    ['afd', 'air filtration', 'air clean', 'scrubber',
-                       'hepa', 'nafan', 'hydroxyl', 'dodhy', 'odor counteract',
-                       'negative air'],
+                       'hepa', 'nafan', 'odor counteract', 'negative air'],
     # Containment
     'zipper_wall':    ['zipper', 'barrz', 'containment', 'poly barrier'],
     'tension_poles':  ['tension pole', 'barrp'],
@@ -143,7 +161,8 @@ _CATEGORY_KEYWORDS = {
 # the equipment is connected AND actively running (not merely deployed).
 _STABILIZATION_TYPES = {
     'dehumidifier',
-    'air_cleaner',       # AFD / NAFAN / hydroxyl generators
+    'hydroxyl',          # hydroxyl generators must be running and active
+    'air_cleaner',       # AFD / NAFAN / HEPA scrubbers
     'zipper_wall',       # containment must be sealed and intact
     'double_zipper',
     'ceiling_cavity',    # CCDU connected and pulling air
@@ -575,6 +594,42 @@ def read_total_equipment(workbook_path: str) -> list[dict]:
                 'workbook_cell':               f'{qty_col}59',
                 'requires_stabilization_photo': stab,
             })
+
+        # Pass 3 — Items tracked in MIT-EQPT but absent from TOTAL-EQPT's
+        # primary col-C rows.  HYDROXYL is the key example: MIT-EQPT!B12 =
+        # 'HYDROXOYL', C12 = =C9 (= DHM qty).  TOTAL-EQPT row 15 labels it
+        # 'NAFAN/HYDROXYL' but has no qty cell in col C, so we must read the
+        # MIT-EQPT sheet directly.
+        mit_eqpt_sheet_name = 'MIT-EQPT'
+        if mit_eqpt_sheet_name in wb.sheetnames:
+            ws_mit = wb[mit_eqpt_sheet_name]
+            for entry in MIT_EQPT_SHEET_READS:
+                qty_col = entry['qty_col']
+                row     = entry['row']
+                qty_val = ws_mit[f'{qty_col}{row}'].value
+                if qty_val is None:
+                    logger.debug('[MIT] MIT-EQPT %s%d "%s" → None (no recalc?)',
+                                 qty_col, row, entry['name'])
+                    continue
+                try:
+                    qty = int(float(qty_val))
+                except (ValueError, TypeError):
+                    continue
+                if qty <= 0:
+                    continue
+                cat, stab = _categorise(entry['name'])
+                results.append({
+                    'display_name':                entry['name'],
+                    'equipment_type':              entry['xact_code'].lower(),
+                    'category':                    cat,
+                    'required_quantity':           qty,
+                    'source_sheet':                mit_eqpt_sheet_name,
+                    'workbook_row':                row,
+                    'workbook_cell':               f'{qty_col}{row}',
+                    'requires_stabilization_photo': stab,
+                })
+        else:
+            logger.warning('[MIT] MIT-EQPT sheet not found — HYDROXYL will be missing')
 
     logger.info('[MIT] Read %d equipment items (qty > 0) from %s', len(results), workbook_path)
     return results
