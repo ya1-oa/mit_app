@@ -178,6 +178,12 @@ def upsert_client_from_encircle(encircle_data: dict) -> tuple[object, bool]:
     """
     Create or update a Client record from an Encircle claim dict.
 
+    Lookup order (stops at first hit):
+      1. encircle_claim_id match  — normal path after first sync/push
+      2. pOwner + pAddress match  — fallback for clients that existed before
+         Encircle integration, or where the push task crashed before writing
+         encircle_claim_id back to the DB
+
     Returns (client_instance, created) where `created` is True for new records.
     Raises on unrecoverable error; caller wraps in a savepoint.
     """
@@ -187,37 +193,60 @@ def upsert_client_from_encircle(encircle_data: dict) -> tuple[object, bool]:
     if not enc_id:
         raise ValueError("Encircle claim has no id — skipping")
 
-    # Check for existing record (unscoped — this runs in background sync, no tenant contextvar)
+    # --- Pass 1: fast path — match by the stored Encircle claim ID ----------
     existing = Client.unscoped.filter(encircle_claim_id=enc_id).first()
-    is_new = existing is None
 
+    # --- Pass 2: fallback — match by name + street address ------------------
+    # Handles clients created manually before the push task set encircle_claim_id,
+    # or clients that pre-date the Encircle integration entirely.
+    # Only considers records that don't already have a different Encircle ID
+    # (encircle_claim_id IS NULL) so we never accidentally steal a row that
+    # belongs to a different Encircle claim.
+    if existing is None:
+        p_owner = str(encircle_data.get('policyholder_name') or '').strip()
+        p_address = _parse_full_address(
+            str(encircle_data.get('full_address') or '')
+        )[0]  # street portion only
+
+        if p_owner:
+            qs = Client.unscoped.filter(
+                pOwner__iexact=p_owner,
+                encircle_claim_id__isnull=True,
+            )
+            if p_address:
+                qs = qs.filter(pAddress__iexact=p_address)
+            existing = qs.order_by('pk').first()
+            if existing:
+                logger.info(
+                    '[EncircleSync] Claim %s matched existing Client pk=%s (%s) '
+                    'via name+address fallback — stamping encircle_claim_id.',
+                    enc_id, existing.pk, p_owner,
+                )
+
+    is_new = existing is None
     fields = _build_client_fields(encircle_data, is_new=is_new)
+    # Always write encircle_claim_id — critical for the fallback path where the
+    # matched record previously had encircle_claim_id=None.
+    fields['encircle_claim_id'] = enc_id
 
     if is_new:
-        # Set the matching key
-        fields['encircle_claim_id'] = enc_id
         client = Client(**fields)
         client.save()
-        logger.info("Created Client from Encircle claim %s (%s)", enc_id,
-                    fields.get('pOwner', '—'))
+        logger.info('[EncircleSync] Created Client from claim %s (%s)',
+                    enc_id, fields.get('pOwner', '—'))
         return client, True
     else:
-        # Update only the fields in our map.
-        #
-        # IMPORTANT: use a queryset .update() rather than instance.save().
-        # A per-instance save() fires the post_save signal, and
-        # regenerate_excel_files_on_update queues a 16-file LibreOffice
-        # regeneration for the client. During a full sync that fans out to
-        # one regen task PER existing Encircle claim — hundreds of tasks that
-        # saturate the Celery worker and starve real-time work (new-claim
-        # folder/template/Encircle-push tasks). .update() writes the same
-        # columns directly to the DB without triggering signals, mirroring the
-        # bypass already used in push_claim_to_encircle_task.
+        # IMPORTANT: use queryset .update() not instance.save().
+        # A per-instance save() fires post_save → regenerate_excel_files_on_update,
+        # which queues a 16-file LibreOffice regeneration per client.  During a full
+        # sync that fans out to one regen task PER Encircle claim — hundreds of tasks
+        # saturating the Celery worker.  .update() writes the same columns directly
+        # to the DB without triggering signals.
         Client.unscoped.filter(pk=existing.pk).update(**fields)
-        # Refresh the in-memory instance so callers see the new values.
         for attr, val in fields.items():
             setattr(existing, attr, val)
-        logger.debug("Updated Client %s from Encircle claim %s", existing.pk, enc_id)
+        logger.debug('[EncircleSync] Updated Client pk=%s from claim %s',
+                     existing.pk, enc_id)
         return existing, False
 
 
