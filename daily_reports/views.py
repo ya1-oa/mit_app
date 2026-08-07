@@ -309,11 +309,20 @@ def save_pinned(request):
 
 @login_required
 def preview_report(request):
-    """Render the current daily report HTML in-browser (no email sent)."""
+    """Render the current daily high-priority report HTML in-browser (no email sent)."""
     from django.http import HttpResponse
     from daily_reports.report_builder import build_high_priority_html
     config = _get_or_create_config()
     html, _total, _urgent = build_high_priority_html(config)
+    return HttpResponse(html)
+
+
+@login_required
+def preview_deep_report(request):
+    """Render the current weekly deep operations report HTML in-browser (no email sent)."""
+    from django.http import HttpResponse
+    from daily_reports.report_builder import build_deep_report_html
+    html = build_deep_report_html()
     return HttpResponse(html)
 
 
