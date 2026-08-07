@@ -189,10 +189,10 @@ def populate_mit_workbook(self, audit_id: int):
     audit = MITDay3Audit.objects.select_related('client').get(pk=audit_id)
     audit.set_status('populating_wb')
 
-    # Copy template if not already done
+    # Locate and copy the client's existing 82-MIT workbook
     if not audit.workbook_path:
         try:
-            path = ws.copy_template_for_job(audit_id)
+            path = ws.find_and_copy_client_workbook(audit)
             audit.workbook_path = path
             audit.save(update_fields=['workbook_path', 'updated_at'])
         except FileNotFoundError as exc:

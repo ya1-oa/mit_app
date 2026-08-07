@@ -32,19 +32,22 @@ class MITDay3Config(models.Model):
         max_length=512, blank=True,
         help_text='Path to the MIT Day 3 .xlsx template, relative to MEDIA_ROOT.',
     )
-    # --- Sheet names (may differ across template versions) ---
-    job_info_sheet       = models.CharField(max_length=100, default='Job Information')
-    total_equipment_sheet = models.CharField(max_length=100, default='Total Equipment')
+    # --- Sheet names — actual names from 82-MIT-3DAY.xlsm ---
+    job_info_sheet        = models.CharField(max_length=100, default='jobinfo(2)')
+    total_equipment_sheet = models.CharField(max_length=100, default='TOTAL-EQPT')
 
     # --- Dimension cell map ---
-    # Keys the workbook_service uses to locate room-dimension rows:
+    # Keys the workbook_service uses to locate room-dimension rows.
+    # Leave empty ({}) to use the DEFAULT_DIMENSION_MAP in workbook_service.py.
+    # 82-MIT-3DAY.xlsm layout:
     # {
-    #   "room_start_row": 8,        <- first data row on job_info_sheet
-    #   "room_name_col":  "B",      <- column holding the room label
-    #   "length_col":     "C",
-    #   "width_col":      "D",
-    #   "height_col":     "E",
-    #   "max_rows":       40        <- stop scanning after this many rows
+    #   "job_info_sheet":  "jobinfo(2)",
+    #   "room_start_row":  53,       <- row 53 = Room/Area 1
+    #   "room_name_col":   "C",      <- column C: room label
+    #   "length_col":      "E",
+    #   "width_col":       "F",
+    #   "height_col":      "G",
+    #   "max_rows":        50        <- rows 53-102
     # }
     dimension_cell_map = models.JSONField(
         default=dict, blank=True,
