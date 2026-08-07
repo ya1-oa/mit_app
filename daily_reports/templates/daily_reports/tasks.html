@@ -56,7 +56,19 @@
             {% for task in app_tasks %}
             <tr id="task-row-{{ task.id }}">
               <td>
-                <div class="fw-semibold">{{ task.title }}</div>
+                <div class="fw-semibold">
+                  {{ task.title }}
+                  <button class="btn btn-link btn-sm p-0 ms-1 text-muted" style="font-size:11px;vertical-align:middle;"
+                          onclick="openEditModal({{ task.id }},
+                            '{{ task.app|escapejs }}',
+                            '{{ task.title|escapejs }}',
+                            '{{ task.description|default:''|escapejs }}',
+                            '{{ task.notes|default:''|escapejs }}',
+                            '{{ task.due_date|date:'Y-m-d'|default:'' }}',
+                            '{{ task.status }}', '{{ task.priority }}', {{ task.percent_complete }})">
+                    ✎
+                  </button>
+                </div>
                 {% if task.description %}<div class="text-muted small">{{ task.description|truncatechars:80 }}</div>{% endif %}
               </td>
               <td>
@@ -112,6 +124,67 @@
     </div>
   </div>
   {% endif %}
+</div>
+
+<!-- Edit Task Modal -->
+<div class="modal fade" id="editTaskModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title"><i class="fas fa-edit me-2"></i>Edit Task</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <input type="hidden" id="editTaskId">
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Task Title *</label>
+          <input type="text" id="editTitle" class="form-control form-control-sm" required>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Description</label>
+          <textarea id="editDescription" class="form-control form-control-sm" rows="2"
+                    placeholder="Use * or - for bullet points"></textarea>
+        </div>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Notes</label>
+          <textarea id="editNotes" class="form-control form-control-sm" rows="2"></textarea>
+        </div>
+        <div class="row g-2">
+          <div class="col-sm-4">
+            <label class="form-label small fw-bold">Status</label>
+            <select id="editStatus" class="form-select form-select-sm">
+              {% for val, label in status_choices %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small fw-bold">Priority</label>
+            <select id="editPriority" class="form-select form-select-sm">
+              {% for val, label in priority_choices %}
+              <option value="{{ val }}">{{ label }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-sm-4">
+            <label class="form-label small fw-bold">% Complete</label>
+            <input type="number" id="editPercent" class="form-control form-control-sm"
+                   min="0" max="100" step="5">
+          </div>
+        </div>
+        <div class="mt-2">
+          <label class="form-label small fw-bold">Due Date</label>
+          <input type="date" id="editDueDate" class="form-control form-control-sm">
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary btn-sm" onclick="submitEdit()">
+          <i class="fas fa-save me-1"></i> Save Changes
+        </button>
+      </div>
+    </div>
+  </div>
 </div>
 
 <!-- Add Task Modal -->
@@ -206,6 +279,38 @@ function updateTask(id, field, value) {
   fetch(`/daily-reports/tasks/${id}/update/`, { method: 'POST', body })
     .then(r => r.json())
     .then(d => { if (!d.ok) console.error('Update failed', d); });
+}
+
+function openEditModal(id, app, title, description, notes, dueDate, status, priority, percent) {
+  document.getElementById('editTaskId').value       = id;
+  document.getElementById('editTitle').value        = title;
+  document.getElementById('editDescription').value  = description;
+  document.getElementById('editNotes').value        = notes;
+  document.getElementById('editDueDate').value      = dueDate;
+  document.getElementById('editStatus').value       = status;
+  document.getElementById('editPriority').value     = priority;
+  document.getElementById('editPercent').value      = percent;
+  new bootstrap.Modal(document.getElementById('editTaskModal')).show();
+}
+
+function submitEdit() {
+  const id   = document.getElementById('editTaskId').value;
+  const body = new FormData();
+  body.append('csrfmiddlewaretoken',  CSRF);
+  body.append('title',                document.getElementById('editTitle').value);
+  body.append('description',          document.getElementById('editDescription').value);
+  body.append('notes',                document.getElementById('editNotes').value);
+  body.append('due_date',             document.getElementById('editDueDate').value);
+  body.append('status',               document.getElementById('editStatus').value);
+  body.append('priority',             document.getElementById('editPriority').value);
+  body.append('percent_complete',     document.getElementById('editPercent').value);
+
+  fetch(`/daily-reports/tasks/${id}/update/`, { method: 'POST', body })
+    .then(r => r.json())
+    .then(d => {
+      if (d.ok) { location.reload(); }
+      else      { alert('Save failed: ' + (d.error || 'unknown error')); }
+    });
 }
 
 function deleteTask(id) {

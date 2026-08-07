@@ -280,6 +280,39 @@ MODULES = [
         ],
     ),
     (
+        'MIT Day 3 Audit',
+        'Automated MIT Day 3 equipment audit pipeline — extracts floor plan '
+        'dimensions from Encircle, writes them into each client\'s existing '
+        '82-MIT workbook (found via ClaimFile record or Templates folder), '
+        'recalculates equipment quantities via LibreOffice, runs AI photo '
+        'review, and generates PDF reports. Tracks Air Movers, DHM, AFD, '
+        'HYDROXYL, BARRZ, BARRP, CCDU, WCDU, and all specialty equipment.',
+        'in_dev', 19,
+        [
+            ('MITDay3Audit + MITDay3Config models', 'feature', 'done'),
+            ('MITRoomDimension model with approval workflow', 'feature', 'done'),
+            ('MITEquipmentItem model (per-audit device list)', 'feature', 'done'),
+            ('MITReferencePhoto model (stabilization photos)', 'feature', 'done'),
+            ('MITReport model (PDF output with download token)', 'feature', 'done'),
+            ('find_and_copy_client_workbook() — per-client 82-MIT lookup', 'feature', 'done'),
+            ('write_dimensions() — jobinfo(2) row 53 cols C/E/F/G', 'feature', 'done'),
+            ('LibreOffice UNO recalc (port 2002) + subprocess fallback', 'feature', 'done'),
+            ('read_total_equipment() — 3-pass TOTAL-EQPT + MIT-EQPT reads', 'feature', 'done'),
+            ('HYDROXYL tracked from MIT-EQPT!C12 (DODHY, separate device)', 'feature', 'done'),
+            ('Equipment categorization + stabilization photo flags', 'feature', 'done'),
+            ('Celery task chain (dims → workbook → recalc → photos → PDF)', 'feature', 'done'),
+            ('Dashboard — audit cards with status, equipment count, reports', 'feature', 'done'),
+            ('Audit detail — dimension approval, equipment list, photo review', 'feature', 'done'),
+            ('Config page — per-client workbook lookup explanation, cell map', 'feature', 'done'),
+            ('Confirm LibreOffice installed in Docker container', 'test', 'todo'),
+            ('Run git pull + migrate 0006 on server', 'secretarial', 'todo'),
+            ('Full pipeline end-to-end test on a real claim', 'test', 'todo'),
+            ('Encircle dimension extraction integration', 'feature', 'in_progress'),
+            ('AI photo review (stabilization photo analysis)', 'feature', 'in_progress'),
+            ('PDF report generation (WeasyPrint)', 'feature', 'in_progress'),
+        ],
+    ),
+    (
         'Daily Reports System',
         'Two automated report types via Celery Beat: (1) daily high-priority '
         'report flagging specific items (PPR sessions, leases, general) until '
