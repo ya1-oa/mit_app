@@ -453,10 +453,8 @@
                 <li class="menu-divider"></li>
                 <li><a href="{% url 'sensor_image_renamer' %}" class="{% if '/sensor-renamer' in request.path %}active{% endif %}">
                     <i class="fas fa-microscope"></i> Sensor Renamer</a></li>
-                <li><a href="{% url 'equipment_checker' %}" class="{% if '/equipment-checker' in request.path %}active{% endif %}">
-                    <i class="fas fa-clipboard-check"></i> Equipment Checker</a></li>
                 <li><a href="{% url 'mit_audit:dashboard' %}" class="{% if '/mit/' in request.path %}active{% endif %}">
-                    <i class="fas fa-file-medical-alt"></i> MIT Day 3 Audit</a></li>
+                    <i class="fas fa-file-medical-alt"></i> MIT Hub</a></li>
             </ul>
         </li>
 
@@ -571,8 +569,7 @@
 
     <div class="drawer-section">AI Tools</div>
     <a href="{% url 'sensor_image_renamer' %}" class="{% if '/sensor-renamer' in request.path %}active{% endif %}"><i class="fas fa-microscope"></i> Sensor Renamer</a>
-    <a href="{% url 'equipment_checker' %}" class="{% if '/equipment-checker' in request.path %}active{% endif %}"><i class="fas fa-clipboard-check"></i> Equipment Checker</a>
-    <a href="{% url 'mit_audit:dashboard' %}" class="{% if '/mit/' in request.path %}active{% endif %}"><i class="fas fa-file-medical-alt"></i> MIT Day 3 Audit</a>
+    <a href="{% url 'mit_audit:dashboard' %}" class="{% if '/mit/' in request.path %}active{% endif %}"><i class="fas fa-file-medical-alt"></i> MIT Hub</a>
     <a href="{% url 'cps_report_home' %}" class="{% if '/cps-report' in request.path %}active{% endif %}"><i class="fas fa-file-invoice-dollar"></i> PPR Schedule of Loss</a>
 
     <div class="drawer-section">Encircle</div>
