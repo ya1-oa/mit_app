@@ -232,18 +232,34 @@ class Command(BaseCommand):
                     self.stderr.write(self.style.ERROR(f'  Failed to fetch media: {exc}'))
                     continue
 
+            # Encircle API media fields:
+            #   content_type  → 'image/jpeg', 'video/mp4', 'application/pdf' …
+            #   download_uri  → signed download URL
+            #   labels        → list of strings; labels[0] = room name
+            _IMAGE_TYPES = {
+                'image/jpeg', 'image/jpg', 'image/png',
+                'image/gif',  'image/webp','image/heic',
+                'image/heif', 'image/tiff',
+            }
             for item in media_items:
-                media_type = (item.get('media_type') or item.get('type') or '').lower()
+                content_type = (item.get('content_type') or '').lower()
 
-                # Skip non-photos (PDFs, audio, video)
-                if media_type and not any(t in media_type for t in ('photo', 'image')):
+                # Skip non-images (PDFs, videos, audio)
+                # If content_type is blank, allow it (old API fallback)
+                if content_type and content_type not in _IMAGE_TYPES:
                     continue
 
                 media_id  = str(item.get('id', ''))
-                room_name = item.get('room_name') or item.get('room') or ''
-                url       = item.get('url') or item.get('download_url') or ''
+                labels    = item.get('labels') or []
+                room_name = labels[0] if labels else (item.get('room_name') or item.get('room') or '')
+                url       = (item.get('download_uri')
+                             or item.get('url')
+                             or item.get('download_url')
+                             or '')
 
                 if not url:
+                    self.stderr.write(f'  [SKIP] {media_id}: no download_uri — skipping')
+                    total_skipped += 1
                     continue
 
                 # Room series filter (skipped if all_rooms)

@@ -89,20 +89,35 @@ def fetch_encircle_photos(encircle_claim_id: str) -> list[dict]:
         api = EncircleAPIClient()
         raw = api.get_all_claim_media(encircle_claim_id)
         media_list = raw if isinstance(raw, list) else raw.get('list', [])
+        # Encircle API media item fields (confirmed from ZipMediaDownloader):
+        #   content_type  — 'image/jpeg', 'video/mp4', 'application/pdf', …
+        #   download_uri  — signed download URL
+        #   labels        — list of strings; first label = room name
+        #   id            — numeric media ID
+        _IMAGE_TYPES = {
+            'image/jpeg', 'image/jpg', 'image/png',
+            'image/gif',  'image/webp','image/heic',
+            'image/heif', 'image/tiff',
+        }
         photos = []
         for item in media_list:
-            media_type = (item.get('media_type') or item.get('type') or '').lower()
-            # Include photos and video thumbnails; skip PDFs / audio
-            if 'photo' in media_type or 'image' in media_type or not media_type:
-                room_name = item.get('room_name') or item.get('room') or ''
-                photos.append({
-                    'id':         str(item.get('id', '')),
-                    'url':        item.get('url') or item.get('download_url') or '',
-                    'room':       room_name,
-                    'room_type':  classify_room(room_name),
-                    'media_type': media_type,
-                    'thumbnail':  item.get('thumbnail_url') or '',
-                })
+            content_type = (item.get('content_type') or '').lower()
+            # Skip non-images (PDFs, videos, audio)
+            if content_type and content_type not in _IMAGE_TYPES:
+                continue
+            url = item.get('download_uri') or item.get('url') or item.get('download_url') or ''
+            if not url:
+                continue
+            labels    = item.get('labels') or []
+            room_name = labels[0] if labels else ''
+            photos.append({
+                'id':         str(item.get('id', '')),
+                'url':        url,
+                'room':       room_name,
+                'room_type':  classify_room(room_name),
+                'media_type': content_type or 'image/jpeg',
+                'thumbnail':  item.get('thumbnail_url') or '',
+            })
         # Log breakdown by room type so we know what we're working with
         by_type: dict[str, int] = {}
         for p in photos:
