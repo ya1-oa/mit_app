@@ -217,7 +217,7 @@ def build_required_equipment_report(audit) -> str:
       </div>
       <div class="stat">
         <div class="stat-num">{stab_count}</div>
-        <div class="stat-lbl">Need Stab Photo</div>
+        <div class="stat-lbl">Need Stabilization Photo</div>
       </div>
     </div>
     {room_table}
@@ -260,7 +260,8 @@ def build_required_stab_report(audit) -> str:
 
     cat_label = dict(audit.required_equipment.model.CATEGORY_CHOICES)
 
-    # What each category's stab photo should show
+    # What each Drying Chamber Stabilization item's photo must show.
+    # Only these 4 categories require stabilization photos.
     STAB_GUIDANCE = {
         'dehumidifier': (
             'Photo must show the unit powered on with the display illuminated. '
@@ -271,29 +272,14 @@ def build_required_stab_report(audit) -> str:
             'Photo must show the HEPA air scrubber running (indicator light on / fan audible). '
             'Capture the intake and exhaust side to confirm airflow direction.'
         ),
-        'hydroxyl': (
-            'Photo must show the hydroxyl generator powered on with UV lamps visible and lit. '
-            'Unit must be positioned for effective room coverage.'
-        ),
         'zipper_wall': (
             'Photo must show the containment barrier fully sealed — no gaps around edges, '
-            'floor, ceiling, or zipper. Both sides of the zipper closure must be visible.'
+            'floor, ceiling, or zipper. Both sides of the zipper closure must be visible. '
+            'Support poles must be clearly tensioned against floor and ceiling.'
         ),
-        'blower': (
-            'Photo must show the air mover running (visible airflow direction) and positioned '
-            'per drying plan — floor, wall cavity, or under flooring as applicable.'
-        ),
-        'wall_cavity': (
-            'Photo must show the wall cavity drying system panels fully inserted into '
-            'wall cavities with hose connections secure and the drying unit powered on.'
-        ),
-        'floor_drying': (
-            'Photo must show the floor drying mats laid flat with hose connections secured '
-            'and the pump/drying unit powered on.'
-        ),
-        'heater': (
-            'Photo must show the heater powered on and set to the approved temperature. '
-            'Room temperature reading must be visible if possible.'
+        'double_zipper': (
+            'MINIMUM 2 photos showing: the double zipper wall AND at least 2 support poles. '
+            'Both poles MUST be clearly visible — 1 pole is NOT sufficient.'
         ),
     }
     DEFAULT_GUIDANCE = (
@@ -354,7 +340,7 @@ def build_required_stab_report(audit) -> str:
     <div class="summary-grid">
       <div class="stat">
         <div class="stat-num">{len(stab_items)}</div>
-        <div class="stat-lbl">Items Requiring Stab Photo</div>
+        <div class="stat-lbl">Items Requiring Stabilization Photo</div>
       </div>
       <div class="stat">
         <div class="stat-num" style="color:#2e7d32">{confirmed}</div>
@@ -499,7 +485,7 @@ def build_missing_equipment_report(audit) -> str:
             f'<p class="meta" style="color:#c62828; margin-top:6px;">'
             f'<strong>{need_count} of {total} item(s)</strong> still require photographs. '
             f'{confirmed_count} already confirmed. '
-            f'See <em>Missing Stabilization Photos</em> report for stab-photo status.</p>'
+            f'See <em>Missing Stabilization Photos</em> report for stabilization photo status.</p>'
         )
 
     html = f"""<!DOCTYPE html>

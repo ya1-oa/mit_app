@@ -35,7 +35,8 @@ class Command(BaseCommand):
         # ── Drying Chamber Stabilization ──────────────────────────────────
         ('dehumidifier',  3,  True),   # DHM / LGR  — 1 per DC default
         ('air_cleaner',   3,  True),   # AFD / NAFAN / HEPA — 1 per DC default
-        ('zipper_wall',   10, True),   # BARRZ — double zipper + poles per DC
+        ('zipper_wall',   10, True),   # BARRZ — single zipper wall + poles per DC
+        ('double_zipper', 0,  True),   # BARRZ — double zipper variant (if used)
         ('tension_poles', 10, False),  # BARRP
         # ── Per-Room Standard Mitigation ──────────────────────────────────
         ('blower',        36, False),  # DRY
@@ -49,11 +50,11 @@ class Command(BaseCommand):
 
     # (display_name, requires_stabilization_photo)
     CATEGORY_META = {
-        # Drying Chamber — stabilization required
-        'dehumidifier':   ('LGR Dehumidifier',                   True),
-        'air_cleaner':    ('HEPA / AFD Air Scrubber',            True),
-        'zipper_wall':    ('Zipper Wall & Poles (BARRZ/BARRP)',  True),
-        'double_zipper':  ('Double Zipper Wall & Poles',         True),
+        # ── Drying Chamber Stabilization (only these 4 require stabilization photos)
+        'dehumidifier':   ('LGR Dehumidifier',                    True),
+        'air_cleaner':    ('HEPA / AFD Air Scrubber',             True),
+        'zipper_wall':    ('Zipper Wall & Poles (BARRZ)',         True),
+        'double_zipper':  ('Double Zipper Wall & Poles (BARRZ)',  True),
         # Equipment tracked without stabilization photos
         'hydroxyl':       ('Hydroxyl Generator (DODHY)',         False),
         'blower':         ('Air Mover / Blower (DRY)',           False),

@@ -72,8 +72,9 @@ def dashboard(request):
         # Stabilization items — require a "connected + running" photo per DC
         {'category': 'dehumidifier',  'display_name': 'Dehumidifier (DHM/LGR)',       'required_quantity': 3,  'requires_stabilization': True},
         {'category': 'air_cleaner',   'display_name': 'AFD / NAFAN / HEPA Scrubber',  'required_quantity': 3,  'requires_stabilization': True},
-        {'category': 'zipper_wall',   'display_name': 'Zipper Wall + Poles (BARRZ)',  'required_quantity': 10, 'requires_stabilization': True},
-        {'category': 'tension_poles', 'display_name': 'Tension Poles (BARRP)',         'required_quantity': 10, 'requires_stabilization': False},
+        {'category': 'zipper_wall',   'display_name': 'Zipper Wall + Poles (BARRZ)',        'required_quantity': 10, 'requires_stabilization': True},
+        {'category': 'double_zipper', 'display_name': 'Double Zipper Wall + Poles (BARRZ)', 'required_quantity': 0,  'requires_stabilization': True},
+        {'category': 'tension_poles', 'display_name': 'Tension Poles (BARRP)',               'required_quantity': 10, 'requires_stabilization': False},
         # Standard mitigation equipment — qty from Total Equipment tab
         {'category': 'blower',        'display_name': 'Air Mover / Blower (DRY)',     'required_quantity': 36, 'requires_stabilization': False},
         {'category': 'hydroxyl',      'display_name': 'Hydroxyl Generator (DODHY)',   'required_quantity': 3,  'requires_stabilization': False},

@@ -176,6 +176,8 @@ _CATEGORY_XACT = {
 }
 
 # Stabilization requirements per category (plain-English, injected into prompt)
+# Drying Chamber Stabilization items — ONLY these 4 categories require a
+# stabilization photo showing the equipment is powered on and actively running.
 _STAB_REQUIREMENT = {
     'dehumidifier': (
         '1 photo — drain/condensate hose connected AND power indicator lit or unit audibly running.'
@@ -190,9 +192,6 @@ _STAB_REQUIREMENT = {
     'double_zipper': (
         'MINIMUM 2 photos showing: the double zipper wall AND at least 2 support poles. '
         'Both poles MUST be clearly visible — 1 pole is NOT sufficient.'
-    ),
-    'hydroxyl': (
-        '1 photo — brand/model clearly identifiable AND power or UV indicator light visible.'
     ),
 }
 
@@ -378,7 +377,7 @@ def review_photos_with_ai(
             stab_note = ''
             stab = obs.get('stabilization_check') or {}
             if item.get('requires_stabilization_photo') and stab.get('found') is False:
-                stab_note = '  ⚠ stab photo missing'
+                stab_note = '  ⚠ stabilization photo missing'
             log_fn(f'{sym} {item["display_name"]} — {vis}/{req} found ({idx + 1}/{total_items}){stab_note}')
 
         # Brief pause so we don't hammer the rate limit between items
