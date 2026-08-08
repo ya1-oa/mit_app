@@ -157,15 +157,23 @@ _CATEGORY_KEYWORDS = {
     'heater':         ['heater'],
 }
 
-# Items in these categories require a dedicated "stabilization" photo showing
-# the equipment is connected AND actively running (not merely deployed).
+# Drying Chamber Stabilization — the ONLY categories that require a dedicated
+# stabilization photo showing the equipment connected AND actively running.
+#
+#   dehumidifier  — any DHM / LGR / desiccant unit
+#   air_cleaner   — AFD / HEPA / scrubber / negative-air machine
+#   zipper_wall   — zipper wall + tension poles (photo must show wall + poles)
+#   double_zipper — double zipper wall + at least two support poles
+#                   (photo must clearly show BOTH the double zipper wall AND
+#                    a minimum of two support poles)
+#
+# ceiling_cavity (CCDU) and wall_cavity (WCDU) do NOT require stabilization
+# photos — they are cavity-drying attachments, not chamber equipment.
 _STABILIZATION_TYPES = {
     'dehumidifier',
     'air_cleaner',
     'zipper_wall',
     'double_zipper',
-    'ceiling_cavity',
-    'wall_cavity',
 }
 
 
