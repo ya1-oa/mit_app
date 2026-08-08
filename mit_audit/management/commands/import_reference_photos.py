@@ -424,7 +424,15 @@ class Command(BaseCommand):
 
     @staticmethod
     def _download(url: str, api) -> tuple[str, bytes]:
-        headers = getattr(api, 'headers', {})
+        # Azure Blob Storage SAS URLs (encircleuserdata.blob.core.windows.net)
+        # already carry auth in query params (se/sp/sig).  Sending an
+        # Authorization header alongside a SAS URL causes a 400:
+        # "Authentication information is not given in the correct format."
+        # So: use API headers only for non-SAS hosts.
+        if 'blob.core.windows.net' in url or ('sig=' in url and 'se=' in url):
+            headers = {}
+        else:
+            headers = getattr(api, 'headers', {})
         r = requests.get(url, headers=headers, timeout=30)
         r.raise_for_status()
         ct  = r.headers.get('content-type', '').split(';')[0].strip()
