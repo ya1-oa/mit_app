@@ -256,14 +256,17 @@ class Command(BaseCommand):
                 dest_path.write_bytes(file_bytes)
 
                 # Auto-categorise + approve photos from known reference claims
-                category = ''
-                approved = False
+                from django.utils import timezone as _tz
+                category     = ''
+                approved     = False
+                approved_at  = None
                 display_name = ''
                 if auto_approve:
                     category = _room_to_category(room_name, claim_id)
                     if category and category != 'other':
-                        from django.utils import timezone as _tz
                         approved     = True
+                        approved_at  = _tz.now()
+                        # e.g. "DH Dehumidifiers" → "Dh Dehumidifiers" (readable label)
                         display_name = room_name.title()
 
                 _, created = MITReferencePhoto.objects.update_or_create(
@@ -276,6 +279,7 @@ class Command(BaseCommand):
                         'category':                 category,
                         'display_name':             display_name,
                         'approved':                 approved,
+                        'approved_at':              approved_at,
                         'is_active':                True,
                     },
                 )

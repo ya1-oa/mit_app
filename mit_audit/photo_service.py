@@ -25,7 +25,8 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 MAX_IMAGES          = 40   # Claude Vision limit per request (practical limit)
-MAX_REFERENCE_PHOTOS = 1   # approved reference photos to include per equipment category
+MAX_REFERENCE_PHOTOS = 3   # approved reference photos to include per equipment category
+                           # 3 gives Claude multiple angles per type without crowding claim slots
 AI_MODEL             = 'claude-sonnet-4-6'
 AI_MAX_TOKENS        = 4096
 
@@ -161,7 +162,8 @@ def load_reference_photos(categories: list[str]) -> list[dict]:
         photos = (
             MITReferencePhoto.objects
             .filter(category=cat, approved=True, is_active=True)
-            .order_by('-approved_at')[:MAX_REFERENCE_PHOTOS]
+            # approved_at nulls-last so auto-approved photos (approved_at=now()) sort first
+            .order_by('-approved_at', '-created_at')[:MAX_REFERENCE_PHOTOS]
         )
         for photo in photos:
             try:
