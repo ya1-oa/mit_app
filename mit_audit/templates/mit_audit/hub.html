@@ -446,12 +446,6 @@
       </div>
     </div>
 
-    {# AI Observations #}
-    <div id="obsSection" style="display:none">
-      <div class="section-label"><i class="fas fa-robot me-1"></i>AI Review Results</div>
-      <div class="obs-list" id="obsList"></div>
-    </div>
-
     {# Error #}
     <div class="alert alert-danger" id="errorAlert" style="display:none">
       <strong>Error:</strong> <span id="errorMsg"></span>
@@ -775,38 +769,6 @@ function renderResults(data, auditId) {
   document.getElementById('btnDetail').href = DETAIL_URL.replace('/0/', '/' + auditId + '/');
   document.getElementById('reportPills').style.display = '';
 
-  // Observations
-  const list = document.getElementById('obsList');
-  list.innerHTML = '';
-  data.rows.forEach(row => {
-    const vis = row.visible_quantity;
-    const req = row.required_quantity;
-    let cls = 'miss', sym = '✗';
-    if      (vis !== null && vis >= req) { cls = 'ok';   sym = '✓'; }
-    else if (vis !== null && vis > 0)    { cls = 'warn'; sym = '~'; }
-    const confCls = {high:'conf-high', medium:'conf-medium', low:'conf-low'}[row.ai_confidence] || 'conf-low';
-    let note = row.ai_notes || '';
-    if (row.stab_required && row.stab_found === false) note += ' ⚠ Stab photo missing.';
-
-    const div = document.createElement('div');
-    div.className = 'obs-item';
-    div.innerHTML = `
-      <div class="obs-marker ${cls}">${sym}</div>
-      <div class="obs-info">
-        <div class="obs-name">${esc(row.display_name)}</div>
-        ${note ? `<div class="obs-note">${esc(note.trim())}</div>` : ''}
-      </div>
-      <div class="obs-meta">
-        <div class="obs-count ${cls === 'ok' ? 'text-success' : cls === 'warn' ? 'text-warning' : 'text-danger'}">
-          ${vis ?? '?'}/${req}
-        </div>
-        ${row.ai_confidence
-          ? `<span class="conf-badge ${confCls}">${row.ai_confidence}</span>`
-          : ''}
-      </div>`;
-    list.appendChild(div);
-  });
-  document.getElementById('obsSection').style.display = '';
 }
 
 function setProgress(pct, label, badge, color) {
