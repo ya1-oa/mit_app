@@ -213,16 +213,27 @@ class MITRequiredEquipment(models.Model):
     workbook is recalculated.  This is the source of truth for the photo audit.
     """
     CATEGORY_CHOICES = [
-        ('dehumidifier',  'Dehumidifier'),
-        ('air_cleaner',   'Air Cleaner / Scrubber'),
-        ('zipper_wall',   'Zipper Wall & Poles'),
-        ('double_zipper', 'Double Zipper Wall & Poles'),
-        ('blower',        'Blower / Air Mover'),
-        ('wall_cavity',   'Wall Cavity Drying'),
-        ('floor_drying',  'Floor Drying Equipment'),
-        ('hydroxyl',      'Hydroxyl Generator'),
-        ('heater',        'Heater'),
-        ('other',         'Other'),
+        # ── Drying Chamber Stabilization (photo required) ──────────────────
+        ('dehumidifier',   'Dehumidifier (DHM / LGR)'),
+        ('air_cleaner',    'Air Cleaner / Scrubber (AFD / NAFAN / HEPA)'),
+        ('zipper_wall',    'Zipper Wall & Poles (BARRZ / BARRP)'),
+        ('double_zipper',  'Double Zipper Wall & Poles'),
+        # ── Air movement ───────────────────────────────────────────────────
+        ('blower',         'Air Mover / Blower (DRY)'),
+        ('heat_air_mover', 'Heat Air Mover (HTAM)'),
+        # ── Specialty drying ───────────────────────────────────────────────
+        ('hydroxyl',       'Hydroxyl Generator (DODHY)'),
+        ('ceiling_cavity', 'Ceiling Cavity Drying (CCDU)'),
+        ('wall_cavity',    'Wall Cavity Drying (WCDU)'),
+        ('cabinet_drying', 'Cabinet Drying Unit (CABDU)'),
+        ('closet_drying',  'Closet Drying Unit (CLSTDU)'),
+        ('floor_drying',   'Wood Floor Drying (WFI)'),
+        ('drying_blanket', 'Drying Blanket / Mat (HTBL)'),
+        ('bound_water',    'Bound Water Cavity Drying (BWCDU)'),
+        ('tension_poles',  'Tension / Support Poles (BARRP)'),
+        # ── Other ──────────────────────────────────────────────────────────
+        ('heater',         'Heater'),
+        ('other',          'Other'),
     ]
 
     audit             = models.ForeignKey(

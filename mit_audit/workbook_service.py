@@ -95,17 +95,22 @@ TOTAL_EQPT_ROWS = [
 
 # Secondary / optional equipment: totalled in row 59 of TOTAL-EQPT, in
 # different columns.  No dedicated col-C header row exists for these.
-#   Col H row 59 → HTAM Heat Air Mover     (SUM of H34:H58)
-#   Col I row 59 → HTBL Drying Blanket/Mat (SUM of I34:I58, MIT-EQPT!J61 ref)
-#   Col J row 59 → WFI  Wood Floor Dry Mat (SUM of J34:J58, MIT-EQPT!H61 ref)
-#   Col K row 59 → CABDU Cabinet Drying    (SUM of K34:K58, MIT-EQPT!F61 ref)
-#   Col N row 59 → CLSTDU Closet Drying    (SUM of N34:N58, MIT-EQPT!E61 ref)
+#   Col H row 59 → HTAM  Heat Air Mover       (SUM of H34:H58)
+#   Col I row 59 → HTBL  Drying Blanket/Mat   (SUM of I34:I58, MIT-EQPT!J61 ref)
+#   Col J row 59 → WFI   Wood Floor Dry Mat   (SUM of J34:J58, MIT-EQPT!H61 ref)
+#   Col K row 59 → CABDU Cabinet Drying       (SUM of K34:K58, MIT-EQPT!F61 ref)
+#   Col N row 59 → CLSTDU Closet Drying       (SUM of N34:N58, MIT-EQPT!E61 ref)
+#   Col O row 59 → BWCDU Bound Water Cavity   (SUM of O34:O58) — verify column on VPS
 TOTAL_EQPT_ROW59 = [
-    {'qty_col': 'H', 'name': 'Heat Air Mover (HTAM)',        'xact_code': 'HTAM'},
-    {'qty_col': 'I', 'name': 'Drying Blanket / Mat (HTBL)',  'xact_code': 'HTBL'},
-    {'qty_col': 'J', 'name': 'Wood Floor Dry Mat (WFI)',     'xact_code': 'WFI'},
-    {'qty_col': 'K', 'name': 'Cabinet Drying Unit (CABDU)',  'xact_code': 'CABDU'},
-    {'qty_col': 'N', 'name': 'Closet Drying Unit (CLSTDU)', 'xact_code': 'CLSTDU'},
+    {'qty_col': 'H', 'name': 'Heat Air Mover (HTAM)',              'xact_code': 'HTAM'},
+    {'qty_col': 'I', 'name': 'Drying Blanket / Mat (HTBL)',        'xact_code': 'HTBL'},
+    {'qty_col': 'J', 'name': 'Wood Floor Dry Mat (WFI)',           'xact_code': 'WFI'},
+    {'qty_col': 'K', 'name': 'Cabinet Drying Unit (CABDU)',        'xact_code': 'CABDU'},
+    {'qty_col': 'N', 'name': 'Closet Drying Unit (CLSTDU)',        'xact_code': 'CLSTDU'},
+    # BWCDU — Bound Water Cavity Drying Unit.  Column O is the best guess from the
+    # workbook layout; if quantities come back as 0 when they should not, open the
+    # TOTAL-EQPT sheet and verify the actual column for the BWCDU total in row 59.
+    {'qty_col': 'O', 'name': 'Bound Water Cavity Drying (BWCDU)', 'xact_code': 'BWCDU'},
 ]
 
 # Items that live in MIT-EQPT but have no dedicated col-C row in TOTAL-EQPT.
@@ -132,6 +137,7 @@ _CATEGORY_KEYWORDS = {
     # Cavity/specialty drying — check before generic terms
     'ceiling_cavity': ['ccdu', 'ceiling cavity'],
     'wall_cavity':    ['wcdu', 'wall cavity', 'injectidry'],
+    'bound_water':    ['bwcdu', 'bound water'],          # Bound Water Cavity Drying Unit
     'floor_drying':   ['wfi', 'wood floor dry', 'floor mat', 'floor dry',
                        'drying mat', 'extraction mat'],
     'closet_drying':  ['clstdu', 'closet dry'],

@@ -30,13 +30,59 @@ AI_MODEL             = 'claude-sonnet-4-6'
 AI_MAX_TOKENS        = 4096
 
 # ---------------------------------------------------------------------------
+# Room classification
+# ---------------------------------------------------------------------------
+# The tech creates rooms in Encircle following naming conventions that tell us
+# what type of documentation is in that room:
+#
+#   full_equip    — "600" or "HOW2 PICS … MITIGATION EQUIPMENT" rooms.
+#                   Contains photos of ALL equipment deployed for the job.
+#                   Use for general equipment quantity audit.
+#
+#   stabilization — "STABILIZATION" rooms.
+#                   Contains dedicated stabilization photos showing equipment
+#                   connected and actively running.
+#
+#   drying_chamber— "DRYING CHAMBER" rooms.
+#                   Photos confirming chamber setup — treated like stabilization.
+#
+#   other         — All other rooms (living room, bathroom, etc.).
+#                   Job-site condition photos; used when no full_equip room exists.
+# ---------------------------------------------------------------------------
+
+_ROOM_FULL_EQUIP    = ['600', 'how2 pics', 'mitigation equipment',
+                       'wtr mitigation equip', 'water mitigation equip',
+                       'water equip', 'equip pics', 'full equip']
+_ROOM_STABILIZATION = ['stabiliz', 'stab room', 'stab photo', 'stab docs']
+_ROOM_DRYING_CHAMBER= ['drying chamber', 'dry chamber', 'drying room']
+
+
+def classify_room(room_name: str) -> str:
+    """
+    Classify an Encircle room name into a photo-purpose bucket.
+    Returns one of: 'full_equip' | 'stabilization' | 'drying_chamber' | 'other'
+    """
+    lower = (room_name or '').lower()
+    if any(p in lower for p in _ROOM_FULL_EQUIP):
+        return 'full_equip'
+    if any(p in lower for p in _ROOM_STABILIZATION):
+        return 'stabilization'
+    if any(p in lower for p in _ROOM_DRYING_CHAMBER):
+        return 'drying_chamber'
+    return 'other'
+
+
+# ---------------------------------------------------------------------------
 # Encircle photo retrieval
 # ---------------------------------------------------------------------------
 
 def fetch_encircle_photos(encircle_claim_id: str) -> list[dict]:
     """
     Fetch all media items for an Encircle claim.
-    Returns a list of dicts: [{ 'id', 'url', 'room', 'media_type', ... }, ...]
+    Returns a list of dicts:
+      [{ 'id', 'url', 'room', 'room_type', 'media_type', ... }, ...]
+
+    room_type is one of: full_equip | stabilization | drying_chamber | other
     """
     try:
         from docsAppR.encircle_client import EncircleAPIClient
@@ -48,15 +94,23 @@ def fetch_encircle_photos(encircle_claim_id: str) -> list[dict]:
             media_type = (item.get('media_type') or item.get('type') or '').lower()
             # Include photos and video thumbnails; skip PDFs / audio
             if 'photo' in media_type or 'image' in media_type or not media_type:
+                room_name = item.get('room_name') or item.get('room') or ''
                 photos.append({
                     'id':         str(item.get('id', '')),
                     'url':        item.get('url') or item.get('download_url') or '',
-                    'room':       item.get('room_name') or item.get('room') or '',
+                    'room':       room_name,
+                    'room_type':  classify_room(room_name),
                     'media_type': media_type,
                     'thumbnail':  item.get('thumbnail_url') or '',
                 })
-        logger.info('[MIT] Fetched %d photos from Encircle claim %s',
-                    len(photos), encircle_claim_id)
+        # Log breakdown by room type so we know what we're working with
+        by_type: dict[str, int] = {}
+        for p in photos:
+            by_type[p['room_type']] = by_type.get(p['room_type'], 0) + 1
+        logger.info(
+            '[MIT] Fetched %d photos from Encircle claim %s — by room type: %s',
+            len(photos), encircle_claim_id, by_type,
+        )
         return photos
     except Exception as exc:
         logger.error('[MIT] fetch_encircle_photos failed for %s: %s', encircle_claim_id, exc)
@@ -135,22 +189,36 @@ You are reviewing job-site photos from an Encircle claim to audit whether all re
 {reference_section}REQUIRED EQUIPMENT LIST:
 {items_list}
 
-For each item in the required equipment list, examine all provided claim photos and determine:
-  - How many units of that equipment are CLEARLY visible (do not count partially obscured units unless you are confident)
-  - Which photo IDs (from the list below) support your finding
-  - Your confidence level: "high", "medium", or "low"
+PHOTO ROOM TYPES:
+Each photo below is tagged with its Encircle room type:
+  [EQUIP]  — "600" / mitigation-equipment room: contains photos of ALL deployed equipment.
+              Use these for counting equipment quantities.
+  [STAB]   — Stabilization room: dedicated stabilization documentation photos.
+              Use these to verify STABILIZATION_REQUIRED items are properly running.
+  [DCHAMB] — Drying Chamber room: photos of chamber setup (same rules as STAB).
+  [ROOM]   — Regular job-site room. Use for secondary evidence only if EQUIP photos
+              are unavailable or inconclusive.
 
-For items marked as STABILIZATION_REQUIRED, also determine whether there is a photo that clearly shows the equipment properly set up and running (e.g. dehumidifier with condensate hose connected, zipper wall with both poles tensioned, hydroxyl generator powered on with indicator light visible, double zipper wall with at least TWO poles visible).
+STABILIZATION PHOTO STANDARD:
+For every item marked STABILIZATION_REQUIRED, check whether a valid stabilization photo exists.
+The standard is as follows — a photo FAILS if it does not meet these requirements:
+  • Dehumidifier    — 1 photo: drain/condensate hose connected, power indicator lit or running
+  • Air Cleaner     — 1 photo: unit powered on, intake/exhaust visible, indicator light on
+  • Zipper Wall     — MINIMUM 2 photos: (1) full wall visible, (2) support poles tensioned
+                      OR 1 single photo that clearly shows BOTH the wall AND the poles together
+  • Double Zipper   — MINIMUM 2 photos showing: the double zipper wall AND at least 2 support poles
+                      (both poles must be clearly visible; 1 pole is not sufficient)
+  • Hydroxyl        — 1 photo: brand/model identifiable, power/UV indicator light visible
 
 Claim photo IDs available in this review:
 {photo_ids}
 
 IMPORTANT RULES:
 - Use the REFERENCE PHOTOS above (if provided) as your benchmark for what a good documentation photo looks like
+- Prioritize [EQUIP] and [STAB] room photos for their respective checks
 - Only mark as confirmed when you can clearly count the equipment units in the photos
 - If a photo is blurry, distant, or the equipment is partially obstructed, note this but do NOT count it
-- For double zipper walls: a photo only passes if BOTH the wall AND at least 2 poles are clearly visible
-- For hydroxyl generators: confirm the unit brand/model is identifiable and the power indicator is visible
+- Count each physical unit separately — do not count the same unit twice from different angles
 - Return ONLY a raw JSON array, no markdown fences, no explanation
 
 JSON format:
@@ -168,7 +236,8 @@ JSON format:
     "stabilization_check": {{
       "required": true,
       "found": true,
-      "notes": "Dehumidifier in photo 001 shows condensate hose connected and running."
+      "photo_count": 1,
+      "notes": "Photo 001 (STAB room) shows dehumidifier with condensate hose connected and running."
     }},
     "recommended_action": "Photograph the third dehumidifier with unit ID tag visible."
   }}
@@ -242,9 +311,24 @@ def review_photos_with_ai(
     refs       = refs[:ref_slots]
     claim_slots = MAX_IMAGES - len(refs)
 
-    # Select claim photos to send
-    selected_photos = photos[:claim_slots]
+    # ── Prioritise photos by room type ─────────────────────────────────────────
+    # Send full_equip first (equipment quantity photos), then stab/drying_chamber
+    # (stabilization docs), then other room photos to fill remaining slots.
+    has_stab_items = any(it.get('requires_stabilization_photo') for it in required_items)
+
+    ordered_photos: list[dict] = []
+    for room_type in ('full_equip', 'stabilization', 'drying_chamber', 'other'):
+        ordered_photos.extend(p for p in photos if p.get('room_type') == room_type)
+
+    selected_photos = ordered_photos[:claim_slots]
     photo_ids_str   = ', '.join(p['id'] for p in selected_photos)
+
+    # Log what we're actually sending
+    type_counts = {}
+    for p in selected_photos:
+        type_counts[p.get('room_type', 'other')] = type_counts.get(p.get('room_type', 'other'), 0) + 1
+    logger.info('[MIT] Sending %d photos to Claude — room breakdown: %s',
+                len(selected_photos), type_counts)
 
     # Fetch API key for Encircle photo downloads
     encircle_key = getattr(EncircleAPIClient, 'API_KEY', '') or \
@@ -290,10 +374,20 @@ def review_photos_with_ai(
             'type': 'image',
             'source': {'type': 'base64', 'media_type': mt, 'data': b64},
         })
-        # Annotate with photo ID so Claude can reference it by number
+        # Annotate with photo ID, room, and room-type tag so Claude knows
+        # which check to use each photo for.
+        room_type_tag = {
+            'full_equip':    'EQUIP',
+            'stabilization': 'STAB',
+            'drying_chamber':'DCHAMB',
+        }.get(photo.get('room_type', 'other'), 'ROOM')
         content.append({
             'type': 'text',
-            'text': f'[Photo ID: {photo["id"]} | Room: {photo.get("room", "unknown")}]',
+            'text': (
+                f'[Photo ID: {photo["id"]} | '
+                f'Room: {photo.get("room", "unknown")} | '
+                f'Type: {room_type_tag}]'
+            ),
         })
         loaded += 1
 

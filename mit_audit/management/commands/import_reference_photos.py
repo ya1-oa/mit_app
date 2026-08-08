@@ -39,15 +39,61 @@ XACT_TO_CATEGORY = {
     'NAFAN':   'air_cleaner',
     'FHEPA':   'air_cleaner',
     'BARRZ+':  'zipper_wall',
-    'BARRP':   'zipper_wall',
+    'BARRP':   'tension_poles',
     'BARR':    'zipper_wall',
     'WALL':    'wall_cavity',
     'WALLH':   'wall_cavity',
     'WFI':     'floor_drying',
-    'HTBL':    'floor_drying',
+    'HTBL':    'drying_blanket',
     'DUCTLF':  'other',
     'DODHY>':  'hydroxyl',
+    'BWCDU':   'bound_water',
+    'CCDU':    'ceiling_cavity',
+    'CABDU':   'cabinet_drying',
+    'CLSTDU':  'closet_drying',
+    'HTAM':    'heat_air_mover',
 }
+
+# ---------------------------------------------------------------------------
+# Claim 1021079 — "HOW2 PICS 600 WTR MITIGATION EQUIPMENT"
+# Each room in this claim is named after an equipment type, making it the
+# canonical reference photo library.  Room name → category slug mapping.
+# ---------------------------------------------------------------------------
+_REFERENCE_CLAIM_ROOM_MAP: dict[str, str] = {
+    'afd nafan hepa air cleaners':              'air_cleaner',
+    'hydroxyl machines':                        'hydroxyl',
+    'dh dehumidifiers':                         'dehumidifier',
+    'zip walls & support poles':                'zipper_wall',
+    'zip walls and support poles':              'zipper_wall',
+    'am air movers':                            'blower',
+    'wcdu wall cavity drying unit':             'wall_cavity',
+    'ccdu cavity drying unit':                  'ceiling_cavity',
+    'cabdu cabinet drying unit':                'cabinet_drying',
+    'bwcdu bound water cavity drying unit':     'bound_water',
+    'wfi wood floor drying injection units':    'floor_drying',
+    'htbl heated blanket floor drying units':   'drying_blanket',
+    'grm sprayers anti microbial':              'other',
+    'exhaust system':                           'other',
+    'backpack hepa vacuum':                     'other',
+    'ppe personal protection equipment suits':  'other',
+    'multi pics equipment':                     'other',
+    'trailer atl #1 black beauty':              'other',
+}
+
+# Claims whose rooms ARE the equipment categories — photos get auto-approved
+# when imported with --auto-approve.
+REFERENCE_CLAIM_IDS = {'1021079'}
+
+
+def _room_to_category(room_name: str, claim_id: str) -> str:
+    """
+    Return the category slug for a room in a known reference claim.
+    Falls back to '' (untagged) if the room isn't in the map.
+    """
+    if claim_id not in REFERENCE_CLAIM_IDS:
+        return ''
+    key = room_name.strip().lower()
+    return _REFERENCE_CLAIM_ROOM_MAP.get(key, '')
 
 
 class Command(BaseCommand):
@@ -89,6 +135,16 @@ class Command(BaseCommand):
             '--dry-run', action='store_true',
             help='Print what would be imported without writing anything.',
         )
+        parser.add_argument(
+            '--auto-approve', action='store_true',
+            help=(
+                'Automatically approve and categorise photos from known reference '
+                'claims (currently: 1021079 — HOW2 PICS equipment library). '
+                'Rooms in those claims are named after equipment types, so no '
+                'manual review is needed. Photos for "other" rooms are still '
+                'imported as untagged/unapproved.'
+            ),
+        )
 
     # ── Entry point ──────────────────────────────────────────────────────────
 
@@ -102,6 +158,7 @@ class Command(BaseCommand):
         all_rooms   = options['all_rooms'] or not room_series  # default: all rooms
         overwrite   = options['overwrite']
         dry_run     = options['dry_run']
+        auto_approve= options['auto_approve']
 
         if dry_run:
             self.stdout.write(self.style.WARNING('DRY RUN — nothing will be written.'))
@@ -198,6 +255,17 @@ class Command(BaseCommand):
                 dest_path = dest_dir / f'{media_id}{ext}'
                 dest_path.write_bytes(file_bytes)
 
+                # Auto-categorise + approve photos from known reference claims
+                category = ''
+                approved = False
+                display_name = ''
+                if auto_approve:
+                    category = _room_to_category(room_name, claim_id)
+                    if category and category != 'other':
+                        from django.utils import timezone as _tz
+                        approved     = True
+                        display_name = room_name.title()
+
                 _, created = MITReferencePhoto.objects.update_or_create(
                     source_media_id=media_id,
                     defaults={
@@ -205,13 +273,17 @@ class Command(BaseCommand):
                         'file_size_bytes':          len(file_bytes),
                         'source_encircle_claim_id': claim_id,
                         'source_room_name':         room_name,
-                        'category':                 '',
-                        'approved':                 False,
+                        'category':                 category,
+                        'display_name':             display_name,
+                        'approved':                 approved,
                         'is_active':                True,
                     },
                 )
                 action = 'Created' if created else 'Updated'
-                self.stdout.write(f'  [{action}] {room_name or "(no room)"} / {media_id} → {dest_path.name}')
+                tag = f' → {category} [AUTO-APPROVED]' if approved else (' → untagged' if not category else f' → {category} (needs approval)')
+                self.stdout.write(
+                    f'  [{action}] {room_name or "(no room)"} / {media_id}{tag}'
+                )
                 total_imported += 1
                 time.sleep(0.05)
 

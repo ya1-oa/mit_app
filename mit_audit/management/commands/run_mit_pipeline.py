@@ -29,23 +29,36 @@ class Command(BaseCommand):
     help = 'Run the MIT audit pipeline synchronously for a given Encircle claim.'
 
     # Default equipment when --skip-workbook is used without --equipment
+    # Reflects a typical residential water loss per the standard IICRC S500 calc.
     DEFAULT_EQUIPMENT = [
         ('dehumidifier',  3,  True),
-        ('blower',       10, False),
-        ('air_cleaner',   1,  True),
-        ('hydroxyl',      1,  True),
+        ('blower',        10, False),
+        ('air_cleaner',   3,  True),
+        ('hydroxyl',      3,  False),
+        ('zipper_wall',   10, True),
     ]
 
+    # (display_name, requires_stabilization_photo)
     CATEGORY_META = {
-        'dehumidifier': ('LGR Dehumidifier',             True),
-        'blower':       ('Air Mover / Blower',            False),
-        'air_cleaner':  ('HEPA Air Scrubber',             True),
-        'zipper_wall':  ('Zipper Wall (containment)',     True),
-        'hydroxyl':     ('Hydroxyl Generator',            True),
-        'wall_cavity':  ('Wall Cavity Drying System',    False),
-        'floor_drying': ('Floor Drying Mat',             False),
-        'heater':       ('Heater',                        False),
-        'other':        ('Other Equipment',               False),
+        # Drying Chamber — stabilization required
+        'dehumidifier':   ('LGR Dehumidifier',                   True),
+        'air_cleaner':    ('HEPA / AFD Air Scrubber',            True),
+        'zipper_wall':    ('Zipper Wall & Poles (BARRZ/BARRP)',  True),
+        'double_zipper':  ('Double Zipper Wall & Poles',         True),
+        # Equipment tracked without stabilization photos
+        'hydroxyl':       ('Hydroxyl Generator (DODHY)',         False),
+        'blower':         ('Air Mover / Blower (DRY)',           False),
+        'heat_air_mover': ('Heat Air Mover (HTAM)',              False),
+        'tension_poles':  ('Tension / Support Poles (BARRP)',    False),
+        'ceiling_cavity': ('Ceiling Cavity Drying (CCDU)',       False),
+        'wall_cavity':    ('Wall Cavity Drying (WCDU)',          False),
+        'cabinet_drying': ('Cabinet Drying Unit (CABDU)',        False),
+        'closet_drying':  ('Closet Drying Unit (CLSTDU)',        False),
+        'floor_drying':   ('Wood Floor Drying Mat (WFI)',        False),
+        'drying_blanket': ('Drying Blanket / Mat (HTBL)',        False),
+        'bound_water':    ('Bound Water Cavity Drying (BWCDU)',  False),
+        'heater':         ('Heater',                             False),
+        'other':          ('Other Equipment',                    False),
     }
 
     def add_arguments(self, parser):
