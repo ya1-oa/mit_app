@@ -92,7 +92,7 @@ def fetch_encircle_photos(encircle_claim_id: str) -> list[dict]:
         # Encircle API media item fields (confirmed from ZipMediaDownloader):
         #   content_type  — 'image/jpeg', 'video/mp4', 'application/pdf', …
         #   download_uri  — signed download URL
-        #   labels        — list of strings; first label = room name
+        #   labels        — hierarchy list: labels[0] = building, labels[1] = room name
         #   id            — numeric media ID
         _IMAGE_TYPES = {
             'image/jpeg', 'image/jpg', 'image/png',
@@ -109,7 +109,8 @@ def fetch_encircle_photos(encircle_claim_id: str) -> list[dict]:
             if not url:
                 continue
             labels    = item.get('labels') or []
-            room_name = labels[0] if labels else ''
+            # labels hierarchy: [building, room, ...] — room is at index 1
+            room_name = labels[1] if len(labels) >= 2 else (labels[0] if labels else '')
             photos.append({
                 'id':         str(item.get('id', '')),
                 'url':        url,

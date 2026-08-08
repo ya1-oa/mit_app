@@ -235,7 +235,7 @@ class Command(BaseCommand):
             # Encircle API media fields:
             #   content_type  → 'image/jpeg', 'video/mp4', 'application/pdf' …
             #   download_uri  → signed download URL
-            #   labels        → list of strings; labels[0] = room name
+            #   labels        → hierarchy list: labels[0] = building, labels[1] = room name
             _IMAGE_TYPES = {
                 'image/jpeg', 'image/jpg', 'image/png',
                 'image/gif',  'image/webp','image/heic',
@@ -251,7 +251,8 @@ class Command(BaseCommand):
 
                 media_id  = str(item.get('id', ''))
                 labels    = item.get('labels') or []
-                room_name = labels[0] if labels else (item.get('room_name') or item.get('room') or '')
+                # labels hierarchy: [building, room, ...] — room is at index 1
+                room_name = labels[1] if len(labels) >= 2 else (labels[0] if labels else '')
                 url       = (item.get('download_uri')
                              or item.get('url')
                              or item.get('download_url')
