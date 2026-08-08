@@ -1,0 +1,885 @@
+{% extends "account/base.html" %}
+{% block title %}MIT Day 3 Audit{% endblock %}
+
+{% block extra_css %}
+<style>
+/* ── Layout ────────────────────────────────────────────────────── */
+.hub-wrap { max-width: 1100px; margin: 0 auto; padding: 0 0 80px; }
+
+/* ── Top tab bar (desktop) ─────────────────────────────────────── */
+.hub-tabs {
+  display: flex;
+  gap: 4px;
+  background: #f1f5f9;
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 20px;
+}
+.hub-tab {
+  flex: 1;
+  text-align: center;
+  padding: 9px 4px;
+  border-radius: 9px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #64748b;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  border: none;
+  background: transparent;
+  text-decoration: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+.hub-tab.active {
+  background: #fff;
+  color: #1e40af;
+  box-shadow: 0 1px 4px rgba(0,0,0,.1);
+}
+.hub-tab:hover:not(.active) { background: rgba(255,255,255,.6); color: #334155; }
+
+/* ── Bottom nav (mobile only) ──────────────────────────────────── */
+.bottom-nav {
+  display: none;
+  position: fixed;
+  bottom: 0; left: 0; right: 0;
+  background: #fff;
+  border-top: 1px solid #e2e8f0;
+  z-index: 1000;
+  padding: 6px 0 env(safe-area-inset-bottom);
+}
+.bottom-nav-items { display: flex; justify-content: space-around; }
+.bottom-nav-item {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 6px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: #94a3b8;
+  cursor: pointer;
+  border: none;
+  background: none;
+  text-decoration: none;
+  transition: color .15s;
+}
+.bottom-nav-item.active { color: #1e40af; }
+.bottom-nav-item i { font-size: 20px; }
+
+/* ── Panel visibility ───────────────────────────────────────────── */
+.hub-panel { display: none; }
+.hub-panel.active { display: block; }
+
+/* ── Claim selector ────────────────────────────────────────────── */
+.claim-card {
+  background: #fff;
+  border-radius: 12px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.claim-card h6 { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: .6px; margin-bottom: 10px; }
+.claim-select-wrap { position: relative; }
+.claim-select-wrap select {
+  width: 100%;
+  padding: 12px 36px 12px 14px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  font-size: 15px;
+  appearance: none;
+  background: #f8fafc;
+  cursor: pointer;
+  transition: border-color .15s;
+}
+.claim-select-wrap select:focus { outline: none; border-color: #3b82f6; background: #fff; }
+.claim-select-wrap::after {
+  content: "▾";
+  position: absolute;
+  right: 14px; top: 50%;
+  transform: translateY(-50%);
+  pointer-events: none;
+  color: #94a3b8;
+  font-size: 14px;
+}
+.claim-id-tag {
+  display: inline-block;
+  margin-top: 6px;
+  font-size: 11px;
+  color: #64748b;
+  background: #f1f5f9;
+  padding: 2px 8px;
+  border-radius: 20px;
+}
+
+/* ── Equipment cards ────────────────────────────────────────────── */
+.eq-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-bottom: 14px;
+}
+.eq-card {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.07);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 2px solid transparent;
+  transition: border-color .15s;
+}
+.eq-card.has-qty { border-color: #3b82f6; }
+.eq-card-top { display: flex; justify-content: space-between; align-items: flex-start; }
+.eq-name { font-size: 13px; font-weight: 600; color: #1e293b; line-height: 1.3; }
+.stab-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #f59e0b;
+  flex-shrink: 0;
+  margin-top: 4px;
+  title: "Stabilization photo required";
+}
+.eq-stepper {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  background: #f1f5f9;
+  border-radius: 8px;
+  overflow: hidden;
+  width: fit-content;
+}
+.eq-stepper button {
+  border: none;
+  background: none;
+  width: 32px; height: 32px;
+  font-size: 18px;
+  font-weight: 700;
+  color: #64748b;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background .1s, color .1s;
+  padding: 0;
+}
+.eq-stepper button:hover { background: #e2e8f0; color: #1e293b; }
+.eq-stepper .qty-val {
+  min-width: 32px;
+  text-align: center;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+/* ── Run button ────────────────────────────────────────────────── */
+.run-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  padding: 16px;
+  background: #1e40af;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .15s, opacity .15s;
+  margin-bottom: 16px;
+}
+.run-btn:hover:not(:disabled) { background: #1d4ed8; }
+.run-btn:disabled { opacity: .6; cursor: not-allowed; }
+
+/* ── Progress ───────────────────────────────────────────────────── */
+.progress-card {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.08);
+  padding: 16px;
+  margin-bottom: 14px;
+}
+.progress-track { height: 8px; background: #e2e8f0; border-radius: 99px; overflow: hidden; margin-top: 10px; }
+.progress-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #1e40af, #3b82f6);
+  border-radius: 99px;
+  transition: width .5s ease;
+}
+
+/* ── Report buttons ─────────────────────────────────────────────── */
+.report-pills { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; }
+.report-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 16px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  transition: opacity .15s;
+}
+.report-pill:hover { opacity: .85; }
+
+/* ── AI results ─────────────────────────────────────────────────── */
+.obs-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+.obs-item {
+  background: #fff;
+  border-radius: 10px;
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.07);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.obs-marker {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  font-weight: 800;
+  flex-shrink: 0;
+}
+.obs-marker.ok   { background: #dcfce7; color: #16a34a; }
+.obs-marker.warn { background: #fef3c7; color: #d97706; }
+.obs-marker.miss { background: #fee2e2; color: #dc2626; }
+.obs-info { flex: 1; min-width: 0; }
+.obs-name { font-size: 13px; font-weight: 600; color: #1e293b; }
+.obs-note { font-size: 11px; color: #64748b; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.obs-meta { text-align: right; flex-shrink: 0; }
+.obs-count { font-size: 13px; font-weight: 700; }
+.conf-badge {
+  font-size: 10px;
+  padding: 2px 7px;
+  border-radius: 20px;
+  font-weight: 600;
+  display: inline-block;
+  margin-top: 3px;
+}
+.conf-high   { background: #dcfce7; color: #166534; }
+.conf-medium { background: #fef3c7; color: #92400e; }
+.conf-low    { background: #fee2e2; color: #991b1b; }
+
+/* ── Audits list ────────────────────────────────────────────────── */
+.audit-list { display: flex; flex-direction: column; gap: 10px; }
+.audit-item {
+  background: #fff;
+  border-radius: 12px;
+  padding: 14px 16px;
+  box-shadow: 0 1px 4px rgba(0,0,0,.07);
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.audit-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
+.audit-dot.complete { background: #22c55e; }
+.audit-dot.error    { background: #ef4444; }
+.audit-dot.review   { background: #f59e0b; }
+.audit-dot.running  { background: #3b82f6; animation: pulse 1.2s infinite; }
+.audit-dot.other    { background: #cbd5e1; }
+@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+.audit-info { flex: 1; min-width: 0; }
+.audit-client { font-size: 14px; font-weight: 600; color: #1e293b; }
+.audit-sub { font-size: 11px; color: #94a3b8; }
+.audit-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
+
+/* ── Library tab ────────────────────────────────────────────────── */
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  margin-bottom: 20px;
+}
+.lib-cat-card {
+  background: #fff;
+  border-radius: 10px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.07);
+  padding: 16px 12px;
+  text-align: center;
+  cursor: pointer;
+  transition: box-shadow .15s;
+  text-decoration: none;
+  color: #1e293b;
+  display: block;
+}
+.lib-cat-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,.12); color: #1e293b; }
+.lib-cat-count { font-size: 28px; font-weight: 800; color: #1e40af; }
+.lib-cat-name { font-size: 11px; color: #64748b; margin-top: 4px; line-height: 1.3; }
+.lib-cat-card.zero .lib-cat-count { color: #cbd5e1; }
+
+/* ── Mobile overrides ───────────────────────────────────────────── */
+@media (max-width: 640px) {
+  .hub-tabs { display: none; }
+  .bottom-nav { display: block; }
+  .hub-wrap { padding: 0 0 80px; }
+  .eq-grid { grid-template-columns: 1fr; }
+  .audit-item { flex-wrap: wrap; }
+  .audit-actions { width: 100%; }
+}
+
+/* ── Trigger modal ──────────────────────────────────────────────── */
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .6px;
+  color: #94a3b8;
+  margin: 20px 0 10px;
+}
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="hub-wrap">
+
+  {# ── Top tabs (desktop) ── #}
+  <div class="hub-tabs" role="tablist">
+    <button class="hub-tab {% if active_tab == 'run' %}active{% endif %}"
+            onclick="switchTab('run')" role="tab">
+      <i class="fas fa-play"></i> Run Audit
+    </button>
+    <button class="hub-tab {% if active_tab == 'audits' %}active{% endif %}"
+            onclick="switchTab('audits')" role="tab">
+      <i class="fas fa-list-check"></i> Audits
+      {% if audits %}<span style="background:#3b82f6;color:#fff;border-radius:20px;padding:1px 7px;font-size:11px;margin-left:4px">{{ audits|length }}</span>{% endif %}
+    </button>
+    <button class="hub-tab {% if active_tab == 'library' %}active{% endif %}"
+            onclick="switchTab('library')" role="tab">
+      <i class="fas fa-images"></i> Photo Library
+      {% if ref_total %}<span style="background:#22c55e;color:#fff;border-radius:20px;padding:1px 7px;font-size:11px;margin-left:4px">{{ ref_total }}</span>{% endif %}
+    </button>
+  </div>
+
+  {# ═══════════════════════════════════════════════════════════════ #}
+  {# RUN TAB                                                        #}
+  {# ═══════════════════════════════════════════════════════════════ #}
+  <div class="hub-panel {% if active_tab == 'run' %}active{% endif %}" id="panel-run">
+
+    {# Claim selector #}
+    <div class="claim-card">
+      <h6><i class="fas fa-file-medical me-1"></i> Select Claim</h6>
+      <div class="claim-select-wrap">
+        <select id="clientSelect">
+          <option value="">— pick a claim —</option>
+          {% for c in clients %}
+          <option value="{{ c.pk }}"
+                  data-claim="{{ c.encircle_claim_id }}"
+                  data-name="{{ c.pOwner|default:c.pk }}">
+            {{ c.pOwner|default:"(no name)" }}{% if c.claimNumber %} · {{ c.claimNumber }}{% endif %}
+          </option>
+          {% endfor %}
+        </select>
+      </div>
+      <div id="claimTag" class="claim-id-tag" style="display:none"></div>
+    </div>
+
+    {# Equipment #}
+    <div class="section-label">Equipment on This Job</div>
+    <div class="eq-grid" id="eqGrid">
+      {% for item in default_equipment %}
+      <div class="eq-card" id="eqcard-{{ forloop.counter0 }}"
+           data-cat="{{ item.category }}"
+           data-stab="{{ item.requires_stabilization|yesno:'true,false' }}">
+        <div class="eq-card-top">
+          <span class="eq-name">{{ item.display_name }}</span>
+          {% if item.requires_stabilization %}
+          <span class="stab-dot" title="Stabilization photo required"></span>
+          {% endif %}
+        </div>
+        <div class="eq-stepper">
+          <button type="button" onclick="stepQty({{ forloop.counter0 }}, -1)">−</button>
+          <span class="qty-val" id="qty-{{ forloop.counter0 }}">{{ item.required_quantity }}</span>
+          <button type="button" onclick="stepQty({{ forloop.counter0 }}, +1)">+</button>
+        </div>
+      </div>
+      {% endfor %}
+    </div>
+    <p style="font-size:11px;color:#94a3b8;margin-bottom:16px">
+      <span style="display:inline-block;width:8px;height:8px;background:#f59e0b;border-radius:50%;"></span>
+      Yellow dot = stabilization photo required (equipment must be on, connected, running)
+    </p>
+
+    {# Run button #}
+    <button class="run-btn" id="runBtn" onclick="startRun()">
+      <i class="fas fa-robot"></i> Run AI Review &amp; Generate Reports
+    </button>
+
+    {# Progress (hidden until running) #}
+    <div class="progress-card" id="progressCard" style="display:none">
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:14px;font-weight:600" id="progressLabel">Starting…</span>
+        <span class="badge bg-primary" id="progressBadge">Running</span>
+      </div>
+      <div class="progress-track">
+        <div class="progress-fill" id="progressFill" style="width:5%"></div>
+      </div>
+    </div>
+
+    {# Report download pills (hidden until complete) #}
+    <div id="reportPills" style="display:none">
+      <div class="section-label">Generated Reports</div>
+      <div class="report-pills">
+        <a id="btnRequired" href="#" target="_blank" class="report-pill" style="background:#1e40af;color:#fff">
+          <i class="fas fa-clipboard-list"></i> Required Equipment
+        </a>
+        <a id="btnRequiredStab" href="#" target="_blank" class="report-pill" style="background:#1565c0;color:#fff">
+          <i class="fas fa-star"></i> Required Stab Photos
+        </a>
+        <a id="btnMissing" href="#" target="_blank" class="report-pill" style="background:#dc2626;color:#fff">
+          <i class="fas fa-exclamation-triangle"></i> Missing Equip
+        </a>
+        <a id="btnMissingStab" href="#" target="_blank" class="report-pill" style="background:#991b1b;color:#fff">
+          <i class="fas fa-exclamation-circle"></i> Missing Stab
+        </a>
+        <a id="btnDetail" href="#" class="report-pill" style="background:#f1f5f9;color:#334155">
+          <i class="fas fa-external-link-alt"></i> Full Detail
+        </a>
+      </div>
+    </div>
+
+    {# AI Observations #}
+    <div id="obsSection" style="display:none">
+      <div class="section-label"><i class="fas fa-robot me-1"></i>AI Review Results</div>
+      <div class="obs-list" id="obsList"></div>
+    </div>
+
+    {# Error #}
+    <div class="alert alert-danger" id="errorAlert" style="display:none">
+      <strong>Error:</strong> <span id="errorMsg"></span>
+    </div>
+
+  </div>{# /panel-run #}
+
+  {# ═══════════════════════════════════════════════════════════════ #}
+  {# AUDITS TAB                                                     #}
+  {# ═══════════════════════════════════════════════════════════════ #}
+  <div class="hub-panel {% if active_tab == 'audits' %}active{% endif %}" id="panel-audits">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-size:15px;font-weight:700">Audit History</span>
+      <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#triggerModal">
+        <i class="fas fa-plus me-1"></i>New Full Audit
+      </button>
+    </div>
+
+    {% if audits %}
+    <div class="audit-list">
+      {% for audit in audits %}
+      {% with st=audit.status %}
+      <div class="audit-item">
+        <div class="audit-dot
+          {% if st == 'complete' %}complete
+          {% elif st == 'error' %}error
+          {% elif st == 'dims_review' %}review
+          {% elif st == 'pending' or st == 'reviewing_photos' or st == 'generating_reports' %}running
+          {% else %}other{% endif %}">
+        </div>
+        <div class="audit-info">
+          <div class="audit-client">{{ audit.client.pOwner|default:"Unknown" }}</div>
+          <div class="audit-sub">
+            Claim {{ audit.client.claimNumber|default:"—" }}
+            · #{{ audit.pk }}
+            · {{ audit.created_at|date:"M d, Y" }}
+            · {{ audit.required_equipment.count }} items
+          </div>
+          {% if audit.error_message %}
+          <div style="font-size:11px;color:#dc2626;margin-top:3px">{{ audit.error_message|truncatechars:80 }}</div>
+          {% endif %}
+        </div>
+        <div class="audit-actions">
+          {% if audit.status == 'dims_review' %}
+          <a href="{% url 'mit_audit:audit_detail' audit.pk %}" class="btn btn-warning btn-sm py-0 px-2" style="font-size:11px">
+            Review Dims
+          </a>
+          {% endif %}
+          {% for report in audit.reports.all %}
+          <a href="{{ report.get_download_url }}" target="_blank"
+             class="btn btn-sm py-0 px-2
+               {% if report.report_type == 'required_equipment' %}btn-outline-primary
+               {% elif report.report_type == 'required_stab' %}btn-outline-info
+               {% elif report.report_type == 'missing_equipment' %}btn-outline-danger
+               {% else %}btn-danger{% endif %}"
+             style="font-size:11px">
+            ↓ {{ report.get_report_type_display|truncatechars:18 }}
+          </a>
+          {% endfor %}
+          <a href="{% url 'mit_audit:audit_detail' audit.pk %}"
+             class="btn btn-sm btn-outline-secondary py-0 px-2" style="font-size:11px">View</a>
+        </div>
+      </div>
+      {% endwith %}
+      {% endfor %}
+    </div>
+    {% else %}
+    <div style="text-align:center;padding:48px 0;color:#94a3b8">
+      <div style="font-size:3rem;margin-bottom:12px">📋</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:6px">No audits yet</div>
+      <p style="font-size:13px">Use <strong>New Full Audit</strong> to run the complete pipeline<br>(floor plan → workbook → AI review → reports).</p>
+    </div>
+    {% endif %}
+  </div>{# /panel-audits #}
+
+  {# ═══════════════════════════════════════════════════════════════ #}
+  {# LIBRARY TAB                                                    #}
+  {# ═══════════════════════════════════════════════════════════════ #}
+  <div class="hub-panel {% if active_tab == 'library' %}active{% endif %}" id="panel-library">
+
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+      <div>
+        <span style="font-size:15px;font-weight:700">Reference Photo Library</span>
+        <div style="font-size:12px;color:#94a3b8">{{ ref_total }} approved photos · used as AI visual ground truth</div>
+      </div>
+      <a href="{% url 'mit_audit:reference_photos' %}" class="btn btn-outline-secondary btn-sm">
+        <i class="fas fa-cog me-1"></i>Manage All
+      </a>
+    </div>
+
+    <div class="section-label">Approved Photos by Category</div>
+    <div class="lib-grid">
+      {% with cats=default_equipment %}
+      {% for item in default_equipment %}
+      <a href="{% url 'mit_audit:reference_photos' %}?category={{ item.category }}&status=approved"
+         class="lib-cat-card {% if not ref_counts|default_if_none:item.category %}zero{% endif %}">
+        <div class="lib-cat-count">{{ ref_counts|default_if_none:item.category|default:"0" }}</div>
+        <div class="lib-cat-name">{{ item.display_name }}</div>
+      </a>
+      {% endfor %}
+      {% endwith %}
+    </div>
+
+    {% if ref_total == 0 %}
+    <div class="alert alert-warning" style="font-size:13px">
+      <strong>No reference photos yet.</strong> Run this on the server to import the equipment photo library:
+      <code class="d-block mt-2 p-2 rounded" style="background:#1e293b;color:#e2e8f0;font-size:12px">
+        python manage.py import_reference_photos 1021079 --auto-approve
+      </code>
+    </div>
+    {% endif %}
+
+    <div style="margin-top:20px">
+      <a href="{% url 'mit_audit:reference_photos' %}?status=pending" class="btn btn-outline-warning btn-sm me-2">
+        <i class="fas fa-clock me-1"></i>Review Pending Photos
+      </a>
+      <a href="{% url 'mit_audit:reference_photos' %}" class="btn btn-outline-primary btn-sm">
+        <i class="fas fa-images me-1"></i>View Full Library
+      </a>
+    </div>
+  </div>{# /panel-library #}
+
+</div>{# /hub-wrap #}
+
+{# ── Bottom nav (mobile) ── #}
+<nav class="bottom-nav">
+  <div class="bottom-nav-items">
+    <button class="bottom-nav-item {% if active_tab == 'run' %}active{% endif %}"
+            onclick="switchTab('run')">
+      <i class="fas fa-play"></i> Run
+    </button>
+    <button class="bottom-nav-item {% if active_tab == 'audits' %}active{% endif %}"
+            onclick="switchTab('audits')">
+      <i class="fas fa-list-check"></i> Audits
+    </button>
+    <button class="bottom-nav-item {% if active_tab == 'library' %}active{% endif %}"
+            onclick="switchTab('library')">
+      <i class="fas fa-images"></i> Library
+    </button>
+  </div>
+</nav>
+
+{# ── New Full Audit modal ── #}
+<div class="modal fade" id="triggerModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">New MIT Day 3 Audit (Full Pipeline)</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small">
+          Full pipeline: floor plan extraction → workbook → equipment calc → AI photo review → PDF reports.
+          Takes 2–5 minutes.
+        </p>
+        <div class="mb-3">
+          <label class="form-label fw-semibold">Select Claim</label>
+          <select class="form-select" id="modalClaimSelect">
+            <option value="">— choose a claim —</option>
+          </select>
+          <div class="form-text">Only active claims with an Encircle claim ID shown.</div>
+        </div>
+        <div id="triggerAlert" class="d-none"></div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+        <button class="btn btn-primary" id="triggerBtn" disabled>Start Audit</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const RUN_URL      = "{% url 'mit_audit:test_run' %}";
+const STATUS_URL   = "{% url 'mit_audit:status_api' 0 %}";
+const RESULTS_URL  = "{% url 'mit_audit:test_run_results' 0 %}";
+const DETAIL_URL   = "{% url 'mit_audit:audit_detail' 0 %}";
+const TRIGGER_URL  = "{% url 'mit_audit:trigger_audit' %}";
+const CLAIMS_URL   = '/claims/api/list/?archived=false';
+const CSRF         = '{{ csrf_token }}';
+
+let pollTimer = null;
+
+// ── Tab switching ──────────────────────────────────────────────────
+function switchTab(tab) {
+  document.querySelectorAll('.hub-panel').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.hub-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.bottom-nav-item').forEach(t => t.classList.remove('active'));
+  document.getElementById('panel-' + tab).classList.add('active');
+  document.querySelectorAll('[onclick="switchTab(\'' + tab + '\')"]')
+    .forEach(el => el.classList.add('active'));
+  history.replaceState(null, '', '?tab=' + tab);
+}
+
+// ── Claim selector ─────────────────────────────────────────────────
+document.getElementById('clientSelect').addEventListener('change', function () {
+  const opt = this.options[this.selectedIndex];
+  const cid = opt.dataset.claim;
+  const tag = document.getElementById('claimTag');
+  if (cid) {
+    tag.textContent = 'Encircle ID: ' + cid;
+    tag.style.display = 'inline-block';
+  } else {
+    tag.style.display = 'none';
+  }
+});
+
+// ── Equipment stepper ──────────────────────────────────────────────
+function stepQty(idx, delta) {
+  const el  = document.getElementById('qty-' + idx);
+  const card = document.getElementById('eqcard-' + idx);
+  const cur = parseInt(el.textContent) || 0;
+  const nxt = Math.max(0, Math.min(99, cur + delta));
+  el.textContent = nxt;
+  card.classList.toggle('has-qty', nxt > 0);
+}
+
+function collectEquipment() {
+  const cards = document.querySelectorAll('#eqGrid .eq-card');
+  return Array.from(cards).map((card, i) => ({
+    category:               card.dataset.cat,
+    display_name:           card.querySelector('.eq-name').textContent.trim(),
+    required_quantity:      parseInt(document.getElementById('qty-' + i).textContent) || 0,
+    requires_stabilization: card.dataset.stab === 'true',
+  }));
+}
+
+// ── Run ─────────────────────────────────────────────────────────────
+function startRun() {
+  const clientId = document.getElementById('clientSelect').value;
+  if (!clientId) { alert('Pick a claim first.'); return; }
+  const equipment = collectEquipment();
+  if (!equipment.some(e => e.required_quantity > 0)) {
+    alert('Set qty > 0 for at least one equipment type.');
+    return;
+  }
+
+  const btn = document.getElementById('runBtn');
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running…';
+
+  document.getElementById('progressCard').style.display = '';
+  document.getElementById('reportPills').style.display  = 'none';
+  document.getElementById('obsSection').style.display   = 'none';
+  document.getElementById('errorAlert').style.display   = 'none';
+  setProgress(5, 'Submitting…', 'Running', '#3b82f6');
+
+  fetch(RUN_URL, {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body:    JSON.stringify({ client_id: clientId, equipment }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) { showError(data.error || 'Unknown error'); return; }
+    setProgress(10, 'Fetching Encircle photos…', 'Running', '#3b82f6');
+    pollStatus(data.audit_id);
+  })
+  .catch(err => showError('Network error: ' + err));
+}
+
+const STEP_PCT = {
+  pending:18, extracting_dims:20, dims_review:25, populating_wb:35,
+  calculating:50, reviewing_photos:65, generating_reports:90, complete:100,
+};
+const STEP_LABEL = {
+  pending:'Queued…', extracting_dims:'Extracting floor plan…',
+  dims_review:'Waiting for dimension approval…', populating_wb:'Populating workbook…',
+  calculating:'Calculating required equipment…',
+  reviewing_photos:'AI reviewing photos… (60–120 s)',
+  generating_reports:'Generating PDF reports…', complete:'Done!',
+};
+
+function pollStatus(auditId) {
+  clearTimeout(pollTimer);
+  fetch(STATUS_URL.replace('/0/', '/' + auditId + '/'))
+  .then(r => r.json())
+  .then(data => {
+    const pct   = STEP_PCT[data.status] || 10;
+    const label = STEP_LABEL[data.status] || data.status;
+    setProgress(pct, label, data.status === 'complete' ? 'Done' : 'Running',
+                data.status === 'complete' ? '#22c55e' : '#3b82f6');
+
+    if (data.status === 'complete') {
+      loadResults(auditId);
+    } else if (data.status === 'error') {
+      showError(data.error || 'Pipeline error. Check server logs.');
+    } else {
+      pollTimer = setTimeout(() => pollStatus(auditId), 3000);
+    }
+  })
+  .catch(() => { pollTimer = setTimeout(() => pollStatus(auditId), 5000); });
+}
+
+function loadResults(auditId) {
+  fetch(RESULTS_URL.replace('/0/', '/' + auditId + '/'))
+  .then(r => r.json())
+  .then(data => {
+    if (!data.ok) { showError('Could not load results.'); return; }
+    renderResults(data, auditId);
+    const btn = document.getElementById('runBtn');
+    btn.disabled = false;
+    btn.innerHTML = '<i class="fas fa-redo"></i> Run Again';
+  });
+}
+
+function renderResults(data, auditId) {
+  // Report pills
+  const req  = data.reports.find(r => r.type === 'required_equipment');
+  const reqS = data.reports.find(r => r.type === 'required_stab');
+  const mis  = data.reports.find(r => r.type === 'missing_equipment');
+  const misS = data.reports.find(r => r.type === 'missing_stab');
+  if (req)  document.getElementById('btnRequired').href      = req.url;
+  if (reqS) document.getElementById('btnRequiredStab').href  = reqS.url;
+  if (mis)  document.getElementById('btnMissing').href       = mis.url;
+  if (misS) document.getElementById('btnMissingStab').href   = misS.url;
+  document.getElementById('btnDetail').href = DETAIL_URL.replace('/0/', '/' + auditId + '/');
+  document.getElementById('reportPills').style.display = '';
+
+  // Observations
+  const list = document.getElementById('obsList');
+  list.innerHTML = '';
+  data.rows.forEach(row => {
+    const vis = row.visible_quantity;
+    const req = row.required_quantity;
+    let cls = 'miss', sym = '✗';
+    if      (vis !== null && vis >= req) { cls = 'ok';   sym = '✓'; }
+    else if (vis !== null && vis > 0)    { cls = 'warn'; sym = '~'; }
+    const confCls = {high:'conf-high', medium:'conf-medium', low:'conf-low'}[row.ai_confidence] || 'conf-low';
+    let note = row.ai_notes || '';
+    if (row.stab_required && row.stab_found === false) note += ' ⚠ Stab photo missing.';
+
+    const div = document.createElement('div');
+    div.className = 'obs-item';
+    div.innerHTML = `
+      <div class="obs-marker ${cls}">${sym}</div>
+      <div class="obs-info">
+        <div class="obs-name">${esc(row.display_name)}</div>
+        ${note ? `<div class="obs-note">${esc(note.trim())}</div>` : ''}
+      </div>
+      <div class="obs-meta">
+        <div class="obs-count ${cls === 'ok' ? 'text-success' : cls === 'warn' ? 'text-warning' : 'text-danger'}">
+          ${vis ?? '?'}/${req}
+        </div>
+        ${row.ai_confidence
+          ? `<span class="conf-badge ${confCls}">${row.ai_confidence}</span>`
+          : ''}
+      </div>`;
+    list.appendChild(div);
+  });
+  document.getElementById('obsSection').style.display = '';
+}
+
+function setProgress(pct, label, badge, color) {
+  document.getElementById('progressFill').style.width    = pct + '%';
+  document.getElementById('progressFill').style.background = `linear-gradient(90deg, ${color}, ${color}99)`;
+  document.getElementById('progressLabel').textContent   = label;
+  document.getElementById('progressBadge').textContent   = badge;
+  document.getElementById('progressBadge').style.background = color;
+}
+
+function showError(msg) {
+  document.getElementById('errorMsg').textContent  = msg;
+  document.getElementById('errorAlert').style.display = '';
+  setProgress(100, 'Error', 'Error', '#dc2626');
+  const btn = document.getElementById('runBtn');
+  btn.disabled = false;
+  btn.innerHTML = '<i class="fas fa-redo"></i> Try Again';
+}
+
+function esc(s) {
+  return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+// ── New Full Audit modal ───────────────────────────────────────────
+document.getElementById('triggerModal').addEventListener('show.bs.modal', () => {
+  const sel = document.getElementById('modalClaimSelect');
+  if (sel.options.length > 1) return;
+  fetch(CLAIMS_URL)
+  .then(r => r.json())
+  .then(data => {
+    (data.claims || data.results || data || []).forEach(c => {
+      const opt = document.createElement('option');
+      opt.value = c.id || c.pk;
+      opt.textContent = `${c.pOwner || c.name || 'Client'} — ${c.claimNumber || c.claim_number || ''}`;
+      sel.appendChild(opt);
+    });
+  })
+  .catch(() => { sel.innerHTML = '<option value="">Error loading claims</option>'; });
+});
+
+document.getElementById('modalClaimSelect').addEventListener('change', function () {
+  document.getElementById('triggerBtn').disabled = !this.value;
+});
+
+document.getElementById('triggerBtn').addEventListener('click', () => {
+  const clientId = document.getElementById('modalClaimSelect').value;
+  const btn = document.getElementById('triggerBtn');
+  const alertEl = document.getElementById('triggerAlert');
+  btn.disabled = true;
+  btn.textContent = 'Starting…';
+  fetch(TRIGGER_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF },
+    body: JSON.stringify({ client_id: clientId }),
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.ok) { window.location.href = DETAIL_URL.replace('/0/', '/' + data.audit_id + '/'); }
+    else {
+      alertEl.className = 'alert alert-danger';
+      alertEl.textContent = data.error || 'Unknown error';
+      alertEl.classList.remove('d-none');
+      btn.disabled = false;
+      btn.textContent = 'Start Audit';
+    }
+  })
+  .catch(err => {
+    alertEl.className = 'alert alert-danger';
+    alertEl.textContent = 'Network error: ' + err;
+    alertEl.classList.remove('d-none');
+    btn.disabled = false;
+    btn.textContent = 'Start Audit';
+  });
+});
+</script>
+{% endblock %}

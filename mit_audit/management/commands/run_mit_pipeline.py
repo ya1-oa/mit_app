@@ -29,13 +29,22 @@ class Command(BaseCommand):
     help = 'Run the MIT audit pipeline synchronously for a given Encircle claim.'
 
     # Default equipment when --skip-workbook is used without --equipment
-    # Reflects a typical residential water loss per the standard IICRC S500 calc.
+    # Reference job: 12404 FERRIS, Cleveland OH (ASSURANT/WTR) — confirmed by PM
+    # Format: (category, qty, requires_stabilization_photo)
     DEFAULT_EQUIPMENT = [
-        ('dehumidifier',  3,  True),
-        ('blower',        10, False),
-        ('air_cleaner',   3,  True),
-        ('hydroxyl',      3,  False),
-        ('zipper_wall',   10, True),
+        # ── Drying Chamber Stabilization ──────────────────────────────────
+        ('dehumidifier',  3,  True),   # DHM / LGR  — 1 per DC default
+        ('air_cleaner',   3,  True),   # AFD / NAFAN / HEPA — 1 per DC default
+        ('zipper_wall',   10, True),   # BARRZ — double zipper + poles per DC
+        ('tension_poles', 10, False),  # BARRP
+        # ── Per-Room Standard Mitigation ──────────────────────────────────
+        ('blower',        36, False),  # DRY
+        ('hydroxyl',      3,  False),  # DODHY
+        ('ceiling_cavity',3,  False),  # CCDU
+        ('wall_cavity',   4,  False),  # WCDU
+        ('floor_drying',  4,  False),  # WFI
+        ('drying_blanket',2,  False),  # HTBL
+        ('bound_water',   2,  False),  # BWCDU
     ]
 
     # (display_name, requires_stabilization_photo)

@@ -33,21 +33,78 @@ logger = logging.getLogger(__name__)
 
 @login_required
 def dashboard(request):
-    from mit_audit.models import MITDay3Audit, MITDay3Config
+    from mit_audit.models import (
+        MITDay3Audit, MITDay3Config, MITRequiredEquipment, MITReferencePhoto,
+    )
+    from docsAppR.models import Client
 
+    # ── Audits history ───────────────────────────────────────────────────────
     audits = (
         MITDay3Audit.objects
         .select_related('client', 'triggered_by')
         .prefetch_related('reports', 'required_equipment')
+        .filter(archived=False)
         .order_by('-created_at')[:50]
     )
     config = MITDay3Config.get()
 
-    return render(request, 'mit_audit/dashboard.html', {
-        'audits':  audits,
-        'config':  config,
-        # No global template needed — each client's 82-MIT workbook is found
-        # automatically via ClaimFile DB record or Templates folder scan.
+    # ── Run-tab: claim list (deduplicated) ───────────────────────────────────
+    _all_clients = (
+        Client.objects
+        .filter(archived=False, encircle_claim_id__isnull=False)
+        .exclude(encircle_claim_id='')
+        .order_by('-created_at')
+    )
+    _seen = {}
+    for c in _all_clients:
+        key = (c.pOwner or '').strip().lower()
+        if key not in _seen:
+            _seen[key] = c
+    clients = sorted(_seen.values(), key=lambda c: (c.pOwner or '').lower())
+
+    # ── Run-tab: default equipment ───────────────────────────────────────────
+    # Reference job: 12404 FERRIS, Cleveland OH — ASSURANT / WTR
+    # Source: WINTERS/SHARONE standard quantities confirmed by PM
+    # ── Drying Chamber Stabilization (stab photo required) ──────────────
+    # Default: 1 DH + 1 AFD + 1 double-zipper set per DC — PM can override
+    # ── Per-Room Standard Mitigation (from Total Equipment tab) ──────────
+    default_equipment = [
+        # Stabilization items — require a "connected + running" photo per DC
+        {'category': 'dehumidifier',  'display_name': 'Dehumidifier (DHM/LGR)',       'required_quantity': 3,  'requires_stabilization': True},
+        {'category': 'air_cleaner',   'display_name': 'AFD / NAFAN / HEPA Scrubber',  'required_quantity': 3,  'requires_stabilization': True},
+        {'category': 'zipper_wall',   'display_name': 'Zipper Wall + Poles (BARRZ)',  'required_quantity': 10, 'requires_stabilization': True},
+        {'category': 'tension_poles', 'display_name': 'Tension Poles (BARRP)',         'required_quantity': 10, 'requires_stabilization': False},
+        # Standard mitigation equipment — qty from Total Equipment tab
+        {'category': 'blower',        'display_name': 'Air Mover / Blower (DRY)',     'required_quantity': 36, 'requires_stabilization': False},
+        {'category': 'hydroxyl',      'display_name': 'Hydroxyl Generator (DODHY)',   'required_quantity': 3,  'requires_stabilization': False},
+        {'category': 'ceiling_cavity','display_name': 'Ceiling Cavity Drying (CCDU)', 'required_quantity': 3,  'requires_stabilization': False},
+        {'category': 'wall_cavity',   'display_name': 'Wall Cavity Drying (WCDU)',    'required_quantity': 4,  'requires_stabilization': False},
+        {'category': 'floor_drying',  'display_name': 'Wood Floor Dry Mat (WFI)',     'required_quantity': 4,  'requires_stabilization': False},
+        {'category': 'drying_blanket','display_name': 'Drying Blanket / Mat (HTBL)',  'required_quantity': 2,  'requires_stabilization': False},
+        {'category': 'bound_water',   'display_name': 'Bound Water Cavity (BWCDU)',   'required_quantity': 2,  'requires_stabilization': False},
+        {'category': 'heat_air_mover','display_name': 'Heat Air Mover (HTAM)',        'required_quantity': 0,  'requires_stabilization': False},
+        {'category': 'antimicrobial', 'display_name': 'Anti-Microbial (GRM)',         'required_quantity': 0,  'requires_stabilization': False},
+    ]
+
+    # ── Library-tab: reference photo counts per category ─────────────────────
+    from django.db.models import Count
+    ref_counts = dict(
+        MITReferencePhoto.objects
+        .filter(is_active=True, approved=True)
+        .values('category')
+        .annotate(n=Count('id'))
+        .values_list('category', 'n')
+    )
+    ref_total = sum(ref_counts.values())
+
+    return render(request, 'mit_audit/hub.html', {
+        'audits':           audits,
+        'config':           config,
+        'clients':          clients,
+        'default_equipment': default_equipment,
+        'ref_counts':       ref_counts,
+        'ref_total':        ref_total,
+        'active_tab':       request.GET.get('tab', 'run'),
     })
 
 
@@ -291,6 +348,10 @@ def test_run_view(request):
     from mit_audit.models import MITDay3Audit, MITRequiredEquipment
     from docsAppR.models import Client
 
+    # GET → redirect to unified hub (Run tab)
+    if request.method == 'GET':
+        return redirect('mit_audit:dashboard')
+
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -341,54 +402,7 @@ def test_run_view(request):
         review_encircle_photos.delay(audit.pk)
 
         return JsonResponse({'ok': True, 'audit_id': audit.pk})
-
-    # GET ——————————————————————————————————————————————————————————————
-    # Load ALL active clients that have an Encircle claim ID, then deduplicate
-    # by pOwner (exact client name) keeping the most-recently-created record.
-    # This collapses duplicate entries caused by Encircle sync creating new rows
-    # instead of updating existing ones.
-    _all_clients = (
-        Client.objects
-        .filter(archived=False, encircle_claim_id__isnull=False)
-        .exclude(encircle_claim_id='')
-        .order_by('-created_at')   # newest first so first-seen wins per name
-    )
-    _seen_names = {}
-    for c in _all_clients:
-        key = (c.pOwner or '').strip().lower()
-        if key not in _seen_names:
-            _seen_names[key] = c
-    # Sort alphabetically for the dropdown
-    clients = sorted(_seen_names.values(), key=lambda c: (c.pOwner or '').lower())
-    category_choices = MITRequiredEquipment.CATEGORY_CHOICES
-
-    # Default equipment quantities for the form
-    defaults = [
-        {'category': 'dehumidifier', 'display_name': 'LGR Dehumidifier',          'required_quantity': 3,  'requires_stabilization': True},
-        {'category': 'blower',       'display_name': 'Air Mover / Blower',         'required_quantity': 10, 'requires_stabilization': False},
-        {'category': 'air_cleaner',  'display_name': 'HEPA Air Scrubber',          'required_quantity': 1,  'requires_stabilization': True},
-        {'category': 'hydroxyl',     'display_name': 'Hydroxyl Generator',         'required_quantity': 0,  'requires_stabilization': True},
-        {'category': 'zipper_wall',  'display_name': 'Zipper Wall (containment)',  'required_quantity': 0,  'requires_stabilization': True},
-        {'category': 'wall_cavity',  'display_name': 'Wall Cavity Drying System',  'required_quantity': 0,  'requires_stabilization': False},
-        {'category': 'floor_drying', 'display_name': 'Floor Drying Mat',           'required_quantity': 0,  'requires_stabilization': False},
-        {'category': 'heater',       'display_name': 'Heater',                     'required_quantity': 0,  'requires_stabilization': False},
-    ]
-
-    # Past runs — all non-archived test-run audits, newest first
-    past_runs = (
-        MITDay3Audit.objects
-        .filter(is_test_run=True, archived=False)
-        .select_related('client')
-        .prefetch_related('reports')
-        .order_by('-created_at')[:50]
-    )
-
-    return render(request, 'mit_audit/test_run.html', {
-        'clients':           clients,
-        'category_choices':  category_choices,
-        'default_equipment': defaults,
-        'past_runs':         past_runs,
-    })
+    # GET is handled by the dashboard hub — should not reach here.
 
 
 @login_required
