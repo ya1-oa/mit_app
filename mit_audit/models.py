@@ -158,6 +158,31 @@ class MITDay3Audit(models.Model):
 
 
 # ---------------------------------------------------------------------------
+# Live progress log — one row per notable event in the pipeline
+# ---------------------------------------------------------------------------
+
+class MITAuditLog(models.Model):
+    """
+    Append-only progress log for a single audit.
+    Written by Celery tasks so the frontend can show live step-by-step output
+    without WebSockets — the status_api view returns the latest entries and
+    the hub polls every 3 s.
+    """
+    audit      = models.ForeignKey(
+        MITDay3Audit, on_delete=models.CASCADE, related_name='log_entries'
+    )
+    message    = models.CharField(max_length=500)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        ordering    = ['created_at']
+        verbose_name = 'MIT Audit Log Entry'
+
+    def __str__(self):
+        return f'[{self.created_at:%H:%M:%S}] {self.message}'
+
+
+# ---------------------------------------------------------------------------
 # Room dimensions
 # ---------------------------------------------------------------------------
 

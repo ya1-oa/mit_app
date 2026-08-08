@@ -298,6 +298,7 @@ def review_photos_with_ai(
     anthropic_api_key: str,
     model: str = AI_MODEL,
     task_self=None,
+    log_fn=None,
 ) -> list[dict]:
     """
     Review Encircle claim photos against the required equipment list.
@@ -368,6 +369,18 @@ def review_photos_with_ai(
             model          = model,
         )
         results.append(obs)
+
+        # Log completion of this item
+        if log_fn:
+            vis = obs.get('visible_quantity', 0) or 0
+            req = item.get('required_quantity', 0) or 0
+            sym = '✓' if vis >= req else ('~' if vis > 0 else '✗')
+            stab_note = ''
+            stab = obs.get('stabilization_check') or {}
+            if item.get('requires_stabilization_photo') and stab.get('found') is False:
+                stab_note = '  ⚠ stab photo missing'
+            log_fn(f'{sym} {item["display_name"]} — {vis}/{req} found ({idx + 1}/{total_items}){stab_note}')
+
         # Brief pause so we don't hammer the rate limit between items
         if idx < total_items - 1:
             time.sleep(1)

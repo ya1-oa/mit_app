@@ -28,6 +28,13 @@ from django.utils import timezone
 logger = logging.getLogger(__name__)
 
 
+def _log(audit, msg: str) -> None:
+    """Append a live progress message to the audit log (visible in hub via status_api)."""
+    from mit_audit.models import MITAuditLog
+    MITAuditLog.objects.create(audit=audit, message=msg)
+    logger.info('[MIT][%d] %s', audit.pk, msg)
+
+
 # ---------------------------------------------------------------------------
 # Step 1: Extract floor-plan dimensions from Encircle
 # ---------------------------------------------------------------------------
@@ -300,7 +307,17 @@ def review_encircle_photos(self, audit_id: int):
     encircle_id = audit.encircle_claim_id or audit.client.encircle_claim_id or ''
 
     # Fetch photos
+    _log(audit, f'Fetching photos from Encircle claim {encircle_id}…')
     photos = ps.fetch_encircle_photos(encircle_id) if encircle_id else []
+
+    if photos:
+        by_type: dict[str, int] = {}
+        for p in photos:
+            by_type[p.get('room_type', 'other')] = by_type.get(p.get('room_type', 'other'), 0) + 1
+        breakdown = '  '.join(f'{k}: {v}' for k, v in by_type.items())
+        _log(audit, f'Found {len(photos)} photos — {breakdown}')
+    else:
+        _log(audit, 'No photos found in Encircle — AI will flag all as missing')
 
     required_items = list(
         MITRequiredEquipment.objects.filter(audit=audit)
@@ -312,11 +329,14 @@ def review_encircle_photos(self, audit_id: int):
         audit.set_status('error', 'No required equipment — run calculation step first.')
         return {'ok': False}
 
+    _log(audit, f'Starting AI review — {len(required_items)} equipment types…')
+
     # Run AI review (handles empty photos gracefully)
     try:
         if api_key:
             observations = ps.review_photos_with_ai(
-                required_items, photos, api_key, task_self=self
+                required_items, photos, api_key, task_self=self,
+                log_fn=lambda msg: _log(audit, msg),
             )
         else:
             # No API key — create manual-review placeholders
@@ -370,6 +390,7 @@ def review_encircle_photos(self, audit_id: int):
         )
 
     logger.info('[MIT] Saved %d photo observations for audit #%d', len(observations), audit_id)
+    _log(audit, f'AI review done — {len(observations)} items reviewed. Generating missing-equipment reports…')
     audit.set_status('generating_reports')
     generate_mit_reports.delay(audit_id)
     return {'ok': True, 'photos_reviewed': len(photos), 'observations': len(observations)}
@@ -393,13 +414,25 @@ def generate_mit_reports(self, audit_id: int):
     audit = MITDay3Audit.objects.get(pk=audit_id)
     audit.set_status('generating_reports')
 
+    # For test-run audits the required_* reports were already generated synchronously
+    # in test_run_view before the Celery task fired, so we only build the missing-*
+    # reports here (they depend on AI observations). For full-pipeline audits we
+    # build all four.
+    if audit.is_test_run:
+        report_jobs = [
+            ('missing_equipment', rb.build_missing_equipment_report),
+            ('missing_stab',      rb.build_missing_stab_report),
+        ]
+    else:
+        report_jobs = [
+            ('required_equipment', rb.build_required_equipment_report),
+            ('required_stab',      rb.build_required_stab_report),
+            ('missing_equipment',  rb.build_missing_equipment_report),
+            ('missing_stab',       rb.build_missing_stab_report),
+        ]
+
     errors = []
-    for report_type, builder_fn in [
-        ('required_equipment', rb.build_required_equipment_report),
-        ('required_stab',      rb.build_required_stab_report),
-        ('missing_equipment',  rb.build_missing_equipment_report),
-        ('missing_stab',       rb.build_missing_stab_report),
-    ]:
+    for report_type, builder_fn in report_jobs:
         try:
             pdf_path = builder_fn(audit)
             from pathlib import Path
@@ -409,9 +442,11 @@ def generate_mit_reports(self, audit_id: int):
                 defaults={'file_path': pdf_path, 'file_size_bytes': size},
             )
             logger.info('[MIT] %s report saved: %s', report_type, pdf_path)
+            _log(audit, f'📄 Report ready: {report_type.replace("_", " ").title()}')
         except Exception as exc:
             logger.error('[MIT] %s report failed for audit #%d: %s', report_type, audit_id, exc)
             errors.append(f'{report_type}: {exc}')
+            _log(audit, f'⚠ Report failed: {report_type} — {exc}')
 
     if errors:
         audit.set_status('error', '; '.join(errors))
@@ -420,6 +455,7 @@ def generate_mit_reports(self, audit_id: int):
     audit.status       = 'complete'
     audit.completed_at = timezone.now()
     audit.save(update_fields=['status', 'completed_at', 'updated_at'])
+    _log(audit, '✅ All reports ready.')
 
     send_mit_notification.delay(audit_id)
     return {'ok': True}

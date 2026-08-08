@@ -415,32 +415,36 @@
 
     {# Progress (hidden until running) #}
     <div class="progress-card" id="progressCard" style="display:none">
-      <div style="display:flex;justify-content:space-between;align-items:center">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
         <span style="font-size:14px;font-weight:600" id="progressLabel">Starting…</span>
         <span class="badge bg-primary" id="progressBadge">Running</span>
       </div>
       <div class="progress-track">
         <div class="progress-fill" id="progressFill" style="width:5%"></div>
       </div>
+      {# Live log box #}
+      <div id="logBox" style="margin-top:10px;background:#0f172a;border-radius:6px;padding:8px 10px;max-height:160px;overflow-y:auto;font-family:monospace;font-size:11px;color:#94a3b8;display:none">
+        <div id="logLines"></div>
+      </div>
     </div>
 
-    {# Report download pills (hidden until complete) #}
+    {# Report download pills — shown as soon as any report is ready #}
     <div id="reportPills" style="display:none">
       <div class="section-label">Generated Reports</div>
       <div class="report-pills">
-        <a id="btnRequired" href="#" target="_blank" class="report-pill" style="background:#1e40af;color:#fff">
+        <a id="btnRequired" href="#" target="_blank" class="report-pill report-pill-pending" style="background:#1e40af;color:#fff">
           <i class="fas fa-clipboard-list"></i> Required Equipment
         </a>
-        <a id="btnRequiredStab" href="#" target="_blank" class="report-pill" style="background:#1565c0;color:#fff">
+        <a id="btnRequiredStab" href="#" target="_blank" class="report-pill report-pill-pending" style="background:#1565c0;color:#fff">
           <i class="fas fa-star"></i> Required Stab Photos
         </a>
-        <a id="btnMissing" href="#" target="_blank" class="report-pill" style="background:#dc2626;color:#fff">
+        <a id="btnMissing" href="#" target="_blank" class="report-pill report-pill-pending" style="background:#dc2626;color:#fff;opacity:.4;pointer-events:none">
           <i class="fas fa-exclamation-triangle"></i> Missing Equip
         </a>
-        <a id="btnMissingStab" href="#" target="_blank" class="report-pill" style="background:#991b1b;color:#fff">
+        <a id="btnMissingStab" href="#" target="_blank" class="report-pill report-pill-pending" style="background:#991b1b;color:#fff;opacity:.4;pointer-events:none">
           <i class="fas fa-exclamation-circle"></i> Missing Stab
         </a>
-        <a id="btnDetail" href="#" class="report-pill" style="background:#f1f5f9;color:#334155">
+        <a id="btnDetail" href="#" class="report-pill report-pill-pending" style="background:#f1f5f9;color:#334155;opacity:.4;pointer-events:none">
           <i class="fas fa-external-link-alt"></i> Full Detail
         </a>
       </div>
@@ -691,11 +695,23 @@ function startRun() {
   btn.disabled = true;
   btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Running…';
 
+  _lastLogCount = 0;
   document.getElementById('progressCard').style.display = '';
   document.getElementById('reportPills').style.display  = 'none';
-  document.getElementById('obsSection').style.display   = 'none';
   document.getElementById('errorAlert').style.display   = 'none';
+  document.getElementById('logBox').style.display       = 'none';
+  document.getElementById('logLines').innerHTML         = '';
   setProgress(5, 'Submitting…', 'Running', '#3b82f6');
+
+  // Reset all pills to pending/dim state
+  ['btnRequired','btnRequiredStab'].forEach(id => {
+    const el = document.getElementById(id);
+    el.href = '#'; el.style.opacity = '.4'; el.style.pointerEvents = 'none';
+  });
+  ['btnMissing','btnMissingStab','btnDetail'].forEach(id => {
+    const el = document.getElementById(id);
+    el.href = '#'; el.style.opacity = '.4'; el.style.pointerEvents = 'none';
+  });
 
   fetch(RUN_URL, {
     method:  'POST',
@@ -705,35 +721,77 @@ function startRun() {
   .then(r => r.json())
   .then(data => {
     if (!data.ok) { showError(data.error || 'Unknown error'); return; }
-    setProgress(10, 'Fetching Encircle photos…', 'Running', '#3b82f6');
+
+    // Show required reports immediately — available before AI runs
+    if (data.reports && data.reports.length) {
+      document.getElementById('reportPills').style.display = '';
+      data.reports.forEach(r => activatePill(r.type, r.url));
+    }
+    setProgress(15, 'Required reports ready — starting AI review…', 'Running', '#3b82f6');
     pollStatus(data.audit_id);
   })
   .catch(err => showError('Network error: ' + err));
 }
 
+const TYPE_TO_BTN = {
+  required_equipment: 'btnRequired',
+  required_stab:      'btnRequiredStab',
+  missing_equipment:  'btnMissing',
+  missing_stab:       'btnMissingStab',
+};
+
+function activatePill(type, url) {
+  const btn = document.getElementById(TYPE_TO_BTN[type]);
+  if (!btn) return;
+  btn.href = url;
+  btn.style.opacity = '1';
+  btn.style.pointerEvents = 'auto';
+}
+
 const STEP_PCT = {
   pending:18, extracting_dims:20, dims_review:25, populating_wb:35,
-  calculating:50, reviewing_photos:65, generating_reports:90, complete:100,
+  calculating:50, reviewing_photos:55, generating_reports:92, complete:100,
 };
 const STEP_LABEL = {
   pending:'Queued…', extracting_dims:'Extracting floor plan…',
   dims_review:'Waiting for dimension approval…', populating_wb:'Populating workbook…',
   calculating:'Calculating required equipment…',
-  reviewing_photos:'AI reviewing photos… (60–120 s)',
-  generating_reports:'Generating PDF reports…', complete:'Done!',
+  reviewing_photos:'AI reviewing photos…',
+  generating_reports:'Generating missing-equipment reports…', complete:'Done!',
 };
+
+let _lastLogCount = 0;
 
 function pollStatus(auditId) {
   clearTimeout(pollTimer);
   fetch(STATUS_URL.replace('/0/', '/' + auditId + '/'))
   .then(r => r.json())
   .then(data => {
-    const pct   = STEP_PCT[data.status] || 10;
-    const label = STEP_LABEL[data.status] || data.status;
-    setProgress(pct, label, data.status === 'complete' ? 'Done' : 'Running',
-                data.status === 'complete' ? '#22c55e' : '#3b82f6');
+    // Progress percent — during AI review use obs_total/equip_total for live fill
+    let pct = STEP_PCT[data.status] || 15;
+    if (data.status === 'reviewing_photos' && data.equip_total > 0) {
+      pct = 55 + Math.round((data.obs_total / data.equip_total) * 35);
+    }
+    const done  = data.status === 'complete';
+    const label = done ? 'Done!' : (STEP_LABEL[data.status] || data.status);
+    setProgress(pct, label, done ? 'Done' : 'Running', done ? '#22c55e' : '#3b82f6');
 
-    if (data.status === 'complete') {
+    // Live log box — append any new lines
+    if (data.logs && data.logs.length > _lastLogCount) {
+      const box   = document.getElementById('logBox');
+      const lines = document.getElementById('logLines');
+      box.style.display = '';
+      const newLines = data.logs.slice(_lastLogCount);
+      newLines.forEach(msg => {
+        const d = document.createElement('div');
+        d.textContent = msg;
+        lines.appendChild(d);
+      });
+      _lastLogCount = data.logs.length;
+      box.scrollTop = box.scrollHeight;
+    }
+
+    if (done) {
       loadResults(auditId);
     } else if (data.status === 'error') {
       showError(data.error || 'Pipeline error. Check server logs.');
@@ -757,18 +815,15 @@ function loadResults(auditId) {
 }
 
 function renderResults(data, auditId) {
-  // Report pills
-  const req  = data.reports.find(r => r.type === 'required_equipment');
-  const reqS = data.reports.find(r => r.type === 'required_stab');
-  const mis  = data.reports.find(r => r.type === 'missing_equipment');
-  const misS = data.reports.find(r => r.type === 'missing_stab');
-  if (req)  document.getElementById('btnRequired').href      = req.url;
-  if (reqS) document.getElementById('btnRequiredStab').href  = reqS.url;
-  if (mis)  document.getElementById('btnMissing').href       = mis.url;
-  if (misS) document.getElementById('btnMissingStab').href   = misS.url;
-  document.getElementById('btnDetail').href = DETAIL_URL.replace('/0/', '/' + auditId + '/');
+  // Activate all report pills that came back
   document.getElementById('reportPills').style.display = '';
+  data.reports.forEach(r => activatePill(r.type, r.url));
 
+  // Detail link always available at completion
+  const detailBtn = document.getElementById('btnDetail');
+  detailBtn.href = DETAIL_URL.replace('/0/', '/' + auditId + '/');
+  detailBtn.style.opacity = '1';
+  detailBtn.style.pointerEvents = 'auto';
 }
 
 function setProgress(pct, label, badge, color) {
