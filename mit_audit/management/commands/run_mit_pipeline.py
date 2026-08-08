@@ -57,6 +57,7 @@ class Command(BaseCommand):
         'floor_drying':   ('Wood Floor Drying Mat (WFI)',        False),
         'drying_blanket': ('Drying Blanket / Mat (HTBL)',        False),
         'bound_water':    ('Bound Water Cavity Drying (BWCDU)',  False),
+        'antimicrobial':  ('Anti-Microbial Application (GRM)',   False),
         'heater':         ('Heater',                             False),
         'other':          ('Other Equipment',                    False),
     }

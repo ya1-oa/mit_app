@@ -72,7 +72,7 @@ _REFERENCE_CLAIM_ROOM_MAP: dict[str, str] = {
     'bwcdu bound water cavity drying unit':     'bound_water',
     'wfi wood floor drying injection units':    'floor_drying',
     'htbl heated blanket floor drying units':   'drying_blanket',
-    'grm sprayers anti microbial':              'other',
+    'grm sprayers anti microbial':              'antimicrobial',
     'exhaust system':                           'other',
     'backpack hepa vacuum':                     'other',
     'ppe personal protection equipment suits':  'other',
@@ -102,6 +102,7 @@ _CATEGORY_XACT_CODE: dict[str, str] = {
     'drying_blanket': 'HTBL',
     'bound_water':    'BWCDU',
     'tension_poles':  'BARRP',
+    'antimicrobial':  'GRM',
 }
 
 
@@ -249,7 +250,6 @@ class Command(BaseCommand):
                 if content_type and content_type not in _IMAGE_TYPES:
                     continue
 
-                media_id  = str(item.get('id', ''))
                 labels    = item.get('labels') or []
                 # labels hierarchy: [building, room, ...] — room is at index 1
                 room_name = labels[1] if len(labels) >= 2 else (labels[0] if labels else '')
@@ -257,6 +257,16 @@ class Command(BaseCommand):
                              or item.get('url')
                              or item.get('download_url')
                              or '')
+
+                # Prefer explicit id field; fall back to UUID embedded in the
+                # Azure Blob URL path: .../pictures/{UUID}?se=...&sig=...
+                # This is always present and unique per photo.
+                _uuid_pat = re.compile(r'/pictures/([0-9a-f\-]{36})', re.I)
+                media_id  = (str(item.get('id') or '')
+                             or str(item.get('primary_id') or ''))
+                if not media_id and url:
+                    _m = _uuid_pat.search(url)
+                    media_id = _m.group(1) if _m else ''
 
                 if not url:
                     self.stderr.write(f'  [SKIP] {media_id}: no download_uri — skipping')

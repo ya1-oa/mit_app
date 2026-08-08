@@ -231,6 +231,8 @@ class MITRequiredEquipment(models.Model):
         ('drying_blanket', 'Drying Blanket / Mat (HTBL)'),
         ('bound_water',    'Bound Water Cavity Drying (BWCDU)'),
         ('tension_poles',  'Tension / Support Poles (BARRP)'),
+        # ── Treatment ──────────────────────────────────────────────────────
+        ('antimicrobial',  'Anti-Microbial Application (GRM)'),
         # ── Other ──────────────────────────────────────────────────────────
         ('heater',         'Heater'),
         ('other',          'Other'),

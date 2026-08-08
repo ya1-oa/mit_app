@@ -161,6 +161,9 @@ _CATEGORY_KEYWORDS = {
     # Heat equipment
     'heat_air_mover': ['htam', 'heat air mover'],
     'heater':         ['heater'],
+    # Treatment
+    'antimicrobial':  ['grm', 'germicide', 'anti-microbial', 'antimicrobial',
+                       'disinfect', 'microbial'],
 }
 
 # Drying Chamber Stabilization — the ONLY categories that require a dedicated
