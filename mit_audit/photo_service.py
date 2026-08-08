@@ -24,11 +24,10 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-MAX_IMAGES          = 40   # Claude Vision limit per request (practical limit)
-MAX_REFERENCE_PHOTOS = 3   # approved reference photos to include per equipment category
-                           # 3 gives Claude multiple angles per type without crowding claim slots
-AI_MODEL             = 'claude-sonnet-4-6'
-AI_MAX_TOKENS        = 4096
+MAX_CLAIM_PHOTOS_PER_CALL = 30  # claim-side slots per per-category AI call
+                                # reference photos fill the rest (no cap — all approved ones sent)
+AI_MODEL      = 'claude-sonnet-4-6'
+AI_MAX_TOKENS = 4096
 
 # ---------------------------------------------------------------------------
 # Room classification
@@ -138,19 +137,55 @@ def download_photo_b64(url: str, api_key: str = '') -> tuple[str, str]:
 
 
 # ---------------------------------------------------------------------------
-# AI photo review
+# Reference photo library — load ALL approved photos for one category
 # ---------------------------------------------------------------------------
 
-# ---------------------------------------------------------------------------
-# Reference photo library
-# ---------------------------------------------------------------------------
+# Category slug → Xactimate line-item code (for labeling Claude's prompt)
+_CATEGORY_XACT = {
+    'dehumidifier':   'DH',
+    'air_cleaner':    'NA / NAFAN',
+    'zipper_wall':    'BARRZ',
+    'double_zipper':  'BARRZ+',
+    'blower':         'DRY',
+    'heat_air_mover': 'HTAM',
+    'hydroxyl':       'DODHY',
+    'ceiling_cavity': 'CCDU',
+    'wall_cavity':    'WCDU',
+    'cabinet_drying': 'CABDU',
+    'closet_drying':  'CLSTDU',
+    'floor_drying':   'WFI',
+    'drying_blanket': 'HTBL',
+    'bound_water':    'BWCDU',
+    'tension_poles':  'BARRP',
+}
 
-def load_reference_photos(categories: list[str]) -> list[dict]:
+# Stabilization requirements per category (plain-English, injected into prompt)
+_STAB_REQUIREMENT = {
+    'dehumidifier': (
+        '1 photo — drain/condensate hose connected AND power indicator lit or unit audibly running.'
+    ),
+    'air_cleaner': (
+        '1 photo — unit powered ON, intake and exhaust visible, indicator light on.'
+    ),
+    'zipper_wall': (
+        'MINIMUM 2 photos: ① full zipper wall visible, ② support poles tensioned. '
+        'OR 1 photo that clearly shows BOTH the wall AND poles together.'
+    ),
+    'double_zipper': (
+        'MINIMUM 2 photos showing: the double zipper wall AND at least 2 support poles. '
+        'Both poles MUST be clearly visible — 1 pole is NOT sufficient.'
+    ),
+    'hydroxyl': (
+        '1 photo — brand/model clearly identifiable AND power or UV indicator light visible.'
+    ),
+}
+
+
+def load_reference_photos_for_category(category: str) -> list[dict]:
     """
-    Return up to MAX_REFERENCE_PHOTOS approved reference photos per category
-    as a list of dicts: [{ 'category', 'display_name', 'description', 'b64', 'media_type' }]
-
-    Returns an empty list if the model table doesn't exist yet (pre-migration).
+    Load ALL approved reference photos for a single equipment category.
+    Returns list of dicts: [{ category, display_name, description, b64, media_type }]
+    No cap — every variation matters.
     """
     try:
         from mit_audit.models import MITReferencePhoto
@@ -158,95 +193,88 @@ def load_reference_photos(categories: list[str]) -> list[dict]:
         return []
 
     refs = []
-    for cat in categories:
-        photos = (
-            MITReferencePhoto.objects
-            .filter(category=cat, approved=True, is_active=True)
-            # approved_at nulls-last so auto-approved photos (approved_at=now()) sort first
-            .order_by('-approved_at', '-created_at')[:MAX_REFERENCE_PHOTOS]
-        )
-        for photo in photos:
-            try:
-                data = Path(photo.file_path).read_bytes()
-                b64  = base64.standard_b64encode(data).decode()
-                # Guess media type from extension
-                ext  = Path(photo.file_path).suffix.lower()
-                mt   = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
-                        'png': 'image/png',  'webp': 'image/webp'}.get(ext.lstrip('.'), 'image/jpeg')
-                refs.append({
-                    'category':     cat,
-                    'display_name': photo.display_name or photo.get_category_display(),
-                    'description':  photo.description,
-                    'b64':          b64,
-                    'media_type':   mt,
-                })
-            except Exception as exc:
-                logger.warning('[MIT] Could not load reference photo %s: %s', photo.pk, exc)
+    qs = (
+        MITReferencePhoto.objects
+        .filter(category=category, approved=True, is_active=True)
+        .order_by('-approved_at', '-created_at')
+    )
+    for photo in qs:
+        try:
+            data = Path(photo.file_path).read_bytes()
+            b64  = base64.standard_b64encode(data).decode()
+            ext  = Path(photo.file_path).suffix.lower().lstrip('.')
+            mt   = {'jpg': 'image/jpeg', 'jpeg': 'image/jpeg',
+                    'png': 'image/png',  'webp': 'image/webp'}.get(ext, 'image/jpeg')
+            refs.append({
+                'category':     category,
+                'display_name': photo.display_name or photo.get_category_display(),
+                'description':  photo.description or '',
+                'b64':          b64,
+                'media_type':   mt,
+            })
+        except Exception as exc:
+            logger.warning('[MIT] Could not load reference photo pk=%s: %s', photo.pk, exc)
+    logger.debug('[MIT] Loaded %d reference photos for category %r', len(refs), category)
     return refs
 
 
-_REVIEW_PROMPT = """You are a licensed water mitigation specialist and insurance documentation expert.
-You are reviewing job-site photos from an Encircle claim to audit whether all required mitigation equipment is present and documented.
+# ---------------------------------------------------------------------------
+# Per-category focused prompt
+# ---------------------------------------------------------------------------
 
-{reference_section}REQUIRED EQUIPMENT LIST:
-{items_list}
+_SINGLE_ITEM_PROMPT = """\
+You are a licensed water mitigation specialist reviewing Encircle job-site photos.
+Your task is to audit ONE specific piece of equipment.
 
-PHOTO ROOM TYPES:
-Each photo below is tagged with its Encircle room type:
-  [EQUIP]  — "600" / mitigation-equipment room: contains photos of ALL deployed equipment.
-              Use these for counting equipment quantities.
-  [STAB]   — Stabilization room: dedicated stabilization documentation photos.
-              Use these to verify STABILIZATION_REQUIRED items are properly running.
-  [DCHAMB] — Drying Chamber room: photos of chamber setup (same rules as STAB).
-  [ROOM]   — Regular job-site room. Use for secondary evidence only if EQUIP photos
-              are unavailable or inconclusive.
+══ EQUIPMENT TO FIND ══════════════════════════════════════════════════════════
+{display_name}  |  Xactimate: {xact_code}  |  Required qty: {required_quantity}
+{stab_block}
+══ REFERENCE PHOTOS ({ref_count} from our equipment library) ══════════════════
+The [REF] photos above show this equipment in various models, brands, and
+configurations used by our company. ALL variations count as the same line item.
+Use them to recognise the equipment in the claim photos below.
 
-STABILIZATION PHOTO STANDARD:
-For every item marked STABILIZATION_REQUIRED, check whether a valid stabilization photo exists.
-The standard is as follows — a photo FAILS if it does not meet these requirements:
-  • Dehumidifier    — 1 photo: drain/condensate hose connected, power indicator lit or running
-  • Air Cleaner     — 1 photo: unit powered on, intake/exhaust visible, indicator light on
-  • Zipper Wall     — MINIMUM 2 photos: (1) full wall visible, (2) support poles tensioned
-                      OR 1 single photo that clearly shows BOTH the wall AND the poles together
-  • Double Zipper   — MINIMUM 2 photos showing: the double zipper wall AND at least 2 support poles
-                      (both poles must be clearly visible; 1 pole is not sufficient)
-  • Hydroxyl        — 1 photo: brand/model identifiable, power/UV indicator light visible
+══ CLAIM PHOTOS ═══════════════════════════════════════════════════════════════
+Photo room tags:
+  [EQUIP]  — equipment documentation room (primary source for quantity count)
+  [STAB]   — stabilization room (primary source for stabilization check)
+  [DCHAMB] — drying chamber room (same as STAB)
+  [ROOM]   — general job-site room (secondary evidence only)
 
-Claim photo IDs available in this review:
-{photo_ids}
+Claim photo IDs in this batch: {photo_ids}
 
-IMPORTANT RULES:
-- Use the REFERENCE PHOTOS above (if provided) as your benchmark for what a good documentation photo looks like
-- Prioritize [EQUIP] and [STAB] room photos for their respective checks
-- Only mark as confirmed when you can clearly count the equipment units in the photos
-- If a photo is blurry, distant, or the equipment is partially obstructed, note this but do NOT count it
-- Count each physical unit separately — do not count the same unit twice from different angles
-- Return ONLY a raw JSON array, no markdown fences, no explanation
+══ COUNTING RULES ══════════════════════════════════════════════════════════════
+• Count physical units — the same unit in two photos = 1 unit, not 2
+• Do not count blurry, distant, or heavily obstructed units
+• Prefer [EQUIP] photos for the quantity count
+• Prefer [STAB] / [DCHAMB] photos for the stabilization check
 
-JSON format:
-[
-  {{
-    "equipment_type": "dehumidifier",
-    "display_name": "LGR Dehumidifier",
-    "required_quantity": 3,
-    "visible_quantity": 2,
-    "missing_quantity": 1,
-    "status": "partial",
-    "supporting_photo_ids": ["photo_001", "photo_004"],
-    "ai_confidence": "high",
-    "ai_notes": "Two dehumidifiers clearly visible in photos 001 and 004. Third unit not documented.",
-    "stabilization_check": {{
-      "required": true,
-      "found": true,
-      "photo_count": 1,
-      "notes": "Photo 001 (STAB room) shows dehumidifier with condensate hose connected and running."
-    }},
-    "recommended_action": "Photograph the third dehumidifier with unit ID tag visible."
-  }}
-]
+══ RETURN FORMAT ═══════════════════════════════════════════════════════════════
+Return a SINGLE JSON object (not an array), no markdown fences:
+{{
+  "equipment_type": "{equipment_type}",
+  "display_name": "{display_name}",
+  "required_quantity": {required_quantity},
+  "visible_quantity": <int>,
+  "missing_quantity": <int>,
+  "status": "confirmed|partial|missing|manual",
+  "supporting_photo_ids": ["<id>", ...],
+  "ai_confidence": "high|medium|low",
+  "ai_notes": "<what you saw, where, any caveats>",
+  "stabilization_check": {{
+    "required": {stab_required},
+    "found": <true|false|null>,
+    "photo_count": <int>,
+    "notes": "<which photos satisfy the standard, or what is missing>"
+  }},
+  "recommended_action": "<one sentence for the tech>"
+}}
+"""
 
-Include one entry for EVERY item in the required equipment list, even if visible_quantity is 0."""
 
+# ---------------------------------------------------------------------------
+# AI photo review — one Claude call per line item
+# ---------------------------------------------------------------------------
 
 def review_photos_with_ai(
     required_items: list[dict],
@@ -256,7 +284,16 @@ def review_photos_with_ai(
     task_self=None,
 ) -> list[dict]:
     """
-    Send Encircle photos to Claude and get back per-equipment observations.
+    Review Encircle claim photos against the required equipment list.
+
+    Strategy: one focused Claude Vision call PER equipment line item.
+      • Each call receives ALL approved reference photos for that category
+        (every variation from the equipment library — no cap)
+      • Each call receives up to MAX_CLAIM_PHOTOS_PER_CALL claim photos,
+        prioritised by room type (EQUIP → STAB → DCHAMB → ROOM)
+      • The prompt is scoped to a single equipment type so Claude cannot
+        confuse similar-looking items
+      • Results are collected and returned as a flat list (same shape as before)
 
     Args:
         required_items:    List of required equipment dicts (from workbook_service).
@@ -274,159 +311,169 @@ def review_photos_with_ai(
     if not required_items:
         logger.warning('[MIT] No required items to review')
         return []
+
+    # No-photos fast path
     if not photos:
         logger.warning('[MIT] No photos available for review')
-        return [{
-            **item,
-            'visible_quantity':    0,
-            'missing_quantity':    item['required_quantity'],
-            'status':              'missing',
-            'supporting_photo_ids': [],
-            'ai_confidence':       'high',
-            'ai_notes':            'No Encircle photos available for this job.',
-            'stabilization_check': {'required': item.get('requires_stabilization_photo'),
-                                     'found': False, 'notes': 'No photos to review.'},
-            'recommended_action':  'Photograph all equipment before leaving the job site.',
-        } for item in required_items]
+        return [_missing_obs(item, 'No Encircle photos available for this job.',
+                             'Photograph all equipment before leaving the job site.')
+                for item in required_items]
 
-    # Build the items list for the prompt
-    items_lines = []
-    for it in required_items:
-        stab_flag = 'STABILIZATION_REQUIRED' if it.get('requires_stabilization_photo') else ''
-        items_lines.append(
-            f"- {it['display_name']} | required: {it['required_quantity']} | "
-            f"type: {it['equipment_type']} {stab_flag}"
-        )
-    items_list = '\n'.join(items_lines)
+    encircle_key = (
+        getattr(EncircleAPIClient, 'API_KEY', '')
+        or __import__('os').environ.get('ENCIRCLE_API_KEY', '')
+    )
+    client = _anthropic.Anthropic(api_key=anthropic_api_key)
 
-    # ── Load reference photos ──────────────────────────────────────
-    # Get unique categories from required_items, then load 1 approved
-    # reference photo per category.  These are prepended to the request
-    # so Claude has a visual benchmark before it sees the claim photos.
-    categories = list(dict.fromkeys(
-        it.get('category', 'other') for it in required_items
-    ))
-    refs = load_reference_photos(categories)
-
-    # Reserve slots for reference photos, leaving at least 10 for claim photos
-    ref_slots  = min(len(refs), MAX_IMAGES - 10)
-    refs       = refs[:ref_slots]
-    claim_slots = MAX_IMAGES - len(refs)
-
-    # ── Prioritise photos by room type ─────────────────────────────────────────
-    # Send full_equip first (equipment quantity photos), then stab/drying_chamber
-    # (stabilization docs), then other room photos to fill remaining slots.
-    has_stab_items = any(it.get('requires_stabilization_photo') for it in required_items)
-
+    # Pre-prioritise claim photos by room type (done once, reused per item)
     ordered_photos: list[dict] = []
     for room_type in ('full_equip', 'stabilization', 'drying_chamber', 'other'):
         ordered_photos.extend(p for p in photos if p.get('room_type') == room_type)
 
-    selected_photos = ordered_photos[:claim_slots]
-    photo_ids_str   = ', '.join(p['id'] for p in selected_photos)
+    total_items = len(required_items)
+    results: list[dict] = []
 
-    # Log what we're actually sending
-    type_counts = {}
-    for p in selected_photos:
-        type_counts[p.get('room_type', 'other')] = type_counts.get(p.get('room_type', 'other'), 0) + 1
-    logger.info('[MIT] Sending %d photos to Claude — room breakdown: %s',
-                len(selected_photos), type_counts)
-
-    # Fetch API key for Encircle photo downloads
-    encircle_key = getattr(EncircleAPIClient, 'API_KEY', '') or \
-                   __import__('os').environ.get('ENCIRCLE_API_KEY', '')
-
-    # ── Build content list ─────────────────────────────────────────
-    # Order: reference photos → separator → claim photos → prompt
-    content = []
-
-    # 1. Reference photos (if any)
-    if refs:
-        content.append({'type': 'text', 'text': (
-            '=== REFERENCE PHOTOS ===\n'
-            'The following photos show correctly documented mitigation equipment '
-            'from previous jobs. Use these as your benchmark when reviewing the '
-            'claim photos below.\n'
-        )})
-        for ref in refs:
-            content.append({'type': 'text', 'text': (
-                f'REFERENCE [{ref["display_name"]}]: {ref["description"]}'
-            )})
-            content.append({
-                'type': 'image',
-                'source': {'type': 'base64', 'media_type': ref['media_type'], 'data': ref['b64']},
-            })
-        content.append({'type': 'text', 'text': '=== END REFERENCE PHOTOS ==='})
-        logger.info('[MIT] Included %d reference photos in review', len(refs))
-
-    # 2. Claim photos
-    loaded = 0
-    total  = len(selected_photos)
-
-    for i, photo in enumerate(selected_photos):
-        if task_self and i % 5 == 0:
+    for idx, item in enumerate(required_items):
+        if task_self:
+            pct = 20 + int(idx / total_items * 60)
             task_self.update_state(
                 state='PROGRESS',
-                meta={'step': f'Downloading photos {i}/{total}…', 'percent': 20 + int(i / total * 30)},
+                meta={
+                    'step':    f'Reviewing {item["display_name"]} ({idx + 1}/{total_items})…',
+                    'percent': pct,
+                },
             )
+
+        obs = _review_single_item(
+            item           = item,
+            ordered_photos = ordered_photos,
+            encircle_key   = encircle_key,
+            client         = client,
+            model          = model,
+        )
+        results.append(obs)
+        # Brief pause so we don't hammer the rate limit between items
+        if idx < total_items - 1:
+            time.sleep(1)
+
+    return results
+
+
+def _review_single_item(
+    item: dict,
+    ordered_photos: list[dict],
+    encircle_key: str,
+    client,
+    model: str,
+) -> dict:
+    """
+    Run one Claude Vision call for a single required equipment item.
+    Returns an observation dict.
+    """
+    category   = item.get('category', 'other')
+    xact_code  = _CATEGORY_XACT.get(category, category.upper())
+    requires_stab = bool(item.get('requires_stabilization_photo'))
+
+    # ── 1. Load ALL reference photos for this category (no cap) ──────────────
+    refs = load_reference_photos_for_category(category)
+
+    # ── 2. Select claim photos (up to MAX_CLAIM_PHOTOS_PER_CALL) ─────────────
+    selected_claim = ordered_photos[:MAX_CLAIM_PHOTOS_PER_CALL]
+
+    # ── 3. Build message content ─────────────────────────────────────────────
+    content: list[dict] = []
+
+    # Reference photos first — labeled so Claude knows what it's seeing
+    if refs:
+        content.append({'type': 'text', 'text': (
+            f'=== REFERENCE PHOTOS FOR: {item["display_name"].upper()} ===\n'
+            f'The following {len(refs)} photo(s) show this exact equipment type '
+            f'in different models, brands, and configurations. '
+            f'All variations count as the same Xactimate line item ({xact_code}).\n'
+        )})
+        for i, ref in enumerate(refs, 1):
+            desc = f' — {ref["description"]}' if ref.get('description') else ''
+            content.append({
+                'type': 'text',
+                'text': f'[REF {i}/{len(refs)}: {ref["display_name"]}{desc}]',
+            })
+            content.append({
+                'type':   'image',
+                'source': {
+                    'type':       'base64',
+                    'media_type': ref['media_type'],
+                    'data':       ref['b64'],
+                },
+            })
+        content.append({'type': 'text', 'text': '=== END REFERENCE PHOTOS ==='})
+
+    # Claim photos
+    loaded_ids: list[str] = []
+    for photo in selected_claim:
         b64, mt = download_photo_b64(photo['url'], encircle_key)
         if not b64:
             continue
         content.append({
-            'type': 'image',
+            'type':   'image',
             'source': {'type': 'base64', 'media_type': mt, 'data': b64},
         })
-        # Annotate with photo ID, room, and room-type tag so Claude knows
-        # which check to use each photo for.
-        room_type_tag = {
+        tag = {
             'full_equip':    'EQUIP',
             'stabilization': 'STAB',
             'drying_chamber':'DCHAMB',
         }.get(photo.get('room_type', 'other'), 'ROOM')
         content.append({
             'type': 'text',
-            'text': (
-                f'[Photo ID: {photo["id"]} | '
-                f'Room: {photo.get("room", "unknown")} | '
-                f'Type: {room_type_tag}]'
-            ),
+            'text': f'[Photo ID: {photo["id"]} | Room: {photo.get("room","?")} | {tag}]',
         })
-        loaded += 1
+        loaded_ids.append(photo['id'])
 
-    if loaded == 0:
-        logger.error('[MIT] Could not download any photos — all returned empty')
-        return [{
-            **item,
-            'visible_quantity':    0,
-            'missing_quantity':    item['required_quantity'],
-            'status':              'manual',
-            'supporting_photo_ids': [],
-            'ai_confidence':       'low',
-            'ai_notes':            'Photos could not be downloaded for AI review.',
-            'recommended_action':  'Manually review Encircle photos.',
-        } for item in required_items]
+    if not loaded_ids:
+        logger.warning('[MIT] No photos downloaded for %r — marking manual', category)
+        return _missing_obs(item,
+                            'Photos could not be downloaded for AI review.',
+                            'Manually review Encircle photos.',
+                            status='manual', confidence='low')
 
-    # 3. Prompt text
-    reference_section = (
-        f'(You have been given {len(refs)} reference photo(s) above as examples.)\n\n'
-        if refs else ''
-    )
-    prompt = _REVIEW_PROMPT.format(
-        reference_section=reference_section,
-        items_list=items_list,
-        photo_ids=photo_ids_str,
+    # ── 4. Build focused prompt ──────────────────────────────────────────────
+    stab_block = ''
+    if requires_stab:
+        req_text = _STAB_REQUIREMENT.get(category, '1 photo showing equipment running.')
+        stab_block = (
+            f'\nSTABILIZATION REQUIRED — standard for this item:\n'
+            f'  {req_text}\n'
+        )
+
+    prompt = _SINGLE_ITEM_PROMPT.format(
+        display_name      = item['display_name'],
+        xact_code         = xact_code,
+        required_quantity = item['required_quantity'],
+        equipment_type    = item['equipment_type'],
+        stab_block        = stab_block,
+        ref_count         = len(refs),
+        photo_ids         = ', '.join(loaded_ids),
+        stab_required     = 'true' if requires_stab else 'false',
     )
     content.append({'type': 'text', 'text': prompt})
 
-    if task_self:
-        task_self.update_state(
-            state='PROGRESS',
-            meta={'step': f'Sending {loaded} photos to Claude for equipment review…', 'percent': 55},
-        )
+    logger.info(
+        '[MIT] Reviewing %r — %d ref photos, %d claim photos',
+        item['display_name'], len(refs), len(loaded_ids),
+    )
 
-    client = _anthropic.Anthropic(api_key=anthropic_api_key)
-    raw_response = None
+    # ── 5. Call Claude ───────────────────────────────────────────────────────
+    raw = _call_claude(client, model, content)
+    if raw is None:
+        return _missing_obs(item,
+                            'Claude API did not respond after 3 attempts.',
+                            'Retry the audit or review manually.',
+                            status='manual', confidence='low')
 
+    return _parse_single_obs(raw, item)
+
+
+def _call_claude(client, model: str, content: list[dict]) -> str | None:
+    """Call Claude with retry on rate-limit. Returns raw text or None."""
     for attempt in range(1, 4):
         try:
             resp = client.messages.create(
@@ -434,57 +481,115 @@ def review_photos_with_ai(
                 max_tokens=AI_MAX_TOKENS,
                 messages=[{'role': 'user', 'content': content}],
             )
-            raw_response = resp.content[0].text
-            break
-        except _anthropic.RateLimitError:
-            wait = min(60, 2 ** attempt * 5)
-            logger.warning('[MIT] Rate limit — waiting %ds (attempt %d)', wait, attempt)
-            time.sleep(wait)
-        except _anthropic.APIError as exc:
+            return resp.content[0].text
+        except Exception as exc:
+            # Lazy import to avoid hard dependency at module load time
+            try:
+                import anthropic as _a
+                if isinstance(exc, _a.RateLimitError):
+                    wait = min(60, 2 ** attempt * 5)
+                    logger.warning('[MIT] Rate limit — waiting %ds (attempt %d)', wait, attempt)
+                    time.sleep(wait)
+                    continue
+            except ImportError:
+                pass
             logger.error('[MIT] Claude API error (attempt %d): %s', attempt, exc)
             if attempt == 3:
-                raise
+                return None
             time.sleep(3)
-
-    if not raw_response:
-        raise RuntimeError('No response from Claude after 3 attempts')
-
-    return _parse_ai_response(raw_response, required_items)
+    return None
 
 
-def _parse_ai_response(raw: str, required_items: list[dict]) -> list[dict]:
+def _parse_single_obs(raw: str, item: dict) -> dict:
     """
-    Parse Claude's JSON response.  If parsing fails, build a manual-review
-    result for every item so the pipeline doesn't block.
+    Parse a single-item JSON object from Claude's response.
+    Falls back to a manual-review placeholder if parsing fails.
     """
     text = re.sub(r'^```[a-z]*\n?', '', raw.strip())
     text = re.sub(r'\n?```$', '', text).strip()
+
+    # Try direct parse
     try:
-        data = json.loads(text)
-        if isinstance(data, list):
-            logger.info('[MIT] AI response parsed: %d observations', len(data))
-            return data
+        obj = json.loads(text)
+        if isinstance(obj, dict):
+            _coerce_obs(obj, item)
+            return obj
+        if isinstance(obj, list) and obj:
+            _coerce_obs(obj[0], item)
+            return obj[0]
     except json.JSONDecodeError:
         pass
 
-    # Try to extract the JSON array from a larger blob
-    m = re.search(r'\[[\s\S]+\]', text)
+    # Try to extract a JSON object from a larger blob
+    m = re.search(r'\{[\s\S]+\}', text)
     if m:
         try:
-            data = json.loads(m.group(0))
-            if isinstance(data, list):
-                return data
+            obj = json.loads(m.group(0))
+            if isinstance(obj, dict):
+                _coerce_obs(obj, item)
+                return obj
         except json.JSONDecodeError:
             pass
 
-    logger.error('[MIT] Could not parse AI response — marking all as manual review')
-    return [{
-        **item,
-        'visible_quantity':    0,
-        'missing_quantity':    item['required_quantity'],
-        'status':              'manual',
+    logger.error('[MIT] Could not parse single-item response for %r — raw: %.200s',
+                 item.get('display_name'), raw)
+    return _missing_obs(item,
+                        'AI response could not be parsed. Manual review required.',
+                        'Review Encircle photos manually.',
+                        status='manual', confidence='low')
+
+
+def _coerce_obs(obs: dict, item: dict) -> None:
+    """Ensure required fields are present with sane types (mutates obs in-place)."""
+    obs.setdefault('equipment_type',      item.get('equipment_type', ''))
+    obs.setdefault('display_name',        item.get('display_name', ''))
+    obs.setdefault('required_quantity',   item.get('required_quantity', 0))
+    obs.setdefault('visible_quantity',    0)
+    obs.setdefault('missing_quantity',    0)
+    obs.setdefault('supporting_photo_ids', [])
+    obs.setdefault('ai_confidence',       'low')
+    obs.setdefault('ai_notes',            '')
+    obs.setdefault('recommended_action',  '')
+    obs.setdefault('stabilization_check', {
+        'required': item.get('requires_stabilization_photo', False),
+        'found':    None,
+        'photo_count': 0,
+        'notes':    '',
+    })
+    # Ensure integer types
+    try:
+        obs['visible_quantity']  = int(obs['visible_quantity'])
+        obs['required_quantity'] = int(obs['required_quantity'])
+    except (TypeError, ValueError):
+        pass
+    obs['missing_quantity'] = max(
+        obs.get('required_quantity', 0) - obs.get('visible_quantity', 0), 0
+    )
+
+
+def _missing_obs(
+    item: dict,
+    ai_notes: str,
+    recommended_action: str,
+    status: str = 'missing',
+    confidence: str = 'high',
+) -> dict:
+    """Build a placeholder observation for an item that could not be reviewed."""
+    return {
+        'equipment_type':       item.get('equipment_type', ''),
+        'display_name':         item.get('display_name', ''),
+        'required_quantity':    item.get('required_quantity', 0),
+        'visible_quantity':     0,
+        'missing_quantity':     item.get('required_quantity', 0),
+        'status':               status,
         'supporting_photo_ids': [],
-        'ai_confidence':       'low',
-        'ai_notes':            'AI response could not be parsed. Manual review required.',
-        'recommended_action':  'Review Encircle photos manually.',
-    } for item in required_items]
+        'ai_confidence':        confidence,
+        'ai_notes':             ai_notes,
+        'stabilization_check':  {
+            'required':    item.get('requires_stabilization_photo', False),
+            'found':       False,
+            'photo_count': 0,
+            'notes':       ai_notes,
+        },
+        'recommended_action':   recommended_action,
+    }

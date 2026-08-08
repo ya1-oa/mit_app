@@ -85,6 +85,26 @@ _REFERENCE_CLAIM_ROOM_MAP: dict[str, str] = {
 REFERENCE_CLAIM_IDS = {'1021079'}
 
 
+# Category slug → Xactimate billing code (stamped on auto-approved photos)
+_CATEGORY_XACT_CODE: dict[str, str] = {
+    'dehumidifier':   'DH',
+    'air_cleaner':    'NA',
+    'zipper_wall':    'BARRZ',
+    'double_zipper':  'BARRZ+',
+    'blower':         'DRY',
+    'heat_air_mover': 'HTAM',
+    'hydroxyl':       'DODHY',
+    'ceiling_cavity': 'CCDU',
+    'wall_cavity':    'WCDU',
+    'cabinet_drying': 'CABDU',
+    'closet_drying':  'CLSTDU',
+    'floor_drying':   'WFI',
+    'drying_blanket': 'HTBL',
+    'bound_water':    'BWCDU',
+    'tension_poles':  'BARRP',
+}
+
+
 def _room_to_category(room_name: str, claim_id: str) -> str:
     """
     Return the category slug for a room in a known reference claim.
@@ -269,6 +289,8 @@ class Command(BaseCommand):
                         # e.g. "DH Dehumidifiers" → "Dh Dehumidifiers" (readable label)
                         display_name = room_name.title()
 
+                xact_code = _CATEGORY_XACT_CODE.get(category, '') if category else ''
+
                 _, created = MITReferencePhoto.objects.update_or_create(
                     source_media_id=media_id,
                     defaults={
@@ -278,6 +300,7 @@ class Command(BaseCommand):
                         'source_room_name':         room_name,
                         'category':                 category,
                         'display_name':             display_name,
+                        'xact_code':                xact_code,
                         'approved':                 approved,
                         'approved_at':              approved_at,
                         'is_active':                True,
